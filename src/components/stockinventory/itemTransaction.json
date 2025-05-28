@@ -1,0 +1,92 @@
+[
+    {
+        "id": 1,
+        "itemId": 1,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 12,
+        "balance": 12,
+        "note": "Initial stock for Wireless Headphones"
+    },
+    {
+        "id": 2,
+        "itemId": 2,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 5,
+        "balance": 5,
+        "note": "Initial stock for Running Shoes"
+    },
+    {
+        "id": 3,
+        "itemId": 3,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 0,
+        "balance": 0,
+        "note": "Initial stock for Smart Watch"
+    },
+    {
+        "id": 4,
+        "itemId": 4,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 3,
+        "balance": 3,
+        "note": "Initial stock for Laptop"
+    },
+    {
+        "id": 5,
+        "itemId": 5,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 8,
+        "balance": 8,
+        "note": "Initial stock for Office Chair"
+    },
+    {
+        "id": 6,
+        "itemId": 6,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 15,
+        "balance": 15,
+        "note": "Initial stock for Basketball"
+    },
+    {
+        "id": 7,
+        "itemId": 7,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 10,
+        "balance": 10,
+        "note": "Initial stock for Desk Lamp"
+    },
+    {
+        "id": 8,
+        "itemId": 8,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 20,
+        "balance": 20,
+        "note": "Initial stock for Toy Car"
+    },
+    {
+        "id": 9,
+        "itemId": 9,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 7,
+        "balance": 7,
+        "note": "Initial stock for Bluetooth Speaker"
+    },
+    {
+        "id": 10,
+        "itemId": 10,
+        "date": "2025-05-01",
+        "type": "in",
+        "quantity": 30,
+        "balance": 30,
+        "note": "Initial stock for Notebook"
+    }
+]

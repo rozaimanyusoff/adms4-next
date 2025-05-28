@@ -1,0 +1,113 @@
+import React, { useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPlusCircle, faTh, faList } from '@fortawesome/free-solid-svg-icons';
+
+const SidebarItemPicker: React.FC<{
+    cartItems: any[];
+    selectedItems: any[];
+    onAdd: (item: any) => void;
+}> = ({ cartItems, selectedItems, onAdd }) => {
+    const [search, setSearch] = useState('');
+    const [view, setView] = useState<'list' | 'card'>('list');
+
+    // Helper to call onAdd (no longer close sidebar automatically)
+    const handleAdd = (item: any) => {
+        onAdd(item);
+        // setLastAdded(item.id); // No sidebar close trigger
+    };
+
+    const filtered = cartItems.filter(item =>
+        !selectedItems.some((si: any) => si.id === item.id) &&
+        item.name.toLowerCase().includes(search.toLowerCase())
+    );
+    return (
+        <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 mb-3">
+                {/* Move view icons to the right of search */}
+                <input
+                    className="form-input w-full mb-0"
+                    placeholder="Search items..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                />
+                <div className="flex gap-1 ml-2">
+                    <button
+                        className={`p-1 rounded border ${view === 'list' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
+                        onClick={() => setView('list')}
+                        title="List View"
+                    >
+                        <FontAwesomeIcon icon={faList} />
+                    </button>
+                    <button
+                        className={`p-1 rounded border ${view === 'card' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
+                        onClick={() => setView('card')}
+                        title="Card View"
+                    >
+                        <FontAwesomeIcon icon={faTh} />
+                    </button>
+                </div>
+            </div>
+            <div className="flex-1 overflow-y-auto mt-2">
+                {filtered.length === 0 && (
+                    <div className="text-gray-400 text-center py-8">No more items to add.</div>
+                )}
+                {view === 'list' ? (
+                    <ul className="divide-y">
+                        {filtered.map(item => (
+                            <li key={item.id} className="flex items-center justify-start py-1.5">
+                                <button
+                                    className="text-white"
+                                    onClick={() => handleAdd(item)}
+                                >
+                                    <span>
+                                        <FontAwesomeIcon icon={faPlusCircle} size='2xl' className='text-green-600' />
+                                    </span>
+                                </button>
+                                <img
+                                    src={item.image || '/assets/images/product-camera.jpg'}
+                                    alt={item.name}
+                                    className="w-10 h-10 object-cover ml-4 mr-3 border border-gray-200 bg-white"
+                                />
+                                <div className='ps-0'>
+                                    <div className="font-semibold">{item.name}</div>
+                                    <div className="text-xs text-gray-500">Stock: {item.stock}</div>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {filtered.map(item => (
+                            <div key={item.id} className="bg-white dark:bg-neutral-800 rounded shadow px-3 py-1 flex items-center border min-h-[110px] hover:bg-neutral-100">
+                                {/* Plus icon section */}
+                                <div className="flex flex-col items-center justify-center w-12 h-12 mr-3">
+                                    <button
+                                        className={`${item.stock === 0 ? 'bg-gray-200' : 'bg-gray-100'} rounded-full border-none`}
+                                        onClick={() => item.stock > 0 && handleAdd(item)}
+                                        disabled={item.stock === 0}
+                                        title={item.stock === 0 ? 'Out of stock' : 'Add'}
+                                    >
+                                        <FontAwesomeIcon icon={faPlusCircle} size="2xl" className={item.stock === 0 ? 'text-gray-400' : 'text-green-600 hover:text-green-700'} />
+                                    </button>
+                                </div>
+                                {/* Image section */}
+                                <img
+                                    src={item.image || '/assets/images/product-camera.jpg'}
+                                    alt={item.name}
+                                    className="object-cover rounded-sm border-gray-200 bg-white mr-4"
+                                />
+                                {/* Info section */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-base truncate">{item.name}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Stock: {item.stock}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default SidebarItemPicker;

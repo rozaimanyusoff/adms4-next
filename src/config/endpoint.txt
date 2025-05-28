@@ -1,0 +1,29 @@
+POST /api/auth/refresh-token - src/config/scheduleTokenRefresh.ts
+POST /api/auth/logout - src/app/(defaults)/layout.tsx, src/components/layouts/header.tsx
+POST /api/auth/login - src/app/(blank)/auth/login/page.tsx
+POST /api/auth/reset-password - src/app/(blank)/auth/forgot-password/page.tsx
+POST /api/auth/verifytoken - src/app/(blank)/auth/reset-password/page.tsx
+POST /api/auth/update-password - src/app/(blank)/auth/reset-password/page.tsx
+POST /api/auth/register - src/app/(blank)/auth/register/page.tsx
+POST /api/auth/validate-activation - src/app/(blank)/auth/activate/page.tsx
+POST /api/auth/activate - src/app/(blank)/auth/activate/page.tsx
+GET /api/groups - src/components/usermgmt/c-group.tsx
+POST /api/groups - src/components/usermgmt/c-group.tsx
+PUT /api/groups/:id - src/components/usermgmt/c-group.tsx
+GET /api/roles - src/components/usermgmt/c-role.tsx
+POST /api/roles - src/components/usermgmt/c-role.tsx
+PUT /api/roles/:id - src/components/usermgmt/c-role.tsx
+POST /api/nav/reorder - src/components/usermgmt/c-nav_dnd.tsx
+POST /api/nav - src/components/usermgmt/c-nav_dnd.tsx
+PUT /api/nav/:id - src/components/usermgmt/c-nav_dnd.tsx
+GET /api/nav - src/components/usermgmt/c-nav_dnd.tsx, src/components/usermgmt/f-group.tsx
+PUT /api/nav/track-route - src/app/(defaults)/layout.tsx
+GET /api/users - src/components/usermgmt/c-group.tsx, src/components/usermgmt/c-role.tsx
+PUT /api/users/update-profile - src/app/(defaults)/users/profile/page.tsx
+GET /api/users/tasks - src/app/(defaults)/users/profile/page.tsx
+POST /api/users/tasks - src/app/(defaults)/users/profile/page.tsx
+PUT /api/users/tasks/:id - src/app/(defaults)/users/profile/page.tsx
+POST /api/users/reset-password - src/components/usermgmt/c-acc.tsx
+POST /api/users/suspend - src/components/usermgmt/c-acc.tsx
+POST /api/users/change-role - src/components/usermgmt/c-acc.tsx
+POST /api/users/change-groups - src/components/usermgmt/c-acc.tsx
