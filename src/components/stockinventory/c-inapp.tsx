@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CustomDataGrid } from '@components/layouts/ui/DataGrid';
+import { CustomDataGrid } from '@components/ui/DataGrid';
 
 const columns = [
     { key: 'id', header: 'ID' },

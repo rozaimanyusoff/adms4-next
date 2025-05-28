@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import cartItemsData from './cartItems.json';
 import itemTransactionData from './itemTransaction.json';
 import ItemDetail from './item-detail';
-import { CustomDataGrid } from '@components/layouts/ui/DataGrid';
+import { CustomDataGrid } from '@components/ui/DataGrid';
 
 const allTransactions: StockTransaction[] = Array.isArray(itemTransactionData)
     ? itemTransactionData.map(t => ({

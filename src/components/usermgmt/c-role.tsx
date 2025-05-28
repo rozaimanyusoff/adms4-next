@@ -4,7 +4,7 @@ import { authenticatedApi } from "@/config/api";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
 import FRoleForm from "./f-role";
-import { ToastProvider, Toast, ToastTitle, ToastDescription, ToastClose, ToastViewport } from "@components/layouts/ui/toast";
+import { toast, Toaster } from "sonner";
 
 interface Role {
     id: number;
@@ -40,7 +40,6 @@ const RoleManagement = () => {
     const [userSearch, setUserSearch] = useState("");
     const userListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
     const [newlyAssignedUserIds, setNewlyAssignedUserIds] = useState<number[]>([]);
-    const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     useEffect(() => {
         authenticatedApi.get<RolesApiResponse>("/api/roles").then(res => {
@@ -91,16 +90,16 @@ const RoleManagement = () => {
         try {
             if (editRole && editRole.id) {
                 await authenticatedApi.put(`/api/roles/${editRole.id}`, payload);
-                setToast({ type: 'success', message: 'Role updated successfully!' });
+                toast.success('Role updated successfully!');
             } else {
                 await authenticatedApi.post(`/api/roles`, payload);
-                setToast({ type: 'success', message: 'Role created successfully!' });
+                toast.success('Role created successfully!');
             }
             setEditRole(null);
             const res = await authenticatedApi.get<RolesApiResponse>("/api/roles");
             if (res.data.success) setRoles(res.data.data);
         } catch (err) {
-            setToast({ type: 'error', message: 'Failed to save role' });
+            toast.error('Failed to save role');
         } finally {
             setSaving(false);
         }
@@ -242,18 +241,8 @@ const RoleManagement = () => {
     };
 
     return (
-        <ToastProvider>
-            {toast && (
-                <Toast
-                    color={toast.type === 'success' ? 'success' : 'error'}
-                    position={{ vertical: 'top', horizontal: 'center' }}
-                    open
-                    onOpenChange={() => setToast(null)}
-                >
-                    <ToastDescription>{toast.message}</ToastDescription>
-                    <ToastClose />
-                </Toast>
-            )}
+        <>
+            <Toaster richColors position="top-center" />
             <div>
                 <div className="flex items-center justify-between mb-4">
                     <h1 className="text-lg font-bold">Role Management * To add new permission [Approver, Verify]</h1>
@@ -322,8 +311,7 @@ const RoleManagement = () => {
                     />
                 )}
             </div>
-            <ToastViewport />
-        </ToastProvider>
+        </>
     );
 };
 

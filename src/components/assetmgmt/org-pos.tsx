@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { CustomDataGrid } from "@components/layouts/ui/DataGrid";
+import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";

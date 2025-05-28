@@ -3,7 +3,7 @@ import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGr
 import { authenticatedApi } from "@/config/api";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
-import ActionSidebar from "@components/layouts/ui/ActionSidebar";
+import ActionSidebar from "@components/ui/ActionSidebar";
 import { toast } from "sonner";
 import { Tabs, TabList, Tab, TabPanel } from 'react-tabs';
 import FGroupForm from "./f-group";

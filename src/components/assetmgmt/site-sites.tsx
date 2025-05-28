@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CustomDataGrid, ColumnDef } from "@components/layouts/ui/DataGrid";
+import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";

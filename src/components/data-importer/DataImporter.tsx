@@ -1,11 +1,14 @@
 'use client';
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import Papa from "papaparse";
-import * as XLSX from "xlsx";
 import { X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { processCsvFile, processExcelFile } from "@/lib/dataImportUtils";
+import { authenticatedApi } from "@/config/api";
+import { toast } from "sonner";
 
 interface DataImporterProps {
     onConfirm: (tableName: string, headers: string[], data: any[][]) => void;
@@ -18,61 +21,57 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
     const [dataStartRow, setDataStartRow] = useState<number>(1);
     const [tableName, setTableName] = useState<string>("");
     const [editData, setEditData] = useState<any[][]>([]);
+    const [loading, setLoading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [existingTables, setExistingTables] = useState<any[]>([]);
+    const [showExistingTables, setShowExistingTables] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Fetch existing tables on mount
+    useEffect(() => {
+        const fetchTables = async () => {
+            try {
+                const res = await authenticatedApi.get("/api/importer/tables");
+                setExistingTables(Array.isArray(res.data) ? res.data : []);
+            } catch (err) {
+                setExistingTables([]);
+            }
+        };
+        fetchTables();
+    }, []);
+
     // Handle file upload and parse
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        setLoading(true);
+        setProgress(10);
         const ext = file.name.split(".").pop()?.toLowerCase();
+        let data: any[][] = [];
         if (ext === "csv") {
-            Papa.parse(file, {
-                complete: (result) => {
-                    setRawData(result.data as any[][]);
-                    setEditData(result.data as any[][]);
-                    setHeaders(result.data[0] as string[]);
-                    setHeaderRow(0);
-                    setDataStartRow(1);
-                },
-            });
+            data = await processCsvFile(file, setProgress);
         } else if (["xls", "xlsx"].includes(ext || "")) {
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const bstr = evt.target?.result;
-                const wb = XLSX.read(bstr, { type: "binary" });
-                const wsname = wb.SheetNames[0];
-                const ws = wb.Sheets[wsname];
-                let data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-                // Handle merged cells
-                if (ws['!merges']) {
-                    ws['!merges'].forEach((merge) => {
-                        const val = data[merge.s.r]?.[merge.s.c];
-                        for (let R = merge.s.r; R <= merge.e.r; ++R) {
-                            for (let C = merge.s.c; C <= merge.e.c; ++C) {
-                                if (R !== merge.s.r || C !== merge.s.c) {
-                                    if (!data[R]) data[R] = [];
-                                    data[R][C] = val;
-                                }
-                            }
-                        }
-                    });
-                }
-                let headerRowData = data[0] as string[];
-                const maxCols = Math.max(...data.map(row => row.length));
-                if (headerRowData.length < maxCols) {
-                    headerRowData = [
-                        ...headerRowData,
-                        ...Array.from({ length: maxCols - headerRowData.length }, (_, i) => `Column ${headerRowData.length + i + 1}`)
-                    ];
-                    data[0] = headerRowData;
-                }
-                setRawData(data);
-                setEditData(data);
-                setHeaders(headerRowData);
-                setHeaderRow(0);
-                setDataStartRow(1);
-            };
-            reader.readAsBinaryString(file);
+            data = await processExcelFile(file, setProgress);
+        }
+        if (data.length > 0) {
+            let headerRowData = data[0] as string[];
+            const maxCols = Math.max(...data.map(row => row.length));
+            if (headerRowData.length < maxCols) {
+                headerRowData = [
+                    ...headerRowData,
+                    ...Array.from({ length: maxCols - headerRowData.length }, (_, i) => `Column ${headerRowData.length + i + 1}`)
+                ];
+                data[0] = headerRowData;
+            }
+            setRawData(data);
+            setEditData(data);
+            setHeaders(headerRowData);
+            setHeaderRow(0);
+            setDataStartRow(1);
+            setProgress(100);
+            setTimeout(() => setLoading(false), 400);
+        } else {
+            setLoading(false);
         }
     };
 
@@ -111,13 +110,53 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
     };
 
     // Confirm and send to backend
-    const handleConfirm = () => {
-        const dataRows = editData.slice(dataStartRow);
-        onConfirm(tableName, headers, dataRows);
+    const handleConfirm = async () => {
+        // Format headers: lowercase, replace spaces with underscores, remove parenthesis and their content
+        const formattedHeaders = headers.map(h =>
+            String(h || "")
+                .toLowerCase()
+                .replace(/\s+/g, '_')
+                .replace(/\([^)]*\)/g, '') // remove parenthesis and content
+                .replace(/_+/g, '_') // collapse multiple underscores
+                .replace(/^_+|_+$/g, '') // trim underscores
+        );
+        // Pad each data row to match headers length, and use null for empty cells
+        const dataRows = editData.slice(dataStartRow).map(row => {
+            const padded = row.length < formattedHeaders.length
+                ? [...row, ...Array(formattedHeaders.length - row.length).fill("")]
+                : row.slice(0, formattedHeaders.length);
+            return padded.map(cell => (cell === undefined || cell === null || cell === "") ? null : cell);
+        });
+        const payload = {
+            tableName,
+            headers: formattedHeaders,
+            data: dataRows
+        };
+        try {
+            await authenticatedApi.post("/api/importer/import-temp-table", payload);
+            toast.success("Import successful!");
+            // Refetch tables after successful import
+            try {
+                const res = await authenticatedApi.get("/api/importer/tables");
+                setExistingTables(Array.isArray(res.data) ? res.data : []);
+                setShowExistingTables(true);
+            } catch (err) {
+                // Optionally handle error
+            }
+            onConfirm(tableName, formattedHeaders, dataRows);
+        } catch (error) {
+            toast.error("Import failed. Please try again.");
+            console.error("Import failed", error);
+        }
     };
 
     return (
         <div className="space-y-6">
+            {loading && (
+                <div className="mb-2">
+                    <Progress value={progress} className="h-2" />
+                </div>
+            )}
             <div>
                 <Input
                     type="file"
@@ -128,56 +167,97 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
                 <div className="mt-2 text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-2 rounded">
                     <strong>Warning:</strong> Please remove any merged columns and filter rows in your Excel/CSV file before importing. Merged columns and filters can cause data to be misaligned or missing in the preview and import.
                 </div>
+                {showExistingTables && existingTables.length > 0 && (
+                    <div className="mb-4 border rounded bg-white dark:bg-gray-900 p-4">
+                        <div className="font-semibold mb-2">Previously Uploaded Tables</div>
+                        <table className="min-w-full text-xs border">
+                            <thead>
+                                <tr>
+                                    <th className="border px-2 py-1">No</th>
+                                    <th className="border px-2 py-1">Table Name</th>
+                                    <th className="border px-2 py-1">Columns</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {existingTables.map((tbl, idx) => (
+                                    <tr key={tbl.tableName || idx}>
+                                        <td className="border px-2 py-1 text-center">{idx + 1}</td>
+                                        <td className="border px-2 py-1">{tbl.tableName}</td>
+                                        <td className="border px-2 py-1">{Array.isArray(tbl.columns) ? tbl.columns.join(", ") : tbl.columns}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
             {editData.length > 0 && (
                 <>
-                    <div className="flex gap-2 items-center mb-2">
-                        <label className="font-semibold">Table Name:</label>
+                    <div className="flex flex-wrap gap-2 items-center mb-2">
+                        <Label className="font-semibold">Table Name:</Label>
                         <Input value={tableName} onChange={e => setTableName(e.target.value)} placeholder="Enter table name" className="w-64" />
+                        <Label className="font-semibold ml-4">Header Row:</Label>
+                        <Input
+                            type="number"
+                            min={1}
+                            max={editData.length}
+                            value={headerRow + 1}
+                            onChange={e => {
+                                const val = Math.max(1, Math.min(editData.length, Number(e.target.value)));
+                                handleHeaderRowChange(val - 1);
+                            }}
+                            className="w-20"
+                        />
+                        <Label className="font-semibold ml-4">Data Starts At Row:</Label>
+                        <Input
+                            type="number"
+                            min={headerRow + 2}
+                            max={editData.length}
+                            value={dataStartRow + 1}
+                            onChange={e => {
+                                const val = Math.max(headerRow + 2, Math.min(editData.length, Number(e.target.value)));
+                                setDataStartRow(val - 1);
+                            }}
+                            className="w-20"
+                        />
+                        <Button onClick={handleConfirm} disabled={!tableName || headers.length === 0 || editData.length === 0} className="ml-4">
+                            Confirm & Import
+                        </Button>
                     </div>
-                    <div className="flex gap-4 mb-2">
-                        <div>
-                            <label className="font-semibold">Header Row:</label>
-                            <select value={headerRow} onChange={e => handleHeaderRowChange(Number(e.target.value))} className="ml-2 border rounded px-2 py-1">
-                                {editData.map((row, idx) => (
-                                    <option key={idx} value={idx}>Row {idx + 1}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="font-semibold">Data Starts At Row:</label>
-                            <select value={dataStartRow} onChange={e => setDataStartRow(Number(e.target.value))} className="ml-2 border rounded px-2 py-1">
-                                {editData.map((row, idx) => idx > headerRow && (
-                                    <option key={idx} value={idx}>Row {idx + 1}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto border rounded bg-white dark:bg-gray-900">
+                    <div className="overflow-x-auto min-w-[600px] border rounded bg-white dark:bg-gray-900 lg:overflow-x-visible">
                         <table className="min-w-full text-xs">
                             <thead>
                                 <tr>
-                                    <th className="border px-2 py-1 bg-gray-100 dark:bg-gray-800 w-10 text-center">#</th>
-                                    {headers.map((header, colIdx) => (
-                                        <th key={colIdx} className="border px-2 py-1 bg-gray-100 dark:bg-gray-800">
-                                            <input
-                                                className="w-full font-bold bg-transparent border-none outline-none"
-                                                value={header}
-                                                onChange={e => handleCellEdit(headerRow, colIdx, e.target.value)}
-                                                placeholder={`Column ${colIdx + 1}`}
-                                            />
-                                            <TooltipProvider>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <button className="ml-1 text-red-500" onClick={() => handleRemoveCol(colIdx)}>
-                                                            <X size={16} />
-                                                        </button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="bottom">Remove column</TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
-                                        </th>
-                                    ))}
+                                    <th className="border px-2 py-1 bg-gray-100 dark:bg-gray-800 w-10 text-center">Row</th>
+                                    {headers.map((header, colIdx) => {
+                                        // Format header: lowercase, replace spaces with underscores
+                                        const formattedHeader = String(header || "")
+                                            .toLowerCase()
+                                            .replace(/\s+/g, '_');
+                                        return (
+                                            <th key={colIdx} className="border px-2 py-1 bg-gray-100 dark:bg-gray-800">
+                                                <Input
+                                                    className="w-full font-bold bg-transparent border-none outline-none"
+                                                    value={header}
+                                                    onChange={e => handleCellEdit(headerRow, colIdx, e.target.value)}
+                                                    placeholder={`Column ${colIdx + 1}`}
+                                                />
+                                                <div className="text-[10px] text-gray-500 mt-1 select-none">
+                                                    {formattedHeader}
+                                                </div>
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="ml-1 text-red-500 p-0 h-auto w-auto min-w-0 min-h-0" onClick={() => handleRemoveCol(colIdx)}>
+                                                                <X size={16} />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="bottom">Remove column</TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                            </th>
+                                        );
+                                    })}
                                 </tr>
                             </thead>
                             <tbody>
@@ -187,15 +267,15 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
                                             <td className="border px-2 py-1 text-center font-mono bg-gray-50 dark:bg-gray-900">{rowIdx + 1}</td>
                                             {headers.map((_, colIdx) => (
                                                 <td key={colIdx} className="border px-2 py-1">
-                                                    <input
-                                                        className="w-full bg-transparent border-none outline-none"
-                                                        value={row[colIdx] !== undefined ? row[colIdx] : ""}
-                                                        onChange={e => handleCellEdit(rowIdx, colIdx, e.target.value)}
-                                                    />
+                                                    {row[colIdx] instanceof Date
+                                                        ? row[colIdx].toLocaleString()
+                                                        : (row[colIdx] !== undefined ? String(row[colIdx]) : "")}
                                                 </td>
                                             ))}
                                             <td>
-                                                <button className="text-red-500" onClick={() => handleRemoveRow(rowIdx)} title="Remove row">×</button>
+                                                <Button variant="ghost" size="icon" className="text-red-500 p-0 h-auto w-auto min-w-0 min-h-0" onClick={() => handleRemoveRow(rowIdx)} title="Remove row">
+                                                    ×
+                                                </Button>
                                             </td>
                                         </tr>
                                     )
@@ -203,15 +283,11 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
                             </tbody>
                         </table>
                     </div>
-                    <div className="flex justify-end mt-4">
-                        <Button onClick={handleConfirm} disabled={!tableName || headers.length === 0 || editData.length === 0}>
-                            Confirm & Import
-                        </Button>
-                    </div>
+                    {/* Load More button remains disabled */}
                 </>
             )}
         </div>
     );
-};
+}
 
 export default DataImporter;

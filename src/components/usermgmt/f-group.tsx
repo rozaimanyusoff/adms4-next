@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
-import NavTreeView from "@components/layouts/ui/NavTreeView";
+import NavTreeView from "@components/ui/NavTreeView";
 import { authenticatedApi } from "@/config/api";
 
 interface FGroupFormProps {

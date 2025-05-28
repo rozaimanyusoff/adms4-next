@@ -1,9 +1,9 @@
 'use client';
 import React, { useState } from 'react';
-import { CustomDataGrid } from '@components/layouts/ui/DataGrid';
+import { CustomDataGrid } from '@components/ui/DataGrid';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faPlusCircle } from '@fortawesome/free-solid-svg-icons';
-import ActionSidebar from '@/components/layouts/ui/ActionSidebar';
+import ActionSidebar from '@/components/ui/ActionSidebar';
 import SidebarItemPicker from './item-cart';
 
 const vendors = [

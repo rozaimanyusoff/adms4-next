@@ -1,10 +1,10 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { CustomDataGrid } from '@components/layouts/ui/DataGrid';
+import { CustomDataGrid } from '@components/ui/DataGrid';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faShoppingCart, faPlus, faPlusCircle } from '@fortawesome/free-solid-svg-icons';
 import CCart from './c-cart';
-import ActionSidebar from '@components/layouts/ui/ActionSidebar';
+import ActionSidebar from '@components/ui/ActionSidebar';
 import { faTh, faList } from '@fortawesome/free-solid-svg-icons';
 import SidebarItemPicker from './item-cart';
 

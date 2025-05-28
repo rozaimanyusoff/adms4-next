@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGrid";
-import ActionSidebar from "@components/layouts/ui/ActionSidebar";
+import ActionSidebar from "@components/ui/ActionSidebar";
 import { authenticatedApi } from "@/config/api";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle, faChevronDown, faTrashAlt } from '@fortawesome/free-solid-svg-icons';
-import Modal from "@components/layouts/ui/modal";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -370,13 +369,6 @@ const UserManagement = () => {
         }
     };
 
-    // Replace Toast.success/error with function calls
-    // Defensive check for API response success
-    const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
-        if (type === 'success') toast.success(msg);
-        else toast.error(msg);
-    };
-
     // Utility to clear all user selections but keep sidebar open if requested
     const clearUserSelection = (keepSidebar = false) => {
         // Grab current selected row keys and user IDs before clearing
@@ -422,16 +414,16 @@ const UserManagement = () => {
             setShowPasswordDropdown(false);
             setModalOpen(null); // Dismiss modal immediately
             if (results.length > 0) {
-                showToast(message || 'Password(s) reset and sent to user email.', 'success');
+                toast.success(message || 'Password(s) reset and sent to user email.');
                 clearUserSelection();
             } else {
-                showToast(message || 'Failed to reset password(s).', 'error');
+                toast.error(message || 'Failed to reset password(s).');
             }
         } catch (err) {
             setModalError('Failed to reset password(s).');
             setShowPasswordDropdown(false);
             setModalOpen(null);
-            showToast('Failed to reset password(s).', 'error');
+            toast.error('Failed to reset password(s).');
         } finally {
             setModalLoading(false);
         }
@@ -449,16 +441,16 @@ const UserManagement = () => {
             setShowSuspendDropdown(false);
             setModalOpen(null);
             if (data?.status === 'success') {
-                showToast('User status updated.', 'success');
+                toast.success('User status updated.');
                 clearUserSelection();
             } else {
-                showToast('Failed to update user status.', 'error');
+                toast.error('Failed to update user status.');
             }
         } catch (err) {
             setModalError('Failed to update user status.');
             setShowSuspendDropdown(false);
             setModalOpen(null);
-            showToast('Failed to update user status.', 'error');
+            toast.error('Failed to update user status.');
         } finally {
             setModalLoading(false);
         }
@@ -476,16 +468,16 @@ const UserManagement = () => {
             setShowRoleDropdown(false);
             setModalOpen(null);
             if (data?.status === 'success') {
-                showToast('User role(s) updated.', 'success');
+                toast.success('User role(s) updated.');
                 clearUserSelection();
             } else {
-                showToast('Failed to update user role(s).', 'error');
+                toast.error('Failed to update user role(s).');
             }
         } catch (err) {
             setModalError('Failed to update user role(s).');
             setShowRoleDropdown(false);
             setModalOpen(null);
-            showToast('Failed to update user role(s).', 'error');
+            toast.error('Failed to update user role(s).');
         } finally {
             setModalLoading(false);
         }
@@ -503,16 +495,16 @@ const UserManagement = () => {
             setShowGroupDropdown(false);
             setModalOpen(null);
             if (data?.status === 'success') {
-                showToast('User group(s) updated.', 'success');
+                toast.success('User group(s) updated.');
                 clearUserSelection();
             } else {
-                showToast('Failed to update user group(s).', 'error');
+                toast.error('Failed to update user group(s).');
             }
         } catch (err) {
             setModalError('Failed to update user group(s).');
             setShowGroupDropdown(false);
             setModalOpen(null);
-            showToast('Failed to update user group(s).', 'error');
+            toast.error('Failed to update user group(s).');
         } finally {
             setModalLoading(false);
         }

@@ -12,10 +12,20 @@ import Portals from '@/components/portals';
 import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { DetectUserInactivity } from '@/config/detectUserInactivity';
-import Modal from '@components/layouts/ui/modal'; // Assuming a Modal component exists or will be created
-import { Progress } from '@components/layouts/ui/progress';
-import { ToastProvider, ToastViewport, Toast, ToastTitle, ToastDescription, ToastClose } from '@components/layouts/ui/toast';
-import { useContext, useEffect, useState } from 'react';
+import { toast, Toaster } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Progress } from '@components/ui/progress';
+import { useContext, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { scheduleTokenRefresh } from '@/config/scheduleTokenRefresh';
 
@@ -24,23 +34,14 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
     const pathname = usePathname();
     const authContext = useContext(AuthContext);
 
-    const [toast, setToast] = useState<{
-        open: boolean;
-        title?: string;
-        description?: string;
-        color?: string;
-    }>({ open: false });
-
     // Fallback: use NEXT_PUBLIC_IDLE_TIMEOUT if NEXT_PUBLIC_TIMEOUT_ENABLED is not set
     const timeoutEnabled = (process.env.NEXT_PUBLIC_TIMEOUT_ENABLED ?? process.env.NEXT_PUBLIC_IDLE_TIMEOUT) === 'true';
 
     useEffect(() => {
         function handleShowToast(e: CustomEvent) {
-            setToast({
-                open: true,
-                title: e.detail.title,
+            toast(e.detail.title, {
                 description: e.detail.description,
-                color: e.detail.color || 'default',
+                // Optionally map color/type if needed
             });
         }
         window.addEventListener('show-toast', handleShowToast as EventListener);
@@ -100,21 +101,30 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
                 countdownSeconds={parseInt(process.env.NEXT_PUBLIC_COUNTDOWN_TIMER || '60', 10)}
                 onLogout={handleLogout}
             >
-                {/* No children needed, but must provide a valid ReactNode for the required prop */}
                 {() => null}
             </DetectUserInactivity>
-            <ToastProvider>
-                <ToastViewport />
-                <Toast
-                    open={toast.open}
-                    onOpenChange={(open) => setToast((prev) => ({ ...prev, open }))}
-                    color={toast.color as any}
-                >
-                    {toast.title && <ToastTitle>{toast.title}</ToastTitle>}
-                    {toast.description && <ToastDescription>{toast.description}</ToastDescription>}
-                    <ToastClose />
-                </Toast>
-            </ToastProvider>
+            {/* Sonner Toaster */}
+            <Toaster richColors position="top-right" />
+            {/* Example AlertDialog usage (replace or remove as needed) */}
+            {/*
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <button>Open Modal</button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction>Continue</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            */}
             {/* BEGIN MAIN CONTAINER */}
             <div className="relative">
                 <Overlay />
