@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGrid";
-import ActionSidebar from "@components/ui/ActionSidebar";
+import ActionSidebar from "@components/ui/action-aside";
 import { authenticatedApi } from "@/config/api";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle, faChevronDown, faTrashAlt } from '@fortawesome/free-solid-svg-icons';

@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTimes } from "@fortawesome/free-solid-svg-icons";
 
 const actionSidebarVariants = cva(
-    "fixed top-0 right-0 h-full bg-stone-100 dark:bg-gray-800 p-4 border-l border-gray-300 dark:border-gray-500 z-50 overflow-auto shadow-2xl",
+    "fixed top-0 right-0 h-full bg-stone-100 dark:bg-gray-800 p-4 border-gray-300 dark:border-gray-500 z-50 overflow-auto shadow-2xl",
     {
         variants: {
             size: {

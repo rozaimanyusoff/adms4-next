@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import NavTreeView from "@components/ui/NavTreeView";
 import { authenticatedApi } from "@/config/api";
-import ActionSidebar from "@components/ui/ActionSidebar";
+import ActionSidebar from "@components/ui/action-aside";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle, faPencilSquare, faFolderPlus } from '@fortawesome/free-solid-svg-icons';
 import { toast } from "sonner";

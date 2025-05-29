@@ -4,7 +4,7 @@ import { CustomDataGrid } from '@components/ui/DataGrid';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faShoppingCart, faPlus, faPlusCircle } from '@fortawesome/free-solid-svg-icons';
 import CCart from './c-cart';
-import ActionSidebar from '@components/ui/ActionSidebar';
+import ActionSidebar from '@components/ui/action-aside';
 import { faTh, faList } from '@fortawesome/free-solid-svg-icons';
 import SidebarItemPicker from './item-cart';
 

@@ -14,6 +14,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Progress } from '@components/ui/progress';
+import { Button } from '@components/ui/button';
 
 export type InactivityPromptRenderProps = {
     isPromptVisible: boolean;
@@ -122,12 +123,12 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel asChild>
-                                <button
+                                <Button
                                     onClick={stayLoggedIn}
-                                    className="btn btn-primary rounded-full w-full"
+                                    className="w-full"
                                 >
                                     Stay Logged In
-                                </button>
+                                </Button>
                             </AlertDialogCancel>
                         </AlertDialogFooter>
                     </AlertDialogContent>

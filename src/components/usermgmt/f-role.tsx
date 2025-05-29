@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
-import ActionSidebar from "@components/ui/ActionSidebar";
+import ActionSidebar from "@components/ui/action-aside";
 import { authenticatedApi } from "@/config/api";
 
 interface FRoleFormProps {

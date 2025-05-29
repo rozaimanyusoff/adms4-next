@@ -13,21 +13,11 @@ import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { DetectUserInactivity } from '@/config/detectUserInactivity';
 import { toast, Toaster } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Progress } from '@components/ui/progress';
 import { useContext, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { scheduleTokenRefresh } from '@/config/scheduleTokenRefresh';
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/layouts/app-sidebar"
 
 export default function DefaultLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -135,12 +125,17 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
                 <MainContainer>
                     {/* BEGIN SIDEBAR */}
                     <Sidebar />
+                    {/* <SidebarProvider> */}
+                        {/* <AppSidebar /> */}
+                        {/* <SidebarTrigger /> */}
                     {/* END SIDEBAR */}
                     <div className="main-content flex min-h-screen flex-col">
+                        
                         {/* BEGIN TOP NAVBAR */}
                         <Header />
                         {/* END TOP NAVBAR */}
                         {/* BEGIN CONTENT AREA */}
+                        
                         <ContentAnimation>{children}</ContentAnimation>
                         {/* END CONTENT AREA */}
                         {/* BEGIN FOOTER */}
@@ -148,6 +143,7 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
                         {/* END FOOTER */}
                         <Portals />
                     </div>
+                    {/* </SidebarProvider> */}
                 </MainContainer>
             </div>
         </>
