@@ -12,6 +12,7 @@ const initialState = {
     navbar: themeConfig.navbar,
     locale: themeConfig.locale,
     semidark: themeConfig.semidark,
+    primaryColor: themeConfig.primaryColor,
     languageList: [
         { code: 'zh', name: 'Chinese' },
         { code: 'da', name: 'Danish' },
@@ -96,9 +97,16 @@ const themeConfigSlice = createSlice({
         resetToggleSidebar(state) {
             state.sidebar = false;
         },
+        togglePrimaryColor(state, { payload }) {
+            payload = payload || state.primaryColor;
+            localStorage.setItem('primaryColor', payload);
+            state.primaryColor = payload;
+            // Optionally, update a CSS variable for primary color here
+            document.documentElement.style.setProperty('--color-primary', `var(--color-${payload})`);
+        },
     },
 });
 
-export const { toggleTheme, toggleMenu, toggleLayout, toggleRTL, toggleAnimation, toggleNavbar, toggleSemidark, toggleSidebar, resetToggleSidebar } = themeConfigSlice.actions;
+export const { toggleTheme, toggleMenu, toggleLayout, toggleRTL, toggleAnimation, toggleNavbar, toggleSemidark, toggleSidebar, resetToggleSidebar, togglePrimaryColor } = themeConfigSlice.actions;
 
 export default themeConfigSlice.reducer;

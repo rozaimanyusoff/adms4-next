@@ -93,8 +93,6 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
             >
                 {() => null}
             </DetectUserInactivity>
-            {/* Sonner Toaster */}
-            <Toaster richColors position="top-right" />
             {/* Example AlertDialog usage (replace or remove as needed) */}
             {/*
             <AlertDialog>

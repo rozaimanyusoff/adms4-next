@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -23,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface Brand { id: number; name: string; }
 interface Category { id: number; name: string; }
@@ -64,10 +64,10 @@ const CoreAsset: React.FC = () => {
     const fetchData = async () => {
         try {
             const [assetsRes, brandsRes, categoriesRes, typesRes] = await Promise.all([
-                authenticatedApi.get<any>("/api/stock/assets"),
-                authenticatedApi.get<any>("/api/stock/brands"),
-                authenticatedApi.get<any>("/api/stock/categories"),
-                authenticatedApi.get<any>("/api/stock/types"),
+                authenticatedApi.get<any>("/api/assets"),
+                authenticatedApi.get<any>("/api/assets/brands"),
+                authenticatedApi.get<any>("/api/assets/categories"),
+                authenticatedApi.get<any>("/api/assets/types"),
             ]);
             setData(Array.isArray(assetsRes.data) ? assetsRes.data : (assetsRes.data && assetsRes.data.data ? assetsRes.data.data : []));
             setBrands(Array.isArray(brandsRes.data) ? brandsRes.data : (brandsRes.data && brandsRes.data.data ? brandsRes.data.data : []));
@@ -111,9 +111,9 @@ const CoreAsset: React.FC = () => {
                 typeId: formData.typeId,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/assets/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/assets", payload);
+                await authenticatedApi.post("/api/assets", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -146,7 +146,7 @@ const CoreAsset: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -157,7 +157,7 @@ const CoreAsset: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Assets</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? (
@@ -175,7 +175,7 @@ const CoreAsset: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="serial_number" className="block text-sm font-medium text-gray-700">Serial Number</label>
+                            <Label htmlFor="serial_number" className="block text-sm font-medium text-gray-700">Serial Number</Label>
                             <Input
                                 id="serial_number"
                                 value={formData.serial_number || ""}
@@ -184,7 +184,7 @@ const CoreAsset: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="finance_tag" className="block text-sm font-medium text-gray-700">Finance Tag</label>
+                            <Label htmlFor="finance_tag" className="block text-sm font-medium text-gray-700">Finance Tag</Label>
                             <Input
                                 id="finance_tag"
                                 value={formData.finance_tag || ""}
@@ -193,7 +193,7 @@ const CoreAsset: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
+                            <Label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</Label>
                             <Input
                                 id="status"
                                 value={formData.status || ""}
@@ -202,7 +202,7 @@ const CoreAsset: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="depreciation_rate" className="block text-sm font-medium text-gray-700">Depreciation Rate</label>
+                            <Label htmlFor="depreciation_rate" className="block text-sm font-medium text-gray-700">Depreciation Rate</Label>
                             <Input
                                 id="depreciation_rate"
                                 type="number"
@@ -212,7 +212,7 @@ const CoreAsset: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="warranty_period" className="block text-sm font-medium text-gray-700">Warranty Period</label>
+                            <Label htmlFor="warranty_period" className="block text-sm font-medium text-gray-700">Warranty Period</Label>
                             <Input
                                 id="warranty_period"
                                 value={formData.warranty_period || ""}
@@ -221,7 +221,7 @@ const CoreAsset: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Brand</label>
+                            <Label className="block text-sm font-medium text-gray-700">Brand</Label>
                             <Select
                                 value={formData.brandId?.toString() || ""}
                                 onValueChange={val => setFormData(f => ({ ...f, brandId: Number(val) }))}
@@ -242,7 +242,7 @@ const CoreAsset: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Category</label>
+                            <Label className="block text-sm font-medium text-gray-700">Category</Label>
                             <Select
                                 value={formData.categoryId?.toString() || ""}
                                 onValueChange={val => setFormData(f => ({ ...f, categoryId: Number(val) }))}
@@ -263,7 +263,7 @@ const CoreAsset: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Type</label>
+                            <Label className="block text-sm font-medium text-gray-700">Type</Label>
                             <Select
                                 value={formData.typeId?.toString() || ""}
                                 onValueChange={val => setFormData(f => ({ ...f, typeId: Number(val) }))}

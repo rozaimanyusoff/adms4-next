@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface CostCenter {
     id: number;
@@ -25,7 +25,7 @@ const OrgCostCenter: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const res = await authenticatedApi.get<any>("/api/stock/costcenters");
+            const res = await authenticatedApi.get<any>("/api/assets/costcenters");
             setData(Array.isArray(res.data) ? res.data : (res.data && res.data.data ? res.data.data : []));
         } catch (error) {
             setData([]);
@@ -39,9 +39,9 @@ const OrgCostCenter: React.FC = () => {
     const handleSubmit = async () => {
         try {
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/costcenters/${formData.id}`, formData);
+                await authenticatedApi.put(`/api/assets/costcenters/${formData.id}`, formData);
             } else {
-                await authenticatedApi.post("/api/stock/costcenters", formData);
+                await authenticatedApi.post("/api/assets/costcenters", formData);
             }
             fetchData();
             setIsModalOpen(false);
@@ -63,7 +63,7 @@ const OrgCostCenter: React.FC = () => {
                     onClick={() => { setFormData(row); setIsModalOpen(true); }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -74,7 +74,7 @@ const OrgCostCenter: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Cost Centers</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -88,7 +88,7 @@ const OrgCostCenter: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -97,7 +97,7 @@ const OrgCostCenter: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+                            <Label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</Label>
                             <Input
                                 id="description"
                                 value={formData.description || ""}

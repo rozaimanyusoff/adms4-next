@@ -2,10 +2,15 @@ import React, { useContext, useEffect, useState } from "react";
 import NavTreeView from "@components/ui/NavTreeView";
 import { authenticatedApi } from "@/config/api";
 import ActionSidebar from "@components/ui/action-aside";
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlusCircle, faMinusCircle, faPencilSquare, faFolderPlus } from '@fortawesome/free-solid-svg-icons';
+import { Pencil, FolderPlus, Trash2, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AuthContext } from '@/store/AuthContext';
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 const NavigationMaintenance: React.FC = () => {
     const { refreshNavTree, updateNavTree } = useContext(AuthContext) || {};
@@ -23,19 +28,25 @@ const NavigationMaintenance: React.FC = () => {
         status: '1',
         groups: [] as string[]
     });
+    const [pendingDeleteNav, setPendingDeleteNav] = useState<any | null>(null);
+
+    // Fetch nav tree from backend and update local state
+    const fetchNavTree = async () => {
+        try {
+            const res = await authenticatedApi.get("/api/nav");
+            const data = res.data as any;
+            setNavTree(data && data.navTree ? data.navTree : []);
+            if (updateNavTree) {
+                // Optionally update global context
+                // updateNavTree(data.navTree);
+            }
+        } catch {
+            setNavTree([]);
+        }
+    };
 
     useEffect(() => {
-        authenticatedApi.get("/api/nav").then(res => {
-            const data = res.data as any;
-            if (data && data.navTree) {
-                setNavTree(data.navTree as any[]);
-                if (updateNavTree) {
-                    //updateNavTree(data.navTree);
-                }
-            } else {
-                setNavTree([]);
-            }
-        }).catch(() => setNavTree([]));
+        fetchNavTree();
         // Fetch groups data
         authenticatedApi.get("/api/groups").then(res => {
             const data = res.data as any;
@@ -137,6 +148,21 @@ const NavigationMaintenance: React.FC = () => {
             groups: formState.groups // Always include groups for both create and update
         };
         try {
+            if (sidebarOpen === 'edit' && editingNav) {
+                // If parentNavId or sectionId changed, and this is a parent, update all children
+                const isParent = Array.isArray(editingNav.children) && editingNav.children.length > 0;
+                const parentChanged = (formState.parentNavId !== (editingNav.parent_nav_id ? String(editingNav.parent_nav_id) : '')) || (formState.sectionId !== (editingNav.section_id ? String(editingNav.section_id) : ''));
+                if (isParent && parentChanged) {
+                    // Move all children to follow the parent
+                    for (const child of editingNav.children) {
+                        await authenticatedApi.put(`/api/nav/${child.navId}`, {
+                            ...child,
+                            parentNavId: formState.navId ? Number(formState.navId) : undefined,
+                            sectionId: formState.sectionId ? Number(formState.sectionId) : undefined,
+                        });
+                    }
+                }
+            }
             if (sidebarOpen === 'create') {
                 await authenticatedApi.post('/api/nav', payload);
                 toast.success('Navigation item created successfully!');
@@ -147,6 +173,7 @@ const NavigationMaintenance: React.FC = () => {
                     toast.success('Navigation item updated successfully!');
                 }
             }
+            await fetchNavTree();
             if (refreshNavTree) {
                 await refreshNavTree();
             }
@@ -156,6 +183,31 @@ const NavigationMaintenance: React.FC = () => {
         setSidebarOpen(null);
         setEditingNav(null);
     }
+    // Handle delete nav (trigger dialog)
+    function handleDeleteNav(nav: any) {
+        if (!nav || !nav.navId) return;
+        // Prevent delete if has children
+        if (Array.isArray(nav.children) && nav.children.length > 0) {
+            toast.error('Cannot delete a navigation item that still has children. Please remove or move all children first.');
+            return;
+        }
+        setPendingDeleteNav(nav);
+    }
+    // Confirm delete nav (actual API call)
+    async function confirmDeleteNav() {
+        if (!pendingDeleteNav || !pendingDeleteNav.navId) return;
+        try {
+            await authenticatedApi.delete(`/api/nav/${pendingDeleteNav.navId}`);
+            toast.success('Navigation item deleted successfully!');
+            await fetchNavTree();
+            if (refreshNavTree) {
+                await refreshNavTree();
+            }
+        } catch (error) {
+            toast.error('Failed to delete navigation item.');
+        }
+        setPendingDeleteNav(null);
+    }
 
     return (
         <div>
@@ -163,18 +215,13 @@ const NavigationMaintenance: React.FC = () => {
                 <h1 className="text-lg font-bold">Navigation Maintenance</h1>
                 <button className="btn border-0 bg-green-600 dark:bg-green-700 text-white px-4 py-1 rounded-full shadow-none" onClick={() => handleAddNav(null)} type="button">
                     <span className="mr-2">
-                        <FontAwesomeIcon icon={faPlusCircle} size="xl" />
+                        <PlusCircle size={22} />
                     </span>
                     Navigation
                 </button>
             </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full border border-gray-200 dark:border-dark bg-white rounded-sm">
-                    {/* <thead>
-                <tr>
-                  <th className="text-left px-2 py-1 border-b border-gray-200 w-64">Navigation Structure</th>
-                </tr>
-              </thead> */}
                     <tbody>
                         {navTree && navTree.length > 0 && renderNavRows(navTree, 0)}
                     </tbody>
@@ -188,60 +235,73 @@ const NavigationMaintenance: React.FC = () => {
                     size="md"
                     content={
                         <form onSubmit={handleFormSubmit} className="space-y-4 p-2">
-                            {/* Removed Nav ID field */}
                             <div>
-                                <label className="block text-sm font-medium mb-1">Title</label>
-                                <input className="form-input w-full" placeholder="Enter title" value={formState.title} onChange={e => setFormState(f => ({ ...f, title: e.target.value }))} required />
+                                <Label className="mb-1">Title</Label>
+                                <Input placeholder="Enter title" value={formState.title} onChange={e => setFormState(f => ({ ...f, title: e.target.value }))} required />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Type</label>
-                                <select className="form-select w-full" value={formState.type} onChange={e => setFormState(f => ({ ...f, type: e.target.value }))}>
-                                    <option value="section">Section</option>
-                                    <option value="level-1">Level 1</option>
-                                    <option value="level-2">Level 2</option>
-                                </select>
+                                <Label className="mb-1">Type</Label>
+                                <Select value={formState.type} onValueChange={v => setFormState(f => ({ ...f, type: v }))}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="section">Section</SelectItem>
+                                        <SelectItem value="level-1">Level 1</SelectItem>
+                                        <SelectItem value="level-2">Level 2</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Path</label>
-                                <input className="form-input w-full" value={formState.path} onChange={e => setFormState(f => ({ ...f, path: e.target.value.replace(/[^/a-zA-Z0-9_-]/g, '') }))} placeholder="/path" disabled={formState.type === 'section'} />
+                                <Label className="mb-1">Path</Label>
+                                <Input value={formState.path} onChange={e => setFormState(f => ({ ...f, path: e.target.value.replace(/[^/a-zA-Z0-9_-]/g, '') }))} placeholder="/path" disabled={formState.type === 'section'} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Parent Nav</label>
-                                <select className="form-select w-full" value={formState.parentNavId} onChange={e => setFormState(f => ({ ...f, parentNavId: e.target.value }))} disabled={formState.type === 'section'}>
-                                    <option value="">None</option>
-                                    {allNavs.map(n => (
-                                        <option key={n.navId} value={n.navId}>{n.title}</option>
-                                    ))}
-                                </select>
+                                <Label className="mb-1">Parent Nav</Label>
+                                <Select value={formState.parentNavId || undefined} onValueChange={v => setFormState(f => ({ ...f, parentNavId: v }))} disabled={formState.type === 'section'}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="None" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {allNavs.map(n => (
+                                            <SelectItem key={n.navId} value={String(n.navId)}>{n.title}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Section</label>
-                                <select className="form-select w-full" value={formState.sectionId} onChange={e => setFormState(f => ({ ...f, sectionId: e.target.value }))} disabled={formState.type === 'section'}>
-                                    <option value="">None</option>
-                                    {allNavs.filter(n => n.type === 'section').map(n => (
-                                        <option key={n.navId} value={n.navId}>{n.title}</option>
-                                    ))}
-                                </select>
+                                <Label className="mb-1">Section</Label>
+                                <Select value={formState.sectionId || undefined} onValueChange={v => setFormState(f => ({ ...f, sectionId: v }))} disabled={formState.type === 'section'}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="None" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {allNavs.filter(n => n.type === 'section').map(n => (
+                                            <SelectItem key={n.navId} value={String(n.navId)}>{n.title}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Status</label>
-                                <select className="form-select w-full" value={formState.status || '1'} onChange={e => setFormState(f => ({ ...f, status: e.target.value }))}>
-                                    <option value="1">Active</option>
-                                    <option value="0">Inactive</option>
-                                </select>
+                                <Label className="mb-1">Status</Label>
+                                <Select value={formState.status || undefined} onValueChange={v => setFormState(f => ({ ...f, status: v }))}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="1">Active</SelectItem>
+                                        <SelectItem value="0">Inactive</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Groups</label>
+                                <Label className="mb-1">Groups</Label>
                                 <div className="flex flex-col gap-1 overflow-y-auto border rounded-sm p-2 bg-white dark:bg-gray-900 dark:border-gray-500">
                                     {groups.map(g => (
                                         <label key={g.id} className="inline-flex items-center gap-2 text-sm">
-                                            <input
-                                                type="checkbox"
-                                                className="form-checkbox"
-                                                value={g.id}
+                                            <Checkbox
                                                 checked={formState.groups.includes(String(g.id))}
-                                                onChange={e => {
-                                                    const checked = e.target.checked;
+                                                onCheckedChange={checked => {
                                                     setFormState(f => {
                                                         const groupId = String(g.id);
                                                         let newGroups = Array.isArray(f.groups) ? [...f.groups] : [];
@@ -260,17 +320,32 @@ const NavigationMaintenance: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex gap-2 justify-end mt-4">
-                                <button type="button" className="btn bg-slate-400 text-white rounded-full shadow-none border-none" onClick={() => setSidebarOpen(null)}>Cancel</button>
+                                <Button type="button" variant="secondary" onClick={() => setSidebarOpen(null)}>Cancel</Button>
                                 {sidebarOpen === 'edit' ? (
-                                    <button type="submit" className="btn bg-amber-600 text-white rounded-full shadow-none border-none">Update</button>
+                                    <Button type="submit" variant="default">Update</Button>
                                 ) : (
-                                    <button type="submit" className="btn bg-green-600 text-white rounded-full shadow-none border-none">Save</button>
+                                    <Button type="submit" variant="default">Save</Button>
                                 )}
                             </div>
                         </form>
                     }
                 />
             )}
+            {/* AlertDialog for delete confirmation */}
+            <AlertDialog open={!!pendingDeleteNav} onOpenChange={open => { if (!open) setPendingDeleteNav(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Navigation Item</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete "{pendingDeleteNav?.title}"? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setPendingDeleteNav(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDeleteNav} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 
@@ -295,9 +370,10 @@ const NavigationMaintenance: React.FC = () => {
                             ) : (
                                 <span className="ml-2 px-4 py-2 rounded-full bg-green-400 dark:bg-green-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
                             )}
-                            <button onClick={() => handleEditNav(node)}><FontAwesomeIcon icon={faPencilSquare} size="xl" className="text-amber-500" /></button>
+                            <button onClick={() => handleEditNav(node)}><Pencil size={20} className="text-amber-500" /></button>
+                            <button onClick={() => handleDeleteNav(node)}><Trash2 size={20} className="text-red-500" /></button>
                             {level < 2 && (
-                                <button onClick={() => handleAddNav(node.navId, node)}><FontAwesomeIcon icon={faFolderPlus} size="xl" className="text-blue-500" /></button>
+                                <button onClick={() => handleAddNav(node.navId, node)}><FolderPlus size={20} className="text-blue-500" /></button>
                             )}
                         </span>
                     </td>

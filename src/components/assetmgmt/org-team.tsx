@@ -24,7 +24,7 @@ const OrgTeam: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const res = await authenticatedApi.get<any>("/api/stock/teams");
+            const res = await authenticatedApi.get<any>("/api/assets/teams");
             setData(Array.isArray(res.data) ? res.data : (res.data && res.data.data ? res.data.data : []));
         } catch (error) {
             setData([]);
@@ -38,9 +38,9 @@ const OrgTeam: React.FC = () => {
     const handleSubmit = async () => {
         try {
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/teams/${formData.id}`, formData);
+                await authenticatedApi.put(`/api/assets/teams/${formData.id}`, formData);
             } else {
-                await authenticatedApi.post("/api/stock/teams", formData);
+                await authenticatedApi.post("/api/assets/teams", formData);
             }
             fetchData();
             setIsModalOpen(false);

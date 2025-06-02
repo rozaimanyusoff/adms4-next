@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface Zone {
     id: number;
@@ -32,8 +32,8 @@ const SiteDistrict: React.FC = () => {
     const fetchData = async () => {
         try {
             const [districtsRes, zonesRes] = await Promise.all([
-                authenticatedApi.get<{ data: District[] }>("/api/stock/districts"),
-                authenticatedApi.get<{ data: Zone[] }>("/api/stock/zones"),
+                authenticatedApi.get<{ data: District[] }>("/api/assets/districts"),
+                authenticatedApi.get<{ data: Zone[] }>("/api/assets/zones"),
             ]);
             setData(districtsRes.data.data || []);
             setZones(zonesRes.data.data || []);
@@ -55,9 +55,9 @@ const SiteDistrict: React.FC = () => {
                 zone_id: formData.zone_id,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/districts/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/districts/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/districts", payload);
+                await authenticatedApi.post("/api/assets/districts", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -87,7 +87,7 @@ const SiteDistrict: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -98,7 +98,7 @@ const SiteDistrict: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Districts</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -112,7 +112,7 @@ const SiteDistrict: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -121,7 +121,7 @@ const SiteDistrict: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</label>
+                            <Label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</Label>
                             <Input
                                 id="code"
                                 value={formData.code || ""}
@@ -130,7 +130,7 @@ const SiteDistrict: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="zone" className="block text-sm font-medium text-gray-700">Zone</label>
+                            <Label htmlFor="zone" className="block text-sm font-medium text-gray-700">Zone</Label>
                             <select
                                 id="zone"
                                 className="w-full border rounded px-2 py-2"

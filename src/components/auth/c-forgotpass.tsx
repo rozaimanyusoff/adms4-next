@@ -42,7 +42,7 @@ const ComponentForgotPassword = () => {
     };
 
     return (
-        <AuthTemplate title="Forgot Password" description="Enter your email to reset your password.">
+        <AuthTemplate title="Forgot Password" description={responseMessage.text || "Enter your email to reset your password."}>
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                     <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
@@ -53,9 +53,6 @@ const ComponentForgotPassword = () => {
                     <label htmlFor="contact" className="block text-sm font-semibold text-gray-700 mb-1">Contact</label>
                     <Input id="contact" name="contact" type="text" value={contact} onChange={e => setContact(e.target.value)} placeholder="Enter your contact (optional)" />
                 </div> */}
-                {responseMessage.text && (
-                    <div className={`text-center text-sm ${responseMessage.type === 'error' ? 'text-red-500' : responseMessage.type === 'success' ? 'text-green-600' : 'text-gray-700'}`}>{responseMessage.text}</div>
-                )}
                 <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Send Reset Link</Button>
                 <div className="text-center mt-4">
                     <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>

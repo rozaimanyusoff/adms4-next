@@ -176,18 +176,18 @@ const Header = () => {
     return (
         <header className={`z-40 ${themeConfig.semidark && themeConfig.menu === 'horizontal' ? 'dark' : ''}`}>
             <div className="shadow-xs">
-                <div className="relative flex w-full items-center bg-white px-5 py-2.5 dark:bg-black">
-                    <div className="horizontal-logo flex items-center justify-between ltr:mr-2 rtl:ml-2 lg:hidden">
-                        <Link href="/" className="main-logo flex shrink-0 items-center">
+                <div className="relative flex w-full items-center bg-white px-4 py-1.5 dark:bg-black">
+                    <div className="horizontal-logo flex items-center justify-between gap-4 ltr:mr-2 rtl:ml-2 lg:hidden">
+                        <Link href="/" className="main-logo flex shrink-0 items-center gap-4">
                             <img className="inline w-8 ltr:-ml-1 rtl:-mr-1" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
-                            <span className="hidden align-middle text-2xl  font-semibold  transition-all duration-300 ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light md:inline">{process.env.NEXT_PUBLIC_APP_NAME}</span>
+                            <span className="hidden text-3xl text-shadow-2xs font-extrabold  transition-all duration-300 ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light md:inline">{process.env.NEXT_PUBLIC_APP_NAME}</span>
                         </Link>
                         <button
                             type="button"
-                            className="collapse-icon flex flex-none rounded-full bg-white-light/40 p-2 hover:bg-white-light/90 hover:text-primary ltr:ml-2 rtl:mr-2 dark:bg-dark/40 dark:text-[#d0d2d6] dark:hover:bg-dark/60 dark:hover:text-primary lg:hidden"
+                            className="collapse-icon flex flex-none hover:bg-white-light/90 hover:text-primary ltr:ml-2 rtl:mr-2 dark:bg-dark/40 dark:text-[#d0d2d6] dark:hover:bg-dark/60 dark:hover:text-primary lg:hidden"
                             onClick={() => dispatch(toggleSidebar())}
                         >
-                            <IconMenu className="h-5 w-5" />
+                            <IconMenu className="h-7 w-7 text-orange-600" />
                         </button>
                     </div>
 
@@ -401,7 +401,7 @@ const Header = () => {
                                                 <li key={item.navId} className="relative group">
                                                     {item.children && item.children.length > 0 ? (
                                                         <div className="w-full">
-                                                            <div className="flex items-center justify-between px-4 py-2 hover:italic hover:font-bold hover:bg-sky-200 dark:hover:bg-dark/60">
+                                                            <div className="flex items-center justify-between px-4 py-1.5 hover:bg-orange-300 dark:hover:bg-dark/60">
                                                                 <span>{item.title}</span>
                                                                 <div className="ltr:ml-auto rtl:mr-auto rtl:rotate-90 -rotate-90">
                                                                     <IconCaretDown />
@@ -414,7 +414,7 @@ const Header = () => {
                                                                         <li key={child.navId}>
                                                                             {child.children && child.children.length > 0 ? (
                                                                                 <div className="w-full">
-                                                                                    <div className="flex items-center justify-between py-2 hover:text-primary hover:bg-sky-200 dark:hover:bg-dark/60">
+                                                                                    <div className="flex items-center justify-between py-2 hover:text-primary hover:bg-orange-300 dark:hover:bg-dark/60">
                                                                                         <span>{child.title}</span>
                                                                                         <div className="ltr:ml-auto rtl:mr-auto rtl:rotate-90 -rotate-90">
                                                                                             <IconCaretDown />

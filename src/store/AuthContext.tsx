@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import { authenticatedApi } from '@/config/api';
 
 // User role type
 interface UserRole {
@@ -103,7 +104,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Load auth data from localStorage on app load
     const storedAuthData = localStorage.getItem('authData');
     if (storedAuthData) {
-      setAuthData(JSON.parse(storedAuthData));
+      const parsed = JSON.parse(storedAuthData);
+      setAuthData(parsed);
+      // Fetch navTree from backend and set in state
+      (async () => {
+        try {
+          if (parsed && parsed.user && parsed.user.id) {
+            const response = await authenticatedApi.get(`/api/nav/access/${parsed.user.id}`);
+            const navTreeRemote: NavTree[] = (response.data as { navTree: NavTree[] }).navTree;
+            if (navTreeRemote) {
+              setAuthData((prev) => prev ? { ...prev, navTree: navTreeRemote } : prev);
+            }
+          }
+        } catch (e) {
+          // Optionally handle error
+        }
+      })();
     }
   }, []);
 
@@ -114,7 +130,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const handleSetAuthData = (data: AuthData | null) => {
     setAuthData(data);
     if (data) {
-      localStorage.setItem('authData', JSON.stringify(data));
+      // Exclude navTree from localStorage
+      const { navTree, ...rest } = data;
+      localStorage.setItem('authData', JSON.stringify(rest));
     } else {
       localStorage.removeItem('authData');
     }
@@ -128,19 +146,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthData((prevAuthData) => {
       if (prevAuthData) {
         const updatedAuthData = { ...prevAuthData, navTree: newNavTree };
-        localStorage.setItem('authData', JSON.stringify(updatedAuthData));
+        // Do NOT store navTree in localStorage
+        const { navTree, ...rest } = updatedAuthData;
+        localStorage.setItem('authData', JSON.stringify(rest));
         return updatedAuthData;
       }
       return prevAuthData;
     });
   };
 
-  return (
-    <AuthContext.Provider value={{ authData, setAuthData: handleSetAuthData, logout, updateNavTree }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  const refreshNavTree = async () => {
+    if (!authData) return;
+    try {
+      // Use correct endpoint for navTree
+      const response = await authenticatedApi.get(`/api/nav/access/${authData.user.id}`);
+      const navTreeRemote: NavTree[] = (response.data as { navTree: NavTree[] }).navTree;
+      if (navTreeRemote) {
+        setAuthData((prevAuthData) => {
+          if (prevAuthData) {
+            const updatedAuthData: AuthData = { ...prevAuthData, navTree: navTreeRemote };
+            const { navTree: navTreeLocal, ...rest } = updatedAuthData;
+            localStorage.setItem('authData', JSON.stringify(rest));
+            return updatedAuthData;
+          }
+          return prevAuthData;
+        });
+      }
+    } catch (error) {
+      // Optionally handle error (toast, etc.)
+      console.error('Error refreshing navTree:', error);
+    }
+  };
 
-// Export the parser for use after login
-export { parseAuthApiResponse };
+  const value = { authData, setAuthData: handleSetAuthData, logout, refreshNavTree, updateNavTree };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};

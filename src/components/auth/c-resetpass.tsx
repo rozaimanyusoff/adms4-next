@@ -179,7 +179,7 @@ const ComponentResetPassword = () => {
     };
 
     return (
-        <AuthTemplate title="Reset Password" description="Enter your new password to reset your account password.">
+        <AuthTemplate title="Reset Password" description={responseMessage.text || "Enter your new password to reset your account password."}>
             {!isValidated ? (
                 <form className="space-y-6" onSubmit={handleValidationSubmit}>
                     <div>
@@ -204,9 +204,6 @@ const ComponentResetPassword = () => {
                             onChange={handleChange}
                         />
                     </div>
-                    {responseMessage.text && (
-                        <div className={`text-center text-sm ${responseMessage.type === 'error' ? 'text-red-500' : responseMessage.type === 'success' ? 'text-green-600' : 'text-gray-700'}`}>{responseMessage.text}</div>
-                    )}
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Verify Identity</Button>
                     <div className="text-center mt-4">
                         <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>
@@ -254,9 +251,6 @@ const ComponentResetPassword = () => {
                             </button>
                         </div>
                     </div>
-                    {responseMessage.text && (
-                        <div className={`text-center text-sm ${responseMessage.type === 'error' ? 'text-red-500' : responseMessage.type === 'success' ? 'text-green-600' : 'text-gray-700'}`}>{responseMessage.text}</div>
-                    )}
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Reset Password</Button>
                     <div className="text-center mt-4">
                         <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>

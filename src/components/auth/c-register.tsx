@@ -60,7 +60,7 @@ const ComponentRegister = () => {
     };
 
     return (
-        <AuthTemplate title="Register" description="Create your account by filling the form below.">
+        <AuthTemplate title="Register" description={responseMessage || "Create your account by filling the form below."}>
             <form className="space-y-6" onSubmit={handleRegister}>
                 <div>
                     <label htmlFor="name" className="block text-sm font-semibold text-gray-700 mb-1">Full Name</label>
@@ -89,9 +89,6 @@ const ComponentRegister = () => {
                     <label htmlFor="userType" className="block text-sm font-semibold text-gray-700 mb-1">User Type</label>
                     <Input id="userType" name="userType" type="text" required value={formData.userType} onChange={handleChange} placeholder="Enter user type" />
                 </div>
-                {responseMessage && (
-                    <div className="text-center text-sm text-gray-700">{responseMessage}</div>
-                )}
                 <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Register</Button>
                 <div className="text-center mt-4">
                     <Link href="/auth/login" className="text-blue-600 hover:underline">Already have an account? Login</Link>

@@ -1,4 +1,4 @@
-import COutApp from "@components/stockinventory/c-outapp";
+import COutApp from "@components/stockinventory/c-rtrequest";
 import { Metadata } from "next";
 import React from "react";
 

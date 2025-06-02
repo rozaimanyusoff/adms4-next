@@ -8,6 +8,14 @@ interface AuthTemplateProps {
     description?: string;
 }
 
+const getDescriptionClass = (description?: string) => {
+    if (!description) return "text-gray-600";
+    const desc = description.toLowerCase();
+    if (desc.includes("error") || desc.includes("fail") || desc.includes("invalid")) return "text-danger";
+    if (desc.includes("success")) return "text-success";
+    return "text-gray-600";
+};
+
 const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
     return (
         <div className="relative min-h-screen flex items-stretch">
@@ -33,9 +41,9 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
             {/* Right Side: Auth Form */}
             <div className="relative z-10 flex flex-col justify-center w-full max-w-lg ml-auto px-8 py-16 bg-slate-200/80 rounded-l-3xl shadow-2xl min-h-screen max-lg:w-full max-lg:rounded-none">
                 <h2 className="text-3xl font-bold mb-8 text-gray-800 text-center">{title}</h2>
-                {description && <p className="mb-6 text-center text-gray-600">{description}</p>}
+                {description && <p className={"mb-6 text-center " + getDescriptionClass(description)}>{description}</p>}
                 {children}
-                <div className="mt-8 text-xs text-center text-gray-500">
+                <div className="mt-8 text-xs text-center text-gray-600">
                     By using ADMS you agree to <Link href="#" className="underline">Terms of Service</Link> | <Link href="#" className="underline">Privacy Policy</Link>
                 </div>
             </div>

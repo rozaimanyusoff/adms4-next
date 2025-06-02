@@ -1,25 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlusCircle, faTh, faList } from '@fortawesome/free-solid-svg-icons';
+import { authenticatedApi } from '@/config/api';
 
 const SidebarItemPicker: React.FC<{
-    cartItems: any[];
     selectedItems: any[];
     onAdd: (item: any) => void;
-}> = ({ cartItems, selectedItems, onAdd }) => {
+}> = ({ selectedItems, onAdd }) => {
     const [search, setSearch] = useState('');
     const [view, setView] = useState<'list' | 'card'>('list');
+    const [items, setItems] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    // Helper to call onAdd (no longer close sidebar automatically)
+    useEffect(() => {
+        setLoading(true);
+        setError(null);
+        authenticatedApi.get<{ data: any[] }>('/api/stock/items')
+            .then(res => {
+                setItems(res.data?.data || []);
+                setLoading(false);
+            })
+            .catch(err => {
+                setError(err.message);
+                setLoading(false);
+            });
+    }, []);
+
     const handleAdd = (item: any) => {
         onAdd(item);
-        // setLastAdded(item.id); // No sidebar close trigger
     };
 
-    const filtered = cartItems.filter(item =>
+    const filtered = items.filter(item =>
         !selectedItems.some((si: any) => si.id === item.id) &&
-        item.name.toLowerCase().includes(search.toLowerCase())
+        ((item.item_name?.toLowerCase() || '').includes(search.toLowerCase()) || (item.item_code?.toLowerCase() || '').includes(search.toLowerCase()))
     );
+
     return (
         <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 mb-3">
@@ -48,10 +64,12 @@ const SidebarItemPicker: React.FC<{
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto mt-2">
-                {filtered.length === 0 && (
+                {loading && <div className="text-gray-400 text-center py-8">Loading items...</div>}
+                {error && <div className="text-red-500 text-center py-8">{error}</div>}
+                {!loading && !error && filtered.length === 0 && (
                     <div className="text-gray-400 text-center py-8">No more items to add.</div>
                 )}
-                {view === 'list' ? (
+                {!loading && !error && (view === 'list' ? (
                     <ul className="divide-y">
                         {filtered.map(item => (
                             <li key={item.id} className="flex items-center justify-start py-1.5">
@@ -65,12 +83,12 @@ const SidebarItemPicker: React.FC<{
                                 </button>
                                 <img
                                     src={item.image || '/assets/images/product-camera.jpg'}
-                                    alt={item.name}
+                                    alt={item.item_name}
                                     className="w-10 h-10 object-cover ml-4 mr-3 border border-gray-200 bg-white"
                                 />
                                 <div className='ps-0'>
-                                    <div className="font-semibold">{item.name}</div>
-                                    <div className="text-xs text-gray-500">Stock: {item.stock}</div>
+                                    <div className="font-semibold">{item.item_name}</div>
+                                    <div className="text-xs text-gray-500">Stock: {item.balance}</div>
                                 </div>
                             </li>
                         ))}
@@ -82,29 +100,29 @@ const SidebarItemPicker: React.FC<{
                                 {/* Plus icon section */}
                                 <div className="flex flex-col items-center justify-center w-12 h-12 mr-3">
                                     <button
-                                        className={`${item.stock === 0 ? 'bg-gray-200' : 'bg-gray-100'} rounded-full border-none`}
-                                        onClick={() => item.stock > 0 && handleAdd(item)}
-                                        disabled={item.stock === 0}
-                                        title={item.stock === 0 ? 'Out of stock' : 'Add'}
+                                        className={`${item.balance === 0 ? 'bg-gray-200' : 'bg-gray-100'} rounded-full border-none`}
+                                        onClick={() => item.balance > 0 && handleAdd(item)}
+                                        disabled={item.balance === 0}
+                                        title={item.balance === 0 ? 'Out of stock' : 'Add'}
                                     >
-                                        <FontAwesomeIcon icon={faPlusCircle} size="2xl" className={item.stock === 0 ? 'text-gray-400' : 'text-green-600 hover:text-green-700'} />
+                                        <FontAwesomeIcon icon={faPlusCircle} size="2xl" className={item.balance === 0 ? 'text-gray-400' : 'text-green-600 hover:text-green-700'} />
                                     </button>
                                 </div>
                                 {/* Image section */}
                                 <img
                                     src={item.image || '/assets/images/product-camera.jpg'}
-                                    alt={item.name}
+                                    alt={item.item_name}
                                     className="object-cover rounded-sm border-gray-200 bg-white mr-4"
                                 />
                                 {/* Info section */}
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-base truncate">{item.name}</div>
-                                    <div className="text-xs text-gray-500 mt-1">Stock: {item.stock}</div>
+                                    <div className="font-semibold text-base truncate">{item.item_name}</div>
+                                    <div className="text-xs text-gray-500 mt-1">Stock: {item.balance}</div>
                                 </div>
                             </div>
                         ))}
                     </div>
-                )}
+                ))}
             </div>
         </div>
     );

@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
-import {
-    Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+import { Plus, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,9 +55,9 @@ const SiteZone: React.FC = () => {
     const fetchData = async () => {
         try {
             const [zonesRes, employeesRes, districtsRes] = await Promise.all([
-                authenticatedApi.get<{ data: Zone[] }>("/api/stock/zones"),
-                authenticatedApi.get<{ data: Employee[] }>("/api/stock/employees"),
-                authenticatedApi.get<{ data: District[] }>("/api/stock/districts"),
+                authenticatedApi.get<{ data: Zone[] }>("/api/assets/zones"),
+                authenticatedApi.get<{ data: Employee[] }>("/api/assets/employees"),
+                authenticatedApi.get<{ data: District[] }>("/api/assets/districts"),
             ]);
             setData(zonesRes.data.data || []);
             setEmployees(employeesRes.data.data || []);
@@ -85,9 +82,9 @@ const SiteZone: React.FC = () => {
                 districts: formData.districts,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/zones/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/zones/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/zones", payload);
+                await authenticatedApi.post("/api/assets/zones", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -139,7 +136,7 @@ const SiteZone: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -150,7 +147,7 @@ const SiteZone: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Zones</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -164,7 +161,7 @@ const SiteZone: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -173,7 +170,7 @@ const SiteZone: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</label>
+                            <Label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</Label>
                             <Input
                                 id="code"
                                 value={formData.code || ""}
@@ -182,7 +179,7 @@ const SiteZone: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="employee" className="block text-sm font-medium text-gray-700">Employee</label>
+                            <Label htmlFor="employee" className="block text-sm font-medium text-gray-700">Employee</Label>
                             <Select
                                 value={formData.employee_id ? formData.employee_id.toString() : ""}
                                 onValueChange={value => setFormData({ ...formData, employee_id: Number(value) })}
@@ -203,11 +200,10 @@ const SiteZone: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Districts</label>
+                            <Label className="block text-sm font-medium text-gray-700">Districts</Label>
                             <div className="border rounded px-2 py-2 max-h-40 overflow-y-auto">
                                 {districts.map((d) => (
                                     <div key={d.id} className="flex items-center space-x-2">
-
                                         <Label htmlFor={`district-${d.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                             <Checkbox
                                                 id={`district-${d.id}`}

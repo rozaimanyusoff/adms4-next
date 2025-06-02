@@ -74,6 +74,7 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --color-primary: #4361ee;
   }
  
   .dark {
@@ -201,27 +202,27 @@
   }
 
   & .nav-link {
-    @apply flex items-center rounded-lg px-2 py-2.5 hover:bg-[#000]/[0.08] hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark xl:px-4;
+    @apply flex items-center rounded-lg px-2 py-1.5 hover:bg-orange-300 hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark xl:px-4;
   }
 
   & .nav-link.active {
-    @apply bg-[#000]/[0.08] text-black dark:bg-[#181f32] dark:text-white-dark;
+    @apply text-black dark:bg-[#181f32] dark:text-white-dark;
   }
 
   & ul.sub-menu {
-    @apply absolute top-full z-10 hidden min-w-[180px] rounded-sm bg-white p-0 py-2 text-dark shadow-sm dark:bg-[#1b2e4b] dark:text-white-dark;
+    @apply absolute top-full z-10 hidden min-w-[180px] rounded-none bg-stone-200 p-0 text-dark shadow-2xl dark:bg-[#1b2e4b] dark:text-white-dark;
   }
 
   & ul.sub-menu a {
-    @apply flex w-full items-center justify-between px-4 py-2 hover:bg-gray-100 hover:text-primary dark:hover:bg-primary/10;
+    @apply flex w-full items-center justify-between px-4 py-1.5 mb-0 hover:bg-orange-300 hover:text-primary dark:hover:bg-primary/10;
   }
 
   & ul.sub-menu button {
-    @apply flex w-full items-center justify-between px-4 py-2 hover:bg-gray-100 hover:text-primary dark:hover:bg-primary/10;
+    @apply flex w-full items-center justify-between px-4 py-1.5 hover:bg-orange-300 hover:text-primary dark:hover:bg-primary/10;
   }
 
   & ul.sub-menu a.active {
-    @apply bg-gray-100 text-primary dark:bg-primary/10;
+    @apply text-primary underline underline-offset-4 decoration-2 decoration-orange-400 dark:bg-primary/10;
   }
 
   & ul.sub-menu button.active {
@@ -266,19 +267,18 @@
   }
 
   & ul.sub-menu li button {
-    @apply flex w-full items-center px-9 py-2.5 before:h-0.5 before:w-2 before:rounded-sm before:bg-gray-300 hover:bg-gray-100
+    @apply flex w-full items-center px-9 py-1.5 before:h-0.5 before:w-2 before:rounded-sm before:bg-gray-300 hover:bg-orange-100
 hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark:before:bg-gray-500 dark:hover:bg-gray-900 dark:hover:text-primary;
   }
 
   & ul.sub-menu li a {
-    @apply flex w-full items-center px-9 py-2.5 before:h-0.5 before:w-2 before:rounded-sm before:bg-gray-300 hover:bg-gray-100
-hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark:before:bg-gray-500 dark:hover:bg-gray-900 dark:hover:text-primary;
+    @apply flex w-full items-center px-4 py-1.5 before:rounded-sm before:bg-gray-300 hover:underline underline-offset-4 decoration-2 decoration-orange-300 hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark:before:bg-gray-500 dark:hover:bg-gray-900 dark:hover:text-primary;
   }
   & ul.sub-menu li button.active {
     @apply text-primary before:bg-primary;
   }
   & ul.sub-menu li a.active {
-    @apply text-primary before:bg-primary;
+    @apply text-primary underline underline-offset-4 decoration-orange-400 decoration-2 before:bg-primary;
   }
 
   & .nav-item a div:first-child svg {
@@ -386,18 +386,18 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
   }
 
   .sidebar & > button {
-    @apply mb-1 flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-md p-2.5 text-[#506690] hover:bg-[#000]/[0.08] hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark;
+    @apply mb-0.5 flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-none py-1.5 text-[#506690] hover:bg-orange-400/50 hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark;
   }
 
   .sidebar & > a {
-    @apply mb-1 flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-md p-2.5 text-[#506690] hover:bg-[#000]/[0.08] hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark;
+    @apply mb-0.5 flex w-full items-center justify-between overflow-hidden whitespace-nowrap rounded-none py-1.5 text-[#506690] hover:bg-orange-400/50 hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark;
   }
   .sidebar & > button.active {
-    @apply bg-[#000]/[0.08] text-black dark:bg-[#181f32] dark:text-white-dark;
+    @apply bg-orange-400 text-black dark:bg-[#181f32] dark:text-white-dark;
   }
 
   .sidebar & > a.active {
-    @apply bg-[#000]/[0.08] text-black dark:bg-[#181f32] dark:text-white-dark;
+    @apply bg-orange-400 text-white dark:bg-[#181f32] dark:text-white-dark;
   }
 
   .sidebar & > button.active > div > span {
@@ -477,7 +477,7 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
   }
 
   .horizontal-menu &.nav-link {
-    @apply bg-[#000]/[0.08] text-black dark:bg-[#181f32] dark:text-white-dark;
+    @apply text-black dark:bg-[#181f32] dark:text-white-dark;
   }
 
   .horizontal-menu ul.sub-menu &a {
@@ -648,11 +648,11 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 
 @utility nav-link {
   .horizontal-menu & {
-    @apply flex items-center rounded-lg px-2 py-2.5 hover:bg-[#000]/[0.08] hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark xl:px-4;
+    @apply flex items-center rounded-none px-2 py-2.5 hover:bg-orange-300 hover:text-black dark:hover:bg-[#181f32] dark:hover:text-white-dark xl:px-4;
   }
 
   .horizontal-menu &.active {
-    @apply bg-[#000]/[0.08] text-black dark:bg-[#181f32] dark:text-white-dark;
+    @apply underline underline-offset-4 decoration-2 decoration-orange-400 text-black dark:bg-[#181f32] dark:text-white-dark;
   }
 }
 

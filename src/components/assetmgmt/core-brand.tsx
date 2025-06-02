@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -23,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface Brand {
     id: number;
@@ -47,9 +47,9 @@ const CoreBrand: React.FC = () => {
     const fetchData = async () => {
         try {
             const [brandsRes, typesRes, categoriesRes] = await Promise.all([
-                authenticatedApi.get<{ data: Brand[] }>("/api/stock/brands"),
-                authenticatedApi.get<any>("/api/stock/types"),
-                authenticatedApi.get<any>("/api/stock/categories"),
+                authenticatedApi.get<{ data: Brand[] }>("/api/assets/brands"),
+                authenticatedApi.get<any>("/api/assets/types"),
+                authenticatedApi.get<any>("/api/assets/categories"),
             ]);
             setData(brandsRes.data.data || []);
             setTypes(Array.isArray(typesRes.data) ? typesRes.data : (typesRes.data && typesRes.data.data ? typesRes.data.data : []));
@@ -74,9 +74,9 @@ const CoreBrand: React.FC = () => {
                 category_id: formData.categoryId,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/brands/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/brands/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/brands", payload);
+                await authenticatedApi.post("/api/assets/brands", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -111,7 +111,7 @@ const CoreBrand: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -122,7 +122,7 @@ const CoreBrand: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Brands</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? (
@@ -143,19 +143,19 @@ const CoreBrand: React.FC = () => {
                         }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input id="name" value={formData.name || ""} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+                            <Label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</Label>
                             <Input id="description" value={formData.description || ""} onChange={e => setFormData({ ...formData, description: e.target.value })} required />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="image" className="block text-sm font-medium text-gray-700">Image URL</label>
+                            <Label htmlFor="image" className="block text-sm font-medium text-gray-700">Image URL</Label>
                             <Input id="image" value={formData.image || ""} onChange={e => setFormData({ ...formData, image: e.target.value })} />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="type" className="block text-sm font-medium text-gray-700">Type</label>
+                            <Label htmlFor="type" className="block text-sm font-medium text-gray-700">Type</Label>
                             <Select
                                 value={formData.typeId ? String(formData.typeId) : ""}
                                 onValueChange={value => setFormData({ ...formData, typeId: Number(value) })}
@@ -174,7 +174,7 @@ const CoreBrand: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="category" className="block text-sm font-medium text-gray-700">Category</label>
+                            <Label htmlFor="category" className="block text-sm font-medium text-gray-700">Category</Label>
                             <Select
                                 value={formData.categoryId ? String(formData.categoryId) : ""}
                                 onValueChange={value => setFormData({ ...formData, categoryId: Number(value) })}

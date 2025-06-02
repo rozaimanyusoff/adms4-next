@@ -3,8 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@components/ui/input";
 import { Button } from "@components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface Module {
     id: number;
@@ -30,7 +30,7 @@ const SiteModule: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const res = await authenticatedApi.get<any>("/api/stock/modules");
+            const res = await authenticatedApi.get<any>("/api/assets/modules");
             setData(Array.isArray(res.data) ? res.data : (res.data && res.data.data ? res.data.data : []));
         } catch (error) {
             setData([]);
@@ -44,9 +44,9 @@ const SiteModule: React.FC = () => {
     const handleSubmit = async () => {
         try {
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/modules/${formData.id}`, { name: formData.name, code: formData.code });
+                await authenticatedApi.put(`/api/assets/modules/${formData.id}`, { name: formData.name, code: formData.code });
             } else {
-                await authenticatedApi.post("/api/stock/modules", { name: formData.name, code: formData.code });
+                await authenticatedApi.post("/api/assets/modules", { name: formData.name, code: formData.code });
             }
             fetchData();
             setIsModalOpen(false);
@@ -73,7 +73,7 @@ const SiteModule: React.FC = () => {
                     onClick={() => { setFormData(row); setIsModalOpen(true); }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -84,7 +84,7 @@ const SiteModule: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Modules</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -98,7 +98,7 @@ const SiteModule: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -108,7 +108,7 @@ const SiteModule: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</label>
+                            <Label htmlFor="code" className="block text-sm font-medium text-gray-700">Code</Label>
                             <Input
                                 id="code"
                                 value={formData.code || ""}

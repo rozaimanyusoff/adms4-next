@@ -7,6 +7,7 @@ import OrgSection from "./org-section";
 import OrgPos from "./org-pos";
 import OrgCostCenter from "./org-costcenter";
 import OrgEmployee from "./org-emp";
+import SiteDistrict from "./site-district";
 import OrgTeam from "./org-team";
 
 const TabOrg: React.FC = () => {
@@ -30,7 +31,7 @@ const TabOrg: React.FC = () => {
                     <TabsTrigger value="sect">Section</TabsTrigger>
                     <TabsTrigger value="costctr">Cost Center</TabsTrigger>
                     <TabsTrigger value="emp">Employee</TabsTrigger>
-                    <TabsTrigger value="team">Team</TabsTrigger>
+                    <TabsTrigger value="team">District</TabsTrigger>
                 </TabsList>
                 <TabsContent value="pos">
                     <OrgPos />
@@ -48,7 +49,7 @@ const TabOrg: React.FC = () => {
                     <OrgEmployee />
                 </TabsContent>
                 <TabsContent value="team">
-                    <OrgTeam />
+                    <SiteDistrict />
                 </TabsContent>
             </Tabs>
         </div>

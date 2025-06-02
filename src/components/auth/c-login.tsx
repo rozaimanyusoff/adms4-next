@@ -118,7 +118,7 @@ const ComponentLogin = () => {
     };
 
     return (
-        <AuthTemplate title="Sign in" description="Login to your ADMS account.">
+        <AuthTemplate title="Sign in" description={responseMessage || "Login to your ADMS account."}>
             <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
                     <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
@@ -149,9 +149,6 @@ const ComponentLogin = () => {
                     </label>
                     <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">Lost your password?</Link>
                 </div>
-                {responseMessage && (
-                    <div className={`text-center text-sm ${getMessageClass(responseMessage)}`}>{responseMessage}</div>
-                )}
                 <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Sign in now</Button>
                 <div className="text-center mt-4">
                     <span className="text-sm text-gray-700">Not a member? </span>

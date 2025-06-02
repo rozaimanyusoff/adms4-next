@@ -1,4 +1,4 @@
-import UserMgmtMain from '@components/usermgmt/usermgmtmain';
+import UserMgmtMain from '@components/usermgmt/tabadmin';
 import { Metadata } from 'next';
 import React from 'react';
 

@@ -164,20 +164,12 @@ const ComponentActivate = () => {
     };
 
     return (
-        <AuthTemplate title="Activate Account" description="Set your account password to activate your ADMS account.">
+        <AuthTemplate title="Activate Account" description={responseMessage.text || "Set your account password to activate your ADMS account."}>
             <div className="relative flex min-h-screen items-center justify-center px-6 py-10 bg-neutral-300 dark:bg-[#060818] sm:px-16">
                 <div className="panel flex flex-col w-full items-center justify-between gap-5 px-4 py-1 sm:px-6 lg:max-w-[400px] dark:bg-[#060818] rounded-4xl shadow-md shadow-emerald-800/50 bg-gradient-to-r from-neutral-100 to-neutral-50 drop-shadow-accent-foreground/40 min-h-[520px]">
                     <div className="w-full max-w-[440px] flex-1 flex flex-col px-4 justify-center">
                         <div className="mb-10">
                             <h1 className="text-3xl font-extrabold uppercase md:text-4xl text-shadow-lg">Activation</h1>
-                            <p className={`font-bold leading-normal ${responseMessage.type === 'error'
-                                ? 'text-red-500'
-                                : responseMessage.type === 'success'
-                                    ? 'text-green-500'
-                                    : 'text-black'
-                                }`}>
-                                {responseMessage.text}
-                            </p>
                         </div>
                         <form className="space-y-3" onSubmit={!isValidated ? handleValidate : handleActivate}>
                             <div>

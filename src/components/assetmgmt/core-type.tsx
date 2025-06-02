@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface Type {
     id: number;
@@ -29,7 +29,7 @@ const CoreType: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const response = await authenticatedApi.get<any>("/api/stock/types");
+            const response = await authenticatedApi.get<any>("/api/assets/types");
             setData(Array.isArray(response.data) ? response.data : (response.data && response.data.data ? response.data.data : []));
         } catch (error) {
             console.error("Error fetching types data:", error);
@@ -47,10 +47,10 @@ const CoreType: React.FC = () => {
         try {
             if (formData.id) {
                 // Update existing entry
-                await authenticatedApi.put(`/api/stock/types/${formData.id}`, formData);
+                await authenticatedApi.put(`/api/assets/types/${formData.id}`, formData);
             } else {
                 // Create new entry
-                await authenticatedApi.post("/api/stock/types", formData);
+                await authenticatedApi.post("/api/assets/types", formData);
             }
             fetchData(); // Refresh data grid
             setIsModalOpen(false);
@@ -77,7 +77,7 @@ const CoreType: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -88,7 +88,7 @@ const CoreType: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Types</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
 
@@ -111,11 +111,12 @@ const CoreType: React.FC = () => {
                         }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">
                                 Name
-                            </label>
+                            </Label>
                             <Input
                                 id="name"
+                                className="capitalize"
                                 value={formData.name || ""}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                     setFormData({ ...formData, name: e.target.value })
@@ -124,9 +125,9 @@ const CoreType: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                            <Label htmlFor="description" className="block text-sm font-medium text-gray-700">
                                 Description
-                            </label>
+                            </Label>
                             <Input
                                 id="description"
                                 value={formData.description || ""}

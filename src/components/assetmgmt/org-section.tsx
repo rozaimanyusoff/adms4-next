@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -19,6 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface Section {
     id: number;
@@ -37,8 +37,8 @@ const OrgSection: React.FC = () => {
     const fetchData = async () => {
         try {
             const [sectionsRes, departmentsRes] = await Promise.all([
-                authenticatedApi.get<any>("/api/stock/sections"),
-                authenticatedApi.get<any>("/api/stock/departments"),
+                authenticatedApi.get<any>("/api/assets/sections"),
+                authenticatedApi.get<any>("/api/assets/departments"),
             ]);
             const deptArr = Array.isArray(departmentsRes.data) ? departmentsRes.data : (departmentsRes.data && departmentsRes.data.data ? departmentsRes.data.data : []);
             setData(Array.isArray(sectionsRes.data) ? sectionsRes.data : (sectionsRes.data && sectionsRes.data.data ? sectionsRes.data.data : []));
@@ -60,9 +60,9 @@ const OrgSection: React.FC = () => {
                 departmentId: formData.department?.id,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/sections/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/sections/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/sections", payload);
+                await authenticatedApi.post("/api/assets/sections", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -84,7 +84,7 @@ const OrgSection: React.FC = () => {
                     onClick={() => { setFormData(row); setIsModalOpen(true); }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -95,7 +95,7 @@ const OrgSection: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Sections</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -109,7 +109,7 @@ const OrgSection: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -118,7 +118,7 @@ const OrgSection: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Department</label>
+                            <Label className="block text-sm font-medium text-gray-700">Department</Label>
                             <Select
                                 value={formData.department?.id?.toString() || ""}
                                 onValueChange={val => {

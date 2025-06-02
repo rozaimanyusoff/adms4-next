@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -19,6 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface Department { id: number; name: string; }
 interface Position { id: number; name: string; }
@@ -49,11 +49,11 @@ const OrgEmp: React.FC = () => {
     const fetchData = async () => {
         try {
             const [empRes, deptRes, secRes, posRes, distRes] = await Promise.all([
-                authenticatedApi.get<any>("/api/stock/employees"),
-                authenticatedApi.get<any>("/api/stock/departments"),
-                authenticatedApi.get<any>("/api/stock/sections"),
-                authenticatedApi.get<any>("/api/stock/positions"),
-                authenticatedApi.get<any>("/api/stock/districts"),
+                authenticatedApi.get<any>("/api/assets/employees"),
+                authenticatedApi.get<any>("/api/assets/departments"),
+                authenticatedApi.get<any>("/api/assets/sections"),
+                authenticatedApi.get<any>("/api/assets/positions"),
+                authenticatedApi.get<any>("/api/assets/districts"),
             ]);
             setData(Array.isArray(empRes.data) ? empRes.data : (empRes.data && empRes.data.data ? empRes.data.data : []));
             setDepartments(Array.isArray(deptRes.data) ? deptRes.data : (deptRes.data && deptRes.data.data ? deptRes.data.data : []));
@@ -82,9 +82,9 @@ const OrgEmp: React.FC = () => {
                 districtId: formData.district?.id,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/employees/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/employees/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/employees", payload);
+                await authenticatedApi.post("/api/assets/employees", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -111,7 +111,7 @@ const OrgEmp: React.FC = () => {
                     onClick={() => { setFormData(row); setIsModalOpen(true); }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -122,7 +122,7 @@ const OrgEmp: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Employees</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
@@ -136,7 +136,7 @@ const OrgEmp: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</label>
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">Name</Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -145,7 +145,7 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                            <Label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</Label>
                             <Input
                                 id="email"
                                 value={formData.email || ""}
@@ -154,7 +154,7 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone</label>
+                            <Label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone</Label>
                             <Input
                                 id="phone"
                                 value={formData.phone || ""}
@@ -163,7 +163,7 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="image" className="block text-sm font-medium text-gray-700">Image URL</label>
+                            <Label htmlFor="image" className="block text-sm font-medium text-gray-700">Image URL</Label>
                             <Input
                                 id="image"
                                 value={formData.image || ""}
@@ -171,7 +171,7 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Department</label>
+                            <Label className="block text-sm font-medium text-gray-700">Department</Label>
                             <Select
                                 value={formData.department?.id?.toString() || ""}
                                 onValueChange={val => {
@@ -195,7 +195,7 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Section</label>
+                            <Label className="block text-sm font-medium text-gray-700">Section</Label>
                             <Select
                                 value={formData.section?.id?.toString() || ""}
                                 onValueChange={val => {
@@ -219,7 +219,7 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Position</label>
+                            <Label className="block text-sm font-medium text-gray-700">Position</Label>
                             <Select
                                 value={formData.position?.id?.toString() || ""}
                                 onValueChange={val => {
@@ -243,7 +243,7 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">District</label>
+                            <Label className="block text-sm font-medium text-gray-700">District</Label>
                             <Select
                                 value={formData.district?.id?.toString() || ""}
                                 onValueChange={val => {

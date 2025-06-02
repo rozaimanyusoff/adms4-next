@@ -3,8 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -23,6 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 
 interface Category {
@@ -52,8 +52,8 @@ const CoreCategory: React.FC = () => {
     const fetchData = async () => {
         try {
             const [categoriesResponse, typesResponse] = await Promise.all([
-                authenticatedApi.get<{ data: Category[] }>('/api/stock/categories'),
-                authenticatedApi.get<any>('/api/stock/types'),
+                authenticatedApi.get<{ data: Category[] }>('/api/assets/categories'),
+                authenticatedApi.get<any>('/api/assets/types'),
             ]);
             setData(categoriesResponse.data.data || []); // Extract the `data` array
             setTypes(Array.isArray(typesResponse.data) ? typesResponse.data : (typesResponse.data && typesResponse.data.data ? typesResponse.data.data : []));
@@ -82,9 +82,9 @@ const CoreCategory: React.FC = () => {
                 typeId: formData.typeId,
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/categories/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/categories/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/categories", payload);
+                await authenticatedApi.post("/api/assets/categories", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -121,7 +121,7 @@ const CoreCategory: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} size="sm" />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -132,7 +132,7 @@ const CoreCategory: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Categories</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
 
@@ -155,9 +155,9 @@ const CoreCategory: React.FC = () => {
                         }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                            <Label htmlFor="name" className="block text-sm font-medium text-gray-700">
                                 Name
-                            </label>
+                            </Label>
                             <Input
                                 id="name"
                                 value={formData.name || ""}
@@ -168,9 +168,9 @@ const CoreCategory: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                            <Label htmlFor="description" className="block text-sm font-medium text-gray-700">
                                 Description
-                            </label>
+                            </Label>
                             <Input
                                 id="description"
                                 value={formData.description || ""}
@@ -181,9 +181,9 @@ const CoreCategory: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="type" className="block text-sm font-medium text-gray-700">
+                            <Label htmlFor="type" className="block text-sm font-medium text-gray-700">
                                 Type
-                            </label>
+                            </Label>
                             <Select
                                 value={formData.typeId?.toString() || ""}
                                 onValueChange={(value) => setFormData({ ...formData, typeId: parseInt(value, 10) })}

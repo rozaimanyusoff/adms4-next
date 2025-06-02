@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPlus, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { Plus, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -14,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@components/ui/input";
 import { Button } from "@components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface Site {
     id: number;
@@ -60,7 +60,7 @@ const SiteSites: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const res = await authenticatedApi.get<any>("/api/stock/sites");
+            const res = await authenticatedApi.get<any>("/api/assets/sites");
             setData(Array.isArray(res.data) ? res.data : (res.data && res.data.data ? res.data.data : []));
         } catch (error) {
             setData([]);
@@ -82,9 +82,9 @@ const SiteSites: React.FC = () => {
                 },
             };
             if (formData.id) {
-                await authenticatedApi.put(`/api/stock/sites/${formData.id}`, payload);
+                await authenticatedApi.put(`/api/assets/sites/${formData.id}`, payload);
             } else {
-                await authenticatedApi.post("/api/stock/sites", payload);
+                await authenticatedApi.post("/api/assets/sites", payload);
             }
             fetchData();
             setIsModalOpen(false);
@@ -139,7 +139,7 @@ const SiteSites: React.FC = () => {
                     }}
                     className="bg-yellow-500 hover:bg-yellow-600"
                 >
-                    <FontAwesomeIcon icon={faEdit} />
+                    <Pencil size={20} />
                 </Button>
             ),
         },
@@ -150,7 +150,7 @@ const SiteSites: React.FC = () => {
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Sites</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <FontAwesomeIcon icon={faPlus} size="xl" />
+                    <Plus size={22} />
                 </Button>
             </div>
             {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={mappedData} />}
@@ -164,7 +164,7 @@ const SiteSites: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <label htmlFor="site_code" className="block text-sm font-medium text-gray-700">Site Code</label>
+                            <Label htmlFor="site_code" className="block text-sm font-medium text-gray-700">Site Code</Label>
                             <Input
                                 id="site_code"
                                 value={formData.site_code || ""}
@@ -173,7 +173,7 @@ const SiteSites: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="site_name" className="block text-sm font-medium text-gray-700">Site Name</label>
+                            <Label htmlFor="site_name" className="block text-sm font-medium text-gray-700">Site Name</Label>
                             <Input
                                 id="site_name"
                                 value={formData.site_name || ""}
@@ -182,7 +182,7 @@ const SiteSites: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="site_category" className="block text-sm font-medium text-gray-700">Category</label>
+                            <Label htmlFor="site_category" className="block text-sm font-medium text-gray-700">Category</Label>
                             <Input
                                 id="site_category"
                                 value={formData.site_category || ""}
@@ -190,7 +190,7 @@ const SiteSites: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="site_status" className="block text-sm font-medium text-gray-700">Status</label>
+                            <Label htmlFor="site_status" className="block text-sm font-medium text-gray-700">Status</Label>
                             <Input
                                 id="site_status"
                                 value={formData.site_status || ""}
@@ -198,7 +198,7 @@ const SiteSites: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="geolocation" className="block text-sm font-medium text-gray-700">Geolocation (lat, lon)</label>
+                            <Label htmlFor="geolocation" className="block text-sm font-medium text-gray-700">Geolocation (lat, lon)</Label>
                             <Input
                                 id="geolocation"
                                 value={formData.geocode ? `${formData.geocode.lat || ""}, ${formData.geocode.lon || ""}` : ""}

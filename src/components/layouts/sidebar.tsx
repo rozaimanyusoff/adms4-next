@@ -7,30 +7,7 @@ import AnimateHeight from 'react-animate-height';
 import { IRootState } from '@/store';
 import React, { useState, useEffect, useContext } from 'react';
 import IconCaretsDown from '@/components/icon/icon-carets-down';
-import IconMenuDashboard from '@/components/icon/menu/icon-menu-dashboard';
 import IconCaretDown from '@/components/icon/icon-caret-down';
-import IconMinus from '@/components/icon/icon-minus';
-import IconMenuChat from '@/components/icon/menu/icon-menu-chat';
-import IconMenuMailbox from '@/components/icon/menu/icon-menu-mailbox';
-import IconMenuTodo from '@/components/icon/menu/icon-menu-todo';
-import IconMenuNotes from '@/components/icon/menu/icon-menu-notes';
-import IconMenuScrumboard from '@/components/icon/menu/icon-menu-scrumboard';
-import IconMenuContacts from '@/components/icon/menu/icon-menu-contacts';
-import IconMenuInvoice from '@/components/icon/menu/icon-menu-invoice';
-import IconMenuCalendar from '@/components/icon/menu/icon-menu-calendar';
-import IconMenuComponents from '@/components/icon/menu/icon-menu-components';
-import IconMenuElements from '@/components/icon/menu/icon-menu-elements';
-import IconMenuCharts from '@/components/icon/menu/icon-menu-charts';
-import IconMenuWidgets from '@/components/icon/menu/icon-menu-widgets';
-import IconMenuFontIcons from '@/components/icon/menu/icon-menu-font-icons';
-import IconMenuDragAndDrop from '@/components/icon/menu/icon-menu-drag-and-drop';
-import IconMenuTables from '@/components/icon/menu/icon-menu-tables';
-import IconMenuDatatables from '@/components/icon/menu/icon-menu-datatables';
-import IconMenuForms from '@/components/icon/menu/icon-menu-forms';
-import IconMenuUsers from '@/components/icon/menu/icon-menu-users';
-import IconMenuPages from '@/components/icon/menu/icon-menu-pages';
-import IconMenuAuthentication from '@/components/icon/menu/icon-menu-authentication';
-import IconMenuDocumentation from '@/components/icon/menu/icon-menu-documentation';
 import { usePathname } from 'next/navigation';
 import { AuthContext } from '@store/AuthContext'; // Ensure correct typing for AuthContext
 
@@ -105,7 +82,7 @@ const Sidebar = () => {
             if (item.type === 'section') {
                 return (
                     <React.Fragment key={item.navId || `section-${item.title}`}>
-                        <h2 className="py-2.5 px-7 flex items-center uppercase font-extrabold bg-sky-50 dark:bg-dark dark:bg-opacity-[0.08] -mx-4">
+                        <h2 className="py-2 px-9 flex items-center uppercase font-extrabold bg-slate-800/50 text-dark-light dark:bg-dark dark:bg-opacity-[0.08] -mx-4">
                             <span>{item.title}</span>
                         </h2>
                         {item.children && renderMenuItems(item.children)}
@@ -123,7 +100,7 @@ const Sidebar = () => {
                                 onClick={() => toggleMenu(item.navId)}
                             >
                                 <div className="flex items-center">
-                                    <span className="ltr:pl-3 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
+                                    <span className="ltr:pl-5 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
                                         {item.title}
                                     </span>
                                 </div>
@@ -134,7 +111,7 @@ const Sidebar = () => {
                             <AnimateHeight duration={300} height={currentMenu === item.navId ? 'auto' : 0}>
                                 <ul className="sub-menu text-gray-500">
                                     {item.children.map((subItem: any) => (
-                                        <li key={subItem.navId}>
+                                        <li key={subItem.navId} className='pl-4'>
                                             {subItem.children && subItem.children.length > 0 ? (
                                                 <React.Fragment key={subItem.navId}>
                                                     <button
@@ -177,7 +154,7 @@ const Sidebar = () => {
                     ) : (
                         <Link href={item.path || '#'} className="group">
                             <div className="flex items-center">
-                                <span className="ltr:pl-3 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
+                                <span className="ltr:pl-5 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
                                     {item.title}
                                 </span>
                             </div>
@@ -193,23 +170,23 @@ const Sidebar = () => {
             <nav
                 className={`sidebar fixed bottom-0 top-0 z-50 h-full min-h-screen w-[260px] transition-all duration-300 ${semidark ? 'text-white-dark' : ''}`}
             >
-                <div className="h-full bg-white dark:bg-black">
-                    <div className="flex items-center justify-between px-4 py-3">
-                        <Link href="/" className="main-logo flex shrink-0 items-center">
+                <div className="h-full bg-slate-200/80 dark:bg-black">
+                    <div className="flex items-center justify-between px-4 py-1.5">
+                        <Link href="/" className="main-logo flex shrink-0 gap-4 items-center">
                             <img className="ml-[5px] w-8 flex-none" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
-                            <span className="align-middle text-2xl font-semibold ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light lg:inline">{process.env.NEXT_PUBLIC_APP_NAME}</span>
+                            <h1 className="align-middle font-extrabold text-3xl text-shadow-xs ltr:ml-5 rtl:mr-5 dark:text-white-light lg:inline">{process.env.NEXT_PUBLIC_APP_NAME}</h1>
                         </Link>
 
                         <button
                             type="button"
-                            className="collapse-icon flex h-8 w-8 items-center rounded-full transition duration-300 hover:bg-gray-500/10 rtl:rotate-180 dark:text-white-light dark:hover:bg-dark-light/10"
+                            className="collapse-icon flex h-8 w-8 items-center transition duration-300 hover:bg-gray-500/10 rtl:rotate-180 dark:text-white-light dark:hover:bg-dark-light/10"
                             onClick={() => dispatch(toggleSidebar())}
                         >
-                            <IconCaretsDown className="m-auto rotate-90" />
+                            <IconCaretsDown className="m-auto rotate-90 text-orange-500" />
                         </button>
                     </div>
                     <PerfectScrollbar className="relative h-[calc(100vh-80px)]">
-                        <ul className="relative font-semibold space-y-0.5 p-4 py-0">
+                        <ul className="relative font-semibold space-y-0.5">
                             {renderMenuItems(navTree)}
                         </ul>
                     </PerfectScrollbar>
