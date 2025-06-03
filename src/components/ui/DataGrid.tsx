@@ -1,5 +1,5 @@
 /* Grid Container */
-const gridContainer = "relative rounded-none w-full transition-all duration-300 ease-in-out overflow-x-auto min-w-0 lg:min-w-[768px]";
+const gridContainer = "relative rounded-none w-full transition-all duration-300 ease-in-out min-w-0 lg:min-w-[768px]";
 const gridHeader = "overflow-x-auto border border-b-0 dark:border-dark rounded-none";
 
 /* Input Filter */
@@ -22,8 +22,8 @@ const columnResizer = "column-resizer absolute right-0 top-0 h-3/4 w-[4px] my-1 
 
 /* Column Filters */
 const theadFilterRow = "bg-gray-300 dark:bg-slate-800 text-sm border-b border-gray-200 dark:border-slate-700";
-const filterCellInput = "w-full form-input max-w-full px-1 py-0.5 border text-xs rounded-xs dark:placeholder:text-dark-light";
-const filterCellSelect = "w-full form-select max-w-full px-1 py-0.5 border capitalize text-sm rounded-xs truncate dark:text-dark-light";
+const filterCellInput = "w-full bg-gray-100 max-w-full px-1 py-0.5 border text-xs rounded-xs dark:placeholder:text-dark-light";
+const filterCellSelect = "w-full bg-gray-100 max-w-full px-1 py-0.5 border capitalize text-xs rounded-xs truncate dark:text-dark-light";
 
 /* Row Styling */
 const rowSelected = "bg-amber-300! dark:bg-amber-700!";
@@ -58,6 +58,16 @@ const paginationButtonActive = "bg-blue-600 text-white border-none dark:text-dan
 customdatagrid_features_guide.txt
 */
 import React, { useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import ExcelJS from 'exceljs';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -170,6 +180,13 @@ const CustomDataGridInner = <T,>({
     );
     const [pageSize, setPageSize] = useState(initialPageSize);
     // Resizable columns state
+    // -- Filter type state for column filter menu
+    const [filterTypes, setFilterTypes] = useState<Record<string, 'input' | 'dropdown' | 'none'>>({});
+
+    // Handler for filter type change from column menu
+    const handleFilterTypeChange = (key: keyof T, type: 'input' | 'dropdown' | 'none') => {
+        setFilterTypes(prev => ({ ...prev, [key]: type }));
+    };
     // State for double-clicked highlighted row
     const [highlightedRowKey, setHighlightedRowKey] = useState<string | number | null>(null);
     // Grid size (panel tool removed)
@@ -181,16 +198,16 @@ const CustomDataGridInner = <T,>({
     const rowClickTimestamps = useRef<Record<string | number, number>>({});
 
     useImperativeHandle(ref, () => ({
-      deselectRow: (key: string | number) => {
-        setSelectedRowKeys(prev => {
-          const updated = new Set(prev);
-          updated.delete(key);
-          return updated;
-        });
-      },
-      clearSelectedRows: () => {
-        setSelectedRowKeys(new Set());
-      }
+        deselectRow: (key: string | number) => {
+            setSelectedRowKeys(prev => {
+                const updated = new Set(prev);
+                updated.delete(key);
+                return updated;
+            });
+        },
+        clearSelectedRows: () => {
+            setSelectedRowKeys(new Set());
+        }
     }));
 
     // Consistent row/col size class
@@ -344,10 +361,10 @@ const CustomDataGridInner = <T,>({
         const visibleCols = flatColumns.filter(col => visibleColumns[String(col.key)]);
         const rows = filteredData.map(row =>
             visibleCols.map(col => {
-                const cellContent = col.render ? col.render(row) : row[col.key];
+                const cellContent = col.render ? col.render(row) : row[col.key as keyof typeof row];
                 return typeof cellContent === 'string' || typeof cellContent === 'number'
                     ? String(cellContent)
-                    : String(row[col.key] ?? '');
+                    : String(row[col.key as keyof typeof row] ?? '');
             })
         );
         const csv = [
@@ -389,12 +406,12 @@ const CustomDataGridInner = <T,>({
 
         filteredData.forEach(row => {
             const dataRow = worksheet.addRow(visibleCols.map(col => {
-                const raw = col.render ? col.render(row) : row[col.key];
+                const raw = col.render ? col.render(row) : row[col.key as keyof typeof row];
                 return typeof raw === 'string' || typeof raw === 'number'
                     ? String(raw)
-                    : typeof row[col.key] === 'object'
-                        ? JSON.stringify(row[col.key])
-                        : String(row[col.key] ?? '');
+                    : typeof row[col.key as keyof typeof row] === 'object'
+                        ? JSON.stringify(row[col.key as keyof typeof row])
+                        : String(row[col.key as keyof typeof row] ?? '');
             }));
 
             dataRow.eachCell(cell => {
@@ -426,10 +443,10 @@ const CustomDataGridInner = <T,>({
         const headers = [visibleCols.map(col => col.header)];
         const dataRows = filteredData.map(row =>
             visibleCols.map(col => {
-                const cellContent = col.render ? col.render(row) : row[col.key];
+                const cellContent = col.render ? col.render(row) : row[col.key as keyof typeof row];
                 return typeof cellContent === 'string' || typeof cellContent === 'number'
                     ? String(cellContent)
-                    : String(row[col.key] ?? '');
+                    : String(row[col.key as keyof typeof row] ?? '');
             })
         );
         autoTable(doc, {
@@ -545,7 +562,7 @@ const CustomDataGridInner = <T,>({
                             <div className={`flex items-start gap-2 p-1 ${theadWrapper}`}>
                                 {inputFilter && (
                                     <div className={inputFilterWrapper}>
-                                        <input
+                                        <Input
                                             type="text"
                                             placeholder="Search..."
                                             value={filterText}
@@ -625,7 +642,7 @@ const CustomDataGridInner = <T,>({
 
                                     return (
                                         <div className="relative z-10">
-                                            <button
+                                            <Button
                                                 ref={columnDropdownRef}
                                                 onClick={() => {
                                                     setOpenColumnDropdown(prev => {
@@ -640,9 +657,10 @@ const CustomDataGridInner = <T,>({
                                                     });
                                                 }}
                                                 className={columnToggleButton}
+                                                variant="default"
                                             >
                                                 Visible Columns
-                                            </button>
+                                            </Button>
                                             {dropdown}
                                         </div>
                                     );
@@ -650,7 +668,7 @@ const CustomDataGridInner = <T,>({
                                 {/* Export dropdown button */}
                                 {dataExport && (
                                     <div className="relative z-10">
-                                        <button
+                                        <Button
                                             ref={exportDropdownRef}
                                             onClick={() => {
                                                 setOpenExportDropdown(prev => {
@@ -665,9 +683,10 @@ const CustomDataGridInner = <T,>({
                                                 });
                                             }}
                                             className={exportButton}
+                                            variant="default"
                                         >
                                             Export
-                                        </button>
+                                        </Button>
                                         {exportDropdown}
                                     </div>
                                 )}
@@ -677,271 +696,278 @@ const CustomDataGridInner = <T,>({
                     <div className={`${!pagination ? 'max-h-[500px] overflow-y-auto overflow-x-visible relative z-0' : ''}`}>
                         <table className={tableWrapper}>
                             <thead className={theadWrapper}>
-                              <tr>
-                                {rowSelection?.enabled && (
-                                  <th className="py-2 border-r border-gray-300 dark:border-slate-700 border-b-0 bg-gray-200 dark:bg-slate-700! text-center w-10">
-                                    <input
-                                      ref={headerCheckboxRef}
-                                      type="checkbox"
-                                      className="form-checkbox w-4.5 h-4.5 border-stone-300 dark:border-gray-400"
-                                      checked={allSelected}
-                                      aria-checked={
-                                        allSelected ? "true" : (!noneSelected ? "mixed" : "false")
-                                      }
-                                      onChange={(e) => {
-                                        const selectableKeys = pagedData
-                                          .map((row, i) => ({
-                                            key: resolveRowKey(row, i),
-                                            selectable: !rowSelection.isSelectable || rowSelection.isSelectable(row)
-                                          }))
-                                          .filter(entry => entry.selectable)
-                                          .map(entry => entry.key);
+                                <tr>
+                                    {rowSelection?.enabled && (
+                                        <th className="py-2 border-r border-gray-300 dark:border-slate-700 border-b-0 bg-gray-200 dark:bg-slate-700! text-center w-10">
+                                            <Input
+                                                ref={headerCheckboxRef}
+                                                type="checkbox"
+                                                className="form-checkbox w-4.5 h-4.5 border-stone-300 dark:border-gray-400"
+                                                checked={allSelected}
+                                                aria-checked={
+                                                    allSelected ? "true" : (!noneSelected ? "mixed" : "false")
+                                                }
+                                                onChange={(e) => {
+                                                    const selectableKeys = pagedData
+                                                        .map((row, i) => ({
+                                                            key: resolveRowKey(row, i),
+                                                            selectable: !rowSelection.isSelectable || rowSelection.isSelectable(row)
+                                                        }))
+                                                        .filter(entry => entry.selectable)
+                                                        .map(entry => entry.key);
 
-                                        const newSelected = new Set(selectedRowKeys);
+                                                    const newSelected = new Set(selectedRowKeys);
 
-                                        if (e.target.checked) {
-                                          selectableKeys.forEach(key => newSelected.add(key));
-                                        } else {
-                                          selectableKeys.forEach(key => newSelected.delete(key));
-                                        }
+                                                    if (e.target.checked) {
+                                                        selectableKeys.forEach(key => newSelected.add(key));
+                                                    } else {
+                                                        selectableKeys.forEach(key => newSelected.delete(key));
+                                                    }
 
-                                        setSelectedRowKeys(newSelected);
-                                      }}
-                                    />
-                                  </th>
-                                )}
-                                {rowExpandable?.enabled && <th className="w-6 border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
-                                {flatColumns.filter(col => visibleColumns[String(col.key)]).map(col => (
-                                  <th
-                                    key={String(col.key)}
-                                    className="text-left px-4 py-2 border-b-0 dark:border-dark font-bold text-sm bg-gray-200 dark:bg-slate-700"
-                                    style={{ width: columnWidths[String(col.key)] ?? 'auto' }}
-                                    onClick={() => col.sortable && handleSort(col.key)}
-                                  >
-                                    <div className="group flex items-center">
-                                      <span>{col.header}</span>
-                                      {col.sortable && (
-                                        <span className="ml-2 text-xs text-gray-500 transition-opacity">
-                                          {sortKey === col.key ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className={columnResizer} />
-                                  </th>
-                                ))}
-                              </tr>
-                              {/* filter row */}
-                              <tr className={theadFilterRow}>
-                                {rowSelection?.enabled && <td className="truncate border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
-                                {rowExpandable?.enabled && <td className="truncate border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
-                                {flatColumns.filter(col => visibleColumns[String(col.key)]).map((col) => (
-                                    <td key={String(col.key)} className={`p-1 border-b dark:border-dark bg-gray-200 dark:bg-slate-700 truncate`}>
-                                        {col.filter === 'input' && (
-                                            <input
-                                                type="text"
-                                                className={filterCellInput}
-                                                placeholder={`Search ${col.header}`}
-                                                onChange={e => {
-                                                    setColumnFilters(prev => ({
-                                                        ...prev,
-                                                        [col.key]: e.target.value
-                                                    }));
+                                                    setSelectedRowKeys(newSelected);
                                                 }}
                                             />
-                                        )}
-                                        {col.filter === 'singleSelect' && (
-                                            <>
-                                                {/** Warn if fallback yields no options */}
-                                                {(() => {
-                                                    useEffect(() => {
-                                                        if (
-                                                            col.filter === 'singleSelect' &&
-                                                            !col.filterParams?.options &&
-                                                            data.length > 0
-                                                        ) {
-                                                            const uniqueVals = Array.from(new Set(data.map(row => row[col.key] ?? '').filter(Boolean)));
-                                                            if (uniqueVals.length === 0) {
-                                                                console.warn(`[DataGrid] Column '${String(col.key)}' (singleSelect) fallback yielded no options from data.`);
-                                                            }
-                                                        }
-                                                    }, [col.key, data]);
-                                                    return null;
-                                                })()}
-                                                <select
-                                                    className={filterCellSelect}
+                                        </th>
+                                    )}
+                                    {rowExpandable?.enabled && <th className="w-6 border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
+                                    {flatColumns.filter(col => visibleColumns[String(col.key)]).map(col => (
+                                        <th
+                                            key={String(col.key)}
+                                            className="text-left px-4 py-2 border-b-0 dark:border-dark font-bold text-sm bg-gray-200 dark:bg-slate-700"
+                                            style={{ width: columnWidths[String(col.key)] ?? 'auto' }}
+                                            onClick={() => col.sortable && handleSort(col.key)}
+                                        >
+                                            <div className="flex items-center">
+                                                <span>{col.header}</span>
+                                                {col.sortable && (
+                                                    <span className="ml-2 text-xs text-gray-500 transition-opacity">
+                                                        {sortKey === col.key ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span className={columnResizer} />
+                                        </th>
+                                    ))}
+                                </tr>
+                                {/* filter row */}
+                                <tr className={theadFilterRow}>
+                                    {rowSelection?.enabled && <td className="truncate border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
+                                    {rowExpandable?.enabled && <td className="truncate border-r border-gray-300 dark:border-slate-700 bg-gray-200 dark:bg-slate-700" />}
+                                    {flatColumns.filter(col => visibleColumns[String(col.key)]).map((col) => (
+                                        <td key={String(col.key)} className={`p-1 border-b dark:border-dark bg-gray-200 dark:bg-slate-700 truncate`}>
+                                            {col.filter === 'input' && (
+                                                <Input
+                                                    type="text"
+                                                    className={filterCellInput}
+                                                    placeholder={`Search ${col.header}`}
                                                     onChange={e => {
                                                         setColumnFilters(prev => ({
                                                             ...prev,
                                                             [col.key]: e.target.value
                                                         }));
                                                     }}
-                                                >
-                                                    <option value="">All</option>
-                                                    {(col.filterParams?.options ??
-                                                        Array.from(new Set(data.map(row => row[col.key] ?? '').filter(Boolean)))) // fallback to unique values
-                                                        .map(opt => (
-                                                            <option key={String(opt)} value={String(opt)}>
-                                                                {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
-                                                            </option>
-                                                        ))}
-                                                </select>
-                                            </>
-                                        )}
-                                        {col.filter === 'multiSelect' && (
-                                            (() => {
-                                                const buttonRef = useRef<HTMLButtonElement | null>(null);
-                                                // Dropdown position state for this column
-                                                const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
-                                                // Effect to update position on open, resize, scroll
-                                                useEffect(() => {
-                                                    const handleResize = () => {
-                                                        if (openMultiSelect[String(col.key)] && buttonRef.current) {
-                                                            const rect = buttonRef.current.getBoundingClientRect();
-                                                            setDropdownPosition({
-                                                                top: rect.bottom + window.scrollY,
-                                                                left: rect.left + window.scrollX,
-                                                            });
-                                                        }
-                                                    };
-                                                    window.addEventListener('resize', handleResize);
-                                                    window.addEventListener('scroll', handleResize, true);
-                                                    return () => {
-                                                        window.removeEventListener('resize', handleResize);
-                                                        window.removeEventListener('scroll', handleResize, true);
-                                                    };
-                                                }, [openMultiSelect[String(col.key)]]);
-                                                // Render dropdown via portal for this column
-                                                const dropdown =
-                                                    openMultiSelect[String(col.key)] && buttonRef.current
-                                                        ? createPortal(
-                                                            <div
-                                                                className="absolute z-50 bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 mt-1 w-full min-w-40 rounded-xs shadow-xl"
-                                                                style={{
-                                                                    position: 'absolute',
-                                                                    top: dropdownPosition?.top ?? 0,
-                                                                    left: dropdownPosition?.left ?? 0,
-                                                                    width: buttonRef.current?.offsetWidth ?? 200,
-                                                                }}
-                                                            >
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Type to filter..."
-                                                                    className="w-full form-input bg-transparent/10 max-w-full px-2 py-1 border-b rounded-xs text-sm sticky top-0 truncate"
-                                                                    value={multiSelectSearch[col.key as string] || ''}
-                                                                    onChange={e =>
-                                                                        setMultiSelectSearch(prev => ({
-                                                                            ...prev,
-                                                                            [col.key as string]: e.target.value
-                                                                        }))
-                                                                    }
-                                                                />
-                                                                <div className="max-h-40 overflow-auto bg-stone-100 dark:bg-slate-400 shadow-xl">
-                                                                    {col.filterParams?.options
-                                                                        ?.filter(opt =>
-                                                                            String(opt).toLowerCase().includes((multiSelectSearch[col.key as string] || '').toLowerCase())
-                                                                        )
-                                                                        .map(opt => (
-                                                                            <label key={String(opt)} className="block text-sm px-2 cursor-pointer hover:bg-gray-200 dark:hover:bg-amber-600">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    value={String(opt)}
-                                                                                    className="form-checkbox w-4 h-4 border-stone-300 dark:border-gray-400 mr-1"
-                                                                                    checked={Array.isArray(columnFilters[col.key as string]) && columnFilters[col.key as string].includes(String(opt))}
-                                                                                    onChange={e => {
-                                                                                        setColumnFilters(prev => {
-                                                                                            const existing = Array.isArray(prev[col.key as string]) ? prev[col.key as string] : [];
-                                                                                            const updated = e.target.checked
-                                                                                                ? [...existing.map(String), String(opt)]
-                                                                                                : existing.map(String).filter((v: string) => v !== String(opt));
-                                                                                            const newFilters = { ...prev };
-                                                                                            if (updated.length > 0) {
-                                                                                                newFilters[col.key as string] = updated;
-                                                                                            } else {
-                                                                                                delete newFilters[col.key as string];
-                                                                                            }
-                                                                                            return newFilters;
-                                                                                        });
-                                                                                    }}
-                                                                                />
-                                                                                {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
-                                                                            </label>
-                                                                        ))}
-                                                                </div>
-                                                            </div>,
-                                                            document.body
-                                                        )
-                                                        : null;
-                                                return (
-                                                    <div className="relative z-10 overflow-visible">
-                                                        <button
-                                                            ref={buttonRef}
-                                                            onClick={() => {
-                                                                const key = String(col.key);
-                                                                // Compute and set dropdown position
-                                                                const rect = buttonRef.current?.getBoundingClientRect();
-                                                                if (rect) {
-                                                                    setDropdownPosition({
-                                                                        top: rect.bottom + window.scrollY,
-                                                                        left: rect.left + window.scrollX,
-                                                                    });
+                                                />
+                                            )}
+                                            {col.filter === 'singleSelect' && (
+                                                <>
+                                                    {/** Warn if fallback yields no options */}
+                                                    {(() => {
+                                                        useEffect(() => {
+                                                            if (
+                                                                col.filter === 'singleSelect' &&
+                                                                !col.filterParams?.options &&
+                                                                data.length > 0
+                                                            ) {
+                                                                const uniqueVals = Array.from(new Set(data.map(row => row[col.key] ?? '').filter(Boolean)));
+                                                                if (uniqueVals.length === 0) {
+                                                                    console.warn(`[DataGrid] Column '${String(col.key)}' (singleSelect) fallback yielded no options from data.`);
                                                                 }
-                                                                setOpenMultiSelect(prev => ({
-                                                                    ...prev,
-                                                                    [key]: !prev[key],
-                                                                }));
-                                                            }}
-                                                            className={filterCellSelect}
-                                                        >
-                                                            Select multiple
-                                                        </button>
-                                                        {dropdown}
-                                                    </div>
-                                                );
-                                            })()
-                                        )}
-                                        {col.filter === 'date' && (
-                                            <input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                        )}
-                                        {col.filter === 'dateRange' && (
-                                            <div className="flex gap-1">
-                                                <input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                                <input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                            </div>
-                                        )}
-                                    </td>
-                                ))}
-                              </tr>
+                                                            }
+                                                        }, [col.key, data]);
+                                                        return null;
+                                                    })()}
+                                                    <Select
+                                                        value={columnFilters[col.key as string] ?? ""}
+                                                        onValueChange={val => {
+                                                            setColumnFilters(prev => ({
+                                                                ...prev,
+                                                                [col.key]: val
+                                                            }));
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className={filterCellSelect}>
+                                                            <SelectValue placeholder={`All`} />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {/* Only render SelectItem if value is truthy/non-empty */}
+                                                            {(
+                                                                (col.filterParams?.options ??
+                                                                    Array.from(new Set(data.map(row => row[col.key] ?? '').filter(Boolean))))
+                                                                .filter((opt) => opt && String(opt) !== '')
+                                                            ).map(opt => (
+                                                                <SelectItem key={String(opt)} value={String(opt)}>
+                                                                    {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </>
+                                            )}
+                                            {col.filter === 'multiSelect' && (
+                                                (() => {
+                                                    const buttonRef = useRef<HTMLButtonElement | null>(null);
+                                                    // Dropdown position state for this column
+                                                    const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+                                                    // Effect to update position on open, resize, scroll
+                                                    useEffect(() => {
+                                                        const handleResize = () => {
+                                                            if (openMultiSelect[String(col.key)] && buttonRef.current) {
+                                                                const rect = buttonRef.current.getBoundingClientRect();
+                                                                setDropdownPosition({
+                                                                    top: rect.bottom + window.scrollY,
+                                                                    left: rect.left + window.scrollX,
+                                                                });
+                                                            }
+                                                        };
+                                                        window.addEventListener('resize', handleResize);
+                                                        window.addEventListener('scroll', handleResize, true);
+                                                        return () => {
+                                                            window.removeEventListener('resize', handleResize);
+                                                            window.removeEventListener('scroll', handleResize, true);
+                                                        };
+                                                    }, [openMultiSelect[String(col.key)]]);
+                                                    // Render dropdown via portal for this column
+                                                    const dropdown =
+                                                        openMultiSelect[String(col.key)] && buttonRef.current
+                                                            ? createPortal(
+                                                                <div
+                                                                    className="absolute z-50 bg-white dark:bg-slate-800 border border-gray-300 dark:border-gray-600 mt-1 w-full min-w-40 rounded-xs shadow-xl"
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: dropdownPosition?.top ?? 0,
+                                                                        left: dropdownPosition?.left ?? 0,
+                                                                        width: buttonRef.current?.offsetWidth ?? 200,
+                                                                    }}
+                                                                >
+                                                                    <Input
+                                                                        type="text"
+                                                                        placeholder="Type to filter..."
+                                                                        className="w-full form-input bg-transparent/10 max-w-full px-2 py-1 border-b rounded-xs text-sm sticky top-0 truncate"
+                                                                        value={multiSelectSearch[col.key as string] || ''}
+                                                                        onChange={e =>
+                                                                            setMultiSelectSearch(prev => ({
+                                                                                ...prev,
+                                                                                [col.key as string]: e.target.value
+                                                                            }))
+                                                                        }
+                                                                    />
+                                                                    <div className="max-h-40 overflow-auto bg-stone-100 dark:bg-slate-400 shadow-xl">
+                                                                        {col.filterParams?.options
+                                                                            ?.filter(opt =>
+                                                                                String(opt).toLowerCase().includes((multiSelectSearch[col.key as string] || '').toLowerCase())
+                                                                            )
+                                                                            .map(opt => (
+                                                                                <label key={String(opt)} className="block text-sm px-2 cursor-pointer hover:bg-gray-200 dark:hover:bg-amber-600">
+                                                                                    <Input
+                                                                                        type="checkbox"
+                                                                                        value={String(opt)}
+                                                                                        className="form-checkbox w-4 h-4 border-stone-300 dark:border-gray-400 mr-1"
+                                                                                        checked={Array.isArray(columnFilters[col.key as string]) && columnFilters[col.key as string].includes(String(opt))}
+                                                                                        onChange={e => {
+                                                                                            setColumnFilters(prev => {
+                                                                                                const existing = Array.isArray(prev[col.key as string]) ? prev[col.key as string] : [];
+                                                                                                const updated = e.target.checked
+                                                                                                    ? [...existing.map(String), String(opt)]
+                                                                                                    : existing.map(String).filter((v: string) => v !== String(opt));
+                                                                                                const newFilters = { ...prev };
+                                                                                                if (updated.length > 0) {
+                                                                                                    newFilters[col.key as string] = updated;
+                                                                                                } else {
+                                                                                                    delete newFilters[col.key as string];
+                                                                                                }
+                                                                                                return newFilters;
+                                                                                            });
+                                                                                        }}
+                                                                                    />
+                                                                                    {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
+                                                                                </label>
+                                                                            ))}
+                                                                    </div>
+                                                                </div>,
+                                                                document.body
+                                                            )
+                                                            : null;
+                                                    return (
+                                                        <div className="relative z-10 overflow-visible">
+                                                            <button
+                                                                ref={buttonRef}
+                                                                onClick={() => {
+                                                                    const key = String(col.key);
+                                                                    // Compute and set dropdown position
+                                                                    const rect = buttonRef.current?.getBoundingClientRect();
+                                                                    if (rect) {
+                                                                        setDropdownPosition({
+                                                                            top: rect.bottom + window.scrollY,
+                                                                            left: rect.left + window.scrollX,
+                                                                        });
+                                                                    }
+                                                                    setOpenMultiSelect(prev => ({
+                                                                        ...prev,
+                                                                        [key]: !prev[key],
+                                                                    }));
+                                                                }}
+                                                                className={filterCellSelect}
+                                                            >
+                                                                Select multiple
+                                                            </button>
+                                                            {dropdown}
+                                                        </div>
+                                                    );
+                                                })()
+                                            )}
+                                            {col.filter === 'date' && (
+                                                <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
+                                            )}
+                                            {col.filter === 'dateRange' && (
+                                                <div className="flex gap-1">
+                                                    <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
+                                                    <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
+                                                </div>
+                                            )}
+                                        </td>
+                                    ))}
+                                </tr>
                             </thead>
                             <tbody>
                                 {pagedData.map((row, i) => {
                                     const key = resolveRowKey(row, i);
                                     return (
                                         <React.Fragment key={key}>
-                                <tr
-                                    className={
-                                        `${sizeClass} ${rowClass?.(row) ?? 'even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800'}`
-                                        + ((rowSelection?.isSelectable?.(row) !== false && selectedRowKeys.has(key)) ? ` ${rowSelected}` : '')
-                                        + ((key === highlightedRowKey && (!rowSelection?.enabled || !selectedRowKeys.has(key))) ? ` ${rowDoubleClicked}` : '')
-                                        + (expandedRows.has(key as number) ? ` ${rowExpanded}` : '')
-                                        + ` dark:text-dark-light ${rowHover}`
-                                    }
-                                    onClick={() => {
-                                        const now = Date.now();
-                                        const lastClickTime = rowClickTimestamps.current[key] || 0;
-                                        const timeDiff = now - lastClickTime;
-                                        rowClickTimestamps.current[key] = now;
-                                        if (timeDiff < 250) {
-                                            if (onRowDoubleClick) onRowDoubleClick(row);
-                                            setHighlightedRowKey(key);
-                                        }
-                                    }}
-                                >
+                                            <tr
+                                                className={
+                                                    `${sizeClass} ${rowClass?.(row) ?? 'even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800'}`
+                                                    + ((rowSelection?.isSelectable?.(row) !== false && selectedRowKeys.has(key)) ? ` ${rowSelected}` : '')
+                                                    + ((key === highlightedRowKey && (!rowSelection?.enabled || !selectedRowKeys.has(key))) ? ` ${rowDoubleClicked}` : '')
+                                                    + (expandedRows.has(key as number) ? ` ${rowExpanded}` : '')
+                                                    + ` dark:text-dark-light ${rowHover}`
+                                                }
+                                                onClick={() => {
+                                                    const now = Date.now();
+                                                    const lastClickTime = rowClickTimestamps.current[key] || 0;
+                                                    const timeDiff = now - lastClickTime;
+                                                    rowClickTimestamps.current[key] = now;
+                                                    if (timeDiff < 250) {
+                                                        if (onRowDoubleClick) onRowDoubleClick(row);
+                                                        setHighlightedRowKey(key);
+                                                    }
+                                                }}
+                                            >
                                                 {rowSelection?.enabled && (
                                                     <td
                                                         className={`${sizeClass} ${checkboxCell} ${expandedRows.has(key as number) ? 'border-t' : ''} border-t border-r dark:border-r-0 ${i % 2 === 0 ? 'even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800' : ''}`}
                                                     >
                                                         {(!rowSelection.isSelectable || rowSelection.isSelectable(row)) ? (
-                                                            <input
+                                                            <Input
                                                                 type="checkbox"
                                                                 className='form-checkbox w-4.5 h-4.5 dark:border-gray-400 '
                                                                 checked={selectedRowKeys.has(key)}
@@ -964,7 +990,7 @@ const CustomDataGridInner = <T,>({
                                                                 : expandCellCollapsed)
                                                         }
                                                     >
-                                                        <button
+                                                        <Button
                                                             onClick={() => {
                                                                 const newExpanded = new Set(expandedRows);
                                                                 if (newExpanded.has(key as number)) newExpanded.delete(key as number);
@@ -973,9 +999,10 @@ const CustomDataGridInner = <T,>({
                                                             }}
                                                             className={`${expandedRows.has(key as number) ? 'text-red-600 dark:text-red-800' : 'text-green-600 dark:text-green-700'}`}
                                                             aria-label="Toggle expand"
+                                                            variant="ghost"
                                                         >
                                                             <FontAwesomeIcon icon={expandedRows.has(key as number) ? faMinus : faPlus} />
-                                                        </button>
+                                                        </Button>
                                                     </td>
                                                 )}
                                                 {flatColumns.filter(col => visibleColumns[String(col.key)]).map((col) => {
@@ -1003,7 +1030,7 @@ const CustomDataGridInner = <T,>({
                                                                 }
                                                             }}
                                                         >
-                                                            {col.render ? col.render(row) : String(row[col.key] ?? '')}
+                                                            {col.render ? col.render(row) : String(row[col.key as keyof typeof row] ?? '')}
                                                         </td>
                                                     );
                                                 })}
@@ -1056,19 +1083,22 @@ const CustomDataGridInner = <T,>({
                     <div className="flex justify-between items-center">
                         <div className="flex w-full items-end gap-2">
                             <label htmlFor="pageSize" className="text-sm max-w-[100px] dark:text-danger-light text-gray-600 font-normal">Page size:</label>
-                            <select
-                                id="pageSize"
-                                className="form-select form-select-sm max-w-[100px] px-1 rounded-xs bg-white/50 truncate dark:text-danger-light focus:outline-hidden "
-                                value={pageSize}
-                                onChange={(e) => {
+                            <Select
+                                value={String(pageSize)}
+                                onValueChange={(val) => {
                                     setCurrentPage(1);
-                                    setPageSize(Number(e.target.value));
+                                    setPageSize(Number(val));
                                 }}
                             >
-                                {[10, 50, 100].map(size => (
-                                    <option key={size} value={size}>{size}</option>
-                                ))}
-                            </select>
+                                <SelectTrigger className="form-select form-select-sm max-w-[100px] px-1 rounded-xs bg-white/50 truncate dark:text-danger-light focus:outline-hidden ">
+                                    <SelectValue placeholder="Page size" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[10, 50, 100].map(size => (
+                                        <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="flex items-center gap-1">
                             {(() => {
@@ -1077,38 +1107,41 @@ const CustomDataGridInner = <T,>({
 
                                 // Prev button
                                 pages.push(
-                                    <button
+                                    <Button
                                         key="prev"
                                         onClick={() => setCurrentPage(currentPage - 1)}
                                         className={paginationButton}
                                         disabled={currentPage === 1}
+                                        variant="ghost"
                                     >
                                         Prev
-                                    </button>
+                                    </Button>
                                 );
 
                                 if (totalPages <= maxVisiblePages + 4) {
                                     for (let page = 1; page <= totalPages; page++) {
                                         pages.push(
-                                            <button
+                                            <Button
                                                 key={page}
                                                 onClick={() => setCurrentPage(page)}
                                                 className={`${paginationButton} ${currentPage === page ? paginationButtonActive : ''}`}
+                                                variant="ghost"
                                             >
                                                 {page}
-                                            </button>
+                                            </Button>
                                         );
                                     }
                                 } else {
                                     // Always show first page
                                     pages.push(
-                                        <button
+                                        <Button
                                             key={1}
                                             onClick={() => setCurrentPage(1)}
                                             className={`${paginationButton} ${currentPage === 1 ? paginationButtonActive : ''}`}
+                                            variant="ghost"
                                         >
                                             1
-                                        </button>
+                                        </Button>
                                     );
 
                                     // Show start ellipsis if currentPage > 4
@@ -1122,13 +1155,14 @@ const CustomDataGridInner = <T,>({
                                     for (let page = start; page <= end; page++) {
                                         if (page !== 1 && page !== totalPages) {
                                             pages.push(
-                                                <button
+                                                <Button
                                                     key={page}
                                                     onClick={() => setCurrentPage(page)}
                                                     className={`${paginationButton} ${currentPage === page ? paginationButtonActive : ''}`}
+                                                    variant="ghost"
                                                 >
                                                     {page}
-                                                </button>
+                                                </Button>
                                             );
                                         }
                                     }
@@ -1140,26 +1174,28 @@ const CustomDataGridInner = <T,>({
 
                                     // Always show last page
                                     pages.push(
-                                        <button
+                                        <Button
                                             key={totalPages}
                                             onClick={() => setCurrentPage(totalPages)}
                                             className={`${paginationButton} ${currentPage === totalPages ? paginationButtonActive : ''}`}
+                                            variant="ghost"
                                         >
                                             {totalPages}
-                                        </button>
+                                        </Button>
                                     );
                                 }
 
                                 // Next button
                                 pages.push(
-                                    <button
+                                    <Button
                                         key="next"
                                         onClick={() => setCurrentPage(currentPage + 1)}
                                         className={paginationButton}
                                         disabled={currentPage === totalPages}
+                                        variant="ghost"
                                     >
                                         Next
-                                    </button>
+                                    </Button>
                                 );
 
                                 return pages;
@@ -1179,10 +1215,10 @@ const CustomDataGridInner = <T,>({
 };
 
 export const CustomDataGrid = forwardRef(CustomDataGridInner) as <T>(
-  props: DataGridProps<T> & {
-    ref?: React.Ref<{
-      deselectRow: (key: string | number) => void;
-      clearSelectedRows: () => void;
-    }>
-  }
+    props: DataGridProps<T> & {
+        ref?: React.Ref<{
+            deselectRow: (key: string | number) => void;
+            clearSelectedRows: () => void;
+        }>
+    }
 ) => JSX.Element;

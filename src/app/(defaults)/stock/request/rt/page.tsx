@@ -1,16 +1,16 @@
-import COutApp from "@components/stockinventory/c-rtrequest";
+import RTRequest from "@components/stockinventory/c-rtrequest";
 import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Stock-Out",
+  title: "Stock Request",
 };
 
 const StockOut = () => {
   return (
     <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-2xl font-bold">Stock Request</h1>
-      <COutApp />
+      <h1 className="text-2xl font-bold">Stock Inventory</h1>
+      <RTRequest />
     </div>
   );
 }

@@ -348,7 +348,6 @@ const Purchase: React.FC = () => {
 						<Separator className="my-4" />
 						{/* Items Table (existing) */}
 						<div className="mb-6">
-							
 							<div className="flex justify-between items-center mb-2">
 								<h3 className="text-lg font-semibold">Items</h3>
 								<Button
