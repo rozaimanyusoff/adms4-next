@@ -29,7 +29,7 @@ import { filter } from "lodash";
 interface Model {
   id: number;
   name: string;
-  image?: string;
+  image?: string | string[];
   brand?: { id: number; code?: string; name: string } | null;
   category?: { id: number; code?: string; name: string } | null;
   type?: { id: number; code?: string; name: string } | null;
@@ -52,7 +52,7 @@ const CoreModel: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [types, setTypes] = useState<Type[]>([]);
-  const [formData, setFormData] = useState<Partial<Model>>({ name: "", image: "", brand: undefined, category: undefined, type: undefined, status: "active" });
+  const [formData, setFormData] = useState<Partial<Model>>({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
   const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const fetchData = async () => {
@@ -82,8 +82,6 @@ const CoreModel: React.FC = () => {
     try {
       const payload = {
         ...formData,
-        brandId: formData.brand?.id,
-        categoryId: formData.category?.id,
       };
       if (formData.id) {
         await authenticatedApi.put(`/api/assets/models/${formData.id}`, payload);
@@ -92,7 +90,7 @@ const CoreModel: React.FC = () => {
       }
       fetchData();
       setIsModalOpen(false);
-      setFormData({ name: "", image: "", brand: undefined, category: undefined, type: undefined, status: "active" });
+      setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
     } catch (error) {
       console.error("Error submitting form:", error);
     }
@@ -165,7 +163,7 @@ const CoreModel: React.FC = () => {
   const handleCloseForm = () => {
     setIsModalOpen(false);
     setEditIndex(null);
-    setFormData({ name: "", image: "", brand: undefined, category: undefined, type: undefined, status: "active" });
+    setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
   };
 
   const columns = [
@@ -243,7 +241,7 @@ const CoreModel: React.FC = () => {
       {!isModalOpen && (
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold mb-4">Models</h2>
-          <Button onClick={() => { setIsModalOpen(true); setEditIndex(null); setFormData({ name: "", image: "", brand: undefined, category: undefined, type: undefined, status: "active" }); }} className="mb-4 bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => { setIsModalOpen(true); setEditIndex(null); setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" }); }} className="mb-4 bg-blue-600 hover:bg-blue-700">
             <Plus size={22} />
           </Button>
         </div>
@@ -267,15 +265,35 @@ const CoreModel: React.FC = () => {
           {/* Left: Image upload/preview */}
           <div className="flex flex-col items-center md:w-1/3 w-full">
             <div className="w-full flex flex-col items-center mb-4 gap-2">
-              <img
-                src={formData.image
-                  ? (formData.image.startsWith("data:") || formData.image.startsWith("http")
-                    ? formData.image
-                    : `/assets/images/${formData.image}`)
-                  : "/assets/images/product-camera.jpg"}
-                alt={formData.name || "Model image"}
-                className="w-64 h-64 object-contain rounded border border-gray-200 bg-white"
-              />
+              <div className="flex flex-wrap gap-2 justify-center">
+                {Array.isArray(formData.image) && formData.image.length > 0 ? (
+                  formData.image.map((img, idx) => (
+                    <div key={idx} className="relative group">
+                      <img
+                        src={img.startsWith("data:") || img.startsWith("http") ? img : `/assets/images/${img}`}
+                        alt={formData.name || `Model image ${idx+1}`}
+                        className="w-32 h-32 object-contain rounded border border-gray-200 bg-white"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="absolute top-1 right-1 text-red-500 opacity-0 group-hover:opacity-100 transition"
+                        onClick={() => {
+                          if (Array.isArray(formData.image)) {
+                            setFormData({ ...formData, image: formData.image.filter((_: string, i: number) => i !== idx) });
+                          }
+                        }}
+                      >Remove</Button>
+                    </div>
+                  ))
+                ) : (
+                  <img
+                    src="/assets/images/product-camera.jpg"
+                    alt="Model image"
+                    className="w-32 h-32 object-contain rounded border border-gray-200 bg-white"
+                  />
+                )}
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -283,36 +301,37 @@ const CoreModel: React.FC = () => {
                 onClick={() => document.getElementById('image-upload')?.click()}
               >
                 <span className="material-icons text-lg">photo_camera</span>
-                {formData.image ? "Change Image" : "Upload Image"}
+                {Array.isArray(formData.image) && formData.image.length > 0 ? "Change Images" : "Upload Images"}
               </Button>
               <input
                 id="image-upload"
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = ev => {
-                      setFormData({ ...formData, image: ev.target?.result as string });
-                    };
-                    reader.readAsDataURL(file);
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
+                    const readers = files.map(file => {
+                      return new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = ev => resolve(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      });
+                    });
+                    Promise.all(readers).then(images => {
+                      setFormData({ ...formData, image: [...(Array.isArray(formData.image) ? formData.image : []), ...images] });
+                    });
                   }
                 }}
               />
-              {formData.image && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-red-500"
-                  onClick={() => setFormData({ ...formData, image: "" })}
-                >Remove</Button>
-              )}
             </div>
             {/* Thumbnails (static, can be extended) */}
             <div className="flex gap-2 mt-2">
-              <img src={formData.image ? (formData.image.startsWith("data:") || formData.image.startsWith("http") ? formData.image : `/assets/images/${formData.image}`) : "/assets/images/product-camera.jpg"} className="w-12 h-12 object-contain rounded border" alt="thumb" />
+              {(Array.isArray(formData.image) && formData.image.length > 0 ? formData.image : ["/assets/images/product-camera.jpg"]).map((img, idx) => (
+                <img key={idx} src={img.startsWith("data:") || img.startsWith("http") ? img : `/assets/images/${img}`}
+                  className="w-12 h-12 object-contain rounded border" alt="thumb" />
+              ))}
               <img src="/assets/images/product-laptop.jpg" className="w-12 h-12 object-contain rounded border" alt="thumb" />
               <img src="/assets/images/product-headphones.jpg" className="w-12 h-12 object-contain rounded border" alt="thumb" />
             </div>
@@ -379,6 +398,7 @@ const CoreModel: React.FC = () => {
                   <Label htmlFor="generation" className="mb-2">Generation</Label>
                   <Input
                     id="generation"
+                    className="uppercase"
                     value={formData.generation || ""}
                     onChange={e => setFormData({ ...formData, generation: e.target.value })}
                     placeholder="e.g. 10th Gen, M1, Ryzen 7, etc."
