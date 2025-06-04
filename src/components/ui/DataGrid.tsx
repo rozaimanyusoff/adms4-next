@@ -1080,7 +1080,7 @@ const CustomDataGridInner = <T,>({
             </div>
             {pagination && (
                 <div className={paginationContainer}>
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                         <div className="flex w-full items-end gap-2">
                             <label htmlFor="pageSize" className="text-sm max-w-[100px] dark:text-danger-light text-gray-600 font-normal">Page size:</label>
                             <Select
@@ -1202,7 +1202,7 @@ const CustomDataGridInner = <T,>({
                             })()}
                         </div>
                     </div>
-                    <div className="flex justify-between items-center text-sm text-gray-600 dark:text-dark-light">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm text-gray-600 dark:text-dark-light gap-2">
                         <span className='justify-start'>Showing {startEntry} to {endEntry} of {sortedData.length} entries</span>
                         {rowSelection?.enabled && (
                             <div>Selected: {selectedRowKeys.size}</div>

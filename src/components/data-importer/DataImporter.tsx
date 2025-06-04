@@ -26,6 +26,7 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
     const [existingTables, setExistingTables] = useState<any[]>([]);
     const [showExistingTables, setShowExistingTables] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isUploadingRef = useRef(false);
 
     // Fetch existing tables on mount
     useEffect(() => {
@@ -42,36 +43,47 @@ const DataImporter: React.FC<DataImporterProps> = ({ onConfirm }) => {
 
     // Handle file upload and parse
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setLoading(true);
-        setProgress(10);
-        const ext = file.name.split(".").pop()?.toLowerCase();
-        let data: any[][] = [];
-        if (ext === "csv") {
-            data = await processCsvFile(file, setProgress);
-        } else if (["xls", "xlsx"].includes(ext || "")) {
-            data = await processExcelFile(file, setProgress);
-        }
-        if (data.length > 0) {
-            let headerRowData = data[0] as string[];
-            const maxCols = Math.max(...data.map(row => row.length));
-            if (headerRowData.length < maxCols) {
-                headerRowData = [
-                    ...headerRowData,
-                    ...Array.from({ length: maxCols - headerRowData.length }, (_, i) => `Column ${headerRowData.length + i + 1}`)
-                ];
-                data[0] = headerRowData;
+        if (isUploadingRef.current) return; // Prevent recursion
+        isUploadingRef.current = true;
+        try {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            setLoading(true);
+            setProgress(10);
+            const ext = file.name.split(".").pop()?.toLowerCase();
+            let data: any[][] = [];
+            if (ext === "csv") {
+                data = await processCsvFile(file, setProgress);
+            } else if (["xls", "xlsx"].includes(ext || "")) {
+                data = await processExcelFile(file, setProgress);
             }
-            setRawData(data);
-            setEditData(data);
-            setHeaders(headerRowData);
-            setHeaderRow(0);
-            setDataStartRow(1);
-            setProgress(100);
-            setTimeout(() => setLoading(false), 400);
-        } else {
+            if (data.length > 0) {
+                let headerRowData = data[0] as string[];
+                const maxCols = Math.max(...data.map(row => row.length));
+                if (headerRowData.length < maxCols) {
+                    headerRowData = [
+                        ...headerRowData,
+                        ...Array.from({ length: maxCols - headerRowData.length }, (_, i) => `Column ${headerRowData.length + i + 1}`)
+                    ];
+                    data[0] = headerRowData;
+                }
+                setRawData(data);
+                setEditData(data);
+                setHeaders(headerRowData);
+                setHeaderRow(0);
+                setDataStartRow(1);
+                setProgress(100);
+                setTimeout(() => setLoading(false), 400);
+            } else {
+                setLoading(false);
+            }
+        } catch (err) {
             setLoading(false);
+            toast.error('File import failed.');
+            console.error(err);
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            isUploadingRef.current = false;
         }
     };
 
