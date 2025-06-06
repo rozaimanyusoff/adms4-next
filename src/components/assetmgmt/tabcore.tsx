@@ -7,6 +7,7 @@ import CoreCategory from "./core-category";
 import CoreBrand from "./core-brand";
 import CoreType from "./core-type";
 import CoreModel from "./core-model";
+import CoreSoftware from "./core-software";
 
 const TabCore: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>(() => {
@@ -29,6 +30,7 @@ const TabCore: React.FC = () => {
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="models">Models</TabsTrigger>
+          <TabsTrigger value="softwares">Softwares</TabsTrigger>
         </TabsList>
         <TabsContent value="assets">
           <CoreAsset />
@@ -42,9 +44,11 @@ const TabCore: React.FC = () => {
         <TabsContent value="brands">
           <CoreBrand />
         </TabsContent>
-        
         <TabsContent value="models">
           <CoreModel />
+        </TabsContent>
+        <TabsContent value="softwares">
+          <CoreSoftware />
         </TabsContent>
       </Tabs>
     </div>

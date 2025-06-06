@@ -136,6 +136,10 @@ export interface DataGridProps<T> {
     selectedRowKeys?: Set<string | number>;
     /** Optional setter for external selected row keys */
     setSelectedRowKeys?: React.Dispatch<React.SetStateAction<Set<string | number>>>;
+    /** Optional key for localStorage pagination persistence */
+    persistenceKey?: string;
+    /** Option to persist pagination and pageSize in localStorage */
+    persistPagination?: boolean;
 }
 
 // Utility Functions
@@ -167,8 +171,22 @@ const CustomDataGridInner = <T,>({
     theme,
     onRowDoubleClick,
     onRowSelected,
+    persistenceKey,
+    persistPagination,
 }: DataGridProps<T>, ref: React.Ref<any>) => {
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState(() => {
+        if (!persistPagination) return 1;
+        const stored = typeof window !== "undefined"
+            ? localStorage.getItem(`customDataGrid_${persistenceKey ?? 'default'}_page`)
+            : null;
+        return stored ? parseInt(stored) : 1;
+    });
+
+    useEffect(() => {
+        if (persistPagination && typeof window !== "undefined") {
+            localStorage.setItem(`customDataGrid_${persistenceKey ?? 'default'}_page`, String(currentPage));
+        }
+    }, [currentPage, persistPagination, persistenceKey]);
     const [sortKey, setSortKey] = useState<keyof T | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const [filterText, setFilterText] = useState('');
@@ -178,7 +196,19 @@ const CustomDataGridInner = <T,>({
     const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() =>
         Object.fromEntries(columns.map(col => [String(col.key), col.columnVisible !== false]))
     );
-    const [pageSize, setPageSize] = useState(initialPageSize);
+    const [pageSize, setPageSize] = useState(() => {
+        if (!persistPagination) return initialPageSize;
+        const stored = typeof window !== "undefined"
+            ? localStorage.getItem(`customDataGrid_${persistenceKey ?? 'default'}_pageSize`)
+            : null;
+        return stored ? parseInt(stored) : initialPageSize;
+    });
+
+    useEffect(() => {
+        if (persistPagination && typeof window !== "undefined") {
+            localStorage.setItem(`customDataGrid_${persistenceKey ?? 'default'}_pageSize`, String(pageSize));
+        }
+    }, [pageSize, persistPagination, persistenceKey]);
     // Resizable columns state
     // -- Filter type state for column filter menu
     const [filterTypes, setFilterTypes] = useState<Record<string, 'input' | 'dropdown' | 'none'>>({});
@@ -787,25 +817,31 @@ const CustomDataGridInner = <T,>({
                                                         return null;
                                                     })()}
                                                     <Select
-                                                        value={columnFilters[col.key as string] ?? ""}
+                                                        value={String(columnFilters[col.key as string] ?? "__all__")}
                                                         onValueChange={val => {
-                                                            setColumnFilters(prev => ({
-                                                                ...prev,
-                                                                [col.key]: val
-                                                            }));
+                                                            setColumnFilters(prev => {
+                                                                const updated = { ...prev };
+                                                                if (val === "__all__") {
+                                                                    delete updated[col.key as string];
+                                                                } else {
+                                                                    updated[String(col.key)] = val;
+                                                                }
+                                                                return updated;
+                                                            });
                                                         }}
                                                     >
                                                         <SelectTrigger className={filterCellSelect}>
                                                             <SelectValue placeholder={`All`} />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            {/* Only render SelectItem if value is truthy/non-empty */}
-                                                            {(
-                                                                (col.filterParams?.options ??
-                                                                    Array.from(new Set(data.map(row => row[col.key] ?? '').filter(Boolean))))
-                                                                .filter((opt) => opt && String(opt) !== '')
+                                                            <SelectItem key="__all__" value="__all__">All</SelectItem>
+                                                            {(col.filterParams?.options ??
+                                                                Array.from(new Set(filteredData.map(row => {
+                                                                    const val = row[col.key as keyof T];
+                                                                    return typeof val === 'string' || typeof val === 'number' ? val : '';
+                                                                }).filter(Boolean)))
                                                             ).map(opt => (
-                                                                <SelectItem key={String(opt)} value={String(opt)}>
+                                                                <SelectItem key={String(opt)} value={String(opt) || "__invalid__"}>
                                                                     {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
                                                                 </SelectItem>
                                                             ))}

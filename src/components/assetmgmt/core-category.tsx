@@ -23,14 +23,16 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 
 interface Category {
     id: number;
+    code: string;
     name: string;
-    description: string;
-    image: string;
-    type: {
+    image?: string;
+    type_code?: string;
+    type?: {
         id: number;
         name: string;
     };
@@ -39,13 +41,14 @@ interface Category {
 interface Type {
     id: number;
     name: string;
+    code: string;
 }
 
 const CoreCategory: React.FC = () => {
     const [data, setData] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState<Partial<Category & { typeId: number }>>({ name: "", description: "", typeId: 0 });
+    const [formData, setFormData] = useState<Partial<Category & { type_code: string }>>({ name: "", type_code: "" });
     const [types, setTypes] = useState<Type[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -76,61 +79,80 @@ const CoreCategory: React.FC = () => {
     const handleSubmit = async () => {
         try {
             const payload = {
+                code: formData.code,
                 name: formData.name,
-                description: formData.description,
                 image: formData.image,
-                typeId: formData.typeId,
+                type_code: formData.type_code,
             };
             if (formData.id) {
                 await authenticatedApi.put(`/api/assets/categories/${formData.id}`, payload);
+                toast.success("Category updated successfully");
             } else {
                 await authenticatedApi.post("/api/assets/categories", payload);
+                toast.success("Category created successfully");
             }
             fetchData();
             setIsModalOpen(false);
-            setFormData({ name: "", description: "", typeId: 0 });
+            setFormData({ name: "", code: "", type_code: "" });
         } catch (error) {
+            toast.error("Error submitting form");
             console.error("Error submitting form:", error);
         }
     };
 
     const columns: ColumnDef<Category>[] = [
         { key: "id" as keyof Category, header: "ID" },
+        { key: "code" as keyof Category, header: "Code" },
         { key: "name" as keyof Category, header: "Name" },
-        { key: "description" as keyof Category, header: "Description" },
         {
             key: "image" as keyof Category,
             header: "Image",
             render: (row: Category) => row.image ? <img src={row.image} alt={row.name} className="h-10 w-10 object-cover" /> : <span className="text-gray-500">No Image</span>,
         },
         {
-            key: "type.name" as any,
+            key: "type_code" as any,
             header: "Type",
-            render: (row: Category) => (row.type ? row.type.name : <span className="text-gray-500">N/A</span>),
+            render: (row: Category) => {
+                const found = types.find(t => t.code === row.type_code);
+                return found ? found.name : <span className="text-gray-500">N/A</span>;
+            },
         },
         {
             key: "actions" as any as keyof Category,
             header: "Actions",
             render: (row: Category) => (
-                <Button
-                size="sm"
-                    variant="ghost"
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Edit Category"
                     onClick={() => {
-                        setFormData({ ...row, typeId: row.type?.id || 0 });
+                        setFormData({
+                            ...row,
+                            type_code: row.type_code || (row.type ? types.find(t => t.id === (row.type as any)?.id)?.code || "" : "")
+                        });
                         setIsModalOpen(true);
                     }}
-                    className="bg-yellow-500 hover:bg-yellow-600"
+                    className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            setFormData({
+                                ...row,
+                                type_code: row.type_code || (row.type ? types.find(t => t.id === (row.type as any)?.id)?.code || "" : "")
+                            });
+                            setIsModalOpen(true);
+                        }
+                    }}
                 >
                     <Pencil size={20} />
-                </Button>
+                </span>
             ),
         },
     ];
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold mb-4">Categories</h2>
+                <h2 className="text-xl font-bold mb-4">Category Maintenance</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
                     <Plus size={22} />
                 </Button>
@@ -155,6 +177,19 @@ const CoreCategory: React.FC = () => {
                         }}
                     >
                         <div className="mb-4">
+                            <Label htmlFor="code" className="block text-sm font-medium text-gray-700">
+                                Code
+                            </Label>
+                            <Input
+                                id="code"
+                                value={formData.code || ""}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    setFormData({ ...formData, code: e.target.value })
+                                }
+                                required
+                            />
+                        </div>
+                        <div className="mb-4">
                             <Label htmlFor="name" className="block text-sm font-medium text-gray-700">
                                 Name
                             </Label>
@@ -168,25 +203,35 @@ const CoreCategory: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                                Description
+                            <Label htmlFor="image" className="block text-sm font-medium text-gray-700">
+                                Image
                             </Label>
                             <Input
-                                id="description"
-                                value={formData.description || ""}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    setFormData({ ...formData, description: e.target.value })
-                                }
-                                required
+                                id="image"
+                                type="file"
+                                accept="image/*"
+                                onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = ev => {
+                                            setFormData({ ...formData, image: typeof ev.target?.result === 'string' ? ev.target.result : undefined });
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }
+                                }}
                             />
+                            {formData.image && (
+                                <img src={formData.image} alt="Preview" className="h-16 mt-2 rounded border" />
+                            )}
                         </div>
                         <div className="mb-4">
                             <Label htmlFor="type" className="block text-sm font-medium text-gray-700">
                                 Type
                             </Label>
                             <Select
-                                value={formData.typeId?.toString() || ""}
-                                onValueChange={(value) => setFormData({ ...formData, typeId: parseInt(value, 10) })}
+                                value={formData.type_code || ""}
+                                onValueChange={(value) => setFormData({ ...formData, type_code: value })}
                             >
                                 <SelectTrigger id="type" className="w-full">
                                     <SelectValue placeholder="Select a type" />
@@ -195,7 +240,7 @@ const CoreCategory: React.FC = () => {
                                     <SelectGroup>
                                         <SelectLabel>Types</SelectLabel>
                                         {types.map((type) => (
-                                            <SelectItem key={type.id} value={type.id.toString()}>
+                                            <SelectItem key={type.code} value={type.code}>
                                                 {type.name}
                                             </SelectItem>
                                         ))}

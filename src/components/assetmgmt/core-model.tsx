@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CustomDataGrid } from "@components/ui/DataGrid";
+import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, Pencil, Trash } from "lucide-react";
 import {
@@ -39,11 +39,18 @@ interface Model {
   specification?: string;
   generation?: string;
   status?: 'active' | 'inactive';
+  item_code?: string;
+  model_code?: string; // <-- add this line
 }
 
 interface Brand { id: number; code: string; name: string; }
 interface Category { id: number; code: string; name: string; }
 interface Type { id: number; code: string; name: string; }
+// Add a type for image preview
+interface ImagePreview {
+  name: string;
+  preview: string;
+}
 
 const CoreModel: React.FC = () => {
   const [data, setData] = useState<Model[]>([]);
@@ -52,6 +59,7 @@ const CoreModel: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [types, setTypes] = useState<Type[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
   const [formData, setFormData] = useState<Partial<Model>>({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
   const [editIndex, setEditIndex] = useState<number | null>(null);
 
@@ -81,17 +89,30 @@ const CoreModel: React.FC = () => {
   const handleSubmit = async () => {
     try {
       const payload = {
-        ...formData,
+        id: formData.id,
+        name: formData.name,
+        image: Array.isArray(formData.image) && formData.image.length > 0 ? formData.image[0] : null,
+        type_code: formData.type?.code || formData.type_code || null,
+        category_code: formData.category?.code || formData.category_code || null,
+        brand_code: formData.brand?.code || formData.brand_code || null,
+        item_code: formData.item_code || null, // <-- include item_code in the payload
+        model_code: formData.model_code || null,
+        specification: formData.specification || "",
+        generation: formData.generation || "",
+        status: formData.status || null,
       };
       if (formData.id) {
         await authenticatedApi.put(`/api/assets/models/${formData.id}`, payload);
+        toast.success("Model updated successfully");
       } else {
         await authenticatedApi.post("/api/assets/models", payload);
+        toast.success("Model created successfully");
       }
       fetchData();
       setIsModalOpen(false);
       setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
     } catch (error) {
+      toast.error("Error submitting form");
       console.error("Error submitting form:", error);
     }
   };
@@ -106,36 +127,6 @@ const CoreModel: React.FC = () => {
       toast.error("Failed to delete model");
       console.error("Delete error", error);
     }
-  };
-
-  const getModelCode = () => {
-    const typeCode = formData.type?.code || "";
-    const categoryCode = formData.category?.code || "";
-    const brandCode = formData.brand?.code || "";
-    // Find the index of the current model in the filtered list (by type/category/brand)
-    let modelIndex = 1;
-    if (formData.id) {
-      // Filter models with the same type, category, brand
-      const filtered = data.filter(m =>
-        (m.type?.code || m.type_code) === typeCode &&
-        (m.category?.code || m.category_code) === categoryCode &&
-        (m.brand?.code || m.brand_code) === brandCode
-      );
-      // Sort by id to ensure order
-      const sorted = filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
-      const idx = sorted.findIndex(m => m.id === formData.id);
-      modelIndex = idx >= 0 ? idx + 1 : filtered.length + 1;
-    } else {
-      // For new model, get the next available index for the selected type/category/brand
-      const filtered = data.filter(m =>
-        (m.type?.code || m.type_code) === typeCode &&
-        (m.category?.code || m.category_code) === categoryCode &&
-        (m.brand?.code || m.brand_code) === brandCode
-      );
-      modelIndex = filtered.length + 1;
-    }
-    const modelCode = modelIndex.toString().padStart(3, "0");
-    return [typeCode, categoryCode, brandCode, modelCode].filter(Boolean).join(".");
   };
 
   const openEditForm = (row: Model) => {
@@ -166,13 +157,18 @@ const CoreModel: React.FC = () => {
     setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" });
   };
 
-  const columns = [
-    { key: "id" as keyof Model, header: "ID" },
-    { key: "name" as keyof Model, header: "Name" },
+  const columns: ColumnDef<Model>[] = [
+    { key: "id", header: "ID" },
+    { key: "item_code", header: "Item Code", sortable: true, filter: "input" },
+    { key: "name", header: "Name", sortable: true, filter: "input" },
     {
-      key: "brand" as keyof Model,
+      key: "brand_code",
       header: "Brand",
-      filters: 'singleSelect',
+      filter: "singleSelect",
+      sortable: true,
+      filterParams: {
+        labelMap: Object.fromEntries(brands.map(b => [b.code, b.name])),
+      },
       render: (row: Model) => {
         if (row.brand?.name) return row.brand.name;
         if (row.brand_code) {
@@ -183,9 +179,13 @@ const CoreModel: React.FC = () => {
       },
     },
     {
-      key: "category" as keyof Model,
+      key: "category_code",
       header: "Category",
-      filters: 'singleSelect',
+      filter: "singleSelect",
+      sortable: true,
+      filterParams: {
+        labelMap: Object.fromEntries(categories.map(c => [c.code, c.name])),
+      },
       render: (row: Model) => {
         if (row.category?.name) return row.category.name;
         if (row.category_code) {
@@ -196,8 +196,12 @@ const CoreModel: React.FC = () => {
       },
     },
     {
-      key: "type" as keyof Model,
+      key: "type_code",
       header: "Type",
+      filter: "singleSelect",
+      filterParams: {
+        labelMap: Object.fromEntries(types.map(t => [t.code, t.name])),
+      },
       render: (row: Model) => {
         if (row.type?.name) return row.type.name;
         if (row.type_code) {
@@ -208,8 +212,13 @@ const CoreModel: React.FC = () => {
       },
     },
     {
-      key: "status" as keyof Model,
+      key: "status",
       header: "Status",
+      filter: "singleSelect",
+      filterParams: {
+        options: ["active", "inactive"],
+        labelMap: { active: "Active", inactive: "Inactive" },
+      },
       render: (row: Model) => row.status === "inactive" ? "Inactive" : "Active",
     },
     {
@@ -217,30 +226,41 @@ const CoreModel: React.FC = () => {
       header: "Actions",
       render: (row: Model) => (
         <div className="flex gap-2">
-          <Button
+          <span
+            role="button"
+            tabIndex={0}
             onClick={() => openEditForm(row)}
-            className="bg-yellow-500 hover:bg-yellow-600"
+            onKeyDown={e => {
+              if (e.key === "Enter" || e.key === " ") openEditForm(row);
+            }}
+            className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            aria-label="Edit Model"
           >
             <Pencil size={20} />
-          </Button>
-          <Button
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
             onClick={() => handleDelete(row.id)}
-            className="bg-red-500 hover:bg-red-600"
-            variant="destructive"
+            onKeyDown={e => {
+              if (e.key === "Enter" || e.key === " ") handleDelete(row.id);
+            }}
+            className="inline-flex items-center justify-center p-1 rounded hover:bg-red-100 cursor-pointer text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
+            aria-label="Delete Model"
           >
             <Trash size={20} />
-          </Button>
+          </span>
         </div>
       ),
     },
   ];
 
   return (
-    <div className="p-4">
+    <div className="mt-4">
       {/* Hide title and + Add button when form is visible */}
       {!isModalOpen && (
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold mb-4">Models</h2>
+          <h2 className="text-xl font-bold mb-4">Model Maintenance</h2>
           <Button onClick={() => { setIsModalOpen(true); setEditIndex(null); setFormData({ name: "", image: [], brand: undefined, category: undefined, type: undefined, status: "active" }); }} className="mb-4 bg-blue-600 hover:bg-blue-700">
             <Plus size={22} />
           </Button>
@@ -251,12 +271,19 @@ const CoreModel: React.FC = () => {
         loading ? (
           <p>Loading...</p>
         ) : (
-          <CustomDataGrid columns={columns.map(col => (String(col.key) === 'actions' ? { ...col, render: (row: Model) => (
-            <div className="flex gap-2">
-              <Button onClick={() => openEditForm(row)} className="bg-yellow-500 hover:bg-yellow-600"><Pencil size={20} /></Button>
-              <Button onClick={() => handleDelete(row.id)} className="bg-red-500 hover:bg-red-600" variant="destructive"><Trash size={20} /></Button>
-            </div>
-          ) } : col))} data={data} />
+          <CustomDataGrid
+            data={data}
+            columns={columns}
+            pageSize={10}
+            pagination={true}
+            persistPagination={true}
+            persistenceKey="core-model"
+            inputFilter={false}
+            columnsVisibleOption={false}
+            rowClass={row => ''}
+            rowSelection={undefined}
+            rowExpandable={undefined}
+          />
         )
       )}
       {/* Full-width panel form */}
@@ -266,11 +293,11 @@ const CoreModel: React.FC = () => {
           <div className="flex flex-col items-center md:w-1/3 w-full">
             <div className="w-full flex flex-col items-center mb-4 gap-2">
               <div className="flex flex-wrap gap-2 justify-center">
-                {Array.isArray(formData.image) && formData.image.length > 0 ? (
-                  formData.image.map((img, idx) => (
+                {imagePreviews.length > 0 ? (
+                  imagePreviews.map((img, idx) => (
                     <div key={idx} className="relative group">
                       <img
-                        src={img.startsWith("data:") || img.startsWith("http") ? img : `/assets/images/${img}`}
+                        src={img.preview || `/assets/images/${img.name}`}
                         alt={formData.name || `Model image ${idx+1}`}
                         className="w-32 h-32 object-contain rounded border border-gray-200 bg-white"
                       />
@@ -279,9 +306,8 @@ const CoreModel: React.FC = () => {
                         variant="ghost"
                         className="absolute top-1 right-1 text-red-500 opacity-0 group-hover:opacity-100 transition"
                         onClick={() => {
-                          if (Array.isArray(formData.image)) {
-                            setFormData({ ...formData, image: formData.image.filter((_: string, i: number) => i !== idx) });
-                          }
+                          setImagePreviews(imagePreviews.filter((_, i) => i !== idx));
+                          setFormData({ ...formData, image: (formData.image as string[]).filter((_, i) => i !== idx) });
                         }}
                       >Remove</Button>
                     </div>
@@ -309,27 +335,28 @@ const CoreModel: React.FC = () => {
                 accept="image/*"
                 multiple
                 className="hidden"
-                onChange={e => {
+                onChange={async e => {
                   const files = Array.from(e.target.files || []);
                   if (files.length > 0) {
-                    const readers = files.map(file => {
-                      return new Promise<string>((resolve) => {
+                    // Generate base64 previews for each file
+                    const previews = await Promise.all(files.map(file => {
+                      return new Promise<ImagePreview>((resolve, reject) => {
                         const reader = new FileReader();
-                        reader.onload = ev => resolve(ev.target?.result as string);
+                        reader.onload = () => resolve({ name: file.name, preview: reader.result as string });
+                        reader.onerror = reject;
                         reader.readAsDataURL(file);
                       });
-                    });
-                    Promise.all(readers).then(images => {
-                      setFormData({ ...formData, image: [...(Array.isArray(formData.image) ? formData.image : []), ...images] });
-                    });
+                    }));
+                    setImagePreviews(previews);
+                    setFormData({ ...formData, image: previews.map(p => p.name) });
                   }
                 }}
               />
             </div>
             {/* Thumbnails (static, can be extended) */}
             <div className="flex gap-2 mt-2">
-              {(Array.isArray(formData.image) && formData.image.length > 0 ? formData.image : ["/assets/images/product-camera.jpg"]).map((img, idx) => (
-                <img key={idx} src={img.startsWith("data:") || img.startsWith("http") ? img : `/assets/images/${img}`}
+              {(imagePreviews.length > 0 ? imagePreviews : [{ name: "/assets/images/product-camera.jpg", preview: "/assets/images/product-camera.jpg" }]).map((img, idx) => (
+                <img key={idx} src={img.preview || `/assets/images/${img.name}`}
                   className="w-12 h-12 object-contain rounded border" alt="thumb" />
               ))}
               <img src="/assets/images/product-laptop.jpg" className="w-12 h-12 object-contain rounded border" alt="thumb" />
@@ -375,9 +402,10 @@ const CoreModel: React.FC = () => {
               className="flex flex-col gap-4"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Remove Model Code field, replace with Item Code (read-only) */}
                 <div>
-                  <Label htmlFor="model_code" className="mb-2">Model Code</Label>
-                  <Input id="model_code" value={getModelCode()} readOnly className="bg-gray-100 cursor-not-allowed" />
+                  <Label htmlFor="item_code" className="mb-2">Item Code</Label>
+                  <Input id="item_code" value={formData.item_code || ""} readOnly className="bg-gray-100 cursor-not-allowed" />
                 </div>
                 <div>
                   <Label htmlFor="name" className="mb-2">Name</Label>
