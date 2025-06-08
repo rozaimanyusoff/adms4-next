@@ -101,7 +101,7 @@ const CoreType: React.FC = () => {
     ];
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Asset Type Maintenance</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">

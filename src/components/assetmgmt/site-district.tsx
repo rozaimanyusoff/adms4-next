@@ -78,23 +78,30 @@ const SiteDistrict: React.FC = () => {
             key: "actions" as keyof District,
             header: "Actions",
             render: (row: District) => (
-                <Button
-                    size="sm"
-                    variant="ghost"
+                <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Edit district"
                     onClick={() => {
                         setFormData({ ...row, zone_id: row.zone?.id || 0 });
                         setIsModalOpen(true);
                     }}
-                    className="bg-yellow-500 hover:bg-yellow-600"
+                    className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            setFormData({ ...row, zone_id: row.zone?.id || 0 });
+                            setIsModalOpen(true);
+                        }
+                    }}
                 >
                     <Pencil size={20} />
-                </Button>
+                </span>
             ),
         },
     ];
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Districts</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
