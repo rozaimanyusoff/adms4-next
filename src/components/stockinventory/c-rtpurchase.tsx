@@ -208,7 +208,7 @@ const Purchase: React.FC = () => {
 	}, [formMode, formData.supplier]);
 
 	return (
-		<div className="bg-white dark:bg-neutral-900 rounded shadow p-4 mb-6">
+		<div className="bg-white dark:bg-neutral-900 rounded shadow mt-4 mb-6">
 			<div className="flex justify-between items-center mb-4">
 				<h2 className="text-xl font-semibold">Stock Purchase</h2>
 				<Button

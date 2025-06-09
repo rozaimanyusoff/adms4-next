@@ -73,7 +73,7 @@ const CDash: React.FC = () => {
   const { stock, teams, top_5_items } = analysis;
 
   return (
-    <div className="w-full max-w-5xl mx-auto mt-4">
+    <div className="w-full mt-4">
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className={`rounded shadow-lg p-4 text-center ${getRandomBg(0)}`}>

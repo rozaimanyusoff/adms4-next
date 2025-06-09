@@ -232,7 +232,7 @@ const RTRequest: React.FC = () => {
     }, [formMode, formData.requested_by, teams]);
 
     return (
-        <div className="bg-white dark:bg-neutral-900 rounded shadow p-4 mb-6">
+        <div className="bg-white dark:bg-neutral-900 rounded shadow mt-4 mb-6">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Stock Request</h2>
                 <Button

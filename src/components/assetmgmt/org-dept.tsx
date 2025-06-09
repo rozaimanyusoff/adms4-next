@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { CustomDataGrid } from "@components/ui/DataGrid";
+import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, Pencil } from "lucide-react";
 import {
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 interface Department {
     id: number;
     name: string;
+    code: string;
 }
 
 const OrgDept: React.FC = () => {
@@ -46,9 +47,10 @@ const OrgDept: React.FC = () => {
         } catch (error) { }
     };
 
-    const columns = [
-        { key: "id" as keyof Department, header: "ID" },
-        { key: "name" as keyof Department, header: "Name" },
+    const columns: ColumnDef<Department>[] = [
+        { key: "id", header: "ID" },
+        { key: "name", header: "Name", filter: 'input' },
+        { key: "code", header: "Code" },
         {
             key: "actions" as keyof Department,
             header: "Actions",
@@ -66,14 +68,14 @@ const OrgDept: React.FC = () => {
     ];
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Departments</h2>
                 <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
                     <Plus size={22} />
                 </Button>
             </div>
-            {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} />}
+            {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} inputFilter={false} />}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogContent>
                     <DialogHeader>

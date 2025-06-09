@@ -2,17 +2,33 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import CoreAsset from "./core-asset";
 import CoreCategory from "./core-category";
 import CoreBrand from "./core-brand";
 import CoreType from "./core-type";
 import CoreModel from "./core-model";
 import CoreSoftware from "./core-software";
+import Link from "next/link";
 
 const TabCore: React.FC = () => {
+  const tabTitles = [
+    { value: "types", label: "Types" },
+    { value: "categories", label: "Categories" },
+    { value: "brands", label: "Brands" },
+    { value: "models", label: "Models" },
+    { value: "softwares", label: "Softwares" },
+  ];
+
+  const tabComponents: Record<string, React.ReactNode> = {
+    types: <CoreType />,
+    categories: <CoreCategory />,
+    brands: <CoreBrand />,
+    models: <CoreModel />,
+    softwares: <CoreSoftware />,
+  };
+
   const [activeTab, setActiveTab] = useState<string>(() => {
-    // Retrieve the last active tab from localStorage or default to "assets"
-    return localStorage.getItem("coreTabs") || "assets";
+    // Retrieve the last active tab from localStorage or default to "types"
+    return localStorage.getItem("coreTabs") || "types";
   });
 
   useEffect(() => {
@@ -22,34 +38,29 @@ const TabCore: React.FC = () => {
 
   return (
     <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Asset Management</h2>
+      <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
+        <li>
+          <Link href="#" className="text-primary hover:underline">
+            Asset Management
+          </Link>
+        </li>
+        <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
+          <span>{tabTitles.find((t) => t.value === activeTab)?.label}</span>
+        </li>
+      </ul>
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="assets">Assets</TabsTrigger>
-          <TabsTrigger value="types">Types</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
-          <TabsTrigger value="brands">Brands</TabsTrigger>
-          <TabsTrigger value="models">Models</TabsTrigger>
-          <TabsTrigger value="softwares">Softwares</TabsTrigger>
+          {tabTitles.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
-        <TabsContent value="assets">
-          <CoreAsset />
-        </TabsContent>
-        <TabsContent value="types">
-          <CoreType />
-        </TabsContent>
-        <TabsContent value="categories">
-          <CoreCategory />
-        </TabsContent>
-        <TabsContent value="brands">
-          <CoreBrand />
-        </TabsContent>
-        <TabsContent value="models">
-          <CoreModel />
-        </TabsContent>
-        <TabsContent value="softwares">
-          <CoreSoftware />
-        </TabsContent>
+        {tabTitles.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value}>
+            {tabComponents[tab.value]}
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );

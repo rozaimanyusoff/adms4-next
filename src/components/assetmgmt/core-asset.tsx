@@ -3,30 +3,22 @@
 import React, { useEffect, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { Plus, Pencil, BadgeInfo, InfoIcon } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@components/ui/input";
-import { Button } from "@components/ui/button";
-import {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectLabel,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Plus, InfoIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Brand { id: number; name: string; code: string; }
 interface Category { id: number; name: string; code: string; }
 interface Type { id: number; name: string; code: string; }
+
+interface Owner {
+    id: number;
+    ramco_id: string;
+    name: string;
+    district: string | null;
+    department: string | null;
+    cost_center: string | null;
+    effective_date: string;
+}
 
 interface Asset {
     id: number;
@@ -45,40 +37,24 @@ interface Asset {
     model_code?: string;
     asses?: string;
     comment?: string | null;
-    classification?: string; // <-- updated from 'type'
-    category?: string;
-    brand?: string;
-    model?: string;
+    classification?: string;
     status?: string;
     depreciation_rate?: number | string;
     warranty_period?: string;
+    owner?: Owner[];
+    types?: { type_code?: string; name?: string } | null;
+    categories?: { category_code?: string; name?: string } | null;
+    brands?: { brand_code?: string; name?: string } | null;
+    models?: { name?: string } | null;
 }
 
 const CoreAsset: React.FC = () => {
+    const router = useRouter();
     const [data, setData] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [brands, setBrands] = useState<Brand[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [types, setTypes] = useState<Type[]>([]);
-    const [formData, setFormData] = useState<Partial<Asset>>({
-        item_code: "",
-        serial_number: "",
-        finance_tag: "",
-        status: "",
-        depreciation_rate: 0,
-        warranty_period: "",
-        type_code: "",
-        category_code: "",
-        brand_code: "",
-        model_code: "",
-        pc_hostname: "",
-        dop: "",
-        year: "",
-        cost_center: "",
-        asses: "",
-        comment: "",
-    });
 
     const fetchData = async () => {
         try {
@@ -134,80 +110,35 @@ const CoreAsset: React.FC = () => {
         };
     });
 
-    const handleSubmit = async () => {
-        try {
-            const payload = {
-                item_code: formData.item_code,
-                serial_number: formData.serial_number,
-                finance_tag: formData.finance_tag,
-                status: formData.status,
-                depreciation_rate: formData.depreciation_rate,
-                warranty_period: formData.warranty_period,
-                type_code: formData.type_code,
-                category_code: formData.category_code,
-                brand_code: formData.brand_code,
-                model_code: formData.model_code,
-                pc_hostname: formData.pc_hostname,
-                dop: formData.dop,
-                year: formData.year,
-                cost_center: formData.cost_center,
-                asses: formData.asses,
-                comment: formData.comment,
-            };
-            if (formData.id) {
-                await authenticatedApi.put(`/api/assets/${formData.id}`, payload);
-            } else {
-                await authenticatedApi.post("/api/assets", payload);
-            }
-            fetchData();
-            setIsModalOpen(false);
-            setFormData({});
-        } catch (error) { }
-    };
-
     const columns: ColumnDef<Asset & { age?: number | string; nbv?: string | number }>[] = [
         { key: "id", header: "ID", sortable: true },
         { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect' },
+        { key: "finance_tag", header: "Finance Tag", render: (row) => row.finance_tag || "-", filter: 'input' },
         { key: "serial_number", header: "Serial Number", sortable: true, filter: 'input' },
-        { key: "category", header: "Category", sortable: true, filter: 'singleSelect' },
+        { key: "asset_type" as any, header: "Asset Type", render: (row) => row.types?.name || row.type_code || "-", filter: 'singleSelect' },
+        { key: "category_code", header: "Category", sortable: true, filter: 'singleSelect', render: (row) => row.categories?.name || (row.category_code ? (categories.find(c => c.code === row.category_code)?.name || row.category_code) : "-") },
+        { key: "brand" as any, header: "Brand", render: (row) => row.brands?.name || row.brand_code || "-", filter: 'singleSelect' },
+        { key: "model" as any, header: "Model", render: (row) => row.models?.name || row.model_code || "-", filter: 'singleSelect' },
         { key: "age", header: "Age", sortable: true, filter: 'input' },
         { key: "unit_price", header: "Asset Value", sortable: true, filter: 'input' },
         { key: "nbv", header: "NBV", sortable: true },
         { key: "status", header: "Status", sortable: true, filter: 'singleSelect' },
+        { key: "owner_name" as any, header: "Owner Name", render: (row) => row.owner?.[0]?.name || "-", filter: 'input' },
+        { key: "owner_department" as any, header: "Department", render: (row) => row.owner?.[0]?.department || "-", filter: 'singleSelect' },
+        { key: "owner_district" as any, header: "District", render: (row) => row.owner?.[0]?.district || "-", filter: 'singleSelect' },
         {
             key: "actions" as keyof Asset,
             header: "Actions",
             render: (row: Asset) => (
-                <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Edit Asset"
-                    onClick={() => {
-                        setFormData({
-                            ...row,
-                            brand_code: row.brand_code || "",
-                            category_code: row.category_code || "",
-                            type_code: row.type_code || "",
-                            model_code: row.model_code || "",
-                        });
-                        setIsModalOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center rounded py-1 hover:bg-yellow-100 cursor-pointer text-blue-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    onKeyDown={e => {
-                        if (e.key === "Enter" || e.key === " ") {
-                            setFormData({
-                                ...row,
-                                brand_code: row.brand_code || "",
-                                category_code: row.category_code || "",
-                                type_code: row.type_code || "",
-                                model_code: row.model_code || "",
-                            });
-                            setIsModalOpen(true);
-                        }
-                    }}
-                >
-                    <InfoIcon size={20} />
-                </span>
+                <div className="flex gap-2 items-center">
+                    <InfoIcon
+                        size={20}
+                        className="inline-flex items-center justify-center rounded hover:bg-blue-100 cursor-pointer text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        onClick={() => {
+                            window.open(`/assetdata/assets/${row.id}`, '_blank');
+                        }}
+                    />
+                </div>
             ),
         },
     ];
@@ -216,9 +147,6 @@ const CoreAsset: React.FC = () => {
         <div className="mt-4">
             <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold mb-4">Assets</h2>
-                <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <Plus size={22} />
-                </Button>
             </div>
             {loading ? (
                 <p>Loading...</p>
@@ -229,128 +157,6 @@ const CoreAsset: React.FC = () => {
                     inputFilter={false}
                 />
             )}
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{formData.id ? "Update Asset" : "Create Asset"}</DialogTitle>
-                        <DialogDescription>Fill in the details below:</DialogDescription>
-                    </DialogHeader>
-                    <form
-                        onSubmit={e => { e.preventDefault(); handleSubmit(); }}
-                    >
-                        <div className="mb-4">
-                            <Label htmlFor="serial_number" className="block text-sm font-medium text-gray-700">Serial Number</Label>
-                            <Input
-                                id="serial_number"
-                                value={formData.serial_number || ""}
-                                onChange={e => setFormData(f => ({ ...f, serial_number: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <Label htmlFor="finance_tag" className="block text-sm font-medium text-gray-700">Finance Tag</Label>
-                            <Input
-                                id="finance_tag"
-                                value={formData.finance_tag || ""}
-                                onChange={e => setFormData(f => ({ ...f, finance_tag: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <Label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</Label>
-                            <Input
-                                id="status"
-                                value={formData.status || ""}
-                                onChange={e => setFormData(f => ({ ...f, status: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <Label htmlFor="depreciation_rate" className="block text-sm font-medium text-gray-700">Depreciation Rate</Label>
-                            <Input
-                                id="depreciation_rate"
-                                type="number"
-                                value={formData.depreciation_rate || 0}
-                                onChange={e => setFormData(f => ({ ...f, depreciation_rate: Number(e.target.value) }))}
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <Label htmlFor="warranty_period" className="block text-sm font-medium text-gray-700">Warranty Period</Label>
-                            <Input
-                                id="warranty_period"
-                                value={formData.warranty_period || ""}
-                                onChange={e => setFormData(f => ({ ...f, warranty_period: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Brand</Label>
-                            <Select
-                                value={formData.brand_code || ""}
-                                onValueChange={val => setFormData(f => ({ ...f, brand_code: val }))}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a brand" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Brands</SelectLabel>
-                                        {brands.map(brand => (
-                                            <SelectItem key={brand.id} value={brand.code}>
-                                                {brand.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Category</Label>
-                            <Select
-                                value={formData.category_code || ""}
-                                onValueChange={val => setFormData(f => ({ ...f, category_code: val }))}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Categories</SelectLabel>
-                                        {categories.map(category => (
-                                            <SelectItem key={category.id} value={category.code}>
-                                                {category.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Type</Label>
-                            <Select
-                                value={formData.type_code || ""}
-                                onValueChange={val => setFormData(f => ({ ...f, type_code: val }))}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Types</SelectLabel>
-                                        {types.map(type => (
-                                            <SelectItem key={type.id} value={type.code}>
-                                                {type.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <Button type="submit" className="mt-4">Submit</Button>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };
