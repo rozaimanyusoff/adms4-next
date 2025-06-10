@@ -34,7 +34,7 @@ const TabRTStock: React.FC = () => {
     }, [activeTab]);
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">

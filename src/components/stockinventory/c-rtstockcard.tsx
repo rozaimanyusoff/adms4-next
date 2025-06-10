@@ -87,6 +87,12 @@ const CCard: React.FC = () => {
         { key: 'balancePhysical', header: 'Balance (Physical)', sortable: true },
     ] as const;
 
+    // Add row double click handler to navigate to detail-stock page
+    const handleRowDoubleClick = (row: any) => {
+        // Assuming you have a route like /stockinventory/detail-stock/[item_id]
+        window.open(`/stock/data/sc/${row.id}`, '_blank');
+    };
+
     if (loading) {
         return <div className="text-gray-500 text-center py-10">Loading...</div>;
     }
@@ -98,7 +104,11 @@ const CCard: React.FC = () => {
         <div className="w-full mt-4">
             <div className="dark:bg-neutral-900 rounded-lg w-full relative mx-auto">
                 <div className="overflow-x-auto">
-                    <CustomDataGrid columns={columns as any} data={filteredRows} />
+                    <CustomDataGrid
+                        columns={columns as any}
+                        data={filteredRows}
+                        onRowDoubleClick={handleRowDoubleClick}
+                    />
                 </div>
             </div>
         </div>

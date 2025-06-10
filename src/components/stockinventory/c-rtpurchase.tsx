@@ -146,14 +146,17 @@ const Purchase: React.FC = () => {
 			header: 'Action',
 			sortable: false,
 			render: (row) => (
-				<Button
-					type="button"
-					className="rounded bg-amber-400 hover:bg-amber-200"
-					title="Edit"
+				<Pencil
+					size={20}
+					className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+					tabIndex={0}
+					role="button"
+					aria-label="Edit"
 					onClick={() => handleEdit(row)}
-				>
-					<Pencil size={18} />
-				</Button>
+					onKeyDown={e => {
+						if (e.key === 'Enter' || e.key === ' ') handleEdit(row);
+					}}
+				/>
 			)
 		}
 	];
@@ -208,7 +211,7 @@ const Purchase: React.FC = () => {
 	}, [formMode, formData.supplier]);
 
 	return (
-		<div className="bg-white dark:bg-neutral-900 rounded shadow mt-4 mb-6">
+		<div className="dark:bg-neutral-900 mt-4 mb-6">
 			<div className="flex justify-between items-center mb-4">
 				<h2 className="text-xl font-semibold">Stock Purchase</h2>
 				<Button

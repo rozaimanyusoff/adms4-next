@@ -53,14 +53,17 @@ const OrgPos: React.FC = () => {
             key: "actions" as keyof Position,
             header: "Actions",
             render: (row: Position) => (
-                <Button
-                    size="sm"
-                    variant="ghost"
+                <Pencil
+                    size={20}
+                    className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    tabIndex={0}
+                    role="button"
+                    aria-label="Edit Position"
                     onClick={() => { setFormData(row); setIsModalOpen(true); }}
-                    className="bg-yellow-500 hover:bg-yellow-600"
-                >
-                    <Pencil size={20} />
-                </Button>
+                    onKeyDown={e => {
+                        if (e.key === "Enter" || e.key === " ") { setFormData(row); setIsModalOpen(true); }
+                    }}
+                />
             ),
         },
     ];

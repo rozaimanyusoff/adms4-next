@@ -121,9 +121,11 @@ const CoreCategory: React.FC = () => {
             key: "actions" as any as keyof Category,
             header: "Actions",
             render: (row: Category) => (
-                <span
-                    role="button"
+                <Pencil
+                    size={20}
+                    className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     tabIndex={0}
+                    role="button"
                     aria-label="Edit Category"
                     onClick={() => {
                         setFormData({
@@ -132,8 +134,7 @@ const CoreCategory: React.FC = () => {
                         });
                         setIsModalOpen(true);
                     }}
-                    className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    onKeyDown={(e) => {
+                    onKeyDown={e => {
                         if (e.key === 'Enter' || e.key === ' ') {
                             setFormData({
                                 ...row,
@@ -142,9 +143,7 @@ const CoreCategory: React.FC = () => {
                             setIsModalOpen(true);
                         }
                     }}
-                >
-                    <Pencil size={20} />
-                </span>
+                />
             ),
         },
     ];

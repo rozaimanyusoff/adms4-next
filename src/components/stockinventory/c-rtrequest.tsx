@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { CustomDataGrid } from '@components/ui/DataGrid';
-import { Plus, PlusCircle, Pencil } from 'lucide-react';
+import { Plus, Pencil, CirclePlus } from 'lucide-react';
 import ActionSidebar from '@components/ui/action-aside';
 import SidebarItemPicker from './item-cart';
 import { authenticatedApi } from '@/config/api';
@@ -39,6 +39,7 @@ interface StockRequestApplication {
 const RTRequest: React.FC = () => {
     const [showForm, setShowForm] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [inStockSidebarOpen, setInStockSidebarOpen] = useState<null | number>(null);
     const [selectedItems, setSelectedItems] = useState<Array<{ id: number; name: string; qty: number; remarks?: string }>>([]);
     const [lastAddedId, setLastAddedId] = useState<number | null>(null);
     const [applications, setApplications] = useState<StockRequestApplication[]>([]);
@@ -48,6 +49,8 @@ const RTRequest: React.FC = () => {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [formData, setFormData] = useState<Partial<StockRequestApplication>>({});
     const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
+    const [inStockItems, setInStockItems] = useState<any[]>([]);
+    const [inStockLoading, setInStockLoading] = useState(false);
 
     // Fetch stock requests from backend
     useEffect(() => {
@@ -140,17 +143,17 @@ const RTRequest: React.FC = () => {
             header: 'Action',
             sortable: false,
             render: (row) => (
-                <Button
-                    type="button"
-                    className="rounded bg-amber-400 hover:bg-amber-200"
-                    title="Edit"
-                    size={'sm'}
+                <Pencil
+                    size={18}
+                    className="inline-flex items-center justify-center rounded hover:bg-amber-100 cursor-pointer text-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    tabIndex={0}
+                    role="button"
+                    aria-label="Edit"
                     onClick={() => handleEdit(row)}
-                >
-                    <Plus size={18} className="hidden" />
-                    <span className="sr-only">Edit</span>
-                    <Pencil size={18} className="inline-block" />
-                </Button>
+                    onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') handleEdit(row);
+                    }}
+                />
             )
         }
     ];
@@ -230,6 +233,29 @@ const RTRequest: React.FC = () => {
             if (found) setFormData(prev => ({ ...prev, requested_by: found }));
         }
     }, [formMode, formData.requested_by, teams]);
+
+    // Handle adding in-stock item
+    const handleAddInStockItem = (item: any) => {
+        setSelectedItems(prev => {
+            if (prev.some(si => si.id === item.id)) return prev;
+            return [...prev, { ...item, name: item.item_name || item.name, qty: 1 }];
+        });
+    };
+
+    // Add handler for fetching in-stock for a specific item
+    const handleShowInStockSidebar = async (itemId: number) => {
+        setInStockSidebarOpen(itemId);
+        setInStockLoading(true);
+        try {
+            const res = await authenticatedApi.get(`/api/stock/items/${itemId}/in-stock`);
+            const apiData = (res as any)?.data?.data;
+            setInStockItems(Array.isArray(apiData) ? apiData : []);
+        } catch {
+            setInStockItems([]);
+        } finally {
+            setInStockLoading(false);
+        }
+    };
 
     return (
         <div className="bg-white dark:bg-neutral-900 rounded shadow mt-4 mb-6">
@@ -335,13 +361,15 @@ const RTRequest: React.FC = () => {
                         <div className="mb-6">
                             <div className="flex justify-between items-center mb-2">
                                 <h3 className="text-lg font-semibold">Items</h3>
-                                <Button
-                                    className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white shadow-none"
-                                    type="button"
-                                    onClick={() => setSidebarOpen(true)}
-                                >
-                                    <Plus size={24} />
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button
+                                        className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white shadow-none"
+                                        type="button"
+                                        onClick={() => setSidebarOpen(true)}
+                                    >
+                                        <Plus size={24} />
+                                    </Button>
+                                </div>
                             </div>
                             <div className="overflow-x-auto min-w-0">
                                 <table className="table-auto table-striped w-full border bg-white dark:bg-gray-900 min-w-[700px]">
@@ -409,6 +437,17 @@ const RTRequest: React.FC = () => {
                                                         />
                                                     </td>
                                                     <td className="border px-2 py-0.5 text-center">
+                                                        <CirclePlus
+                                                            size={22}
+                                                            className="inline-flex items-center justify-center hover:text-blue-700 cursor-pointer text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                                            tabIndex={0}
+                                                            role="button"
+                                                            aria-label="Add In-Stock"
+                                                            onClick={() => handleShowInStockSidebar(item.id)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter' || e.key === ' ') handleShowInStockSidebar(item.id);
+                                                            }}
+                                                        />
                                                     </td>
                                                 </tr>
                                             );
@@ -436,6 +475,44 @@ const RTRequest: React.FC = () => {
                                         selectedItems={selectedItems}
                                         onAdd={handleSidebarAdd}
                                     />
+                                }
+                            />
+                        )}
+                        {/* ActionSidebar for adding in-stock items, now per item */}
+                        {inStockSidebarOpen !== null && (
+                            <ActionSidebar
+                                title="Add In-Stock Item"
+                                onClose={() => setInStockSidebarOpen(null)}
+                                size="md"
+                                content={
+                                    <div>
+                                        {inStockLoading ? (
+                                            <div className="text-center py-4">Loading...</div>
+                                        ) : (
+                                            <ul className="divide-y">
+                                                {inStockItems.length === 0 ? (
+                                                    <li className="py-2 text-gray-500 text-center">No in-stock items found.</li>
+                                                ) : (
+                                                    inStockItems.map(item => (
+                                                        <li key={item.id} className="flex justify-between items-center py-2">
+                                                            <span className="font-mono text-sm">{item.serial_no}</span>
+                                                            <CirclePlus
+                                                                size={22}
+                                                                className="inline-flex items-center justify-center hover:text-green-700 cursor-pointer text-green-600 focus:outline-none focus:ring-2 focus:ring-green-400"
+                                                                tabIndex={0}
+                                                                role="button"
+                                                                aria-label={`Add serial ${item.serial_no}`}
+                                                                onClick={() => handleAddInStockItem(item)}
+                                                                onKeyDown={e => {
+                                                                    if (e.key === 'Enter' || e.key === ' ') handleAddInStockItem(item);
+                                                                }}
+                                                            />
+                                                        </li>
+                                                    ))
+                                                )}
+                                            </ul>
+                                        )}
+                                    </div>
                                 }
                             />
                         )}

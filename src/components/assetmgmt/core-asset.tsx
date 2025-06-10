@@ -110,6 +110,10 @@ const CoreAsset: React.FC = () => {
         };
     });
 
+    const handleRowDoubleClick = (row: Asset) => {
+        window.open(`/assetdata/assets/${row.id}`, '_blank');
+    };
+
     const columns: ColumnDef<Asset & { age?: number | string; nbv?: string | number }>[] = [
         { key: "id", header: "ID", sortable: true },
         { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect' },
@@ -126,21 +130,6 @@ const CoreAsset: React.FC = () => {
         { key: "owner_name" as any, header: "Owner Name", render: (row) => row.owner?.[0]?.name || "-", filter: 'input' },
         { key: "owner_department" as any, header: "Department", render: (row) => row.owner?.[0]?.department || "-", filter: 'singleSelect' },
         { key: "owner_district" as any, header: "District", render: (row) => row.owner?.[0]?.district || "-", filter: 'singleSelect' },
-        {
-            key: "actions" as keyof Asset,
-            header: "Actions",
-            render: (row: Asset) => (
-                <div className="flex gap-2 items-center">
-                    <InfoIcon
-                        size={20}
-                        className="inline-flex items-center justify-center rounded hover:bg-blue-100 cursor-pointer text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        onClick={() => {
-                            window.open(`/assetdata/assets/${row.id}`, '_blank');
-                        }}
-                    />
-                </div>
-            ),
-        },
     ];
 
     return (
@@ -155,6 +144,7 @@ const CoreAsset: React.FC = () => {
                     columns={columns}
                     data={transformedData}
                     inputFilter={false}
+                    onRowDoubleClick={handleRowDoubleClick}
                 />
             )}
         </div>

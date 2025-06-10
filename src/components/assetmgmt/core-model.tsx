@@ -226,30 +226,28 @@ const CoreModel: React.FC = () => {
       header: "Actions",
       render: (row: Model) => (
         <div className="flex gap-2">
-          <span
-            role="button"
+          <Pencil
+            size={20}
+            className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
             tabIndex={0}
+            role="button"
+            aria-label="Edit Model"
             onClick={() => openEditForm(row)}
             onKeyDown={e => {
               if (e.key === "Enter" || e.key === " ") openEditForm(row);
             }}
-            className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            aria-label="Edit Model"
-          >
-            <Pencil size={20} />
-          </span>
-          <span
-            role="button"
+          />
+          <Trash
+            size={20}
+            className="inline-flex items-center justify-center rounded hover:bg-red-100 cursor-pointer text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
             tabIndex={0}
+            role="button"
+            aria-label="Delete Model"
             onClick={() => handleDelete(row.id)}
             onKeyDown={e => {
               if (e.key === "Enter" || e.key === " ") handleDelete(row.id);
             }}
-            className="inline-flex items-center justify-center p-1 rounded hover:bg-red-100 cursor-pointer text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
-            aria-label="Delete Model"
-          >
-            <Trash size={20} />
-          </span>
+          />
         </div>
       ),
     },

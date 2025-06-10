@@ -1,12 +1,12 @@
 import React from "react";
-import DetailAsset from "@/components/assetmgmt/detail-asset";
+import DetailRTStockCard from "@components/stockinventory/detail-rtstockcard";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-    title: "Asset Detail"
+    title: "Stock Detail"
 };
 
 export default async function Page(props: any) {
     const params = await props.params;
-    return <DetailAsset id={params.id} />;
+    return <DetailRTStockCard id={params.id} />;
 }

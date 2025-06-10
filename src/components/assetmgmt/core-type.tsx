@@ -75,27 +75,26 @@ const CoreType: React.FC = () => {
         { key: "name" as keyof Type, header: "Name" },
         { key: "description" as keyof Type, header: "Description" },
         {
-            key: "actions" as keyof Type, // Added key property
+            key: "actions" as keyof Type,
             header: "Actions",
             render: (row: Type) => (
-                <span
-                    role="button"
+                <Pencil
+                    size={20}
+                    className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     tabIndex={0}
+                    role="button"
                     aria-label="Edit Type"
                     onClick={() => {
                         setFormData(row);
                         setIsModalOpen(true);
                     }}
-                    className="inline-flex items-center justify-center p-1 rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     onKeyDown={e => {
                         if (e.key === "Enter" || e.key === " ") {
                             setFormData(row);
                             setIsModalOpen(true);
                         }
                     }}
-                >
-                    <Pencil size={20} />
-                </span>
+                />
             ),
         },
     ];
