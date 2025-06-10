@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { CustomDataGrid } from '@components/ui/DataGrid';
-import { Plus, Pencil, CirclePlus } from 'lucide-react';
+import { Plus, Pencil, CirclePlus, X } from 'lucide-react';
 import ActionSidebar from '@components/ui/action-aside';
 import SidebarItemPicker from './item-cart';
 import { authenticatedApi } from '@/config/api';
@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Span } from 'next/dist/trace';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 // Define the type for a stock request application row
 interface StockRequestApplication {
@@ -40,7 +42,8 @@ const RTRequest: React.FC = () => {
     const [showForm, setShowForm] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [inStockSidebarOpen, setInStockSidebarOpen] = useState<null | number>(null);
-    const [selectedItems, setSelectedItems] = useState<Array<{ id: number; name: string; qty: number; remarks?: string }>>([]);
+    // Extend the item type to include serial_ids
+    const [selectedItems, setSelectedItems] = useState<Array<{ id: number; name: string; qty: number; remarks?: string; serial_ids?: string[]; approved_qty?: number }>>([]);
     const [lastAddedId, setLastAddedId] = useState<number | null>(null);
     const [applications, setApplications] = useState<StockRequestApplication[]>([]);
     const [loading, setLoading] = useState(true);
@@ -51,6 +54,9 @@ const RTRequest: React.FC = () => {
     const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
     const [inStockItems, setInStockItems] = useState<any[]>([]);
     const [inStockLoading, setInStockLoading] = useState(false);
+    const [showSerialLimitDialog, setShowSerialLimitDialog] = useState(false);
+    const [serialLimitDialogOpen, setSerialLimitDialogOpen] = useState(false);
+    const [serialLimitDialogMsg, setSerialLimitDialogMsg] = useState('');
 
     // Fetch stock requests from backend
     useEffect(() => {
@@ -171,7 +177,12 @@ const RTRequest: React.FC = () => {
                     const anyItem = i as any;
                     return {
                         ...i,
-                        name: typeof i.name === 'string' && i.name ? i.name : (typeof anyItem.item_name === 'string' ? anyItem.item_name : '')
+                        name: typeof i.name === 'string' && i.name ? i.name : (typeof anyItem.item_name === 'string' ? anyItem.item_name : ''),
+                        serial_ids: Array.isArray(anyItem.serial_ids)
+                            ? anyItem.serial_ids
+                            : (typeof anyItem.serial_ids === 'string' && anyItem.serial_ids
+                                ? anyItem.serial_ids.split(',').map((s: string) => s.trim()).filter(Boolean)
+                                : []),
                     };
                 })
                 : []
@@ -188,7 +199,12 @@ const RTRequest: React.FC = () => {
         e.preventDefault();
         const payload = {
             ...formData,
-            items: selectedItems.map(i => ({ ...i, item_name: i.name })),
+            items: selectedItems.map(i => ({
+                ...i,
+                item_name: i.name,
+                serial_ids: Array.isArray(i.serial_ids) ? i.serial_ids : [],
+                // remarks is only remarks, not serials
+            })),
             total_items: selectedItems.reduce((sum, item) => sum + (item.qty || 0), 0),
         };
         try {
@@ -236,9 +252,27 @@ const RTRequest: React.FC = () => {
 
     // Handle adding in-stock item
     const handleAddInStockItem = (item: any) => {
+        setInStockItems(prevInStock => prevInStock.filter(stock => stock.id !== item.id));
         setSelectedItems(prev => {
-            if (prev.some(si => si.id === item.id)) return prev;
-            return [...prev, { ...item, name: item.item_name || item.name, qty: 1 }];
+            const idx = prev.findIndex(si => si.id === item.item_id && (si.qty ?? 0) > 0);
+            if (idx === -1) {
+                return prev;
+            } else {
+                const current = prev[idx];
+                let serial_ids = Array.isArray(current.serial_ids) ? [...current.serial_ids] : [];
+                // Prevent adding more serials than requested qty
+                if (serial_ids.length >= (current.qty || 0)) {
+                    setSerialLimitDialogMsg('Cannot add more serial numbers than requested quantity.');
+                    setSerialLimitDialogOpen(true);
+                    return prev;
+                }
+                if (!serial_ids.includes(String(item.serial_no))) {
+                    serial_ids.push(String(item.serial_no));
+                }
+                serial_ids = serial_ids.sort((a, b) => Number(a) - Number(b));
+                const updated = { ...current, serial_ids };
+                return prev.map((si, i) => i === idx ? updated : si);
+            }
         });
     };
 
@@ -258,21 +292,29 @@ const RTRequest: React.FC = () => {
     };
 
     return (
-        <div className="bg-white dark:bg-neutral-900 rounded shadow mt-4 mb-6">
+        <div className="dark:bg-neutral-900 mt-4 mb-6">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Stock Request</h2>
                 <Button
                     variant="default"
-                    className="px-4 py-2 rounded"
+                    className="px-4 py-2 rounded flex items-center gap-2"
                     onClick={() => setShowForm(v => !v)}
                 >
-                    {showForm ? 'Close Form' : 'Create Stock Request'}
+                    {showForm ? (
+                        <>
+                            <X size={20} className="inline-block" />
+                        </>
+                    ) : (
+                        <>
+                            <Plus size={20} className="inline-block" />
+                        </>
+                    )}
                 </Button>
             </div>
             {showForm && (
                 <div className="mb-6">
                     <div className={`${formMode === 'edit' ? 'bg-amber-50/50' : 'bg-gray-50/50'}  dark:bg-gray-800 p-4 mb-4`}>
-                        <h2 className="text-lg text-center font-bold mb-6">Stock Request Form</h2>
+                        <h2 className="text-lg text-center font-bold mb-6 bg-gray-200">Stock Request Form</h2>
                         <Tabs defaultValue="request-info">
                             <TabsList className="mb-4">
                                 <TabsTrigger value="request-info">Request Info</TabsTrigger>
@@ -381,11 +423,12 @@ const RTRequest: React.FC = () => {
                                             <th className="border px-2 py-1 w-[120px]">Approved Qty</th>
                                             <th className="border px-2 py-1 w-[120px]">Balance Qty</th>
                                             <th className="border px-2 py-1 w-[200px]">Remarks</th>
+                                            <th className="border px-2 py-1 w-[120px]">Serial No</th>
                                             <th className="border px-2 py-1 w-8"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {selectedItems.map((item: { id: number; name: string; qty: number; approved_qty?: number; remarks?: string }, index: number) => {
+                                        {selectedItems.map((item, index) => {
                                             const balanceQty = (item.qty || 0) - (item.approved_qty || 0);
                                             return (
                                                 <tr key={index} className={item.id === lastAddedId ? 'bg-emerald-200 transition-colors duration-500' : ''}>
@@ -412,16 +455,19 @@ const RTRequest: React.FC = () => {
                                                             min={0}
                                                             className="form-input form-input-sm w-full text-center border-none px-0"
                                                             placeholder='0'
-                                                            value={item.approved_qty ?? ''}
+                                                            value={item.serial_ids && item.serial_ids.length > 0 ? item.serial_ids.length : (item.approved_qty ?? '')}
+                                                            readOnly={Array.isArray(item.serial_ids) && item.serial_ids.length > 0}
                                                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                                                const approved_qty = Math.max(0, Number(e.target.value));
-                                                                setSelectedItems(prev => prev.map(si =>
-                                                                    si.id === item.id ? { ...si, approved_qty } : si
-                                                                ));
+                                                                if (!Array.isArray(item.serial_ids) || item.serial_ids.length === 0) {
+                                                                    const approved_qty = Math.max(0, Number(e.target.value));
+                                                                    setSelectedItems(prev => prev.map(si =>
+                                                                        si.id === item.id ? { ...si, approved_qty } : si
+                                                                    ));
+                                                                }
                                                             }}
                                                         />
                                                     </td>
-                                                    <td className="border px-2 py-0.5 text-center font-bold">{balanceQty}</td>
+                                                    <td className="border px-2 py-0.5 text-center font-bold">{(item.qty || 0) - (Array.isArray(item.serial_ids) && item.serial_ids.length > 0 ? item.serial_ids.length : (item.approved_qty || 0))}</td>
                                                     <td className="border px-2 py-0.5">
                                                         <Textarea
                                                             className="form-textarea form-textarea-sm w-full border-none px-0"
@@ -430,11 +476,35 @@ const RTRequest: React.FC = () => {
                                                             value={item.remarks || ''}
                                                             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
                                                                 const remarks = e.target.value;
-                                                                setSelectedItems(prev => prev.map(si =>
-                                                                    si.id === item.id ? { ...si, remarks } : si
+                                                                setSelectedItems(prev => prev.map((si, idx) =>
+                                                                    idx === index ? { ...si, remarks } : si
                                                                 ));
                                                             }}
                                                         />
+                                                    </td>
+                                                    <td className="border px-2 py-0.5 text-center">
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            {Array.isArray(item.serial_ids) && item.serial_ids.length > 0 && item.serial_ids.map((sn: string, snIdx: number) => (
+                                                                <span key={sn} className="relative inline-block bg-blue-600 text-white rounded-full px-4 py-0.5 text-xs font-semibold">
+                                                                    {sn}
+                                                                    <span
+                                                                        className="absolute right-0 top-0 -mr-2 -mt-2 w-4 h-4 flex items-center justify-center text-xs text-white bg-red-500 rounded-full cursor-pointer hover:bg-red-700"
+                                                                        title="Remove serial number"
+                                                                        onClick={() => {
+                                                                            setSelectedItems(prev => prev.map((si, idx) => {
+                                                                                if (idx !== index) return si;
+                                                                                return {
+                                                                                    ...si,
+                                                                                    serial_ids: si.serial_ids?.filter(s => s !== sn)
+                                                                                };
+                                                                            }));
+                                                                        }}
+                                                                    >
+                                                                        ×
+                                                                    </span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </td>
                                                     <td className="border px-2 py-0.5 text-center">
                                                         <CirclePlus
@@ -481,9 +551,12 @@ const RTRequest: React.FC = () => {
                         {/* ActionSidebar for adding in-stock items, now per item */}
                         {inStockSidebarOpen !== null && (
                             <ActionSidebar
-                                title="Add In-Stock Item"
+                                title={(() => {
+                                    const item = selectedItems.find(i => i.id === inStockSidebarOpen);
+                                    return `In-stock item: ${item ? item.name : ''}`;
+                                })()}
                                 onClose={() => setInStockSidebarOpen(null)}
-                                size="md"
+                                size="sm"
                                 content={
                                     <div>
                                         {inStockLoading ? (
@@ -494,8 +567,7 @@ const RTRequest: React.FC = () => {
                                                     <li className="py-2 text-gray-500 text-center">No in-stock items found.</li>
                                                 ) : (
                                                     inStockItems.map(item => (
-                                                        <li key={item.id} className="flex justify-between items-center py-2">
-                                                            <span className="font-mono text-sm">{item.serial_no}</span>
+                                                        <li key={item.id} className="flex justify-start items-center py-2 space-x-4">
                                                             <CirclePlus
                                                                 size={22}
                                                                 className="inline-flex items-center justify-center hover:text-green-700 cursor-pointer text-green-600 focus:outline-none focus:ring-2 focus:ring-green-400"
@@ -507,6 +579,8 @@ const RTRequest: React.FC = () => {
                                                                     if (e.key === 'Enter' || e.key === ' ') handleAddInStockItem(item);
                                                                 }}
                                                             />
+                                                            <span className="font-mono text-sm">S/N: {item.serial_no}</span>
+                                                            
                                                         </li>
                                                     ))
                                                 )}
@@ -516,6 +590,18 @@ const RTRequest: React.FC = () => {
                                 }
                             />
                         )}
+                        {/* Serial No Exceed Dialog */}
+                        <Dialog open={serialLimitDialogOpen} onOpenChange={setSerialLimitDialogOpen}>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Serial Number Limit Exceeded</DialogTitle>
+                            </DialogHeader>
+                            <div className="py-2 text-center text-base">{serialLimitDialogMsg}</div>
+                            <DialogFooter>
+                              <Button onClick={() => setSerialLimitDialogOpen(false)} autoFocus>OK</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                         <div className="flex justify-center gap-4 mt-6">
                             <Button type="submit" className={`btn ${formMode === 'edit' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-500 hover:bg-blue-600'} text-white px-4 py-2 rounded shadow-none`}>
                                 {formMode === 'edit' ? 'Update' : 'Submit'}

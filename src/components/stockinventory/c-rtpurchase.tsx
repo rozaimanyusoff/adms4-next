@@ -216,16 +216,24 @@ const Purchase: React.FC = () => {
 				<h2 className="text-xl font-semibold">Stock Purchase</h2>
 				<Button
 					variant="default"
-					className="px-4 py-2 rounded"
+					className="px-4 py-2 rounded flex items-center gap-2"
 					onClick={() => setShowForm(v => !v)}
 				>
-					{showForm ? 'Close Form' : 'Create Purchase Application'}
+					{showForm ? (
+						<>
+							<X size={20} className="inline-block" />
+						</>
+					) : (
+						<>
+							<Plus size={20} className="inline-block" />
+						</>
+					)}
 				</Button>
 			</div>
 			{showForm && (
 				<div className="mb-6">
 					<div className={`${formMode === 'edit' ? 'bg-amber-50/50' : 'bg-gray-50/50'}  dark:bg-gray-800 p-4 mb-4`}>
-						<h2 className="text-lg text-center font-bold mb-6">Purchase Request Form</h2>
+						<h2 className="text-lg text-center font-bold mb-6 bg-gray-200">Purchase Request Form</h2>
 						<Tabs defaultValue="request-info">
 							<TabsList className="mb-4">
 								<TabsTrigger value="request-info">Request Info</TabsTrigger>
