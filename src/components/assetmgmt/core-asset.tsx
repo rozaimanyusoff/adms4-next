@@ -25,6 +25,7 @@ interface Asset {
     asset_code: string;
     item_code: string;
     serial_number: string;
+    asset_type?: string;
     finance_tag?: string | null;
     pc_hostname?: string | null;
     dop?: string | null;
@@ -32,21 +33,33 @@ interface Asset {
     unit_price?: number | string;
     depreciation_length?: number | string;
     cost_center?: string | null;
-    type_code?: string;
-    category_code?: string;
-    brand_code?: string;
-    model_code?: string;
     asses?: string;
     comment?: string | null;
     classification?: string;
     status?: string;
     depreciation_rate?: number | string;
     warranty_period?: string;
-    owner?: Owner[];
-    types?: { type_code?: string; name?: string } | null;
-    categories?: { category_code?: string; name?: string } | null;
-    brands?: { brand_code?: string; name?: string } | null;
-    models?: { name?: string } | null;
+    types?: { type_code: string; name: string };
+    categories?: { category_code: string; name: string };
+    brands?: { brand_code: string; name: string };
+    models?: { model_code: string; name: string };
+    owner?: Array<{
+        id: number;
+        ramco_id: string;
+        name: string;
+        district: string | null;
+        department: string | null;
+        cost_center: string | null;
+        effective_date: string;
+    }>;
+    // Derived fields for DataGrid
+    owner_name?: string;
+    owner_department?: string;
+    owner_district?: string;
+    // Added for DataGrid columns
+    category?: string;
+    brand?: string;
+    model?: string;
 }
 
 const CoreAsset: React.FC = () => {
@@ -102,17 +115,21 @@ const CoreAsset: React.FC = () => {
         const formatNumber = (val: number) => val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return {
             ...asset,
-            brandName: asset.brand_code || "N/A",
-            category: categories.find(c => c.code === asset.category_code)?.name || asset.category_code || "N/A",
-            classification: asset.classification || "N/A",
-            age: asset.year ? age : "-",
-            unit_price: isNaN(unitPrice) ? "-" : formatNumber(unitPrice),
-            nbv: isNaN(nbv) ? "-" : nbv < 0 ? formatNumber(0) : formatNumber(nbv),
+            brand: asset.brands?.name || '-',
+            category: asset.categories?.name || '-',
+            model: asset.models?.name || '-',
+            asset_type: asset.types?.name || '-',
+            age: asset.year ? age : '-',
+            unit_price: isNaN(unitPrice) ? '-' : formatNumber(unitPrice),
+            nbv: isNaN(nbv) ? '-' : nbv < 0 ? formatNumber(0) : formatNumber(nbv),
+            owner_name: asset.owner?.[0]?.name || '-',
+            owner_department: asset.owner?.[0]?.department || '-',
+            owner_district: asset.owner?.[0]?.district || '-',
         };
     });
 
     const handleRowDoubleClick = (row: Asset) => {
-        window.open(`/assetdata/assets/${row.asset_code}`, '_blank');
+        window.open(`/assetdata/assets/${row.id}`, '_blank');
     };
 
     const columns: ColumnDef<Asset & { age?: number | string; nbv?: string | number }>[] = [
@@ -120,17 +137,34 @@ const CoreAsset: React.FC = () => {
         { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect' },
         { key: "finance_tag", header: "Finance Tag", render: (row) => row.finance_tag || "-", filter: 'input' },
         { key: "serial_number", header: "Serial Number", sortable: true, filter: 'input' },
-        { key: "asset_type" as any, header: "Asset Type", render: (row) => row.types?.name || row.type_code || "-", filter: 'singleSelect' },
-        { key: "category_code", header: "Category", sortable: true, filter: 'singleSelect', render: (row) => row.categories?.name || (row.category_code ? (categories.find(c => c.code === row.category_code)?.name || row.category_code) : "-") },
-        { key: "brand" as any, header: "Brand", render: (row) => row.brands?.name || row.brand_code || "-", filter: 'singleSelect' },
-        { key: "model" as any, header: "Model", render: (row) => row.models?.name || row.model_code || "-", filter: 'singleSelect' },
+        // Updated filtered property columns to match flattened keys in transformedData
+        {
+            key: "asset_type",
+            header: "Asset Type",
+            filter: "singleSelect",
+        },
+        {
+            key: "category",
+            header: "Category",
+            filter: "singleSelect",
+        },
+        {
+            key: "brand",
+            header: "Brand",
+            filter: "singleSelect",
+        },
+        {
+            key: "model",
+            header: "Model",
+            filter: "singleSelect",
+        },
         { key: "age", header: "Age", sortable: true, filter: 'input' },
         { key: "unit_price", header: "Asset Value", sortable: true, filter: 'input' },
         { key: "nbv", header: "NBV", sortable: true },
         { key: "status", header: "Status", sortable: true, filter: 'singleSelect' },
-        { key: "owner_name" as any, header: "Owner Name", render: (row) => row.owner?.[0]?.name || "-", filter: 'input' },
-        { key: "owner_department" as any, header: "Department", render: (row) => row.owner?.[0]?.department || "-", filter: 'singleSelect' },
-        { key: "owner_district" as any, header: "District", render: (row) => row.owner?.[0]?.district || "-", filter: 'singleSelect' },
+        { key: "owner_name", header: "Owner Name", filter: 'input' },
+        { key: "owner_department", header: "Department", filter: 'singleSelect' },
+        { key: "owner_district", header: "District", filter: 'singleSelect' },
     ];
 
     return (

@@ -836,7 +836,7 @@ const CustomDataGridInner = <T,>({
                                                         <SelectContent>
                                                             <SelectItem key="__all__" value="__all__">All</SelectItem>
                                                             {(col.filterParams?.options ??
-                                                                Array.from(new Set(filteredData.map(row => {
+                                                                Array.from(new Set(data.map(row => {
                                                                     const val = row[col.key as keyof T];
                                                                     return typeof val === 'string' || typeof val === 'number' ? val : '';
                                                                 }).filter(Boolean)))

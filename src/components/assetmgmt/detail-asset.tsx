@@ -5,12 +5,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRouter } from "next/navigation";
 
 interface DetailAssetProps {
   id: string;
 }
 
 const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
+  const router = useRouter();
   const [asset, setAsset] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,12 +35,6 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
     };
     fetchItems();
   }, [id]);
-
-  useEffect(() => {
-    if (items.length > 0 && currentIdx >= 0) {
-      setAsset(items[currentIdx]);
-    }
-  }, [items, currentIdx]);
 
   useEffect(() => {
     const fetchAsset = async () => {
@@ -74,9 +70,180 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
     setShowDropdown(results.length > 0);
   }, [searchValue, items]);
 
-  if (loading) return <div className="p-8 text-gray-400">Loading asset...</div>;
-  if (error) return <div className="p-8 text-red-500">{error}</div>;
-  if (!asset) return <div className="p-8 text-gray-400">No asset data found.</div>;
+  if (loading) return (
+    <div className="w-full">
+      {/* Navbar always visible */}
+      <div className="flex items-center justify-between bg-gradient-to-b from-gray-200 to-gray-100 rounded shadow px-4 py-3 mb-6">
+        <div className="flex items-center gap-4">
+          <span className="text-lg font-semibold">Asset Detail</span>
+        </div>
+        <div className="flex items-center gap-2 relative">
+          <div className="w-64 relative">
+            <Input
+              type="text"
+              placeholder="Search serial number..."
+              className="w-64"
+              value={searchValue}
+              onChange={e => setSearchValue(e.target.value)}
+              onFocus={() => setShowDropdown(searchResults.length > 0)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+            />
+            {showDropdown && (
+              <ul className="absolute z-10 w-full bg-stone-200 border border-gray-200 rounded shadow-lg max-h-48 overflow-auto mt-1">
+                {searchResults.map((item) => (
+                  <li
+                    key={item.id}
+                    className="px-3 py-2 hover:bg-blue-100 cursor-pointer text-sm"
+                    onMouseDown={() => {
+                      setCurrentIdx(items.findIndex((i: any) => i.id === item.id));
+                      setSearchValue("");
+                      setShowDropdown(false);
+                    }}
+                  >
+                    <div className="font-medium">{item.serial_number}</div>
+                    <div className="text-xs text-gray-500">{item.brands?.name || '-'} | {item.models?.name || '-'}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full border border-gray-300 dark:border-neutral-700"
+            onClick={() => {
+              if (currentIdx > 0) {
+                const prevAsset = items[currentIdx - 1];
+                if (prevAsset && prevAsset.id) router.push(`/assetdata/assets/${prevAsset.id}`);
+              }
+            }}
+            disabled={currentIdx <= 0}
+            title="Previous Asset"
+          >
+            <ChevronLeft size={20} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full border border-gray-300 dark:border-neutral-700"
+            onClick={() => {
+              if (currentIdx >= 0 && currentIdx < items.length - 1) {
+                const nextAsset = items[currentIdx + 1];
+                if (nextAsset && nextAsset.id) router.push(`/assetdata/assets/${nextAsset.id}`);
+              }
+            }}
+            disabled={currentIdx === -1 || currentIdx === items.length - 1}
+            title="Next Asset"
+          >
+            <ChevronRight size={20} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full bg-red-500 hover:bg-red-600 text-white dark:border-neutral-700"
+            title="Close"
+            onClick={() => window.close()}
+          >
+            <span className="sr-only">Close</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </Button>
+        </div>
+      </div>
+      <div className="p-8 text-gray-400">Loading asset...</div>
+    </div>
+  );
+  if (!asset || error || !id || id === 'null' || id === 'undefined') return (
+    <div className="w-full">
+      {/* Navbar always visible */}
+      <div className="flex items-center justify-between bg-gradient-to-b from-gray-200 to-gray-100 rounded shadow px-4 py-3 mb-6">
+        <div className="flex items-center gap-4">
+          <span className="text-lg font-semibold">Asset Detail</span>
+        </div>
+        <div className="flex items-center gap-2 relative">
+          <div className="w-64 relative">
+            <Input
+              type="text"
+              placeholder="Search serial number..."
+              className="w-64"
+              value={searchValue}
+              onChange={e => setSearchValue(e.target.value)}
+              onFocus={() => setShowDropdown(searchResults.length > 0)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+            />
+            {showDropdown && (
+              <ul className="absolute z-10 w-full bg-stone-200 border border-gray-200 rounded shadow-lg max-h-48 overflow-auto mt-1">
+                {searchResults.map((item) => (
+                  <li
+                    key={item.id}
+                    className="px-3 py-2 hover:bg-blue-100 cursor-pointer text-sm"
+                    onMouseDown={() => {
+                      setCurrentIdx(items.findIndex((i: any) => i.id === item.id));
+                      setSearchValue("");
+                      setShowDropdown(false);
+                    }}
+                  >
+                    <div className="font-medium">{item.serial_number}</div>
+                    <div className="text-xs text-gray-500">{item.brands?.name || '-'} | {item.models?.name || '-'}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full border border-gray-300 dark:border-neutral-700"
+            onClick={() => {
+              if (currentIdx > 0) {
+                const prevAsset = items[currentIdx - 1];
+                if (prevAsset && prevAsset.id) router.push(`/assetdata/assets/${prevAsset.id}`);
+              }
+            }}
+            disabled={currentIdx <= 0}
+            title="Previous Asset"
+          >
+            <ChevronLeft size={20} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full border border-gray-300 dark:border-neutral-700"
+            onClick={() => {
+              if (currentIdx >= 0 && currentIdx < items.length - 1) {
+                const nextAsset = items[currentIdx + 1];
+                if (nextAsset && nextAsset.id) router.push(`/assetdata/assets/${nextAsset.id}`);
+              }
+            }}
+            disabled={currentIdx === -1 || currentIdx === items.length - 1}
+            title="Next Asset"
+          >
+            <ChevronRight size={20} />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full bg-red-500 hover:bg-red-600 text-white dark:border-neutral-700"
+            title="Close"
+            onClick={() => window.close()}
+          >
+            <span className="sr-only">Close</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </Button>
+        </div>
+      </div>
+      <div className="p-8 text-red-500">{error || 'Invalid asset selected. Please use navigation or search.'}</div>
+    </div>
+  );
 
   return (
     <div className="w-full">
@@ -121,7 +288,10 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
             size="icon"
             className="rounded-full border border-gray-300 dark:border-neutral-700"
             onClick={() => {
-              if (currentIdx > 0) setCurrentIdx(currentIdx - 1);
+              if (currentIdx > 0) {
+                const prevAsset = items[currentIdx - 1];
+                if (prevAsset) router.push(`/assetdata/assets/${prevAsset.id}`);
+              }
             }}
             disabled={currentIdx <= 0}
             title="Previous Asset"
@@ -134,7 +304,10 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
             size="icon"
             className="rounded-full border border-gray-300 dark:border-neutral-700"
             onClick={() => {
-              if (currentIdx >= 0 && currentIdx < items.length - 1) setCurrentIdx(currentIdx + 1);
+              if (currentIdx >= 0 && currentIdx < items.length - 1) {
+                const nextAsset = items[currentIdx + 1];
+                if (nextAsset) router.push(`/assetdata/assets/${nextAsset.id}`);
+              }
             }}
             disabled={currentIdx === -1 || currentIdx === items.length - 1}
             title="Next Asset"
@@ -205,7 +378,7 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
             {/* Specs Info */}
             <div>
               <h2 className="text-xl font-bold mb-4">Specs</h2>
-              {asset.specs && asset.specs.length > 0 ? (
+              {Array.isArray(asset.specs) && asset.specs.length > 0 && asset.specs[0] ? (
                 <div className="space-y-2">
                   <div><span className="font-semibold">CPU:</span> {asset.specs[0].cpu || '-'}</div>
                   <div><span className="font-semibold">CPU Gen:</span> {asset.specs[0].cpu_generation || '-'}</div>
@@ -214,7 +387,7 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                   <div><span className="font-semibold">OS:</span> {asset.specs[0].os || '-'}</div>
                   <div><span className="font-semibold">Screen Size:</span> {asset.specs[0].screen_size || '-'}</div>
                   <div><span className="font-semibold">Installed Software:</span>
-                    {asset.specs[0].installed_software && asset.specs[0].installed_software.length > 0 ? (
+                    {Array.isArray(asset.specs[0].installed_software) && asset.specs[0].installed_software.length > 0 ? (
                       <ul className="list-disc list-inside ml-2">
                         {asset.specs[0].installed_software.map((sw: any) => (
                           <li key={sw.id}>
