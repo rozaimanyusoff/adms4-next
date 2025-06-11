@@ -22,6 +22,7 @@ interface Owner {
 
 interface Asset {
     id: number;
+    asset_code: string;
     item_code: string;
     serial_number: string;
     finance_tag?: string | null;
@@ -111,7 +112,7 @@ const CoreAsset: React.FC = () => {
     });
 
     const handleRowDoubleClick = (row: Asset) => {
-        window.open(`/assetdata/assets/${row.id}`, '_blank');
+        window.open(`/assetdata/assets/${row.asset_code}`, '_blank');
     };
 
     const columns: ColumnDef<Asset & { age?: number | string; nbv?: string | number }>[] = [

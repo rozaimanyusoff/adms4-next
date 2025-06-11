@@ -165,7 +165,8 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
               <h2 className="text-xl font-bold mb-4">Asset Info</h2>
               <div className="space-y-2">
                 <div><span className="font-semibold">ID:</span> {asset.id}</div>
-                <div><span className="font-semibold">Item Code:</span> {asset.item_code}</div>
+                <div><span className="font-semibold">Item Code:</span> {asset.asset_code}</div>
+                {/* <div><span className="font-semibold">Item Code:</span> {asset.item_code}</div> */}
                 <div><span className="font-semibold">Serial Number:</span> {asset.serial_number}</div>
                 <div><span className="font-semibold">Finance Tag:</span> {asset.finance_tag || '-'}</div>
                 <div><span className="font-semibold">PC Hostname:</span> {asset.pc_hostname || '-'}</div>
