@@ -11,7 +11,7 @@ const columnToggleButton = "form-select bg-transparent/10 placeholder:text-base 
 const columnToggleItem = "block text-base cursor-pointer px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-amber-600";
 
 /* Export Dropdown */
-const exportButton = "form-select bg-transparent/10 placeholder:text-base p-2 border rounded-xs text-left truncate min-w-[120px]";
+const exportButton = "form-select placeholder:text-base p-2 border rounded-xs text-left truncate min-w-[120px]";
 const exportMenuItem = "block w-full text-left text-sm px-2 py-1 hover:bg-gray-300 dark:hover:bg-amber-600";
 
 /* Table Structure */
@@ -140,6 +140,8 @@ export interface DataGridProps<T> {
     persistenceKey?: string;
     /** Option to persist pagination and pageSize in localStorage */
     persistPagination?: boolean;
+    /** Optional list of column keys to treat as chained filters in order */
+    chainedFilters?: string[];
 }
 
 // Utility Functions
@@ -173,6 +175,7 @@ const CustomDataGridInner = <T,>({
     onRowSelected,
     persistenceKey,
     persistPagination,
+    chainedFilters, // new prop
 }: DataGridProps<T>, ref: React.Ref<any>) => {
     const [currentPage, setCurrentPage] = useState(() => {
         if (!persistPagination) return 1;
@@ -700,6 +703,7 @@ const CustomDataGridInner = <T,>({
                                     <div className="relative z-10">
                                         <Button
                                             ref={exportDropdownRef}
+                                            size={'sm'}
                                             onClick={() => {
                                                 setOpenExportDropdown(prev => {
                                                     const rect = exportDropdownRef.current?.getBoundingClientRect();
@@ -791,9 +795,11 @@ const CustomDataGridInner = <T,>({
                                                     className={filterCellInput}
                                                     placeholder={`Search ${col.header}`}
                                                     onChange={e => {
+                                                        const value = e.target.value;
+                                                        setCurrentPage(1); // reset pagination to first page
                                                         setColumnFilters(prev => ({
                                                             ...prev,
-                                                            [col.key]: e.target.value
+                                                            [col.key]: value
                                                         }));
                                                     }}
                                                 />
@@ -836,15 +842,43 @@ const CustomDataGridInner = <T,>({
                                                         <SelectContent>
                                                             <SelectItem key="__all__" value="__all__">All</SelectItem>
                                                             {(col.filterParams?.options ??
-                                                                Array.from(new Set(data.map(row => {
-                                                                    const val = row[col.key as keyof T];
-                                                                    return typeof val === 'string' || typeof val === 'number' ? val : '';
-                                                                }).filter(Boolean)))
-                                                            ).map(opt => (
-                                                                <SelectItem key={String(opt)} value={String(opt) || "__invalid__"}>
-                                                                    {String(col.filterParams?.labelMap?.[String(opt)] ?? opt)}
-                                                                </SelectItem>
-                                                            ))}
+                                                                (() => {
+                                                                    const key = String(col.key);
+                                                                    let scoped = [...data];
+                                                                    if (chainedFilters && chainedFilters.includes(key)) {
+                                                                        const currentIndex = chainedFilters.indexOf(key);
+                                                                        for (let i = 0; i < currentIndex; i++) {
+                                                                            const upstreamKey = chainedFilters[i];
+                                                                            const filterVal = columnFilters[upstreamKey];
+                                                                            if (filterVal) {
+                                                                                scoped = scoped.filter(row => {
+                                                                                    const val = columns.find(c => String(c.key) === upstreamKey)?.render?.(row) ?? row[upstreamKey as keyof T];
+                                                                                    return typeof val === 'string' || typeof val === 'number'
+                                                                                        ? String(val) === String(filterVal)
+                                                                                        : false;
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    return Array.from(new Set(scoped.map(row => {
+                                                                        const raw = col.render ? col.render(row) : row[col.key as keyof T];
+                                                                        return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '';
+                                                                    }).filter(Boolean)));
+                                                                })()
+                                                            ).map(opt => {
+                                                                const value = String(opt) || "__invalid__";
+                                                                const isUsed = filteredData.some(row => {
+                                                                    const rawValue = col.render ? col.render(row) : row[col.key as keyof T];
+                                                                    return typeof rawValue === 'string' || typeof rawValue === 'number'
+                                                                        ? String(rawValue) === value
+                                                                        : false;
+                                                                });
+                                                                return (
+                                                                    <SelectItem key={value} value={value} disabled={!isUsed}>
+                                                                        {String(col.filterParams?.labelMap?.[value] ?? opt)}
+                                                                    </SelectItem>
+                                                                );
+                                                            })}
                                                         </SelectContent>
                                                     </Select>
                                                 </>

@@ -4,7 +4,6 @@ import { authenticatedApi } from "@/config/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 
 interface DetailAssetProps {
@@ -70,6 +69,15 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
     setShowDropdown(results.length > 0);
   }, [searchValue, items]);
 
+  // Utility: pick a random color from a palette
+  const cardColors = [
+    'bg-pink-100', 'bg-blue-100', 'bg-green-100', 'bg-yellow-100', 'bg-purple-100', 'bg-orange-100', 'bg-teal-100', 'bg-red-100', 'bg-indigo-100', 'bg-fuchsia-100',
+    'bg-pink-200', 'bg-blue-200', 'bg-green-200', 'bg-yellow-200', 'bg-purple-200', 'bg-orange-200', 'bg-teal-200', 'bg-red-200', 'bg-indigo-200', 'bg-fuchsia-200',
+  ];
+  function getRandomCardColor(idx: number) {
+    return cardColors[idx % cardColors.length];
+  }
+
   if (loading) return (
     <div className="w-full">
       {/* Navbar always visible */}
@@ -101,7 +109,7 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                     }}
                   >
                     <div className="font-medium">{item.serial_number}</div>
-                    <div className="text-xs text-gray-500">{item.brands?.name || '-'} | {item.models?.name || '-'}</div>
+                    <div className="text-xs text-gray-500">{item.types?.name || '-'}</div>
                   </li>
                 ))}
               </ul>
@@ -168,7 +176,7 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
           <div className="w-64 relative">
             <Input
               type="text"
-              placeholder="Search serial number..."
+              placeholder="Search registered number..."
               className="w-64"
               value={searchValue}
               onChange={e => setSearchValue(e.target.value)}
@@ -331,115 +339,164 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
       </div>
       {/* Main Content */}
       <div className="w-full px-4">
-        <div className="bg-white rounded shadow p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
-            {/* Asset Info */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">Asset Info</h2>
-              <div className="space-y-2">
-                <div><span className="font-semibold">ID:</span> {asset.id}</div>
-                <div><span className="font-semibold">Item Code:</span> {asset.asset_code}</div>
-                {/* <div><span className="font-semibold">Item Code:</span> {asset.item_code}</div> */}
-                <div><span className="font-semibold">Serial Number:</span> {asset.serial_number}</div>
-                <div><span className="font-semibold">Finance Tag:</span> {asset.finance_tag || '-'}</div>
-                <div><span className="font-semibold">PC Hostname:</span> {asset.pc_hostname || '-'}</div>
-                <div><span className="font-semibold">DOP:</span> {asset.dop || '-'}</div>
-                <div><span className="font-semibold">Year:</span> {asset.year || '-'}</div>
-                <div><span className="font-semibold">Unit Price:</span> {asset.unit_price || '-'}</div>
-                <div><span className="font-semibold">Depreciation Length:</span> {asset.depreciation_length || '-'}</div>
-                <div><span className="font-semibold">Depreciation Rate:</span> {asset.depreciation_rate || '-'}</div>
-                <div><span className="font-semibold">Cost Center:</span> {asset.cost_center || '-'}</div>
-                <div><span className="font-semibold">Type:</span> {asset.types?.name || asset.type_code || '-'}</div>
-                <div><span className="font-semibold">Category:</span> {asset.categories?.name || asset.category_code || '-'}</div>
-                <div><span className="font-semibold">Brand:</span> {asset.brands?.name || asset.brand_code || '-'}</div>
-                <div><span className="font-semibold">Model:</span> {asset.models?.name || asset.model_code || '-'}</div>
-                <div><span className="font-semibold">Classification:</span> {asset.classification || '-'}</div>
-                <div><span className="font-semibold">Status:</span> {asset.status || '-'}</div>
-                <div><span className="font-semibold">Asses:</span> {asset.asses || '-'}</div>
-                <div><span className="font-semibold">Comment:</span> {asset.comment || '-'}</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6">
+          {/* Asset Info */}
+          <section className={`rounded-lg shadow p-6 mb-6 ${getRandomCardColor(0)}`}>
+            <h2 className="text-xl font-bold border-b pb-2 mb-4 flex items-center gap-2">
+              {/* Optionally add an icon here */}
+              Asset Info
+            </h2>
+            {/* Asset Image Box */}
+            <div className="flex justify-center mb-4">
+              <div className="w-48 h-48 bg-white border border-gray-300 rounded flex items-center justify-center overflow-hidden">
+                {asset.image_url ? (
+                  <img
+                    src={asset.image_url}
+                    alt="Asset Image"
+                    className="object-contain w-full h-full"
+                  />
+                ) : (
+                  <span className="text-gray-400 text-sm">No Image</span>
+                )}
               </div>
             </div>
-            {/* Owner Info */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">Owner Info</h2>
-              {asset.owner && asset.owner.length > 0 ? (
-                <div className="space-y-2">
-                  <div><span className="font-semibold">Name:</span> {asset.owner[0].name}</div>
-                  <div><span className="font-semibold">Department:</span> {asset.owner[0].department || '-'}</div>
-                  <div><span className="font-semibold">District:</span> {asset.owner[0].district || '-'}</div>
-                  <div><span className="font-semibold">Cost Center:</span> {asset.owner[0].cost_center || '-'}</div>
-                  <div><span className="font-semibold">Effective Date:</span> {asset.owner[0].effective_date ? new Date(asset.owner[0].effective_date).toLocaleDateString() : '-'}</div>
-                  <div><span className="font-semibold">Ramco ID:</span> {asset.owner[0].ramco_id || '-'}</div>
-                </div>
-              ) : (
-                <div className="text-gray-400">No owner data</div>
-              )}
+            <div className="grid grid-cols-1 gap-y-2">
+              {/* <div className="flex"><span className="w-40 font-semibold">ID:</span> <span>{asset.id}</span></div> */}
+              <div className="flex"><span className="w-40 font-semibold">Item Code:</span> <span>{asset.asset_code}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Registered Number:</span> <span>{asset.serial_number}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Finance Tag:</span> <span>{asset.finance_tag || '-'}</span></div>
+              {/* <div className="flex"><span className="w-40 font-semibold">DOP:</span> <span>{asset.dop || '-'}</span></div> */}
+              <div className="flex"><span className="w-40 font-semibold">Year:</span> <span>{asset.year || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Unit Price:</span> <span>{asset.unit_price || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Depreciation Length:</span> <span>{asset.depreciation_length || '-'} years</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Depreciation Rate:</span> <span>{asset.depreciation_rate || '-'}%</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Netbook Value:</span> <span>{(() => {
+                const price = parseFloat(asset.unit_price);
+                const rate = parseFloat(asset.depreciation_rate);
+                const years = parseFloat(asset.depreciation_length);
+                if (isNaN(price) || isNaN(rate) || isNaN(years) || price <= 0 || rate <= 0 || years <= 0) return '-';
+                // Straight-line depreciation
+                const annualDep = price * (rate / 100);
+                const netbook = price - (annualDep * years);
+                return netbook > 0 ? netbook.toLocaleString(undefined, { style: 'currency', currency: 'MYR' }) : '0';
+              })()}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Cost Center:</span> <span>{asset.cost_center || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Type:</span> <span>{asset.types?.name || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Classification:</span> <span>{asset.classification || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Status:</span> <span>{asset.status || '-'}</span></div>
+              <div className="flex"><span className="w-40 font-semibold">Disposed Date:</span> <span>{
+                asset.status === 'active' ||
+                !asset.disposed_date ||
+                asset.disposed_date === '0000-00-00' ||
+                asset.disposed_date === '0000-00-00T00:00:00.000Z' ||
+                asset.disposed_date === '1899-11-29T17:04:35.000Z'
+                  ? '-'
+                  : (() => {
+                      const d = new Date(asset.disposed_date);
+                      return isNaN(d.getTime()) ? '-' : d.toLocaleDateString();
+                    })()
+              }</span></div>
             </div>
-            {/* Specs Info */}
-            <div>
-              <h2 className="text-xl font-bold mb-4">Specs</h2>
-              {Array.isArray(asset.specs) && asset.specs.length > 0 && asset.specs[0] ? (
-                <div className="space-y-2">
-                  <div><span className="font-semibold">CPU:</span> {asset.specs[0].cpu || '-'}</div>
-                  <div><span className="font-semibold">CPU Gen:</span> {asset.specs[0].cpu_generation || '-'}</div>
-                  <div><span className="font-semibold">Memory (GB):</span> {asset.specs[0].memory_size || '-'}</div>
-                  <div><span className="font-semibold">Storage (GB):</span> {asset.specs[0].storage_size || '-'}</div>
-                  <div><span className="font-semibold">OS:</span> {asset.specs[0].os || '-'}</div>
-                  <div><span className="font-semibold">Screen Size:</span> {asset.specs[0].screen_size || '-'}</div>
-                  <div><span className="font-semibold">Installed Software:</span>
-                    {Array.isArray(asset.specs[0].installed_software) && asset.specs[0].installed_software.length > 0 ? (
-                      <ul className="list-disc list-inside ml-2">
-                        {asset.specs[0].installed_software.map((sw: any) => (
-                          <li key={sw.id}>
-                            {sw.name} <span className="text-xs text-gray-400">({sw.installed_at ? new Date(sw.installed_at).toLocaleDateString() : '-'})</span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span>-</span>
-                    )}
+          </section>
+{/* Specs Info */}
+          <section className={`rounded-lg shadow p-6 mb-6 ${getRandomCardColor(2)}`}>
+            <h2 className="text-xl font-bold border-b pb-2 mb-4 flex items-center gap-2">
+              {/* Optionally add an icon here */}
+              Specs
+            </h2>
+            {asset.specs ? (
+              <div className="grid grid-cols-1 gap-y-2">
+                <div className="flex"><span className="w-40 font-semibold">Category:</span> <span>{asset.specs?.categories?.name || asset.categories?.name || '-'}</span></div>
+                <div className="flex"><span className="w-40 font-semibold">Brand:</span> <span>{asset.specs?.brands?.name || asset.brands?.name || '-'}</span></div>
+                <div className="flex"><span className="w-40 font-semibold">Model:</span> <span>{asset.specs?.models?.name || asset.models?.name || '-'}</span></div>
+                {asset.specs.cpu && <div className="flex"><span className="w-40 font-semibold">CPU:</span> <span>{asset.specs.cpu}</span></div>}
+                {asset.specs.cpu_generation && <div className="flex"><span className="w-40 font-semibold">CPU Gen:</span> <span>{asset.specs.cpu_generation}</span></div>}
+                {asset.specs.memory_size && <div className="flex"><span className="w-40 font-semibold">Memory (GB):</span> <span>{asset.specs.memory_size}</span></div>}
+                {asset.specs.storage_size && <div className="flex"><span className="w-40 font-semibold">Storage (GB):</span> <span>{asset.specs.storage_size}</span></div>}
+                {asset.specs.os && <div className="flex"><span className="w-40 font-semibold">OS:</span> <span>{asset.specs.os}</span></div>}
+                {asset.specs.screen_size && <div className="flex"><span className="w-40 font-semibold">Screen Size:</span> <span>{asset.specs.screen_size}</span></div>}
+                {asset.specs.transmission && <div className="flex"><span className="w-40 font-semibold">Transmission:</span> <span>{asset.specs.transmission}</span></div>}
+                {asset.specs.fuel_type && <div className="flex"><span className="w-40 font-semibold">Fuel Type:</span> <span>{asset.specs.fuel_type}</span></div>}
+                {asset.specs.cubic_meter && <div className="flex"><span className="w-40 font-semibold">Cubic Meter:</span> <span>{asset.specs.cubic_meter}</span></div>}
+                {asset.specs.chassis_no && <div className="flex"><span className="w-40 font-semibold">Chassis No:</span> <span>{asset.specs.chassis_no}</span></div>}
+                {asset.specs.engine_no && <div className="flex"><span className="w-40 font-semibold">Engine No:</span> <span>{asset.specs.engine_no}</span></div>}
+                {/* Installed Software: Only for Computers */}
+                {asset.types?.type_id === 1 && (
+                  <div className="flex"><span className="w-40 font-semibold">Installed Software:</span>
+                    <span>
+                      {Array.isArray(asset.specs.installed_software) && asset.specs.installed_software.length > 0 ? (
+                        <ul className="list-disc list-inside ml-2">
+                          {asset.specs.installed_software.map((sw: any) => (
+                            <li key={sw.id}>
+                              {sw.name} <span className="text-xs text-gray-400">({sw.installed_at ? new Date(sw.installed_at).toLocaleDateString() : '-'})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>-</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {/* Additional software fields */}
+                {asset.specs.microsoft_office && <div className="flex"><span className="w-40 font-semibold">Microsoft Office:</span> <span>{asset.specs.microsoft_office}</span></div>}
+                {asset.specs.additional_software && <div className="flex"><span className="w-40 font-semibold">Additional Software:</span> <span>{asset.specs.additional_software}</span></div>}
+                {asset.specs.antivirus && <div className="flex"><span className="w-40 font-semibold">Antivirus:</span> <span>{asset.specs.antivirus}</span></div>}
+              </div>
+            ) : (
+              <div className="text-gray-400">No specs data</div>
+            )}
+          </section>
+
+          {/* Owner Info */}
+          <section className={`rounded-lg shadow p-6 mb-6 ${getRandomCardColor(1)}`}>
+            <h2 className="text-xl font-bold border-b pb-2 mb-4 flex items-center gap-2">
+              {/* Optionally add an icon here */}
+              Owner Info
+            </h2>
+            {asset.owner && asset.owner.length > 0 ? (
+              <>
+                {/* Current Owner */}
+                <div className="mb-6">
+                  <div className="font-semibold text-blue-700">Current Owner</div>
+                  <div className="grid grid-cols-1 gap-y-2 mt-2">
+                    <div className="flex"><span className="w-40 font-semibold">Name:</span> <span>{asset.owner[asset.owner.length - 1].name}</span></div>
+                    <div className="flex"><span className="w-40 font-semibold">Department:</span> <span>{asset.owner[asset.owner.length - 1].department || '-'}</span></div>
+                    <div className="flex"><span className="w-40 font-semibold">District:</span> <span>{asset.owner[asset.owner.length - 1].district || '-'}</span></div>
+                    <div className="flex"><span className="w-40 font-semibold">Cost Center:</span> <span>{asset.owner[asset.owner.length - 1].cost_center || '-'}</span></div>
+                    <div className="flex"><span className="w-40 font-semibold">Effective Date:</span> <span>{asset.owner[asset.owner.length - 1].effective_date ? new Date(asset.owner[asset.owner.length - 1].effective_date).toLocaleDateString() : '-'}</span></div>
+                    <div className="flex"><span className="w-40 font-semibold">Ramco ID:</span> <span>{asset.owner[asset.owner.length - 1].ramco_id || '-'}</span></div>
                   </div>
                 </div>
-              ) : (
-                <div className="text-gray-400">No specs data</div>
-              )}
-            </div>
-          </div>
-          {/* Tabs for Movement, Maintenance, Assessment */}
-          <div className="w-full">
-            <Tabs defaultValue="movement" className="w-full">
-              <TabsList className="mb-4">
-                <TabsTrigger value="movement">Movement</TabsTrigger>
-                <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
-                <TabsTrigger value="assessment">Assessment</TabsTrigger>
-              </TabsList>
-              <TabsContent value="movement">
-                {asset.movement && asset.movement.length > 0 ? (
-                  <ul className="divide-y divide-gray-200">
-                    {asset.movement.map((move: any, idx: number) => (
-                      <li key={move.id || idx} className="py-2">
-                        <div className="flex flex-col md:flex-row md:items-center md:gap-4">
-                          <span className="font-semibold">{move.date ? new Date(move.date).toLocaleDateString() : '-'}</span>
-                          <span>From: <span className="font-medium">{move.from || '-'}</span></span>
-                          <span>To: <span className="font-medium">{move.to || '-'}</span></span>
-                          <span>By: <span className="font-medium">{move.by || '-'}</span></span>
-                          {move.remarks && <span>Remarks: {move.remarks}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-gray-400">No movement records.</div>
+                {/* Timeline for Historical Owners */}
+                {asset.owner.length > 1 && (
+                  <div>
+                    <div className="font-semibold text-gray-600 mb-2">Historical Owners</div>
+                    <ol className="relative border-l border-gray-300 ml-4 max-h-64 overflow-y-hidden hover:overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200">
+                      {asset.owner
+                        .slice(0, -1)
+                        .slice()
+                        .reverse()
+                        .map((o: any, idx: number) => (
+                          <li key={o.id || idx} className="mb-6 ml-4">
+                            <div className="absolute w-3 h-3 bg-gray-300 rounded-full -left-1.5 border border-white"></div>
+                            <div className="text-sm text-gray-700 font-semibold">{o.effective_date ? new Date(o.effective_date).toLocaleDateString() : '-'}</div>
+                            <div className="text-sm">Name: <span className="font-medium">{o.name || '-'}</span></div>
+                            <div className="text-sm">Department: <span className="font-medium">{o.department || '-'}</span></div>
+                            <div className="text-sm">District: <span className="font-medium">{o.district || '-'}</span></div>
+                            <div className="text-sm">Cost Center: <span className="font-medium">{o.cost_center || '-'}</span></div>
+                            <div className="text-sm">Ramco ID: <span className="font-medium">{o.ramco_id || '-'}</span></div>
+                          </li>
+                        ))}
+                    </ol>
+                  </div>
                 )}
-              </TabsContent>
-              <TabsContent value="maintenance">
-                <div className="text-gray-500">Maintenance info goes here.</div>
-              </TabsContent>
-              <TabsContent value="assessment">
-                <div className="text-gray-500">Assessment info goes here.</div>
-              </TabsContent>
-            </Tabs>
-          </div>
+              </>
+            ) : (
+              <div className="text-gray-400">No owner data</div>
+            )}
+          </section>
+          
         </div>
       </div>
     </div>

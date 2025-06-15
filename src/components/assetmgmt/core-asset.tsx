@@ -1,62 +1,101 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, InfoIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Switch } from "@components/ui/switch";
 
 interface Brand { id: number; name: string; code: string; }
 interface Category { id: number; name: string; code: string; }
 interface Type { id: number; name: string; code: string; }
 
-interface Owner {
+interface InstalledSoftware {
     id: number;
+    software_id: number;
+    name: string;
+    installed_at: string;
+}
+
+interface Specs {
+    id: number;
+    asset_id: number;
+    entry_code: string;
+    asset_code: string | null;
+    type_id: number;
+    category_id: number;
+    brand_id: number | null;
+    model_id: number | null;
+    serial_number: string;
+    // Computer fields
+    cpu?: string;
+    cpu_generation?: string;
+    memory_size?: string;
+    storage_size?: string;
+    os?: string;
+    installed_software_id?: number | null;
+    microsoft_office?: string;
+    additional_software?: string;
+    antivirus?: string;
+    upgraded_at?: string;
+    updated_by?: string | null;
+    // Motor Vehicle fields
+    chassis_no?: string;
+    engine_no?: string;
+    transmission?: string;
+    fuel_type?: string;
+    cubic_meter?: string;
+    avls_availability?: string;
+    avls_install_date?: string;
+    avls_removal_date?: string;
+    avls_transfer_date?: string;
+    // Common
+    categories?: { category_id: number; name: string };
+    brands?: { brand_id: number; name: string } | null;
+    models?: { model_id: number; name: string } | null;
+    installed_software?: InstalledSoftware[];
+}
+
+interface Owner {
     ramco_id: string;
     name: string;
-    district: string | null;
-    department: string | null;
-    cost_center: string | null;
-    effective_date: string;
+    email?: string;
+    contact?: string;
+    department?: string | null;
+    cost_center?: string | null;
+    district?: string | null;
+    effective_date?: string;
 }
 
 interface Asset {
     id: number;
-    asset_code: string;
-    item_code: string;
-    serial_number: string;
-    asset_type?: string;
+    classification: string;
+    asset_code: string | null;
     finance_tag?: string | null;
-    pc_hostname?: string | null;
+    serial_number: string;
     dop?: string | null;
     year?: string | null;
-    unit_price?: number | string;
+    unit_price?: number | string | null;
     depreciation_length?: number | string;
+    depreciation_rate?: number | string;
     cost_center?: string | null;
+    status?: string;
+    disposed_date?: string | null;
+    types?: { type_id: number; type_code: string; name: string };
+    specs?: Specs;
+    owner?: Owner[];
     asses?: string;
     comment?: string | null;
-    classification?: string;
-    status?: string;
-    depreciation_rate?: number | string;
-    warranty_period?: string;
-    types?: { type_code: string; name: string };
-    categories?: { category_code: string; name: string };
+    pc_hostname?: string | null;
+    item_code?: string;
     brands?: { brand_code: string; name: string };
+    categories?: { category_code: string; name: string };
     models?: { model_code: string; name: string };
-    owner?: Array<{
-        id: number;
-        ramco_id: string;
-        name: string;
-        district: string | null;
-        department: string | null;
-        cost_center: string | null;
-        effective_date: string;
-    }>;
     // Derived fields for DataGrid
     owner_name?: string;
     owner_department?: string;
     owner_district?: string;
-    // Added for DataGrid columns
     category?: string;
     brand?: string;
     model?: string;
@@ -69,6 +108,7 @@ const CoreAsset: React.FC = () => {
     const [brands, setBrands] = useState<Brand[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [types, setTypes] = useState<Type[]>([]);
+    const [hideDisposed, setHideDisposed] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -115,9 +155,9 @@ const CoreAsset: React.FC = () => {
         const formatNumber = (val: number) => val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return {
             ...asset,
-            brand: asset.brands?.name || '-',
-            category: asset.categories?.name || '-',
-            model: asset.models?.name || '-',
+            brand: asset.specs?.brands?.name || asset.brands?.name || '-',
+            category: asset.specs?.categories?.name || asset.categories?.name || '-',
+            model: asset.specs?.models?.name || asset.models?.name || '-',
             asset_type: asset.types?.name || '-',
             age: asset.year ? age : '-',
             unit_price: isNaN(unitPrice) ? '-' : formatNumber(unitPrice),
@@ -125,61 +165,130 @@ const CoreAsset: React.FC = () => {
             owner_name: asset.owner?.[0]?.name || '-',
             owner_department: asset.owner?.[0]?.department || '-',
             owner_district: asset.owner?.[0]?.district || '-',
+            owner_cost_center: asset.owner?.[0]?.cost_center || '-',
         };
     });
+
 
     const handleRowDoubleClick = (row: Asset) => {
         window.open(`/assetdata/assets/${row.id}`, '_blank');
     };
 
-    const columns: ColumnDef<Asset & { age?: number | string; nbv?: string | number }>[] = [
-        { key: "id", header: "ID", sortable: true },
-        { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect' },
-        { key: "finance_tag", header: "Finance Tag", render: (row) => row.finance_tag || "-", filter: 'input' },
-        { key: "serial_number", header: "Serial Number", sortable: true, filter: 'input' },
-        // Updated filtered property columns to match flattened keys in transformedData
-        {
-            key: "asset_type",
-            header: "Asset Type",
-            filter: "singleSelect",
-        },
-        {
-            key: "category",
-            header: "Category",
-            filter: "singleSelect",
-        },
-        {
-            key: "brand",
-            header: "Brand",
-            filter: "singleSelect",
-        },
-        {
-            key: "model",
-            header: "Model",
-            filter: "singleSelect",
-        },
-        { key: "age", header: "Age", sortable: true, filter: 'input' },
-        { key: "unit_price", header: "Asset Value", sortable: true, filter: 'input' },
-        { key: "nbv", header: "NBV", sortable: true },
-        { key: "status", header: "Status", sortable: true, filter: 'singleSelect' },
-        { key: "owner_name", header: "Owner Name", filter: 'input' },
-        { key: "owner_department", header: "Department", filter: 'singleSelect' },
-        { key: "owner_district", header: "District", filter: 'singleSelect' },
-    ];
+    // Memoized columns with chained filter options
+    const columns = useMemo<ColumnDef<Asset & { age?: number | string; nbv?: string | number; owner_cost_center?: string }>[]>(() => {
+        const contextData = hideDisposed
+            ? transformedData.filter(asset => asset.status?.toLowerCase() !== 'disposed')
+            : transformedData;
+
+        return [
+            { key: "id", header: "ID", sortable: true },
+            { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect', filterParams: { options: ['asset', 'non-asset'] } },
+            { key: "asset_code", header: "Asset Code", render: (row) => row.asset_code || "-", filter: 'input' },
+            { key: "serial_number", header: "Registered Number", sortable: true, filter: 'input' },
+            {
+                key: "types",
+                header: "Asset Type",
+                render: (row) => row.types?.name || '-',
+                filter: "singleSelect",
+                filterParams: {
+                    options: Array.from(new Set(contextData.map(d => d.types?.name).filter(Boolean))) as (string | number)[]
+                }
+            },
+            {
+                key: "category",
+                header: "Category",
+                filter: "singleSelect",
+                filterParams: {
+                    options: Array.from(new Set(
+                        transformedData
+                            // Filtering logic for chained filters handled by DataGrid now
+                            .map(d => d.category)
+                            .filter(Boolean)
+                    )) as (string | number)[]
+                }
+            },
+            {
+                key: "brand",
+                header: "Brand",
+                filter: "singleSelect",
+                filterParams: {
+                    options: Array.from(new Set(
+                        transformedData
+                            .map(d => d.brand)
+                            .filter(Boolean)
+                    )) as (string | number)[]
+                }
+            },
+            {
+                key: "model",
+                header: "Model",
+                filter: "singleSelect",
+                filterParams: {
+                    options: Array.from(new Set(
+                        transformedData
+                            .map(d => d.model)
+                            .filter(Boolean)
+                    )) as (string | number)[]
+                }
+            },
+            { key: "age", header: "Age", sortable: true, filter: 'input' },
+            { key: "unit_price", header: "Asset Value", sortable: true, filter: 'input' },
+            { key: "nbv", header: "NBV", sortable: true },
+            {
+                key: "status",
+                header: "Status",
+                sortable: true,
+                filter: 'singleSelect',
+                filterParams: {
+                    options: Array.from(new Set(transformedData.map(f => f.status).filter(Boolean))) as (string | number)[]
+                }
+            },
+            { key: "owner_name", header: "Owner Name", filter: 'input' },
+            { key: "owner_cost_center", header: "Cost Center", filter: 'input' },
+            {
+                key: "owner_department",
+                header: "Department",
+                filter: 'singleSelect',
+                filterParams: {
+                    options: Array.from(new Set(contextData.map(f => f.owner_department).filter(Boolean))) as (string | number)[]
+                }
+            },
+            {
+                key: "owner_district",
+                header: "District",
+                filter: 'singleSelect',
+                filterParams: {
+                    options: Array.from(new Set(contextData.map(f => f.owner_district).filter(Boolean))) as (string | number)[]
+                }
+            },
+        ];
+    }, [transformedData, hideDisposed]);
 
     return (
         <div className="mt-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold mb-4">Assets</h2>
+            <div className="flex items-center justify-between mb-2">
+                <h2 className="text-xl font-bold">Assets</h2>
+                <div className="flex items-center gap-2">
+                    <label htmlFor="disposed-switch" className="text-sm select-none cursor-pointer my-1">
+                        Hide Disposed Assets
+                    </label>
+                    <Switch
+                        checked={hideDisposed}
+                        onCheckedChange={setHideDisposed}
+                        id="disposed-switch"
+                    />
+                </div>
             </div>
             {loading ? (
                 <p>Loading...</p>
             ) : (
                 <CustomDataGrid
                     columns={columns}
-                    data={transformedData}
+                    data={hideDisposed ? transformedData.filter(a => a.status?.toLowerCase() !== 'disposed') : transformedData}
                     inputFilter={false}
                     onRowDoubleClick={handleRowDoubleClick}
+                    dataExport={true}
+                    chainedFilters={['types', 'category', 'brand', 'model']}
                 />
             )}
         </div>
