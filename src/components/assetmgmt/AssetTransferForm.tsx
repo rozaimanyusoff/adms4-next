@@ -3,11 +3,12 @@ import React, { useState, useContext, useEffect, useRef, useMemo } from "react";
 import { AuthContext } from "@/store/AuthContext";
 import ActionSidebar from "@/components/ui/action-aside";
 import { authenticatedApi } from "@/config/api";
-import { CirclePlus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, Undo2 } from "lucide-react";
+import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, Undo2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 // Types for form structure
 interface Requestor {
@@ -15,6 +16,7 @@ interface Requestor {
     staffId: string;
     designation: string;
     typeOfChange: 'Staff' | 'Asset' | 'Non-Asset';
+    role: 'User' | 'Asset Manager'; // Added role field
 }
 interface StaffTransfer {
     name: string;
@@ -26,6 +28,7 @@ interface AssetTransferDetails {
     ownerStaffId: string;
     location: string;
     costCenter: string;
+    department: string;
     condition: string;
     brandModel: string;
     serialNo: string;
@@ -117,6 +120,7 @@ const initialForm: AssetTransferFormState = {
         staffId: "",
         designation: "",
         typeOfChange: "Asset",
+        role: "User", // Added default role to fix type error
     },
     staffTransfer: {
         name: "",
@@ -130,6 +134,7 @@ const initialForm: AssetTransferFormState = {
             ownerStaffId: "",
             location: "",
             costCenter: "",
+            department: "",
             condition: "",
             brandModel: "",
             serialNo: "",
@@ -139,6 +144,7 @@ const initialForm: AssetTransferFormState = {
             ownerStaffId: "",
             location: "",
             costCenter: "",
+            department: "",
             condition: "",
             brandModel: "",
             serialNo: "",
@@ -176,6 +182,7 @@ export default function AssetTransferForm() {
     const [departments, setDepartments] = useState<{ id: number, name: string }[]>([]);
     const [districts, setDistricts] = useState<{ id: number, name: string }[]>([]);
     const [employees, setEmployees] = useState<{ id: number, full_name: string, ramco_id: string }[]>([]);
+    const [selectedOwnerName, setSelectedOwnerName] = useState("");
 
     // Track initial state for reset
     const initialTransferDetails = useRef(form.assetTransfer);
@@ -211,6 +218,8 @@ export default function AssetTransferForm() {
                     ...prev.requestor,
                     name: user.name || prev.requestor.name,
                     staffId: user.username || user.email || prev.requestor.staffId,
+                    designation: prev.requestor.designation,
+                    role: 'User', // Default to 'User' or update this logic if you have a different way to determine asset manager status
                 },
             }));
         }
@@ -342,7 +351,7 @@ export default function AssetTransferForm() {
 
     const handleOwnerSearch = async (query: string) => {
         if (!query) return setEmployees([]);
-        const res = await authenticatedApi.get(`/api/assets/employees?q=${encodeURIComponent(query)}`);
+        const res = await authenticatedApi.get(`/api/assets/employees/search?q=${encodeURIComponent(query)}`);
         setEmployees((res.data as any).data || []);
     };
 
@@ -390,6 +399,77 @@ export default function AssetTransferForm() {
         }));
     };
 
+    const [removeIdx, setRemoveIdx] = useState<number | null>(null);
+    const [reasonOthersChecked, setReasonOthersChecked] = useState(false);
+    const [reasonOthersText, setReasonOthersText] = useState("");
+    const [returnToAssetManager, setReturnToAssetManager] = useState<{ [key: number]: boolean }>({});
+
+    // Define reasons for transfer
+    const ASSET_REASONS = [
+        { label: 'Resignation', value: 'resignation' },
+        { label: 'Disposal', value: 'disposal' },
+        { label: 'Asset Problem', value: 'asset_problem' },
+        { label: 'Others', value: 'others' },
+    ];
+
+    const EMPLOYEE_REASONS = [
+        { label: 'Temporary Assignment (< 30 days)', value: 'temporary_assignment' },
+        { label: 'Upgrading/Promotion', value: 'upgrading_promotion' },
+        { label: 'Department Restructure', value: 'department_restructure' },
+        { label: 'Resignation', value: 'resignation' },
+        { label: 'Relocation', value: 'relocation' },
+        { label: 'Disposal', value: 'disposal' },
+        { label: 'Others', value: 'others' },
+    ];
+
+    // Track attachments per item
+    const [attachments, setAttachments] = useState<{ [itemId: string]: File[] }>({});
+
+    const [submitError, setSubmitError] = useState<string | null>(null);
+
+    // Add workflow state to avoid "Cannot find name 'workflow'" error
+    const [workflow, setWorkflow] = useState<{
+        approvedBy?: { name: string; date: string };
+        acceptedBy?: { name: string; date: string };
+        qaSection?: { name: string; date: string };
+        assetManager?: { name: string; date: string };
+    }>({});
+
+    function validateChecklist() {
+        // 1. Transfer Details: any 'new' field filled (not empty/null/undefined)
+        const transferDetailsFilled = Object.values(form.assetTransfer?.new || {}).some(
+            v => v && v !== ''
+        );
+        // 2. Reason for Transfer: any reason checked (except 'othersText')
+        const reasonFilled = Object.entries(form.reason || {}).some(
+            ([k, v]) => ['resignation','relocation','disposal','asset_problem','others'].includes(k) && v === true
+        );
+        // 3. Attachments: not implemented, always false (customize if you have attachment state)
+        const attachmentsFilled = false;
+        let completed = 0;
+        if (transferDetailsFilled) completed++;
+        if (reasonFilled) completed++;
+        if (attachmentsFilled) completed++;
+        return completed === 3;
+    }
+
+    interface SubmitEvent extends React.FormEvent<HTMLFormElement> {}
+
+    interface HandleSubmitResult {
+        success: boolean;
+        error?: string;
+    }
+
+    function handleSubmit(e: SubmitEvent): void {
+        e.preventDefault();
+        if (!validateChecklist()) {
+            setSubmitError('Please complete at least one field in Transfer Details, one Reason for Transfer, and add an Attachment.');
+            return;
+        }
+        setSubmitError(null);
+        // ...proceed with submit logic...
+    }
+
     return (
         <div className="relative">
             <div className="absolute top-2 right-2 flex items-center gap-2 z-10">
@@ -414,27 +494,39 @@ export default function AssetTransferForm() {
             </div>
             <div className="mt-4">
                 <h2 className="text-xl font-bold mb-4">Asset Transfer Form</h2>
-                <form className="w-full mx-auto bg-white p-6 rounded shadow-md text-sm space-y-6">
+                <form className="w-full mx-auto bg-white p-6 rounded shadow-md text-sm space-y-6" onSubmit={handleSubmit}>
+                    {submitError && (
+                        <div className="text-red-600 font-semibold mb-2">{submitError}</div>
+                    )}
                     {/* 1. Requestor Details */}
                     <fieldset className="border rounded p-4">
                         <legend className="font-semibold">Requestor</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-2">
-                            <div>
-                                <label className="block font-medium">Name</label>
-                                <input type="text" className="input" value={form.requestor.name} readOnly />
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="flex items-center gap-2">
+                              <label className="block font-medium min-w-[80px]">Name</label>
+                              <input type="text" className="input w-full" value={form.requestor.name} readOnly />
                             </div>
-                            <div>
-                                <label className="block font-medium">Staff ID</label>
-                                <input type="text" className="input" value={form.requestor.staffId} readOnly />
+                            <div className="flex items-center gap-2">
+                              <label className="block font-medium min-w-[80px]">Ramco ID</label>
+                              <input type="text" className="input w-full" value={form.requestor.staffId} readOnly />
                             </div>
-                            <div>
-                                <label className="block font-medium">Designation</label>
-                                <input type="text" className="input" value={form.requestor.designation} onChange={e => handleInput('requestor', 'designation', e.target.value)} />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="flex items-center gap-2">
+                              <label className="block font-medium min-w-[80px]">Designation</label>
+                              <input type="text" className="input w-full" value={form.requestor.designation} onChange={e => handleInput('requestor', 'designation', e.target.value)} />
                             </div>
-                            <div>
-                                <label className="block font-medium">Date Request</label>
-                                <input type="datetime-local" className="input" value={dateRequest} onChange={e => setDateRequest(e.target.value)} />
+                            <div className="flex items-center gap-2">
+                              <label className="block font-medium min-w-[80px]">Role</label>
+                              <input type="text" className="input w-full" value={form.requestor.role || 'User'} readOnly />
                             </div>
+                          </div>
+                          <div className="flex justify-center mt-4">
+                            <span className="text-xs bg-blue-600 text-white font-medium px-2 py-1 rounded shadow border border-gray-200">
+                              {selectedAssets.length} Asset(s), {selectedEmployees.length} Employee(s) selected
+                            </span>
+                          </div>
                         </div>
                     </fieldset>
 
@@ -442,8 +534,8 @@ export default function AssetTransferForm() {
                     <fieldset className="border rounded p-4">
                         <legend className="font-semibold flex items-center gap-2">
                             Selected Items
-                            <button type="button" onClick={() => setSidebarOpen(true)} className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-1" title="Add Items">
-                                <CirclePlus className="w-4.5 h-4.5" />
+                            <button type="button" onClick={() => setSidebarOpen(true)} className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded p-1" title="Add Items">
+                                <Plus className="w-4.5 h-4.5" />
                             </button>
                         </legend>
                         {selectedItems.length === 0 ? (
@@ -470,8 +562,8 @@ export default function AssetTransferForm() {
                                                         </>
                                                     )}
                                                 </span>
-                                                <button type="button" className="ml-2 text-red-500" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
-                                                    <X className="w-5 h-5" />
+                                                <button type="button" className="ml-2 text-red-500" onClick={e => { e.stopPropagation(); setRemoveIdx(idx); }}>
+                                                    <X className="w-4 h-4" />
                                                 </button>
                                             </summary>
                                             <div className="px-4 py-2 space-y-6">
@@ -486,7 +578,7 @@ export default function AssetTransferForm() {
                                                                 <div>Model: <span className="font-medium">{item.model?.name || '-'}</span></div>
                                                                 <div className="flex">Condition: <span className="font-medium"> </span>
                                                                     <label className="ml-2 inline-flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" name="condition-new" /> New</label>
-                                                                    <label className="ml-2 inline-flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" name="condition-used" /> Used</label>
+                                                                    <label className="ml-2 inline-flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" name="condition-used" checked /> Used</label>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -515,11 +607,25 @@ export default function AssetTransferForm() {
                                                                 </Tooltip>
                                                             </TooltipProvider>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <label className="block font-medium mb-0">Effective Date</label>
-                                                            <Input type="date" className="w-[160px]" value={form.assetTransfer.effectiveDate} onChange={e => handleInput('assetTransfer', 'effectiveDate', e.target.value)} />
-                                                        </div>
                                                     </div>
+                                                    {/* Only show Return to Asset Manager for assets */}
+                                                    {!isEmployee && (
+                                                        <div className="my-2 flex items-center justify-between px-4">
+                                                            <label className="my-1 flex items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="w-4.5 h-4.5"
+                                                                    checked={!!returnToAssetManager[item.id]}
+                                                                    onChange={e => setReturnToAssetManager(prev => ({ ...prev, [item.id]: e.target.checked }))}
+                                                                />
+                                                                <span className="font-bold text-danger">Return to Asset Manager</span>
+                                                            </label>
+                                                            <div className="inline-flex items-center gap-2">
+                                                                <label className="block font-medium mb-0">Effective Date</label>
+                                                                <Input type="date" className="w-[160px]" value={form.assetTransfer.effectiveDate} onChange={e => handleInput('assetTransfer', 'effectiveDate', e.target.value)} />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <table className="w-full text-left align-middle">
                                                         <thead>
                                                             <tr>
@@ -529,47 +635,64 @@ export default function AssetTransferForm() {
                                                             </tr>
                                                         </thead>
                                                         <tbody>
+                                                            {/* Only show Owner row for assets */}
+                                                            {!isEmployee && (
+                                                                <tr>
+                                                                    <td className="py-1">
+                                                                        <label className="flex items-center gap-2">
+                                                                            <input type="checkbox" className="w-4.5 h-4.5" disabled={!!returnToAssetManager[item.id]} />
+                                                                            Owner
+                                                                        </label>
+                                                                    </td>
+                                                                    <td className="py-1">
+                                                                        <span>{item.owner?.full_name || '-'}</span>
+                                                                    </td>
+                                                                    <td className="py-1">
+                                                                        {/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
+                                                                        <div className="relative">
+                                                                            <Input
+                                                                                type="text"
+                                                                                className="input"
+                                                                                placeholder="New Owner"
+                                                                                value={selectedOwnerName || form.assetTransfer.new.ownerName}
+                                                                                onChange={e => {
+                                                                                    handleInput('assetTransfer', 'ownerName', e.target.value, 'new');
+                                                                                    handleOwnerSearch(e.target.value);
+                                                                                    setSelectedOwnerName("");
+                                                                                }}
+                                                                                autoComplete="off"
+                                                                                disabled={!!returnToAssetManager[item.id]}
+                                                                            />
+                                                                            {employees.length > 0 && (
+                                                                                <ul className="absolute z-10 bg-white border w-full max-h-40 overflow-y-auto">
+                                                                                    {employees.map(e => (
+                                                                                        <li key={e.ramco_id} className="px-2 py-1 hover:bg-blue-100 cursor-pointer" onClick={() => { handleInput('assetTransfer', 'ownerName', e.ramco_id, 'new'); setEmployees([]); setSelectedOwnerName(e.full_name); }}>{e.full_name}</li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                            {/* Cost Center, Department, Location rows remain for both */}
                                                             <tr>
                                                                 <td className="py-1">
                                                                     <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" className="w-4.5 h-4.5" />
-                                                                        Owner
-                                                                    </label>
-                                                                </td>
-                                                                <td className="py-1">
-                                                                    <span>{item.owner?.full_name || '-'}</span>
-                                                                </td>
-                                                                <td className="py-1">
-                                                                    {/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
-                                                                    <div className="relative">
-                                                                        <Input
-                                                                            type="text"
-                                                                            className="input"
-                                                                            placeholder="New Owner"
-                                                                            value={form.assetTransfer.new.ownerName}
-                                                                            onChange={e => { handleInput('assetTransfer', 'ownerName', e.target.value, 'new'); handleOwnerSearch(e.target.value); }}
-                                                                            autoComplete="off"
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="w-4.5 h-4.5"
+                                                                            checked={!!form.assetTransfer.new.costCenter}
+                                                                            disabled={!!returnToAssetManager[item.id]}
+                                                                            onChange={e => {
+                                                                                if (!e.target.checked) handleInput('assetTransfer', 'costCenter', '', 'new');
+                                                                            }}
                                                                         />
-                                                                        {employees.length > 0 && (
-                                                                            <ul className="absolute z-10 bg-white border w-full max-h-40 overflow-y-auto">
-                                                                                {employees.map(e => (
-                                                                                    <li key={e.ramco_id} className="px-2 py-1 hover:bg-blue-100 cursor-pointer" onClick={() => handleInput('assetTransfer', 'ownerName', e.full_name, 'new')}>{e.full_name}</li>
-                                                                                ))}
-                                                                            </ul>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                            <tr>
-                                                                <td className="py-1">
-                                                                    <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" className="w-4.5 h-4.5" />
                                                                         Cost Center
                                                                     </label>
                                                                 </td>
                                                                 <td className="py-1">{item.costcenter?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.costCenter} onValueChange={val => handleInput('assetTransfer', 'costCenter', val, 'new')}>
+                                                                    <Select value={form.assetTransfer.new.costCenter} onValueChange={val => handleInput('assetTransfer', 'costCenter', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Cost Center" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {costCenters.map(cc => <SelectItem key={cc.id} value={String(cc.id)}>{cc.name}</SelectItem>)}
@@ -580,13 +703,21 @@ export default function AssetTransferForm() {
                                                             <tr>
                                                                 <td className="py-1">
                                                                     <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" className="w-4.5 h-4.5" />
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="w-4.5 h-4.5"
+                                                                            checked={!!form.assetTransfer.new.department}
+                                                                            disabled={!!returnToAssetManager[item.id]}
+                                                                            onChange={e => {
+                                                                                if (!e.target.checked) handleInput('assetTransfer', 'department', '', 'new');
+                                                                            }}
+                                                                        />
                                                                         Department
                                                                     </label>
                                                                 </td>
                                                                 <td className="py-1">{item.department?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.location} onValueChange={val => handleInput('assetTransfer', 'location', val, 'new')}>
+                                                                    <Select value={form.assetTransfer.new.department} onValueChange={val => handleInput('assetTransfer', 'department', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Department" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {departments.map(dept => <SelectItem key={dept.id} value={String(dept.id)}>{dept.name}</SelectItem>)}
@@ -597,13 +728,21 @@ export default function AssetTransferForm() {
                                                             <tr>
                                                                 <td className="py-1">
                                                                     <label className="flex items-center gap-2">
-                                                                        <input type="checkbox" className="w-4.5 h-4.5" />
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="w-4.5 h-4.5"
+                                                                            checked={!!form.assetTransfer.new.location}
+                                                                            disabled={!!returnToAssetManager[item.id]}
+                                                                            onChange={e => {
+                                                                                if (!e.target.checked) handleInput('assetTransfer', 'location', '', 'new');
+                                                                            }}
+                                                                        />
                                                                         Location (District)
                                                                     </label>
                                                                 </td>
                                                                 <td className="py-1">{item.district?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.location} onValueChange={val => handleInput('assetTransfer', 'location', val, 'new')}>
+                                                                    <Select value={form.assetTransfer.new.location} onValueChange={val => handleInput('assetTransfer', 'location', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Location (District)" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {districts.map(district => <SelectItem key={district.id} value={String(district.id)}>{district.name}</SelectItem>)}
@@ -613,6 +752,7 @@ export default function AssetTransferForm() {
                                                             </tr>
                                                         </tbody>
                                                     </table>
+
                                                 </div>
                                                 <hr className="my-2 border-gray-300" />
                                                 {/* Reason for Transfer */}
@@ -637,38 +777,55 @@ export default function AssetTransferForm() {
                                                         </TooltipProvider>
                                                     </div>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2 px-4">
-                                                        <label className="inline-flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" disabled /> Temporary Assignment (&lt; 30 days)</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" disabled /> Upgrading/Promotion</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" /> Department Restructure</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" /> Resignation</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" /> Relocation</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" /> Disposal</label>
-                                                        <label className="flex items-center gap-2"><input type="checkbox" className="w-4.5 h-4.5" /> Others <input type="text" className="w-4.5 h-4.5" placeholder="Please specify..." /></label>
+                                                        {(() => {
+                                                            // Use the same logic as the accordion label for determining asset/employee
+                                                            const isEmployee = !!(item.full_name || item.ramco_id);
+                                                            let reasons = isEmployee ? EMPLOYEE_REASONS : ASSET_REASONS;
+                                                            if (isEmployee) {
+                                                              reasons = reasons.filter(r => r.value !== 'disposal');
+                                                            } else {
+                                                              reasons = reasons.filter(r => !['temporary_assignment', 'upgrading_promotion', 'department_restructure'].includes(r.value));
+                                                            }
+                                                            return reasons.map((reason) => (
+                                                                <label key={reason.value} className="inline-flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="w-4.5 h-4.5"
+                                                                        checked={typeof form.reason[reason.value as keyof Reason] === "boolean" ? form.reason[reason.value as keyof Reason] as boolean : false}
+                                                                        onChange={e => {
+                                                                            handleReasonChange(reason.value as ReasonField);
+                                                                            if (reason.value !== 'others') {
+                                                                                setForm(prev => ({ ...prev, reason: { ...prev.reason, others: false } }));
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    {reason.label}
+                                                                </label>
+                                                            ));
+                                                        })()}
                                                     </div>
+                                                    {form.reason.others && (
+                                                        <div className="mt-2 px-2">
+                                                            <textarea
+                                                                className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
+                                                                placeholder="Please specify..."
+                                                                value={form.reason.othersText}
+                                                                onChange={e => handleInput('reason', 'othersText', e.target.value)}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <hr className="my-2 border-gray-300" />
-                                                {/* Attachments */}
-                                                <div>
-                                                    <div className="font-semibold mb-2 flex items-center">
-                                                        Attachments
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <button
-                                                                        type="button"
-                                                                        className="ml-2 text-muted-foreground hover:text-primary"
-                                                                        disabled={!isAttachmentsDirty(item.id)}
-                                                                        onClick={() => handleResetSection(item.id, "attachments")}
-                                                                        aria-label="Reset Attachments"
-                                                                    >
-                                                                        <Undo2 className="w-4 h-4" />
-                                                                    </button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>Reset Attachments</TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
+                                                {/* Comment before Attachments */}
+                                                <div className="flex flex-col md:flex-row justify-between gap-4 items-start mb-2">
+                                                    <div className="flex-1">
+                                                        <label className="font-semibold mb-1 block">Comment</label>
+                                                        <textarea className="w-full min-h-[60px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
                                                     </div>
-                                                    <input type="file" className="input" multiple />
+                                                    <div className="flex-1">
+                                                        <label className="font-semibold mb-1 block">Attachments</label>
+                                                        <input type="file" className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" multiple />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </details>
@@ -811,30 +968,52 @@ export default function AssetTransferForm() {
 
                     {/* 7. Workflow Section */}
                     <fieldset className="border rounded p-4">
-                        <legend className="font-semibold">Workflow</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                            <div>
-                                <label className="block font-medium">Status</label>
-                                <select className="input">
-                                    <option>Draft</option>
-                                    <option>Submitted</option>
-                                    <option>In Review</option>
-                                    <option>Approved</option>
-                                    <option>Rejected</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block font-medium">Comments</label>
-                                <textarea className="input" rows={2} placeholder="Add comments..." />
-                            </div>
+                      <legend className="font-semibold">Workflow</legend>
+                      <div className="space-y-4">
+                        {/* Approved By */}
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                          <label className="block my-1 font-medium min-w-[120px]">Approved By</label>
+                          <input type="text" className="input w-full md:max-w-xs" placeholder="Name" value={workflow.approvedBy?.name || ''} readOnly />
+                          <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
+                          <input type="datetime-local" className="input w-full md:max-w-xs" value={workflow.approvedBy?.date || ''} readOnly />
                         </div>
-                        <div className="flex gap-4 mt-2">
-                            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Submit</button>
-                            <button type="button" className="bg-gray-300 text-gray-700 px-4 py-2 rounded">Save as Draft</button>
+                        {/* Accepted By */}
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                          <label className="block my-2 font-medium min-w-[120px]">Accepted By</label>
+                          <input type="text" className="input w-full md:max-w-xs" placeholder="Name" value={workflow.acceptedBy?.name || ''} readOnly />
+                          <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
+                          <input type="datetime-local" className="input w-full md:max-w-xs" value={workflow.acceptedBy?.date || ''} readOnly />
                         </div>
+                        {/* QA Section */}
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                          <label className="block my-1 font-medium min-w-[120px]">QA Section</label>
+                          <input type="text" className="input w-full md:max-w-xs" placeholder="Name" value={workflow.qaSection?.name || ''} readOnly />
+                          <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
+                          <input type="datetime-local" className="input w-full md:max-w-xs" value={workflow.qaSection?.date || ''} readOnly />
+                        </div>
+                        {/* Asset Manager */}
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                          <label className="block my-1 font-medium min-w-[120px]">Asset Manager</label>
+                          <input type="text" className="input w-full md:max-w-xs" placeholder="Name" value={workflow.assetManager?.name || ''} readOnly />
+                          <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
+                          <input type="datetime-local" className="input w-full md:max-w-xs" value={workflow.assetManager?.date || ''} readOnly />
+                        </div>
+                      </div>
                     </fieldset>
                 </form>
             </div>
+            <AlertDialog open={removeIdx !== null} onOpenChange={open => { if (!open) setRemoveIdx(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove Item</AlertDialogTitle>
+                        <AlertDialogDescription>Are you sure you want to remove this item from the selection?</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setRemoveIdx(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => { if (removeIdx !== null) { removeSelectedItem(removeIdx); setRemoveIdx(null); } }}>Remove</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
 
     );
