@@ -57,7 +57,7 @@ const Sidebar = () => {
 
     useEffect(() => {
         setActiveRoute();
-        if (window.innerWidth < 1024 && themeConfig.sidebar) {
+        if (window.innerWidth < 768 && themeConfig.sidebar) {
             dispatch(toggleSidebar());
         }
     }, [pathname]);
@@ -168,7 +168,7 @@ const Sidebar = () => {
     return (
         <div className={semidark ? 'dark' : ''}>
             <nav
-                className={`sidebar fixed bottom-0 top-0 z-50 h-full min-h-screen w-full md:w-[260px] transition-all duration-300 ${semidark ? 'text-white-dark' : ''}`}
+                className={`sidebar fixed bottom-0 top-0 z-50 h-full min-h-screen max-w-lg md:min-w-[260px] transition-all duration-300 ${semidark ? 'text-white-dark' : ''}`}
             >
                 <div className="h-full bg-slate-200 dark:bg-black">
                     <div className="flex items-center justify-between px-4 py-1.5">

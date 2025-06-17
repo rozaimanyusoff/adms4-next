@@ -1,4 +1,4 @@
-import AssetTransferForm from '@components/assetmgmt/AssetTransferForm';
+import AssetTransferForm from '@components/assetmgmt/asset-transfer-form';
 import { Metadata } from 'next';
 import React from 'react';
 
