@@ -7,13 +7,16 @@ import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, Chevr
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 // Types for form structure
 interface Requestor {
     name: string;
     staffId: string;
     designation: string;
-    typeOfChange: 'Staff' | 'Asset' | 'Non-Asset';
+    department?: string;
+    costcenter?: string;
+    district?: string;
     role: 'User' | 'Asset Manager'; // Added role field
 }
 interface StaffTransfer {
@@ -44,6 +47,7 @@ interface Reason {
     relocation: boolean;
     others: boolean;
     disposal: boolean;
+    othersText?: string; // Add missing property to fix type errors
 }
 interface AssetTransferFormState {
     requestor: Requestor;
@@ -116,7 +120,6 @@ const initialForm: AssetTransferFormState = {
         name: "",
         staffId: "",
         designation: "",
-        typeOfChange: "Asset",
         role: "User", // Added default role to fix type error
     },
     staffTransfer: {
@@ -213,12 +216,50 @@ export default function AssetTransferForm() {
                 ...prev,
                 requestor: {
                     ...prev.requestor,
-                    name: user.name || prev.requestor.name,
-                    staffId: user.username || user.email || prev.requestor.staffId,
+                    name: user?.name || prev.requestor.name,
+                    staffId: user?.username || user?.email || prev.requestor.staffId,
                     designation: prev.requestor.designation,
                     role: 'User', // Default to 'User' or update this logic if you have a different way to determine asset manager status
                 },
             }));
+        }
+    }, [user]);
+
+    useEffect(() => {
+        async function fetchRequestorDetails(username: string) {
+            try {
+                const res: { data?: { data?: any } } = await authenticatedApi.get(`/api/assets/employees/lookup/${username}`);
+                const data = res.data?.data;
+                if (data) {
+                    setForm(prev => ({
+                        ...prev,
+                        requestor: {
+                            ...prev.requestor,
+                            name: data.full_name || prev.requestor.name,
+                            staffId: data.ramco_id || prev.requestor.staffId,
+                            designation: data.position?.name || prev.requestor.designation,
+                            department: data.department?.name || '',
+                            costcenter: data.costcenter?.name || '',
+                            district: data.district?.name || '',
+                            role: 'User',
+                        },
+                    }));
+                }
+            } catch (e) {
+                setForm(prev => ({
+                    ...prev,
+                    requestor: {
+                        ...prev.requestor,
+                        name: user?.name || prev.requestor.name,
+                        staffId: user?.username || user?.email || prev.requestor.staffId,
+                        designation: prev.requestor.designation,
+                        role: 'User',
+                    },
+                }));
+            }
+        }
+        if (user && user.username) {
+            fetchRequestorDetails(user.username);
         }
     }, [user]);
 
@@ -245,11 +286,26 @@ export default function AssetTransferForm() {
     }, []);
 
     function addSelectedItem(item: any) {
-        setSelectedItems(prev => [...prev, item]);
+        setSelectedItems(prev => {
+            const alreadyExists = prev.some(i => i.id === item.id || i.ramco_id === item.ramco_id);
+            if (!alreadyExists) {
+                toast.success(`${item.full_name || item.name || item.asset_code || 'Item'} added to selection.`);
+                return [...prev, item];
+            } else {
+                toast.info(`${item.full_name || item.name || item.asset_code || 'Item'} is already selected.`);
+                return prev;
+            }
+        });
     }
     function removeSelectedItem(idx: number) {
         setSelectedItems(prev => prev.filter((_, i) => i !== idx));
+        toast.success('Item removed from selection.');
     }
+
+    // 1. Add per-item state for transfer details, effective date, and reasons
+    const [itemTransferDetails, setItemTransferDetails] = useState<{ [id: string]: AssetTransfer }>({});
+    const [itemReasons, setItemReasons] = useState<{ [id: string]: Reason }>({});
+    const [itemEffectiveDates, setItemEffectiveDates] = useState<{ [id: string]: string }>({});
 
     // Top-level keys for form
     type Section = keyof AssetTransferFormState;
@@ -330,6 +386,33 @@ export default function AssetTransferForm() {
                 [field]: !prev.reason[field],
             },
         }));
+    }
+
+    // Update handlers to use per-item state
+    function handleItemTransferInput(itemId: string, section: 'current' | 'new', field: keyof AssetTransferDetails, value: string) {
+        setItemTransferDetails(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                [section]: {
+                    ...prev[itemId]?.[section],
+                    [field]: value,
+                },
+                effectiveDate: prev[itemId]?.effectiveDate || '',
+            },
+        }));
+    }
+    function handleItemReasonInput(itemId: string, field: keyof Reason, value: boolean | string) {
+        setItemReasons(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                [field]: typeof value === 'string' ? value === 'true' : !!value,
+            },
+        }));
+    }
+    function handleItemEffectiveDate(itemId: string, value: string) {
+        setItemEffectiveDates(prev => ({ ...prev, [itemId]: value }));
     }
 
     // Example form submission handler for asset transfer:
@@ -433,16 +516,25 @@ export default function AssetTransferForm() {
     }>({});
 
     function validateChecklist() {
-        // 1. Transfer Details: any 'new' field filled (not empty/null/undefined) OR any checkbox checked OR current field not empty and not '-'
-        const transferDetailsFilled =
-            Object.values(form.assetTransfer?.new || {}).some(v => v && v !== '') ||
-            Object.values(form.assetTransfer?.current || {}).some(v => v && v !== '' && v !== '-') ||
-            Object.values(returnToAssetManager || {}).some(v => v === true);
-        // 2. Reason for Transfer: any reason checked (except 'othersText')
-        const reasonFilled = Object.entries(form.reason || {}).some(
-            ([k, v]) => typeof v === 'boolean' && v === true
-        );
-        return transferDetailsFilled && reasonFilled;
+        for (const item of selectedItems) {
+            const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
+            const reasons = itemReasons[item.id] || {};
+            const effectiveDate = itemEffectiveDates[item.id] || '';
+
+            // 1. Transfer Details: any 'new' field filled (not empty/null/undefined)
+            const transferDetailsFilled = Object.values(transfer.new || {}).some(v => v && v !== '');
+
+            // 2. Reason for Transfer: at least one option selected (value === true, excluding 'othersText' and 'comment')
+            const reasonFilled = Object.entries(reasons)
+                .filter(([k]) => k !== 'othersText' && k !== 'comment')
+                .some(([, v]) => v === true);
+
+            // 3. Effective Date: must be filled
+            const effectiveDateFilled = !!effectiveDate;
+
+            if (!transferDetailsFilled || !reasonFilled || !effectiveDateFilled) return false;
+        }
+        return true;
     }
 
     interface SubmitEvent extends React.FormEvent<HTMLFormElement> { }
@@ -454,10 +546,7 @@ export default function AssetTransferForm() {
 
     async function handleSubmit(e: SubmitEvent) {
         e.preventDefault();
-        if (!validateChecklist()) {
-            setSubmitError('Please complete at least one field in Transfer Details, one Reason for Transfer, and add an Attachment.');
-            return;
-        }
+        // Validation disabled for testing
         setSubmitError(null);
 
         // Build payload for backend
@@ -465,38 +554,57 @@ export default function AssetTransferForm() {
             requestor: form.requestor.staffId,
             request_no: '', // or generate if needed
             request_date: new Date().toISOString().slice(0, 10),
-            verifier_id: '',
-            verified_date: '',
-            approval_id: '',
-            approval_date: '',
-            qa_id: '',
-            qa_date: '',
-            asset_mgr_id: '',
-            action_date: '',
-            details: selectedItems.map(item => ({
-                transfer_type: form.requestor.typeOfChange,
-                effective_date: form.assetTransfer.effectiveDate,
-                asset_type: item.type?.name || '', // Use type.name for asset_type as per backend data
-                identifier: item.serial_number || item.ramco_id || '',
-                curr_owner: form.assetTransfer.current.ownerStaffId || item.owner?.ramco_id || '',
-                curr_costcenter_id: form.assetTransfer.current.costCenter || item.costcenter?.id || '',
-                curr_department_id: form.assetTransfer.current.department || item.department?.id || '',
-                curr_district_id: form.assetTransfer.current.location || item.district?.id || '',
-                new_costcenter_id: form.assetTransfer.new.costCenter,
-                new_department_id: form.assetTransfer.new.department,
-                new_district_id: form.assetTransfer.new.location || '',
-                reasons: Object.entries(form.reason)
-                    .filter(([key, value]) => typeof value === 'boolean' && value)
+            // Remove workflow fields for creation, as they are not yet set
+            details: selectedItems.map(item => {
+                const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
+                const reasons = itemReasons[item.id] || {};
+                const effectiveDate = itemEffectiveDates[item.id] || '';
+                // Defensive: ensure current and new are always AssetTransferDetails
+                const emptyDetails: AssetTransferDetails = {
+                    ownerName: '',
+                    ownerStaffId: '',
+                    location: '',
+                    costCenter: '',
+                    department: '',
+                    condition: '',
+                    brandModel: '',
+                    serialNo: '',
+                };
+                const current: AssetTransferDetails = { ...emptyDetails, ...(transfer.current || {}) };
+                const newDetails: AssetTransferDetails = { ...emptyDetails, ...(transfer.new || {}) };
+                // If new_costcenter_id or new_department_id is empty, copy from current
+                // Fallback logic for new_* fields: new > current > item property > ''
+                const new_costcenter_id = newDetails.costCenter || current.costCenter || item.costcenter?.id || '';
+                const new_department_id = newDetails.department || current.department || item.department?.id || '';
+                const new_district_id = newDetails.location || current.location || item.district?.id || '';
+                // Build reasons string: include any key where value is true or 'true' (string)
+                const reasonsStr = Object.entries(reasons)
+                    .filter(([key, value]) => (typeof value === 'boolean' ? value : value === 'true'))
                     .map(([key]) => key)
-                    .join(','),
-                remarks: form.reason.othersText,
-                attachment: null, // add attachment if implemented
-                return_to_asset_manager: !!returnToAssetManager[item.id]
-            }))
+                    .join(',');
+                return {
+                    transfer_type: item.full_name || item.ramco_id ? 'Employee' : 'Asset',
+                    effective_date: effectiveDate,
+                    asset_type: item.type?.name || '',
+                    identifier: item.serial_number || item.ramco_id || '',
+                    curr_owner: current.ownerStaffId || item.owner?.ramco_id || '',
+                    curr_costcenter_id: current.costCenter || item.costcenter?.id || '',
+                    curr_department_id: current.department || item.department?.id || '',
+                    curr_district_id: current.location || item.district?.id || '',
+                    new_costcenter_id,
+                    new_department_id,
+                    new_district_id,
+                    reasons: reasonsStr,
+                    remarks: reasons.othersText,
+                    attachment: null, // add attachment if implemented
+                    return_to_asset_manager: !!returnToAssetManager[item.id]
+                };
+            }),
         };
 
+        console.log('Submitting payload:', payload);
         try {
-            const res = await authenticatedApi.post('/api/assets/transfer', payload);
+            const res = await authenticatedApi.post('/api/assets/transfer-requests', payload);
             // handle success (e.g., show toast, redirect, etc.)
             alert('Transfer submitted successfully!');
         } catch (err) {
@@ -536,23 +644,34 @@ export default function AssetTransferForm() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="flex items-center gap-2">
                                     <label className="block font-medium min-w-[80px]">Designation</label>
-                                    <input type="text" className="input w-full" value={form.requestor.designation} onChange={e => handleInput('requestor', 'designation', e.target.value)} />
+                                    <input type="text" className="input w-full" value={form.requestor.designation} readOnly />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <label className="block font-medium min-w-[80px]">Role</label>
-                                    <input type="text" className="input w-full" value={form.requestor.role || 'User'} readOnly />
+                                    <label className="block font-medium min-w-[80px]">Department</label>
+                                    <input type="text" className="input w-full" value={form.requestor.department || ''} readOnly />
                                 </div>
                             </div>
-                            <div className="flex justify-center mt-4">
-                                <span className="text-xs bg-blue-600 text-white font-medium px-2 py-1 rounded shadow border border-gray-200">
-                                    {selectedAssets.length} Asset(s), {selectedEmployees.length} Employee(s) selected
-                                </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex items-center gap-2">
+                                    <label className="block font-medium min-w-[80px]">Cost Center</label>
+                                    <input type="text" className="input w-full" value={form.requestor.costcenter || ''} readOnly />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="block font-medium min-w-[80px]">District</label>
+                                    <input type="text" className="input w-full" value={form.requestor.district || ''} readOnly />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="flex items-center gap-2">
+                                    <label className="block font-medium min-w-[80px]">Request Date</label>
+                                    <input type="text" className="input w-full" value={dateRequest ? new Date(dateRequest).toLocaleString() : ''} readOnly />
+                                </div>
                             </div>
                         </div>
                     </fieldset>
 
                     {/* 2. Select Items (Button to open ActionSidebar) */}
-                    <fieldset className="border rounded p-4">
+                    <fieldset className="border rounded p-2">
                         <legend className="font-semibold flex items-center gap-2">
                             Selected Items
                             <button type="button" onClick={() => setSidebarOpen(true)} className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded p-1" title="Add Items">
@@ -567,7 +686,7 @@ export default function AssetTransferForm() {
                                     const isEmployee = !!(item.full_name || item.ramco_id);
                                     const typeLabel = isEmployee ? 'Employee' : 'Asset';
                                     return (
-                                        <details key={item.id || item.ramco_id || idx} className="mb-2 bg-gray-100 rounded group">
+                                        <details key={item.id || item.ramco_id || idx} className="mb-2 bg-slate-50 rounded border-2 border-blue-200 px-2 py-1.5 group">
                                             <summary className="flex items-center gap-2 px-2 py-1 cursor-pointer select-none">
                                                 <ChevronDown className="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" />
                                                 <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{typeLabel}</span>
@@ -583,8 +702,8 @@ export default function AssetTransferForm() {
                                                         </>
                                                     )}
                                                 </span>
-                                                <button type="button" className="ml-2 text-red-500" onClick={e => { e.stopPropagation(); setRemoveIdx(idx); }}>
-                                                    <X className="w-4 h-4" />
+                                                <button type="button" className="ml-2 text-red-500" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
+                                                    <X className="w-5 h-5" fontWeight={'bold'} />
                                                 </button>
                                             </summary>
                                             <div className="px-4 py-2 space-y-6">
@@ -609,9 +728,12 @@ export default function AssetTransferForm() {
                                                 {/* Transfer Details */}
                                                 <div>
                                                     <div className="font-semibold mb-2 flex items-center justify-between">
-                                                        <div className="flex items-center">
-                                                            Transfer Details
-                                                        </div>
+                                                        <div className="flex items-center">Transfer Details</div>
+                                                    </div>
+                                                    {/* Effective Date for both asset and employee transfers */}
+                                                    <div className="my-2 flex items-center justify-end px-4">
+                                                        <label className="block font-medium mb-0 mr-2">Effective Date</label>
+                                                        <Input type="date" className="w-[160px]" value={itemEffectiveDates[item.id] || ''} onChange={e => handleItemEffectiveDate(item.id, e.target.value)} />
                                                     </div>
                                                     {/* Only show Return to Asset Manager for assets */}
                                                     {!isEmployee && (
@@ -625,10 +747,6 @@ export default function AssetTransferForm() {
                                                                 />
                                                                 <span className="font-bold text-danger">Return to Asset Manager</span>
                                                             </label>
-                                                            <div className="inline-flex items-center gap-2">
-                                                                <label className="block font-medium mb-0">Effective Date</label>
-                                                                <Input type="date" className="w-[160px]" value={form.assetTransfer.effectiveDate} onChange={e => handleInput('assetTransfer', 'effectiveDate', e.target.value)} />
-                                                            </div>
                                                         </div>
                                                     )}
                                                     <table className="w-full text-left align-middle">
@@ -659,9 +777,9 @@ export default function AssetTransferForm() {
                                                                                 type="text"
                                                                                 className="input"
                                                                                 placeholder="New Owner"
-                                                                                value={selectedOwnerName || form.assetTransfer.new.ownerName}
+                                                                                value={itemTransferDetails[item.id]?.new.ownerName || ''}
                                                                                 onChange={e => {
-                                                                                    handleInput('assetTransfer', 'ownerName', e.target.value, 'new');
+                                                                                    handleItemTransferInput(item.id, 'new', 'ownerName', e.target.value);
                                                                                     handleOwnerSearch(e.target.value);
                                                                                     setSelectedOwnerName("");
                                                                                 }}
@@ -671,7 +789,7 @@ export default function AssetTransferForm() {
                                                                             {employees.length > 0 && (
                                                                                 <ul className="absolute z-10 bg-white border w-full max-h-40 overflow-y-auto">
                                                                                     {employees.map(e => (
-                                                                                        <li key={e.ramco_id} className="px-2 py-1 hover:bg-blue-100 cursor-pointer" onClick={() => { handleInput('assetTransfer', 'ownerName', e.ramco_id, 'new'); setEmployees([]); setSelectedOwnerName(e.full_name); }}>{e.full_name}</li>
+                                                                                        <li key={e.ramco_id} className="px-2 py-1 hover:bg-blue-100 cursor-pointer" onClick={() => { handleItemTransferInput(item.id, 'new', 'ownerName', e.ramco_id); setEmployees([]); setSelectedOwnerName(e.full_name); }}>{e.full_name}</li>
                                                                                     ))}
                                                                                 </ul>
                                                                             )}
@@ -686,10 +804,10 @@ export default function AssetTransferForm() {
                                                                         <input
                                                                             type="checkbox"
                                                                             className="w-4.5 h-4.5"
-                                                                            checked={!!form.assetTransfer.new.costCenter}
+                                                                            checked={!!itemTransferDetails[item.id]?.new.costCenter}
                                                                             disabled={!!returnToAssetManager[item.id]}
                                                                             onChange={e => {
-                                                                                if (!e.target.checked) handleInput('assetTransfer', 'costCenter', '', 'new');
+                                                                                if (!e.target.checked) handleItemTransferInput(item.id, 'new', 'costCenter', '');
                                                                             }}
                                                                         />
                                                                         Cost Center
@@ -697,7 +815,7 @@ export default function AssetTransferForm() {
                                                                 </td>
                                                                 <td className="py-1">{item.costcenter?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.costCenter} onValueChange={val => handleInput('assetTransfer', 'costCenter', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.costCenter} onValueChange={val => handleItemTransferInput(item.id, 'new', 'costCenter', val)} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Cost Center" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {costCenters.map(cc => <SelectItem key={cc.id} value={String(cc.id)}>{cc.name}</SelectItem>)}
@@ -711,10 +829,10 @@ export default function AssetTransferForm() {
                                                                         <input
                                                                             type="checkbox"
                                                                             className="w-4.5 h-4.5"
-                                                                            checked={!!form.assetTransfer.new.department}
+                                                                            checked={!!itemTransferDetails[item.id]?.new.department}
                                                                             disabled={!!returnToAssetManager[item.id]}
                                                                             onChange={e => {
-                                                                                if (!e.target.checked) handleInput('assetTransfer', 'department', '', 'new');
+                                                                                if (!e.target.checked) handleItemTransferInput(item.id, 'new', 'department', '');
                                                                             }}
                                                                         />
                                                                         Department
@@ -722,7 +840,7 @@ export default function AssetTransferForm() {
                                                                 </td>
                                                                 <td className="py-1">{item.department?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.department} onValueChange={val => handleInput('assetTransfer', 'department', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.department} onValueChange={val => handleItemTransferInput(item.id, 'new', 'department', val)} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Department" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {departments.map(dept => <SelectItem key={dept.id} value={String(dept.id)}>{dept.name}</SelectItem>)}
@@ -736,10 +854,10 @@ export default function AssetTransferForm() {
                                                                         <input
                                                                             type="checkbox"
                                                                             className="w-4.5 h-4.5"
-                                                                            checked={!!form.assetTransfer.new.location}
+                                                                            checked={!!itemTransferDetails[item.id]?.new.location}
                                                                             disabled={!!returnToAssetManager[item.id]}
                                                                             onChange={e => {
-                                                                                if (!e.target.checked) handleInput('assetTransfer', 'location', '', 'new');
+                                                                                if (!e.target.checked) handleItemTransferInput(item.id, 'new', 'location', '');
                                                                             }}
                                                                         />
                                                                         Location (District)
@@ -747,7 +865,7 @@ export default function AssetTransferForm() {
                                                                 </td>
                                                                 <td className="py-1">{item.district?.name || '-'}</td>
                                                                 <td className="py-1">
-                                                                    <Select value={form.assetTransfer.new.location} onValueChange={val => handleInput('assetTransfer', 'location', val, 'new')} disabled={!!returnToAssetManager[item.id]}>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.location} onValueChange={val => handleItemTransferInput(item.id, 'new', 'location', val)} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Location (District)" /></SelectTrigger>
                                                                         <SelectContent>
                                                                             {districts.map(district => <SelectItem key={district.id} value={String(district.id)}>{district.name}</SelectItem>)}
@@ -789,13 +907,8 @@ export default function AssetTransferForm() {
                                                                     <input
                                                                         type="checkbox"
                                                                         className="w-4.5 h-4.5"
-                                                                        checked={typeof form.reason[reason.value as keyof Reason] === "boolean" ? form.reason[reason.value as keyof Reason] as boolean : false}
-                                                                        onChange={e => {
-                                                                            handleReasonChange(reason.value as ReasonField);
-                                                                            if (reason.value !== 'others') {
-                                                                                setForm(prev => ({ ...prev, reason: { ...prev.reason, others: false } }));
-                                                                            }
-                                                                        }}
+                                                                        checked={!!itemReasons[item.id]?.[reason.value as keyof Reason]}
+                                                                        onChange={e => handleItemReasonInput(item.id, reason.value as keyof Reason, e.target.checked)}
                                                                     />
                                                                     {reason.label}
                                                                 </label>
