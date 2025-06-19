@@ -297,19 +297,35 @@ export default function AssetTransferForm() {
         setSelectedItems(prev => {
             // Use a composite key: type + id/ramco_id
             const isEmployee = !!(item.full_name || item.ramco_id);
-            const key = isEmployee ? `employee-${item.ramco_id}` : `asset-${item.id}`;
-            const exists = prev.some(i => {
-                const iIsEmployee = !!(i.full_name || i.ramco_id);
-                const iKey = iIsEmployee ? `employee-${i.ramco_id}` : `asset-${i.id}`;
-                return iKey === key;
-            });
-            if (!exists) {
-                toast.success(`${item.full_name || item.name || item.asset_code || 'Item'} added to selection.`);
-                return [...prev, item];
-            } else {
-                toast.info(`${item.full_name || item.name || item.asset_code || 'Item'} is already selected.`);
-                return prev;
+            // Fix: if item is from employee list, set transfer_type and fields accordingly
+            if (item.full_name && item.ramco_id) {
+                return [
+                    ...prev,
+                    {
+                        ...item,
+                        transfer_type: 'Employee',
+                        serial_number: '',
+                        asset_code: '',
+                    },
+                ];
             }
+            // If item is from asset list, set transfer_type and fields accordingly
+            if (item.serial_number) {
+                // Find asset details for type.name
+                const allAssets = supervised.flatMap((group) => group.assets || []);
+                const assetDetails = allAssets.find(a => a.serial_number === item.serial_number);
+                return [
+                    ...prev,
+                    {
+                        ...item,
+                        transfer_type: 'Asset',
+                        serial_number: item.serial_number,
+                        asset_code: item.asset_code || item.serial_number,
+                        asset_type: assetDetails?.type?.name || '',
+                    },
+                ];
+            }
+            return prev;
         });
     }
     function removeSelectedItem(idx: number) {
@@ -552,7 +568,11 @@ export default function AssetTransferForm() {
             const reasons = itemReasons[item.id] || {};
             const effectiveDate = itemEffectiveDates[item.id] || '';
             // 1. Transfer Details: any 'new' field filled (not empty/null/undefined)
-            const transferDetailsFilled = Object.values(transfer.new || {}).some(v => v && v !== '');
+            //    OR 'Return to Asset Manager' is checked
+            const transferDetailsFilled = (
+                Object.values(transfer.new || {}).some(v => v && v !== '') ||
+                !!returnToAssetManager[item.id]
+            );
             // 2. Reason for Transfer: at least one option selected (value === true, excluding 'othersText' and 'comment')
             const reasonFilled = Object.entries(reasons)
                 .filter(([k]) => k !== 'othersText' && k !== 'comment')
@@ -564,7 +584,7 @@ export default function AssetTransferForm() {
                 return;
             }
             if (!transferDetailsFilled) {
-                setSubmitError(`Please fill at least one Transfer Detail (New) for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                setSubmitError(`Please fill at least one Transfer Detail (New) or check 'Return to Asset Manager' for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
                 return;
             }
             if (!reasonFilled) {
@@ -625,6 +645,10 @@ export default function AssetTransferForm() {
         try {
             await authenticatedApi.post('/api/assets/transfer-requests', payload);
             toast.success(requestStatus === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
+            // After successful submit, reset form and go back to grid view
+            clearFormAndItems();
+            setShowForm(false);
+            setFormMode('create');
         } catch (err) {
             setSubmitError('Failed to submit transfer. Please try again.');
         }
@@ -633,10 +657,21 @@ export default function AssetTransferForm() {
     // Update handleSaveDraft to set status and trigger submit
     function handleSaveDraft() {
         setRequestStatus('draft');
+        clearFormAndItems();
         // Simulate form submit for draft using a synthetic event
         const formElement = document.createElement('form');
         const syntheticEvent = { preventDefault: () => {}, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
         handleSubmit(syntheticEvent);
+    }
+
+    // Helper to clear all form and item state
+    function clearFormAndItems() {
+        setForm(initialForm);
+        setSelectedItems([]);
+        setItemReasons({});
+        setItemTransferDetails({});
+        setItemEffectiveDates({});
+        setReturnToAssetManager({});
     }
 
     const [showForm, setShowForm] = React.useState(false);
@@ -681,52 +716,69 @@ export default function AssetTransferForm() {
     const [editData, setEditData] = useState<any>(null);
 
     useEffect(() => {
-        // If data is an array, use the first element (for safety)
-        const record = Array.isArray(data) ? data[0] : data;
-        if (formMode === 'update' && record) {
+        // Use editData directly for update mode
+        if (formMode === 'update' && editData) {
             setForm(prev => ({
                 ...prev,
                 requestor: {
                     ...prev.requestor,
-                    name: record.requestor?.name || '',
-                    staffId: record.requestor?.ramco_id || '',
+                    name: editData.requestor?.name || '',
+                    staffId: editData.requestor?.ramco_id || '',
                     designation: '',
-                    department: record.requestor?.department?.name || '',
-                    costcenter: record.requestor?.cost_center?.name || '',
-                    district: record.requestor?.district?.name || '',
+                    department: editData.requestor?.department?.name || '',
+                    costcenter: editData.requestor?.cost_center?.name || '',
+                    district: editData.requestor?.district?.name || '',
                     role: 'User',
                 },
             }));
-            // Map backend items to selectedItems in the format expected by the form
-            if (Array.isArray(record.items)) {
-                const mappedItems = record.items.map((item: any) => ({
-                    ...item,
-                    serial_number: item.identifier || '',
-                    asset_code: item.identifier || '',
-                    full_name: item.curr_owner?.name || '',
-                    ramco_id: item.curr_owner?.ramco_id || '',
-                    department: item.curr_department || null,
-                    costcenter: item.curr_costcenter || null,
-                    district: item.curr_district || null,
-                    new_department: item.new_department || null,
-                    new_costcenter: item.new_costcenter || null,
-                    new_district: item.new_district || null,
-                    effective_date: item.effective_date || '',
-                    reasons: item.reasons || '',
-                    asset_type: item.asset_type || '',
-                    transfer_type: item.transfer_type || '',
-                    // Add mapping for checkboxes and transfer details
-                    // For checkboxes (reasons): convert comma/pipe/array/string to object
-                    reasons_obj: typeof item.reasons === 'string' ? item.reasons.split(',').reduce((acc: any, key: string) => { acc[key.trim()] = true; return acc; }, {}) : {},
-                    // For new owner, cost center, department, district
-                    new_owner: item.new_owner || '',
-                }));
+            if (Array.isArray(editData.items)) {
+                // For asset details enrichment
+                const allAssets = supervised.flatMap((group) => group.assets || []);
+                const allEmployees = supervised.flatMap((group) => group.employee || []);
+                const mappedItems = editData.items.map((item: any) => {
+                    if (item.transfer_type === 'Employee') {
+                        // Try to find the employee by ramco_id or name
+                        let emp = null;
+                        if (item.identifier?.ramco_id) {
+                            emp = allEmployees.find(e => e.ramco_id === item.identifier.ramco_id);
+                        } else if (item.identifier?.name) {
+                            emp = allEmployees.find(e => e.full_name === item.identifier.name);
+                        }
+                        return {
+                            ...item,
+                            id: item.id,
+                            transfer_type: 'Employee',
+                            full_name: emp?.full_name || item.identifier?.name || '',
+                            ramco_id: emp?.ramco_id || item.identifier?.ramco_id || '',
+                            position: emp?.position || null,
+                            department: emp?.department || null,
+                            costcenter: emp?.costcenter || null,
+                            district: emp?.district || null,
+                            serial_number: '',
+                            asset_code: '',
+                        };
+                    } else {
+                        // Find matching asset by serial_number (identifier)
+                        let assetDetails = null;
+                        if (typeof item.identifier === 'string') {
+                            assetDetails = allAssets.find(a => a.serial_number === item.identifier);
+                        }
+                        return {
+                            ...item,
+                            id: item.id,
+                            transfer_type: 'Asset',
+                            full_name: '',
+                            serial_number: typeof item.identifier === 'string' ? item.identifier : '',
+                            asset_code: typeof item.identifier === 'string' ? item.identifier : '',
+                            category: assetDetails?.category || { name: '-' },
+                            brand: assetDetails?.brand || { name: '-' },
+                            model: assetDetails?.model || { name: '-' },
+                        };
+                    }
+                });
                 setSelectedItems(mappedItems);
-                // Map reasons and transfer details to their respective state if your form uses them
-                // --- NEW: Set itemReasons for each item from backend reasons string ---
-                const newItemReasons: { [id: string]: Reason } = {};
+                const newItemReasons: { [id: number]: Reason } = {};
                 mappedItems.forEach((item: any) => {
-                    // Map reasons string to Reason object (robust mapping)
                     const reasonsObj: any = {};
                     if (typeof item.reasons === 'string') {
                         item.reasons.split(',').forEach((key: string) => {
@@ -746,11 +798,9 @@ export default function AssetTransferForm() {
                     };
                 });
                 setItemReasons(newItemReasons);
-                // Optionally, set itemTransferDetails and itemEffectiveDates as well
-                const newItemTransferDetails: { [id: string]: AssetTransfer } = {};
-                const newItemEffectiveDates: { [id: string]: string } = {};
+                const newItemTransferDetails: { [id: number]: AssetTransfer } = {};
+                const newItemEffectiveDates: { [id: number]: string } = {};
                 mappedItems.forEach((item: any) => {
-                    // Extract only the date part for effective_date
                     let dateStr = '';
                     if (item.effective_date) {
                         const d = new Date(item.effective_date);
@@ -818,6 +868,13 @@ export default function AssetTransferForm() {
         }
     }, [formMode, editData]);
 
+    // Cancel button handler
+    const handleCancel = () => {
+        clearFormAndItems();
+        setShowForm(false);
+        setFormMode('create');
+    };
+
     return (
         <div className="mt-4">
             {showForm && (
@@ -882,10 +939,11 @@ export default function AssetTransferForm() {
                             ) : (
                                 <div className="mt-2 px-4">
                                     {selectedItems.map((item, idx) => {
-                                        const isEmployee = !!(item.full_name || item.ramco_id);
+                                        if (typeof item.id === 'undefined' || item.id === null) return null;
+                                        const isEmployee = item.transfer_type === 'Employee';
                                         const typeLabel = isEmployee ? 'Employee' : 'Asset';
                                         return (
-                                            <details key={item.id || item.ramco_id || idx} className="mb-2 bg-slate-50 rounded border-2 border-blue-200 px-2 py-1.5 group">
+                                            <details key={item.id} className="mb-2 bg-slate-50 rounded border-2 border-blue-200 px-2 py-1.5 group">
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
                                                         <summary className="flex items-center gap-2 px-2 py-1 cursor-pointer select-none">
@@ -896,10 +954,11 @@ export default function AssetTransferForm() {
                                                                     <span>{item.full_name || item.name || item.staffId}</span>
                                                                 ) : (
                                                                     <>
-                                                                        <span>S/N: {item.serial_number} • <span className="text-blue-500 text-xs">[{item.type?.name}]</span></span>
-                                                                        {item.type_id?.name && (
-                                                                            <span className="ml-2 text-xs text-gray-500">[{item.type_id.name}]</span>
-                                                                        )}
+                                                                        <span>S/N: {item.serial_number}
+                                                                            {item.asset_type && (
+                                                                                <span className="text-blue-500 text-xs"> [ {item.asset_type} ]</span>
+                                                                            )}
+                                                                        </span>
                                                                     </>
                                                                 )}
                                                             </span>
@@ -1312,7 +1371,7 @@ export default function AssetTransferForm() {
                                 type="button"
                                 variant="destructive"
                                 className="bg-red-600 hover:bg-red-700 text-white"
-                                onClick={() => setShowForm(false)}
+                                onClick={handleCancel}
                             >
                                 Cancel
                             </Button>
