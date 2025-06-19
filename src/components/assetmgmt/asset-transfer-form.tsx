@@ -191,6 +191,11 @@ export default function AssetTransferForm() {
     const initialTransferDetails = useRef(form.assetTransfer);
     const initialReasonForTransfer = useRef(form.reason);
 
+    const [removeIdx, setRemoveIdx] = useState<number | null>(null);
+    const [reasonOthersChecked, setReasonOthersChecked] = useState(false);
+    const [reasonOthersText, setReasonOthersText] = useState("");
+    const [returnToAssetManager, setReturnToAssetManager] = useState<{ [key: number]: boolean }>({});
+
     // Dirty check for New fields or Reason for Transfer
     const assetTransferDetailKeys: (keyof AssetTransferDetails)[] = [
         "ownerName",
@@ -398,6 +403,20 @@ export default function AssetTransferForm() {
         }));
     }
 
+    // Update checkbox rendering to include onChange handler
+    const renderReasonCheckboxes = () => (
+        Object.keys(form.reason).map((key) => (
+            <label key={key}>
+                <input
+                    type="checkbox"
+                    checked={!!form.reason[key as keyof Reason]}
+                    onChange={() => handleReasonChange(key as ReasonField)}
+                />
+                {key}
+            </label>
+        ))
+    );
+
     // Update handlers to use per-item state
     function handleItemTransferInput(itemId: string, section: 'current' | 'new', field: keyof AssetTransferDetails, value: string) {
         setItemTransferDetails(prev => ({
@@ -489,10 +508,6 @@ export default function AssetTransferForm() {
         }));
     };
 
-    const [removeIdx, setRemoveIdx] = useState<number | null>(null);
-    const [reasonOthersChecked, setReasonOthersChecked] = useState(false);
-    const [reasonOthersText, setReasonOthersText] = useState("");
-    const [returnToAssetManager, setReturnToAssetManager] = useState<{ [key: number]: boolean }>({});
 
     // Define reasons for transfer
     const ASSET_REASONS = [
@@ -525,50 +540,41 @@ export default function AssetTransferForm() {
         assetManager?: { name: string; date: string; comment?: string };
     }>({});
 
-    function validateChecklist() {
+    // Add requestStatus state
+    const [requestStatus, setRequestStatus] = useState<'draft' | 'submitted'>('submitted');
+
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault();
+        setSubmitError(null);
+        // Robust checklist validation for all selected items
         for (const item of selectedItems) {
             const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
             const reasons = itemReasons[item.id] || {};
             const effectiveDate = itemEffectiveDates[item.id] || '';
-
             // 1. Transfer Details: any 'new' field filled (not empty/null/undefined)
             const transferDetailsFilled = Object.values(transfer.new || {}).some(v => v && v !== '');
-
             // 2. Reason for Transfer: at least one option selected (value === true, excluding 'othersText' and 'comment')
             const reasonFilled = Object.entries(reasons)
                 .filter(([k]) => k !== 'othersText' && k !== 'comment')
                 .some(([, v]) => v === true);
-
             // 3. Effective Date: must be filled
             const effectiveDateFilled = !!effectiveDate;
-
-            if (!transferDetailsFilled || !reasonFilled || !effectiveDateFilled) return false;
-        }
-        return true;
-    }
-
-    interface SubmitEvent extends React.FormEvent<HTMLFormElement> { }
-
-    interface HandleSubmitResult {
-        success: boolean;
-        error?: string;
-    }
-
-    // Add requestStatus state
-    const [requestStatus, setRequestStatus] = useState<'draft' | 'submitted'>('submitted');
-
-    async function handleSubmit(e: SubmitEvent) {
-        e.preventDefault();
-        setSubmitError(null);
-        // Validate all selected items have effective date
-        const missingDate = selectedItems.some(item => !itemEffectiveDates[item.id]);
-        if (missingDate) {
-            setSubmitError('Please set the Effective Date for all selected items.');
-            return;
+            if (!effectiveDateFilled) {
+                setSubmitError(`Please set the Effective Date for all selected items. Missing for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                return;
+            }
+            if (!transferDetailsFilled) {
+                setSubmitError(`Please fill at least one Transfer Detail (New) for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                return;
+            }
+            if (!reasonFilled) {
+                setSubmitError(`Please select at least one Reason for Transfer for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                return;
+            }
         }
         // Build payload for backend
         const payload = {
-            requestor: form.requestor.staffId,
+            requestor: String(form.requestor.staffId),
             request_no: '', // or generate if needed
             request_date: new Date().toISOString().slice(0, 10),
             request_status: requestStatus, // <-- add status
@@ -576,7 +582,6 @@ export default function AssetTransferForm() {
                 const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
                 const reasons = itemReasons[item.id] || {};
                 const effectiveDate = itemEffectiveDates[item.id] || '';
-                // Defensive: ensure current and new are always AssetTransferDetails
                 const emptyDetails: AssetTransferDetails = {
                     ownerName: '',
                     ownerStaffId: '',
@@ -589,12 +594,9 @@ export default function AssetTransferForm() {
                 };
                 const current: AssetTransferDetails = { ...emptyDetails, ...(transfer.current || {}) };
                 const newDetails: AssetTransferDetails = { ...emptyDetails, ...(transfer.new || {}) };
-                // If new_costcenter_id or new_department_id is empty, copy from current
-                // Fallback logic for new_* fields: new > current > item property > ''
-                const new_costcenter_id = newDetails.costCenter || current.costCenter || item.costcenter?.id || '';
-                const new_department_id = newDetails.department || current.department || item.department?.id || '';
-                const new_district_id = newDetails.location || current.location || item.district?.id || '';
-                // Build reasons string: include any key where value is true or 'true' (string)
+                const new_costcenter = { id: parseInt(newDetails.costCenter || current.costCenter || item.costcenter?.id || '0', 10), name: item.costcenter?.name || '' };
+                const new_department = { id: parseInt(newDetails.department || current.department || item.department?.id || '0', 10), name: item.department?.name || '' };
+                const new_district = { id: parseInt(newDetails.location || current.location || item.district?.id || '0', 10), name: item.district?.name || '' };
                 const reasonsStr = Object.entries(reasons)
                     .filter(([key, value]) => (typeof value === 'boolean' ? value : value === 'true'))
                     .map(([key]) => key)
@@ -603,14 +605,14 @@ export default function AssetTransferForm() {
                     transfer_type: item.full_name || item.ramco_id ? 'Employee' : 'Asset',
                     effective_date: effectiveDate,
                     asset_type: item.type?.name || '',
-                    identifier: item.serial_number || item.ramco_id || '',
-                    curr_owner: current.ownerStaffId || item.owner?.ramco_id || '',
-                    curr_costcenter_id: current.costCenter || item.costcenter?.id || '',
-                    curr_department_id: current.department || item.department?.id || '',
-                    curr_district_id: current.location || item.district?.id || '',
-                    new_costcenter_id,
-                    new_department_id,
-                    new_district_id,
+                    identifier: String(item.serial_number || item.ramco_id || '0'),
+                    curr_owner: item.owner ? { ramco_id: item.owner.ramco_id, name: item.owner.full_name } : null,
+                    curr_costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : null,
+                    curr_department: item.department ? { id: item.department.id, name: item.department.name } : null,
+                    curr_district: item.district ? { id: item.district.id, name: item.district.name } : null,
+                    new_costcenter,
+                    new_department,
+                    new_district,
                     reasons: reasonsStr,
                     remarks: reasons.othersText,
                     attachment: null, // add attachment if implemented
@@ -631,32 +633,193 @@ export default function AssetTransferForm() {
     // Update handleSaveDraft to set status and trigger submit
     function handleSaveDraft() {
         setRequestStatus('draft');
-        // Simulate form submit for draft
-        const fakeEvent = { preventDefault: () => { } } as SubmitEvent;
-        handleSubmit(fakeEvent);
+        // Simulate form submit for draft using a synthetic event
+        const formElement = document.createElement('form');
+        const syntheticEvent = { preventDefault: () => {}, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
+        handleSubmit(syntheticEvent);
     }
 
     const [showForm, setShowForm] = React.useState(false);
+    const [data, setData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setLoading(true);
+        authenticatedApi.get("/api/assets/transfer-requests").then((res: any) => {
+            setData(res?.data?.data || []);
+            setLoading(false);
+        }).catch(() => setLoading(false));
+    }, []);
+
+    const columns: ColumnDef<any>[] = [
+        { key: "request_no", header: "Request No" },
+        { key: "requestor", header: "Requestor", render: row => row.requestor?.name || "-" },
+        { key: "requestor_department", header: "Department", render: row => row.requestor?.department?.name || "-" },
+        { key: "requestor_location", header: "Location (District)", render: row => row.requestor?.district?.name || "-" },
+        { key: "items_count", header: "Items Count", render: row => row.items?.length || 0 },
+        { key: "request_date", header: "Request Date", render: row => row.request_date ? new Date(row.request_date).toLocaleDateString() : "-" },
+        { key: "verified_date", header: "Verified Date", render: row => row.verified_date ? new Date(row.verified_date).toLocaleDateString() : "-" },
+        { key: "approval_date", header: "Approval Date", render: row => row.approval_date ? new Date(row.approval_date).toLocaleDateString() : "-" },
+        { key: "request_status", header: "Status" },
+    ];
+
+    // Update handleRowDoubleClick to fetch by id and show form in update mode
+    const handleRowDoubleClick = async (row: any) => {
+        setFormMode('update');
+        setShowForm(true);
+        // Fetch the full asset transfer data by id
+        try {
+            const res: { data?: { data?: any } } = await authenticatedApi.get(`/api/assets/transfer-requests/${row.id}`);
+            setEditData(res.data?.data || row); // fallback to row if API fails
+        } catch (e) {
+            setEditData(row); // fallback
+        }
+    };
+
+    // Move all state declarations to the top of the component
+    const [formMode, setFormMode] = useState<'create' | 'update'>('create');
+    const [editData, setEditData] = useState<any>(null);
+
+    useEffect(() => {
+        // If data is an array, use the first element (for safety)
+        const record = Array.isArray(data) ? data[0] : data;
+        if (formMode === 'update' && record) {
+            setForm(prev => ({
+                ...prev,
+                requestor: {
+                    ...prev.requestor,
+                    name: record.requestor?.name || '',
+                    staffId: record.requestor?.ramco_id || '',
+                    designation: '',
+                    department: record.requestor?.department?.name || '',
+                    costcenter: record.requestor?.cost_center?.name || '',
+                    district: record.requestor?.district?.name || '',
+                    role: 'User',
+                },
+            }));
+            // Map backend items to selectedItems in the format expected by the form
+            if (Array.isArray(record.items)) {
+                const mappedItems = record.items.map((item: any) => ({
+                    ...item,
+                    serial_number: item.identifier || '',
+                    asset_code: item.identifier || '',
+                    full_name: item.curr_owner?.name || '',
+                    ramco_id: item.curr_owner?.ramco_id || '',
+                    department: item.curr_department || null,
+                    costcenter: item.curr_costcenter || null,
+                    district: item.curr_district || null,
+                    new_department: item.new_department || null,
+                    new_costcenter: item.new_costcenter || null,
+                    new_district: item.new_district || null,
+                    effective_date: item.effective_date || '',
+                    reasons: item.reasons || '',
+                    asset_type: item.asset_type || '',
+                    transfer_type: item.transfer_type || '',
+                    // Add mapping for checkboxes and transfer details
+                    // For checkboxes (reasons): convert comma/pipe/array/string to object
+                    reasons_obj: typeof item.reasons === 'string' ? item.reasons.split(',').reduce((acc: any, key: string) => { acc[key.trim()] = true; return acc; }, {}) : {},
+                    // For new owner, cost center, department, district
+                    new_owner: item.new_owner || '',
+                }));
+                setSelectedItems(mappedItems);
+                // Map reasons and transfer details to their respective state if your form uses them
+                // --- NEW: Set itemReasons for each item from backend reasons string ---
+                const newItemReasons: { [id: string]: Reason } = {};
+                mappedItems.forEach((item: any) => {
+                    // Map reasons string to Reason object (robust mapping)
+                    const reasonsObj: any = {};
+                    if (typeof item.reasons === 'string') {
+                        item.reasons.split(',').forEach((key: string) => {
+                            const trimmed = key.trim().toLowerCase().replace(/\s+/g, '_');
+                            if (trimmed) reasonsObj[trimmed] = true;
+                        });
+                    }
+                    newItemReasons[item.id] = {
+                        temporary: !!(reasonsObj['temporary'] || reasonsObj['temporary_assignment']),
+                        departmentRestructure: !!(reasonsObj['departmentrestructure'] || reasonsObj['department_restructure']),
+                        upgrading: !!(reasonsObj['upgrading'] || reasonsObj['upgrading_promotion']),
+                        resignation: !!reasonsObj['resignation'],
+                        relocation: !!reasonsObj['relocation'],
+                        others: !!reasonsObj['others'],
+                        disposal: !!reasonsObj['disposal'],
+                        othersText: item.remarks || '',
+                    };
+                });
+                setItemReasons(newItemReasons);
+                // Optionally, set itemTransferDetails and itemEffectiveDates as well
+                const newItemTransferDetails: { [id: string]: AssetTransfer } = {};
+                const newItemEffectiveDates: { [id: string]: string } = {};
+                mappedItems.forEach((item: any) => {
+                    // Extract only the date part for effective_date
+                    let dateStr = '';
+                    if (item.effective_date) {
+                        const d = new Date(item.effective_date);
+                        if (!isNaN(d.getTime())) {
+                            dateStr = d.toISOString().slice(0, 10);
+                        }
+                    }
+                    newItemEffectiveDates[item.id] = dateStr;
+                    newItemTransferDetails[item.id] = {
+                        effectiveDate: dateStr,
+                        current: {
+                            ownerName: item.curr_owner?.name || '',
+                            ownerStaffId: item.curr_owner?.ramco_id || '',
+                            location: item.curr_district?.id ? String(item.curr_district.id) : '',
+                            costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
+                            department: item.curr_department?.id ? String(item.curr_department.id) : '',
+                            condition: item.condition || '',
+                            brandModel: item.brandModel || '',
+                            serialNo: item.identifier || '',
+                        },
+                        new: {
+                            ownerName: item.new_owner?.name || '',
+                            ownerStaffId: item.new_owner?.ramco_id || '',
+                            location: item.new_district?.id ? String(item.new_district.id) : '',
+                            costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
+                            department: item.new_department?.id ? String(item.new_department.id) : '',
+                            condition: item.new_condition || '',
+                            brandModel: item.new_brandModel || '',
+                            serialNo: item.identifier || '',
+                        },
+                    };
+                });
+                setItemTransferDetails(newItemTransferDetails);
+                setItemEffectiveDates(newItemEffectiveDates);
+            } else {
+                setSelectedItems([]);
+                setItemReasons({});
+                setItemTransferDetails({});
+                setItemEffectiveDates({});
+            }
+        } else if (formMode === 'create') {
+            setForm(initialForm);
+            setSelectedItems([]);
+            setItemReasons({});
+            setItemTransferDetails({});
+            setItemEffectiveDates({});
+        }
+    }, [formMode, editData]);
+
+    useEffect(() => {
+        if (formMode === 'update' && editData && editData.reasons) {
+            setForm(prev => {
+                const reasons = editData.reasons.split(',').reduce((acc: Record<string, boolean>, reason: string) => {
+                    acc[reason] = true;
+                    return acc;
+                }, {});
+                return {
+                    ...prev,
+                    reason: {
+                        ...prev.reason,
+                        ...reasons,
+                    },
+                };
+            });
+        }
+    }, [formMode, editData]);
 
     return (
         <div className="mt-4">
-            {!showForm && (
-                <div className="mt-10">
-                    <div className="flex justify-between items-center mb-2">
-                        <h2 className="text-xl font-bold">Asset Transfer Requests</h2>
-                        <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            title="Create New Asset Transfer"
-                            onClick={() => setShowForm(true)}
-                        >
-                            <Plus className="w-5 h-5" />
-                        </Button>
-                    </div>
-                    <AssetTransferRequestsGrid />
-                </div>
-            )}
             {showForm && (
                 <div className="w-full">
                     <form className="w-full mx-auto bg-white p-6 rounded shadow-md text-sm space-y-6" onSubmit={handleSubmit}>
@@ -1124,7 +1287,7 @@ export default function AssetTransferForm() {
                                         </Tabs>
                                     }
                                     onClose={() => setSidebarOpen(false)}
-                                    size="md"
+                                    size="sm"
                                 />
                             )}
                         </fieldset>
@@ -1215,31 +1378,28 @@ export default function AssetTransferForm() {
                     </form>
                 </div>
             )}
+            {!showForm && (
+                <div className="mt-10">
+                    <div className="flex justify-between items-center mb-2">
+                        <h2 className="text-xl font-bold">Asset Transfer Requests</h2>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            title="Create New Asset Transfer"
+                            onClick={() => setShowForm(true)}
+                        >
+                            <Plus className="w-5 h-5" />
+                        </Button>
+                    </div>
+                    <CustomDataGrid
+                        columns={columns}
+                        data={data}
+                        inputFilter={false}
+                        onRowDoubleClick={handleRowDoubleClick} // <-- Add double-click handler
+                    />
+                </div>
+            )}
         </div>
-    );
-}
-
-// Add this at the bottom of the file:
-function AssetTransferRequestsGrid() {
-    const [data, setData] = React.useState<any[]>([]);
-    const [loading, setLoading] = React.useState(false);
-
-    React.useEffect(() => {
-        setLoading(true);
-        authenticatedApi.get("/api/assets/transfer-requests").then((res: any) => {
-            setData(res?.data?.data || []);
-            setLoading(false);
-        }).catch(() => setLoading(false));
-    }, []);
-
-    const columns: ColumnDef<any>[] = [
-        { key: "request_no", header: "Request No" },
-        { key: "requestor", header: "Requestor" },
-        { key: "request_date", header: "Request Date", render: row => row.request_date ? new Date(row.request_date).toLocaleDateString() : "-" },
-        { key: "request_status", header: "Status" },
-    ];
-
-    return (
-        <CustomDataGrid columns={columns} data={data} inputFilter={true} />
     );
 }
