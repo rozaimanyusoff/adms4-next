@@ -114,7 +114,7 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                             <AlertDialogDescription>
                                 <div className="relative w-full">
                                     <Progress value={(countdown / countdownSeconds) * 100} />
-                                    <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold">
+                                    <span className="absolute inset-0 flex items-center justify-center text-white-light text-xs font-semibold">
                                         {countdown} seconds
                                     </span>
                                 </div>
@@ -125,7 +125,7 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                             <AlertDialogCancel asChild>
                                 <Button
                                     onClick={stayLoggedIn}
-                                    className="w-full"
+                                    variant="ghost"
                                 >
                                     Stay Logged In
                                 </Button>

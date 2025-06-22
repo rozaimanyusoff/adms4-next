@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashTransfer from "./dash-transfer";
-import AssetTransferForm from "./asset-transfer-form";
+import AssetTransferForm from "./asset-transfer";
 
 const TransferApp = () => {
     const tabTitles = [
