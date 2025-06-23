@@ -1,4 +1,4 @@
-import React, { useEffect, useContext } from 'react';
+import React, { useEffect, useContext, useRef } from 'react';
 import { AuthContext } from "@/store/AuthContext";
 import { Checkbox } from '../ui/checkbox';
 import { Button } from '../ui/button';
@@ -20,6 +20,17 @@ import {
     TabsTrigger,
     TabsContent,
 } from "@/components/ui/tabs";
+import {
+    AlertDialog,
+    AlertDialogTrigger,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogFooter,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogCancel,
+    AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 // Define reasons for transfer inside the form
 const ASSET_REASONS = [
@@ -43,13 +54,56 @@ type Requestor = {
     ramco_id: string;
     full_name: string;
     position: { id: number; name: string } | null;
-    department: { id: number; name: string, code: string, old_asset_id: number, dept_desc_malay: string, status: number } | null;
-    costcenter: { id: number; name: string, owner_type: string } | null;
+    department: { id: number; name: string, code: string } | null;
+    costcenter: { id: number; name: string } | null;
     district: { id: number; name: string, code: string } | null;
     email?: string;
     contact?: string;
     // Add any other fields as needed
 };
+
+interface AssetTransferDetails {
+    ownerName: string;
+    ownerStaffId: string;
+    location: string;
+    costCenter: string;
+    department: string;
+    condition: string;
+    brandModel: string;
+    serialNo: string;
+}
+
+interface NewOwner {
+    full_name: string;
+    ramco_id: string;
+}
+
+interface CostCenter {
+    id: number;
+    name: string;
+    owner_type: string;
+    owner_id: number;
+    start_date: string;
+    end_date: string;
+    status: string;
+    createAt: string;
+}
+
+interface Department {
+    id: number;
+    old_asset_id: number;
+    code: string;
+    name: string;
+    dept_desc_malay: string;
+    status: number;
+}
+
+interface District {
+    id: number;
+    name: string;
+    code: string;
+    zone: string | null;
+}
 
 // Change AssetTransferForm to a self-contained component
 const AssetTransferForm: React.FC = () => {
@@ -65,9 +119,9 @@ const AssetTransferForm: React.FC = () => {
     const [itemTransferDetails, setItemTransferDetails] = React.useState<any>({});
     const [employees, setEmployees] = React.useState<any[]>([]);
     const [selectedOwnerName, setSelectedOwnerName] = React.useState('');
-    const [costCenters, setCostCenters] = React.useState<any[]>([]);
-    const [departments, setDepartments] = React.useState<any[]>([]);
-    const [districts, setDistricts] = React.useState<any[]>([]);
+    const [costCenters, setCostCenters] = React.useState<CostCenter[]>([]);
+    const [departments, setDepartments] = React.useState<Department[]>([]);
+    const [districts, setDistricts] = React.useState<District[]>([]);
     const [itemReasons, setItemReasons] = React.useState<any>({});
     const [workflow, setWorkflow] = React.useState<any>({});
     const [requestStatus, setRequestStatus] = React.useState<'draft' | 'submitted'>('draft');
@@ -75,9 +129,13 @@ const AssetTransferForm: React.FC = () => {
     const [submitError, setSubmitError] = React.useState<string | null>(null);
     // Add a loading state for sidebar data
     const [sidebarLoading, setSidebarLoading] = React.useState(false);
+    const [openSubmitDialog, setOpenSubmitDialog] = React.useState(false);
+    const [openDraftDialog, setOpenDraftDialog] = React.useState(false);
+    const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
+    const formRef = useRef<HTMLFormElement>(null);
 
     function clearFormAndItems() {
         setForm(initialForm);
@@ -191,7 +249,7 @@ const AssetTransferForm: React.FC = () => {
         }
     }
 
-    function handleSaveDraft() {
+    async function handleSaveDraft() {
         setRequestStatus('draft');
         clearFormAndItems();
         const formElement = document.createElement('form');
@@ -203,18 +261,30 @@ const AssetTransferForm: React.FC = () => {
     function handleItemEffectiveDate(itemId: string, value: string) {
         setItemEffectiveDates((prev: any) => ({ ...prev, [itemId]: value }));
     }
-    function handleItemTransferInput(itemId: string, section: 'current' | 'new', field: string, value: string) {
-        setItemTransferDetails((prev: any) => ({
-            ...prev,
-            [itemId]: {
+
+    // Detect changes in item transfer details for both current and new sections then update checkbox state
+    // This function is used to update the itemTransferDetails state when a new value is entered
+    function detectNewChanges(itemId: string, section: 'current' | 'new', field: string, value: string) {
+        setItemTransferDetails((prev: any) => {
+            const updatedItem = {
                 ...prev[itemId],
                 [section]: {
                     ...prev[itemId]?.[section],
                     [field]: value,
                 },
                 effectiveDate: prev[itemId]?.effectiveDate || '',
-            },
-        }));
+            };
+
+            // Automatically check or uncheck the corresponding checkbox for New Owner, Cost Center, Department, or District
+            if (section === 'new' && ['ownerName', 'costCenter', 'department', 'location'].includes(field)) {
+                updatedItem[section].ownerChecked = field === 'ownerName' ? !!value : updatedItem[section].ownerChecked;
+            }
+
+            return {
+                ...prev,
+                [itemId]: updatedItem,
+            };
+        });
     }
 
     function handleItemReasonInput(itemId: string, field: string, value: boolean | string) {
@@ -226,17 +296,7 @@ const AssetTransferForm: React.FC = () => {
             },
         }));
     }
-    function isReasonDirty(itemId: string) {
-        // Implement a simple dirty check for reasons
-        return !!itemReasons[itemId] && Object.values(itemReasons[itemId]).some(Boolean);
-    }
-    function handleResetSection(itemId: string, section: 'transferDetails' | 'reason' | 'attachments') {
-        if (section === 'transferDetails') {
-            setItemTransferDetails((prev: any) => ({ ...prev, [itemId]: { current: {}, new: {}, effectiveDate: '' } }));
-        } else if (section === 'reason') {
-            setItemReasons((prev: any) => ({ ...prev, [itemId]: {} }));
-        }
-    }
+
     function handleInput(section: string, field: string, value: string) {
         setForm((prev: any) => ({
             ...prev,
@@ -251,8 +311,9 @@ const AssetTransferForm: React.FC = () => {
     function addSelectedItem(item: any) {
         setSelectedItems((prev: any[]) => {
             const isEmployee = !!(item.full_name || item.ramco_id);
+            let newList;
             if (item.full_name && item.ramco_id) {
-                return [
+                newList = [
                     ...prev,
                     {
                         ...item,
@@ -261,9 +322,8 @@ const AssetTransferForm: React.FC = () => {
                         asset_code: '',
                     },
                 ];
-            }
-            if (item.serial_number) {
-                return [
+            } else if (item.serial_number) {
+                newList = [
                     ...prev,
                     {
                         ...item,
@@ -273,14 +333,26 @@ const AssetTransferForm: React.FC = () => {
                         asset_type: item.type?.name || '',
                     },
                 ];
+            } else {
+                newList = prev;
             }
-            return prev;
+            if (newList.length > prev.length) {
+                toast.success('Item added to selection.');
+            }
+            return newList;
         });
     }
 
     // Remove a selected item by index
     function removeSelectedItem(idx: number) {
-        setSelectedItems((prev: any[]) => prev.filter((_, i) => i !== idx));
+        setSelectedItems((prev: any[]) => {
+            const removed = prev[idx];
+            const newList = prev.filter((_, i) => i !== idx);
+            if (removed) {
+                toast.info('Item removed from selection.');
+            }
+            return newList;
+        });
     }
 
     // Fetch requestor data on mount (if user exists)
@@ -318,7 +390,8 @@ const AssetTransferForm: React.FC = () => {
     }, [dateRequest]);
 
     // Handler to close the blank tab (window)
-    function handleCancel() {
+    async function handleCancel() {
+        // This is now handled by AlertDialog, so just close dialog or navigate as needed
         window.close();
     }
 
@@ -338,7 +411,7 @@ const AssetTransferForm: React.FC = () => {
     }
 
     // Autocomplete for new owner (search employees)
-    async function handleOwnerSearch(query: string) {
+    async function handleNewOwnerAutocomplete(query: string) {
         if (!query || query.length < 2) {
             setEmployees([]);
             return;
@@ -367,12 +440,110 @@ const AssetTransferForm: React.FC = () => {
         return fallback;
     }
 
+    // Fetch data for cost center, departments, and districts from their respective APIs and populate the dropdowns.
+    useEffect(() => {
+        async function fetchDropdownData() {
+            try {
+                const [costCentersRes, departmentsRes, districtsRes] = await Promise.all([
+                    authenticatedApi.get<{ data: CostCenter[] }>('/api/assets/costcenters'),
+                    authenticatedApi.get<{ data: Department[] }>('/api/assets/departments'),
+                    authenticatedApi.get<{ data: District[] }>('/api/assets/districts'),
+                ]);
+
+                setCostCenters(costCentersRes.data.data || []);
+                setDepartments(departmentsRes.data.data || []);
+                setDistricts(districtsRes.data.data || []);
+            } catch (error) {
+                console.error('Failed to fetch dropdown data:', error);
+            }
+        }
+
+        fetchDropdownData();
+    }, []);
+
+    const handleSubmitConfirmed = () => {
+        setOpenSubmitDialog(false);
+        // Call handleSubmit with a synthetic event or refactor handleSubmit to not require the event
+        if (formRef.current) {
+            const event = { preventDefault: () => { }, target: formRef.current } as unknown as React.FormEvent<HTMLFormElement>;
+            handleSubmit(event);
+        }
+    };
+    const handleSaveDraftConfirmed = () => {
+        setOpenDraftDialog(false);
+        handleSaveDraft();
+    };
+
     return (
         <div className="w-full min-h-screen pt-10 bg-gray-50 dark:bg-gray-800">
-            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 p-6 rounded shadow-md text-sm space-y-6" onSubmit={handleSubmit}>
-                {submitError && (
-                    <div className="text-red-600 font-semibold mb-2">{submitError}</div>
-                )}
+            {/* AlertDialogs for confirmation */}
+            <AlertDialog open={openSubmitDialog} onOpenChange={setOpenSubmitDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Submit Transfer Request?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to submit this transfer request? You will not be able to edit after submission.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <button
+                                type="submit"
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                                onClick={handleSubmitConfirmed}
+                            >
+                                Yes, Submit
+                            </button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={openDraftDialog} onOpenChange={setOpenDraftDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Save as Draft?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Do you want to save this transfer request as a draft? You can continue editing later.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <button
+                                type="button"
+                                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
+                                onClick={handleSaveDraftConfirmed}
+                            >
+                                Yes, Save Draft
+                            </button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={openCancelDialog} onOpenChange={setOpenCancelDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Leave Form?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to leave this form? Unsaved changes will be lost.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Stay</AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <button
+                                type="button"
+                                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                                onClick={handleCancel}
+                            >
+                                Leave
+                            </button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 p-6 rounded shadow-md text-sm space-y-6" onSubmit={e => { e.preventDefault(); setOpenSubmitDialog(true); }} ref={formRef}>
                 {/* 1. Requestor Details */}
                 <fieldset className="border rounded p-4">
                     <legend className="font-semibold text-lg">Requestor</legend>
@@ -527,9 +698,17 @@ const AssetTransferForm: React.FC = () => {
                                                 {/* Transfer Details */}
                                                 <hr className="my-2 border-gray-300" />
                                                 <div>
-                                                    <div className="font-semibold mb-2 flex items-center justify-between">
+                                                    <div className="font-semibold mb-2 flex items-center justify-start gap-6">
                                                         <div className="flex items-center">Transfer Details</div>
+                                                        {/* Show only Transfer Details error for this item */}
+                                                        {submitError && submitError.includes(item.serial_number || item.full_name || item.asset_code || item.id)
+                                                            && submitError.toLowerCase().includes('transfer detail') && (
+                                                                <div className="text-red-600 text-xs font-semibold">
+                                                                    {submitError}
+                                                                </div>
+                                                            )}
                                                     </div>
+
                                                     {/* Effective Date for both asset and employee transfers */}
                                                     <div className="my-1 flex items-center justify-between">
                                                         {/* Only show Return to Asset Manager for assets */}
@@ -571,7 +750,17 @@ const AssetTransferForm: React.FC = () => {
                                                                 <tr className="border-b-0">
                                                                     <td className="py-0.5">
                                                                         <label className="flex items-center gap-2">
-                                                                            <Checkbox disabled={!!returnToAssetManager[item.id]} />
+                                                                            <Checkbox
+                                                                                checked={!!itemTransferDetails[item.id]?.new.ownerChecked}
+                                                                                disabled={!!returnToAssetManager[item.id]}
+                                                                                onCheckedChange={checked => {
+                                                                                    if (checked === false) {
+                                                                                        // clearNewOwnerField(item.id);
+                                                                                    } else {
+                                                                                        detectNewChanges(item.id, 'new', 'ownerName', selectedOwnerName || '');
+                                                                                    }
+                                                                                }}
+                                                                            />
                                                                             Owner
                                                                         </label>
                                                                     </td>
@@ -585,19 +774,29 @@ const AssetTransferForm: React.FC = () => {
                                                                                 type="text"
                                                                                 className="input"
                                                                                 placeholder="Search new owner"
-                                                                                value={itemTransferDetails[item.id]?.new.ownerName || ''}
+                                                                                value={selectedOwnerName || itemTransferDetails[item.id]?.new.ownerName || ''}
                                                                                 onChange={e => {
-                                                                                    handleItemTransferInput(item.id, 'new', 'ownerName', e.target.value);
-                                                                                    handleOwnerSearch(e.target.value);
-                                                                                    setSelectedOwnerName("");
+                                                                                    detectNewChanges(item.id, 'new', 'ownerName', e.target.value);
+                                                                                    handleNewOwnerAutocomplete(e.target.value);
+                                                                                    setSelectedOwnerName(e.target.value);
                                                                                 }}
                                                                                 autoComplete="off"
                                                                                 disabled={!!returnToAssetManager[item.id]}
                                                                             />
                                                                             {employees.length > 0 && (
                                                                                 <ul className="absolute z-10 bg-white border w-full max-h-40 overflow-y-auto">
-                                                                                    {employees.map((e: any) => (
-                                                                                        <li key={e.ramco_id} className="px-2 py-1 hover:bg-blue-100 cursor-pointer" onClick={() => { handleItemTransferInput(item.id, 'new', 'ownerName', e.ramco_id); setEmployees([]); setSelectedOwnerName(e.full_name); }}>{renderValue(e.full_name)}</li>
+                                                                                    {employees.map((employee: NewOwner) => (
+                                                                                        <li
+                                                                                            key={employee.ramco_id}
+                                                                                            className="px-2 py-1 hover:bg-blue-100 cursor-pointer"
+                                                                                            onClick={() => {
+                                                                                                detectNewChanges(item.id, 'new', 'ownerName', employee.ramco_id);
+                                                                                                setEmployees([]);
+                                                                                                setSelectedOwnerName(employee.full_name);
+                                                                                            }}
+                                                                                        >
+                                                                                            {employee.full_name}
+                                                                                        </li>
                                                                                     ))}
                                                                                 </ul>
                                                                             )}
@@ -612,7 +811,7 @@ const AssetTransferForm: React.FC = () => {
                                                                         <Checkbox
                                                                             checked={!!itemTransferDetails[item.id]?.new.costCenter}
                                                                             disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) handleItemTransferInput(item.id, 'new', 'costCenter', ''); }}
+                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'costCenter', ''); }}
 
                                                                         />
                                                                         Cost Center
@@ -620,10 +819,10 @@ const AssetTransferForm: React.FC = () => {
                                                                 </td>
                                                                 <td className="py-0.5">{renderValue(item.costcenter?.name)}</td>
                                                                 <td className="py-0.5">
-                                                                    <Select value={itemTransferDetails[item.id]?.new.costCenter} onValueChange={val => handleItemTransferInput(item.id, 'new', 'costCenter', val)} disabled={!!returnToAssetManager[item.id]}>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.costCenter} onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Cost Center" /></SelectTrigger>
                                                                         <SelectContent>
-                                                                            {costCenters.map((cc: any) => <SelectItem key={cc.id} value={String(cc.id)}>{renderValue(cc.name)}</SelectItem>)}
+                                                                            {costCenters.map((cc: CostCenter) => <SelectItem key={cc.id} value={String(cc.id)}>{renderValue(cc.name)}</SelectItem>)}
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </td>
@@ -634,7 +833,7 @@ const AssetTransferForm: React.FC = () => {
                                                                         <Checkbox
                                                                             checked={!!itemTransferDetails[item.id]?.new.department}
                                                                             disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) handleItemTransferInput(item.id, 'new', 'department', ''); }}
+                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'department', ''); }}
 
                                                                         />
                                                                         Department
@@ -642,10 +841,10 @@ const AssetTransferForm: React.FC = () => {
                                                                 </td>
                                                                 <td className="py-0.5">{renderValue(item.department?.name)}</td>
                                                                 <td className="py-0.5">
-                                                                    <Select value={itemTransferDetails[item.id]?.new.department} onValueChange={val => handleItemTransferInput(item.id, 'new', 'department', val)} disabled={!!returnToAssetManager[item.id]}>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.department} onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)} disabled={!!returnToAssetManager[item.id]}>
                                                                         <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Department" /></SelectTrigger>
                                                                         <SelectContent>
-                                                                            {departments.map((dept: any) => <SelectItem key={dept.id} value={String(dept.id)}>{renderValue(dept.name)}</SelectItem>)}
+                                                                            {departments.map((dept: Department) => <SelectItem key={dept.id} value={String(dept.id)}>{renderValue(dept.code)}</SelectItem>)}
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </td>
@@ -656,18 +855,18 @@ const AssetTransferForm: React.FC = () => {
                                                                         <Checkbox
                                                                             checked={!!itemTransferDetails[item.id]?.new.location}
                                                                             disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) handleItemTransferInput(item.id, 'new', 'location', ''); }}
+                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
 
                                                                         />
-                                                                        Location (District)
+                                                                        District
                                                                     </label>
                                                                 </td>
                                                                 <td className="py-0.5">{renderValue(item.district?.name)}</td>
                                                                 <td className="py-0.5">
-                                                                    <Select value={itemTransferDetails[item.id]?.new.location} onValueChange={val => handleItemTransferInput(item.id, 'new', 'location', val)} disabled={!!returnToAssetManager[item.id]}>
-                                                                        <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Location (District)" /></SelectTrigger>
+                                                                    <Select value={itemTransferDetails[item.id]?.new.location} onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)} disabled={!!returnToAssetManager[item.id]}>
+                                                                        <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New District" /></SelectTrigger>
                                                                         <SelectContent>
-                                                                            {districts.map((district: any) => <SelectItem key={district.id} value={String(district.id)}>{renderValue(district.name)}</SelectItem>)}
+                                                                            {districts.map((district: District) => <SelectItem key={district.id} value={String(district.id)}>{renderValue(district.code)}</SelectItem>)}
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </td>
@@ -678,20 +877,17 @@ const AssetTransferForm: React.FC = () => {
                                                 <hr className="my-2 border-gray-300" />
                                                 {/* Reason for Transfer */}
                                                 <div>
-                                                    <div className="font-semibold mb-2 flex items-center">
+                                                    <div className="font-semibold mb-2 flex items-center justify-start gap-6">
                                                         Reason for Transfer
-                                                        <Button
-                                                            type="button"
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className="ml-2 text-muted-foreground hover:text-primary"
-                                                            disabled={!isReasonDirty(item.id)}
-                                                            onClick={() => handleResetSection(item.id, "reason")}
-                                                            aria-label="Reset Reason for Transfer"
-                                                        >
-                                                            {/* Undo icon removed */}
-                                                        </Button>
+                                                        {/* Show only Reason for Transfer error for this item */}
+                                                        {submitError && submitError.includes(item.serial_number || item.full_name || item.asset_code || item.id)
+                                                            && submitError.toLowerCase().includes('reason for transfer') && (
+                                                                <div className="text-red-600 text-xs font-semibold">
+                                                                    {submitError}
+                                                                </div>
+                                                            )}
                                                     </div>
+
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                                         {(() => {
                                                             // Use the same logic as the accordion label for determining asset/employee
@@ -883,15 +1079,15 @@ const AssetTransferForm: React.FC = () => {
                         type="button"
                         variant="secondary"
                         className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white"
-                        onClick={handleSaveDraft}
+                        onClick={() => setOpenDraftDialog(true)}
                     >
                         Save Draft
                     </Button>
                     <Button
-                        type="submit"
+                        type="button"
                         variant="default"
                         className="bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => setRequestStatus('submitted')}
+                        onClick={() => setOpenSubmitDialog(true)}
                     >
                         Submit
                     </Button>
@@ -899,7 +1095,7 @@ const AssetTransferForm: React.FC = () => {
                         type="button"
                         variant="destructive"
                         className="bg-red-600 hover:bg-red-700 text-white"
-                        onClick={handleCancel}
+                        onClick={() => setOpenCancelDialog(true)}
                     >
                         Cancel
                     </Button>
@@ -968,3 +1164,5 @@ const AssetTransferForm: React.FC = () => {
 };
 
 export default AssetTransferForm;
+
+
