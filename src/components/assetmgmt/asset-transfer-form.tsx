@@ -32,10 +32,61 @@ import {
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
 
+// --- Asset Transfer API and Form Types ---
+export interface AssetTransferItem {
+    id: number;
+    transfer_request_id?: number;
+    transfer_type: 'Employee' | 'Asset';
+    asset_type?: string;
+    identifier: string | { ramco_id: string; name: string };
+    curr_owner?: { ramco_id: string; name: string } | null;
+    curr_department?: { id: number; name: string } | null;
+    curr_district?: { id: number; name: string } | null;
+    curr_costcenter?: { id: number; name: string } | null;
+    new_owner?: { ramco_id: string; name: string } | null;
+    new_department?: { id: number; name: string } | null;
+    new_district?: { id: number; name: string } | null;
+    new_costcenter?: { id: number; name: string } | null;
+    effective_date?: string;
+    reasons?: string;
+    attachment?: any;
+    accepted_by?: any;
+    accepted_at?: any;
+    acceptance_remarks?: any;
+    created_at?: string;
+    updated_at?: string;
+    // For form rendering convenience
+    serial_number?: string;
+    ramco_id?: string;
+    full_name?: string;
+    owner?: { ramco_id: string; name: string } | null;
+    costcenter?: { id: number; name: string } | null;
+    department?: { id: number; name: string } | null;
+    district?: { id: number; name: string } | null;
+}
+
+export interface AssetTransferRequest {
+    id?: number;
+    request_no?: string;
+    requestor: {
+        ramco_id: string;
+        name: string;
+        cost_center?: { id: number; name: string };
+        department?: { id: number; name: string };
+        district?: { id: number; name: string };
+        [key: string]: any;
+    };
+    request_date: string;
+    request_status: 'draft' | 'submitted';
+    items: AssetTransferItem[];
+    [key: string]: any;
+}
+
 // Define reasons for transfer inside the form
 const ASSET_REASONS = [
     { label: 'Resignation', value: 'resignation' },
     { label: 'Relocation', value: 'relocation' },
+    { label: 'Data Update', value: 'data_update' },
     { label: 'Disposal', value: 'disposal' },
     { label: 'Asset Problem', value: 'asset_problem' },
 ];
@@ -46,6 +97,7 @@ const EMPLOYEE_REASONS = [
     { label: 'Department Restructure', value: 'department_restructure' },
     { label: 'Resignation', value: 'resignation' },
     { label: 'Relocation', value: 'relocation' },
+    { label: 'Data Update', value: 'data_update' },
     { label: 'Disposal', value: 'disposal' },
 ];
 
@@ -61,17 +113,6 @@ type Requestor = {
     contact?: string;
     // Add any other fields as needed
 };
-
-interface AssetTransferDetails {
-    ownerName: string;
-    ownerStaffId: string;
-    location: string;
-    costCenter: string;
-    department: string;
-    condition: string;
-    brandModel: string;
-    serialNo: string;
-}
 
 interface NewOwner {
     full_name: string;
@@ -106,7 +147,11 @@ interface District {
 }
 
 // Change AssetTransferForm to a self-contained component
-const AssetTransferForm: React.FC = () => {
+interface AssetTransferFormProps {
+  id?: string | null;
+}
+
+const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
     const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
     const [supervised, setSupervised] = React.useState<any[]>([]);
@@ -132,6 +177,8 @@ const AssetTransferForm: React.FC = () => {
     const [openSubmitDialog, setOpenSubmitDialog] = React.useState(false);
     const [openDraftDialog, setOpenDraftDialog] = React.useState(false);
     const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
+    const [loading, setLoading] = React.useState(!!id);
+    const [error, setError] = React.useState<string | null>(null);
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -250,7 +297,6 @@ const AssetTransferForm: React.FC = () => {
     }
 
     async function handleSaveDraft() {
-        setRequestStatus('draft');
         clearFormAndItems();
         const formElement = document.createElement('form');
         const syntheticEvent = { preventDefault: () => { }, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
@@ -462,17 +508,95 @@ const AssetTransferForm: React.FC = () => {
     }, []);
 
     const handleSubmitConfirmed = () => {
+        setRequestStatus('submitted');
         setOpenSubmitDialog(false);
-        // Call handleSubmit with a synthetic event or refactor handleSubmit to not require the event
         if (formRef.current) {
             const event = { preventDefault: () => { }, target: formRef.current } as unknown as React.FormEvent<HTMLFormElement>;
             handleSubmit(event);
         }
     };
     const handleSaveDraftConfirmed = () => {
+        setRequestStatus('draft');
         setOpenDraftDialog(false);
         handleSaveDraft();
     };
+
+    // Fetch transfer request if id is provided
+    React.useEffect(() => {
+      if (id) {
+        setLoading(true);
+        authenticatedApi.get(`/api/assets/transfer-requests/${id}`)
+          .then((res: any) => {
+            const data = res?.data?.data;
+            if (data) {
+              // Prefill form state for edit mode
+              setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
+              // Map items to selectedItems
+              if (Array.isArray(data.items)) {
+                setSelectedItems(data.items.map((item: any) => ({
+                  ...item,
+                  id: item.id,
+                  transfer_type: item.transfer_type,
+                  serial_number: typeof item.identifier === 'string' ? item.identifier : undefined,
+                  ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
+                  full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
+                  asset_type: item.asset_type,
+                  owner: item.curr_owner,
+                  costcenter: item.curr_costcenter,
+                  department: item.curr_department,
+                  district: item.curr_district,
+                })));
+                // Prefill effective dates
+                setItemEffectiveDates(
+                  Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
+                );
+                // Prefill transfer details (current/new)
+                setItemTransferDetails(
+                  Object.fromEntries(data.items.map((item: any) => [item.id, {
+                    current: {
+                      ownerName: item.curr_owner?.name || '',
+                      ownerStaffId: item.curr_owner?.ramco_id || '',
+                      costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
+                      department: item.curr_department?.id ? String(item.curr_department.id) : '',
+                      location: item.curr_district?.id ? String(item.curr_district.id) : '',
+                    },
+                    new: {
+                      ownerName: item.new_owner?.name || '',
+                      ownerStaffId: item.new_owner?.ramco_id || '',
+                      costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
+                      department: item.new_department?.id ? String(item.new_department.id) : '',
+                      location: item.new_district?.id ? String(item.new_district.id) : '',
+                    },
+                    effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
+                  }]))
+                );
+                // Prefill reasons
+                setItemReasons(
+                  Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
+                );
+                // Prefill returnToAssetManager
+                setReturnToAssetManager(
+                  Object.fromEntries(data.items.map((item: any) => [item.id, !!item.return_to_asset_manager]))
+                );
+              }
+              // Prefill workflow if present
+              if (data.workflow) setWorkflow(data.workflow);
+              // Prefill request status
+              if (data.request_status) setRequestStatus(data.request_status);
+              // Prefill request date
+              if (data.request_date) setDateRequest(data.request_date);
+            }
+            setLoading(false);
+          })
+          .catch(() => {
+            setError('Failed to load transfer request.');
+            setLoading(false);
+          });
+      }
+    }, [id]);
+
+    if (loading) return <div className="p-8 text-center">Loading...</div>;
+    if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
     return (
         <div className="w-full min-h-screen pt-10 bg-gray-50 dark:bg-gray-800">
