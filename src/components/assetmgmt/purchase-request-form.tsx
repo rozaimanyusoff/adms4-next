@@ -1,8 +1,9 @@
 import React, { useEffect, useContext, useRef } from 'react';
 import { AuthContext } from "@/store/AuthContext";
-import { Checkbox } from '../ui/checkbox';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -24,75 +25,6 @@ import {
     AlertDialogCancel,
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-
-// --- Asset Transfer API and Form Types ---
-export interface AssetTransferItem {
-    id: number;
-    transfer_request_id?: number;
-    transfer_type: 'Employee' | 'Asset';
-    asset_type?: string;
-    identifier: string | { ramco_id: string; name: string };
-    curr_owner?: { ramco_id: string; name: string } | null;
-    curr_department?: { id: number; name: string } | null;
-    curr_district?: { id: number; name: string } | null;
-    curr_costcenter?: { id: number; name: string } | null;
-    new_owner?: { ramco_id: string; name: string } | null;
-    new_department?: { id: number; name: string } | null;
-    new_district?: { id: number; name: string } | null;
-    new_costcenter?: { id: number; name: string } | null;
-    effective_date?: string;
-    reasons?: string;
-    attachment?: any;
-    accepted_by?: any;
-    accepted_at?: any;
-    acceptance_remarks?: any;
-    created_at?: string;
-    updated_at?: string;
-    // For form rendering convenience
-    serial_number?: string;
-    ramco_id?: string;
-    full_name?: string;
-    owner?: { ramco_id: string; name: string } | null;
-    costcenter?: { id: number; name: string } | null;
-    department?: { id: number; name: string } | null;
-    district?: { id: number; name: string } | null;
-}
-
-export interface AssetTransferRequest {
-    id?: number;
-    request_no?: string;
-    requestor: {
-        ramco_id: string;
-        name: string;
-        cost_center?: { id: number; name: string };
-        department?: { id: number; name: string };
-        district?: { id: number; name: string };
-        [key: string]: any;
-    };
-    request_date: string;
-    request_status: 'draft' | 'submitted';
-    items: AssetTransferItem[];
-    [key: string]: any;
-}
-
-// Define reasons for transfer inside the form
-const ASSET_REASONS = [
-    { label: 'Resignation', value: 'resignation' },
-    { label: 'Relocation', value: 'relocation' },
-    { label: 'Data Update', value: 'data_update' },
-    { label: 'Disposal', value: 'disposal' },
-    { label: 'Asset Problem', value: 'asset_problem' },
-];
-
-const EMPLOYEE_REASONS = [
-    { label: 'Temporary Assignment (< 30 days)', value: 'temporary_assignment' },
-    { label: 'Upgrading/Promotion', value: 'upgrading_promotion' },
-    { label: 'Department Restructure', value: 'department_restructure' },
-    { label: 'Resignation', value: 'resignation' },
-    { label: 'Relocation', value: 'relocation' },
-    { label: 'Data Update', value: 'data_update' },
-    { label: 'Disposal', value: 'disposal' },
-];
 
 // --- INTERFACES FOR PURCHASE REQUEST CONTEXT ---
 export interface PurchaseRequestDetail {
@@ -161,11 +93,6 @@ type Requestor = {
     // Add any other fields as needed
 };
 
-interface NewOwner {
-    full_name: string;
-    ramco_id: string;
-}
-
 interface CostCenter {
     id: number;
     name: string;
@@ -195,22 +122,16 @@ interface District {
 
 // Change PurchaseRequestForm to a self-contained component
 interface PurchaseRequestFormProps {
-  id?: string | null;
+    id?: string | null;
 }
 
 const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
     const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
     const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
-    const [supervised, setSupervised] = React.useState<any[]>([]);
     const [returnToAssetManager, setReturnToAssetManager] = React.useState<{ [key: number]: boolean }>({});
     const [itemEffectiveDates, setItemEffectiveDates] = React.useState<{ [key: string]: string }>({});
-    const [sidebarOpen, setSidebarOpen] = React.useState(false);
-    const [employeeSearch, setEmployeeSearch] = React.useState('');
-    const [assetSearch, setAssetSearch] = React.useState('');
     const [dateRequest, setDateRequest] = React.useState('');
     const [itemTransferDetails, setItemTransferDetails] = React.useState<any>({});
-    const [employees, setEmployees] = React.useState<any[]>([]);
-    const [selectedOwnerName, setSelectedOwnerName] = React.useState('');
     const [costCenters, setCostCenters] = React.useState<CostCenter[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
     const [districts, setDistricts] = React.useState<District[]>([]);
@@ -219,13 +140,13 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
     const [requestStatus, setRequestStatus] = React.useState<'draft' | 'submitted'>('draft');
     const [initialForm, setInitialForm] = React.useState<any>({ requestor: {}, reason: {} });
     const [submitError, setSubmitError] = React.useState<string | null>(null);
-    // Add a loading state for sidebar data
-    const [sidebarLoading, setSidebarLoading] = React.useState(false);
     const [openSubmitDialog, setOpenSubmitDialog] = React.useState(false);
     const [openDraftDialog, setOpenDraftDialog] = React.useState(false);
     const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
     const [loading, setLoading] = React.useState(!!id);
     const [error, setError] = React.useState<string | null>(null);
+    const [types, setTypes] = React.useState<{ id: number; name: string }[]>([]);
+    const [categories, setCategories] = React.useState<{ id: number; name: string; type_id: number }[]>([]);
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -350,92 +271,6 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
         handleSubmit(syntheticEvent);
     }
 
-    // --- Internal handlers and helpers moved from parent ---
-    function handleItemEffectiveDate(itemId: string, value: string) {
-        setItemEffectiveDates((prev: any) => ({ ...prev, [itemId]: value }));
-    }
-
-    // Detect changes in item transfer details for both current and new sections then update checkbox state
-    // This function is used to update the itemTransferDetails state when a new value is entered
-    function detectNewChanges(itemId: string, section: 'current' | 'new', field: string, value: string) {
-        setItemTransferDetails((prev: any) => {
-            const updatedItem = {
-                ...prev[itemId],
-                [section]: {
-                    ...prev[itemId]?.[section],
-                    [field]: value,
-                },
-                effectiveDate: prev[itemId]?.effectiveDate || '',
-            };
-
-            // Automatically check or uncheck the corresponding checkbox for New Owner, Cost Center, Department, or District
-            if (section === 'new' && ['ownerName', 'costCenter', 'department', 'location'].includes(field)) {
-                updatedItem[section].ownerChecked = field === 'ownerName' ? !!value : updatedItem[section].ownerChecked;
-            }
-
-            return {
-                ...prev,
-                [itemId]: updatedItem,
-            };
-        });
-    }
-
-    function handleItemReasonInput(itemId: string, field: string, value: boolean | string) {
-        setItemReasons((prev: any) => ({
-            ...prev,
-            [itemId]: {
-                ...prev[itemId],
-                [field]: typeof value === 'string' ? value === 'true' : !!value,
-            },
-        }));
-    }
-
-    function handleInput(section: string, field: string, value: string) {
-        setForm((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                [field]: value,
-            },
-        }));
-    }
-
-    // AddSelectedItem handler (internalized)
-    function addSelectedItem(item: any) {
-        setSelectedItems((prev: any[]) => {
-            const isEmployee = !!(item.full_name || item.ramco_id);
-            let newList;
-            if (item.full_name && item.ramco_id) {
-                newList = [
-                    ...prev,
-                    {
-                        ...item,
-                        transfer_type: 'Employee',
-                        serial_number: '',
-                        asset_code: '',
-                    },
-                ];
-            } else if (item.serial_number) {
-                newList = [
-                    ...prev,
-                    {
-                        ...item,
-                        transfer_type: 'Asset',
-                        serial_number: item.serial_number,
-                        asset_code: item.asset_code || item.serial_number,
-                        asset_type: item.type?.name || '',
-                    },
-                ];
-            } else {
-                newList = prev;
-            }
-            if (newList.length > prev.length) {
-                toast.success('Item added to selection.');
-            }
-            return newList;
-        });
-    }
-
     // Remove a selected item by index
     function removeSelectedItem(idx: number) {
         setSelectedItems((prev: any[]) => {
@@ -447,32 +282,6 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
             return newList;
         });
     }
-
-    // Fetch requestor data on mount (if user exists)
-    useEffect(() => {
-        if (!user?.username) return;
-        authenticatedApi.get(`/api/assets/employees/lookup/${user.username}`)
-            .then((res: any) => {
-                const data = res?.data?.data;
-                if (data) {
-                    const requestor: Requestor = {
-                        ramco_id: data.ramco_id || '',
-                        full_name: data.full_name || '',
-                        position: data.position || null,
-                        department: data.department || null,
-                        costcenter: data.costcenter || null,
-                        district: data.district || null,
-                        email: data.email || '',
-                        contact: data.contact || '',
-                        // Add any other fields as needed
-                    };
-                    setForm((prev: any) => ({
-                        ...prev,
-                        requestor,
-                    }));
-                }
-            });
-    }, [user?.username]);
 
     // Set request date to now (date and time) on mount if not already set
     React.useEffect(() => {
@@ -486,36 +295,6 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
     async function handleCancel() {
         // This is now handled by AlertDialog, so just close dialog or navigate as needed
         window.close();
-    }
-
-    // Autocomplete for new owner (search employees)
-    async function handleNewOwnerAutocomplete(query: string) {
-        if (!query || query.length < 2) {
-            setEmployees([]);
-            return;
-        }
-        try {
-            const res: any = await authenticatedApi.get(`/api/assets/employees/search?q=${encodeURIComponent(query)}`);
-            setEmployees(res.data?.data || []);
-        } catch (err) {
-            setEmployees([]);
-        }
-    }
-
-    // Utility function to safely render a value as string
-    function renderValue(val: any, fallback: string = '-') {
-        if (val == null) return fallback;
-        if (typeof val === 'string' || typeof val === 'number') return val;
-        if (typeof val === 'object') {
-            // Try common string properties
-            if ('name' in val && typeof val.name === 'string') return val.name;
-            if ('code' in val && typeof val.code === 'string') return val.code;
-            if ('full_name' in val && typeof val.full_name === 'string') return val.full_name;
-            if ('id' in val && typeof val.id === 'string') return val.id;
-            // Fallback to JSON string for debugging
-            return JSON.stringify(val);
-        }
-        return fallback;
     }
 
     // Fetch data for cost center, departments, and districts from their respective APIs and populate the dropdowns.
@@ -539,6 +318,23 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
         fetchDropdownData();
     }, []);
 
+    // Fetch types and categories for selects
+    useEffect(() => {
+        async function fetchTypeCategoryData() {
+            try {
+                const [typesRes, categoriesRes] = await Promise.all([
+                    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/types'),
+                    authenticatedApi.get<{ data: { id: number; name: string; type_id: number }[] }>('/api/assets/categories'),
+                ]);
+                setTypes(typesRes.data.data || []);
+                setCategories(categoriesRes.data.data || []);
+            } catch (error) {
+                console.error('Failed to fetch type/category data:', error);
+            }
+        }
+        fetchTypeCategoryData();
+    }, []);
+
     const handleSubmitConfirmed = () => {
         setRequestStatus('submitted');
         setOpenSubmitDialog(false);
@@ -555,76 +351,76 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
 
     // Fetch transfer request if id is provided
     React.useEffect(() => {
-      if (id) {
-        setLoading(true);
-        authenticatedApi.get(`/api/purchase/${id}`)
-          .then((res: any) => {
-            const data = res?.data?.data;
-            if (data) {
-              // Prefill form state for edit mode
-              setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
-              // Map items to selectedItems
-              if (Array.isArray(data.items)) {
-                setSelectedItems(data.items.map((item: any) => ({
-                  ...item,
-                  id: item.id,
-                  transfer_type: item.transfer_type,
-                  serial_number: typeof item.identifier === 'string' ? item.identifier : undefined,
-                  ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
-                  full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
-                  asset_type: item.asset_type,
-                  owner: item.curr_owner,
-                  costcenter: item.curr_costcenter,
-                  department: item.curr_department,
-                  district: item.curr_district,
-              })));
-                // Prefill effective dates
-                setItemEffectiveDates(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
-                );
-                // Prefill transfer details (current/new)
-                setItemTransferDetails(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, {
-                    current: {
-                      ownerName: item.curr_owner?.name || '',
-                      ownerStaffId: item.curr_owner?.ramco_id || '',
-                      costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
-                      department: item.curr_department?.id ? String(item.curr_department.id) : '',
-                      location: item.curr_district?.id ? String(item.curr_district.id) : '',
-                    },
-                    new: {
-                      ownerName: item.new_owner?.name || '',
-                      ownerStaffId: item.new_owner?.ramco_id || '',
-                      costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
-                      department: item.new_department?.id ? String(item.new_department.id) : '',
-                      location: item.new_district?.id ? String(item.new_district.id) : '',
-                    },
-                    effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
-                  }]))
-                );
-                // Prefill reasons
-                setItemReasons(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
-                );
-                // Prefill returnToAssetManager
-                setReturnToAssetManager(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, !!item.return_to_asset_manager]))
-                );
-              }
-              // Prefill workflow if present
-              if (data.workflow) setWorkflow(data.workflow);
-              // Prefill request status
-              if (data.request_status) setRequestStatus(data.request_status);
-              // Prefill request date
-              if (data.request_date) setDateRequest(data.request_date);
-            }
-            setLoading(false);
-          })
-          .catch(() => {
-            setError('Failed to load transfer request.');
-            setLoading(false);
-          });
-      }
+        if (id) {
+            setLoading(true);
+            authenticatedApi.get(`/api/purchase/${id}`)
+                .then((res: any) => {
+                    const data = res?.data?.data;
+                    if (data) {
+                        // Prefill form state for edit mode
+                        setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
+                        // Map items to selectedItems
+                        if (Array.isArray(data.items)) {
+                            setSelectedItems(data.items.map((item: any) => ({
+                                ...item,
+                                id: item.id,
+                                transfer_type: item.transfer_type,
+                                serial_number: typeof item.identifier === 'string' ? item.identifier : undefined,
+                                ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
+                                full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
+                                asset_type: item.asset_type,
+                                owner: item.curr_owner,
+                                costcenter: item.curr_costcenter,
+                                department: item.curr_department,
+                                district: item.curr_district,
+                            })));
+                            // Prefill effective dates
+                            setItemEffectiveDates(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
+                            );
+                            // Prefill transfer details (current/new)
+                            setItemTransferDetails(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, {
+                                    current: {
+                                        ownerName: item.curr_owner?.name || '',
+                                        ownerStaffId: item.curr_owner?.ramco_id || '',
+                                        costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
+                                        department: item.curr_department?.id ? String(item.curr_department.id) : '',
+                                        location: item.curr_district?.id ? String(item.curr_district.id) : '',
+                                    },
+                                    new: {
+                                        ownerName: item.new_owner?.name || '',
+                                        ownerStaffId: item.new_owner?.ramco_id || '',
+                                        costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
+                                        department: item.new_department?.id ? String(item.new_department.id) : '',
+                                        location: item.new_district?.id ? String(item.new_district.id) : '',
+                                    },
+                                    effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
+                                }]))
+                            );
+                            // Prefill reasons
+                            setItemReasons(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
+                            );
+                            // Prefill returnToAssetManager
+                            setReturnToAssetManager(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, !!item.return_to_asset_manager]))
+                            );
+                        }
+                        // Prefill workflow if present
+                        if (data.workflow) setWorkflow(data.workflow);
+                        // Prefill request status
+                        if (data.request_status) setRequestStatus(data.request_status);
+                        // Prefill request date
+                        if (data.request_date) setDateRequest(data.request_date);
+                    }
+                    setLoading(false);
+                })
+                .catch(() => {
+                    setError('Failed to load transfer request.');
+                    setLoading(false);
+                });
+        }
     }, [id]);
 
     if (loading) return <div className="p-8 text-center">Loading...</div>;
@@ -772,7 +568,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                     ) : (
                         <div className="mt-2 px-1">
                             {selectedItems.map((item, idx) => (
-                                <Accordion type="single" collapsible key={item.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded px-4">
+                                <Accordion type="single" collapsible key={item.id} className="mb-4 bg-gray-50 dark:bg-gray-800 rounded px-4">
                                     <AccordionItem value={`item-${item.id}`}>
                                         <AccordionTrigger>
                                             <div className="flex items-center justify-between w-full">
@@ -781,11 +577,98 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                                         <X />
                                                     </Button>
                                                     <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{`Item ${idx + 1}`}</span>
+                                                    {/* Render Type & Category if selected */}
+                                                    {item.type?.name && (
+                                                        <span className="ml-3 text-xs font-medium text-gray-700 dark:text-gray-300">{item.type.name}</span>
+                                                    )}
+                                                    {item.category?.name && (
+                                                        <span className="ml-2 text-xs font-medium text-gray-500 dark:text-gray-400">/ {item.category.name}</span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </AccordionTrigger>
                                         <AccordionContent>
-                                            <div className="py-4 text-center text-gray-400">Item details will go here.</div>
+                                            <div className="flex flex-wrap gap-4 items-start justify-between py-2">
+                                                {/* Type Select */}
+                                                <div className="flex flex-col w-full md:w-[30%]">
+                                                    <label className="min-w-[60px] font-medium mb-1">Type</label>
+                                                    <Select
+                                                        value={item.type?.id ? String(item.type.id) : ''}
+                                                        onValueChange={val => {
+                                                            const selectedType = types.find(t => String(t.id) === val);
+                                                            setSelectedItems(prev => prev.map((itm, i) =>
+                                                                i === idx
+                                                                    ? { ...itm, type: selectedType, category: undefined }
+                                                                    : itm
+                                                            ));
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {types.map(type => (
+                                                                <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {/* Category Select (chained to type) */}
+                                                <div className="flex flex-col w-full md:w-[30%]">
+                                                    <label className="min-w-[70px] font-medium mb-1">Category</label>
+                                                    <Select
+                                                        value={item.category?.id ? String(item.category.id) : ''}
+                                                        onValueChange={val => {
+                                                            const selectedCategory = categories.find(c => String(c.id) === val);
+                                                            setSelectedItems(prev => prev.map((itm, i) =>
+                                                                i === idx
+                                                                    ? { ...itm, category: selectedCategory }
+                                                                    : itm
+                                                            ));
+                                                        }}
+                                                        disabled={!item.type?.id}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select category" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {categories.filter(cat => item.type?.id && cat.type_id === item.type.id).map(category => (
+                                                                <SelectItem key={category.id} value={String(category.id)}>{category.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {/* Required Date Input */}
+                                                <div className="flex flex-col w-full md:w-[30%]">
+                                                    <label className="min-w-[100px] font-medium mb-1">Required Date</label>
+                                                    <Input
+                                                        type="date"
+                                                        className="w-full"
+                                                        value={item.required_date || ''}
+                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, required_date: e.target.value } : itm))}
+                                                    />
+                                                </div>
+                                                {/* Request Details Textarea */}
+                                                <div className="flex flex-col w-full md:w-[48%] mt-4">
+                                                    <label className="min-w-[120px] font-medium mb-1">Request Details</label>
+                                                    <Textarea
+                                                        className="flex-1 min-h-[40px] max-h-[120px]"
+                                                        value={item.item_desc || ''}
+                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, item_desc: e.target.value } : itm))}
+                                                        placeholder="Enter request details"
+                                                    />
+                                                </div>
+                                                {/* Justification Textarea */}
+                                                <div className="flex flex-col w-full md:w-[48%] mt-4">
+                                                    <label className="min-w-[120px] font-medium mb-1">Justification</label>
+                                                    <Textarea
+                                                        className="flex-1 min-h-[40px] max-h-[120px]"
+                                                        value={item.justification || ''}
+                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, justification: e.target.value } : itm))}
+                                                        placeholder="Enter justification"
+                                                    />
+                                                </div>
+                                            </div>
                                         </AccordionContent>
                                     </AccordionItem>
                                 </Accordion>
@@ -823,45 +706,6 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                 <fieldset className="border rounded p-4">
                     <legend className="font-semibold text-lg">Workflow</legend>
                     <div className="space-y-4">
-                        {/* Approved By */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">Approved By</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.date ? new Date(workflow.approvedBy.date).toLocaleString() : '-'}</span>
-                        </div>
-                        {workflow.approvedBy?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.approvedBy.comment}</span>
-                            </div>
-                        )}
-                        {/* Accepted By */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-2 font-medium min-w-[120px]">Accepted By</label>
-                            <span className="w-full md:max-w-xs">{workflow.acceptedBy?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.acceptedBy?.date ? new Date(workflow.acceptedBy.date).toLocaleString() : '-'}</span>
-                        </div>
-                        {workflow.acceptedBy?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.acceptedBy.comment}</span>
-                            </div>
-                        )}
-                        {/* QA Section */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">QA Section</label>
-                            <span className="w-full md:max-w-xs">{workflow.qaSection?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.qaSection?.date ? new Date(workflow.qaSection.date).toLocaleString() : '-'}</span>
-                        </div>
-                        {workflow.qaSection?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.qaSection.comment}</span>
-                            </div>
-                        )}
                         {/* Asset Manager */}
                         <div className="flex flex-col md:flex-row md:items-center gap-2">
                             <label className="block my-1 font-medium min-w-[120px]">Asset Manager</label>
@@ -873,6 +717,19 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                             <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
                                 <label className="block my-1 font-medium min-w-[120px]">Comment</label>
                                 <span className="w-full md:max-w-2xl">{workflow.assetManager.comment}</span>
+                            </div>
+                        )}
+                        {/* Approved By */}
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                            <label className="block my-1 font-medium min-w-[120px]">Approved By</label>
+                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.name || '-'}</span>
+                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
+                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.date ? new Date(workflow.approvedBy.date).toLocaleString() : '-'}</span>
+                        </div>
+                        {workflow.approvedBy?.comment && (
+                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
+                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
+                                <span className="w-full md:max-w-2xl">{workflow.approvedBy.comment}</span>
                             </div>
                         )}
                     </div>
