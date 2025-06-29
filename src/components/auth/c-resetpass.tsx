@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Footer from '@components/layouts/footer';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Eye, EyeOff } from 'lucide-react';
 import AuthTemplate from './AuthTemplate';
 
@@ -77,10 +78,19 @@ const ComponentResetPassword = () => {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData((prev) => ({
-            ...prev,
-            [name]: value,
-        }));
+        if (name === 'contact') {
+            // Only allow numeric input
+            const numericValue = value.replace(/\D/g, '');
+            setFormData((prev) => ({
+                ...prev,
+                [name]: numericValue,
+            }));
+        } else {
+            setFormData((prev) => ({
+                ...prev,
+                [name]: value,
+            }));
+        }
     };
 
     const handleValidationSubmit = async (e: React.FormEvent) => {
@@ -130,16 +140,27 @@ const ComponentResetPassword = () => {
         });
     };
 
+    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        const charCode = e.key;
+        if (!/^[0-9]$/.test(charCode)) {
+            e.preventDefault();
+        }
+    };
+
+        // Password complexity validation function
+    function isPasswordComplex(password: string) {
+        // At least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+        return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password);
+    }
+
     const handlePasswordSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('handlePasswordSubmit triggered');
         setFieldErrors({ email: false, contact: false, password: false, confirmPassword: false });
 
-        const passwordValidation = validatePassword(formData.password);
-        if (!passwordValidation.isValid) {
+        if (!isPasswordComplex(formData.password)) {
             setFieldErrors((prev) => ({ ...prev, password: true }));
             setResponseMessage({
-                text: passwordValidation.message,
+                text: 'Password must be at least 8 characters, include uppercase, lowercase, number, and special character.',
                 type: 'error',
             });
             return;
@@ -202,6 +223,8 @@ const ComponentResetPassword = () => {
                             required
                             placeholder="Enter your contact number"
                             onChange={handleChange}
+                            inputMode='numeric'
+                            onKeyPress={handleKeyPress}
                         />
                     </div>
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Verify Identity</Button>
@@ -213,23 +236,33 @@ const ComponentResetPassword = () => {
                 <form className="space-y-6" onSubmit={handlePasswordSubmit}>
                     <div>
                         <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">New Password</label>
-                        <div className="relative">
-                            <Input
-                                id="password"
-                                name="password"
-                                type={showPassword ? "text" : "password"}
-                                required
-                                placeholder="Enter your new password"
-                                onChange={handleChange}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
-                            >
-                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                            </button>
-                        </div>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="relative">
+                                        <Input
+                                            id="password"
+                                            name="password"
+                                            type={showPassword ? "text" : "password"}
+                                            required
+                                            placeholder="Enter your new password"
+                                            onChange={handleChange}
+                                        />
+                                        <span
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                                            tabIndex={0}
+                                            aria-label="Show/hide password"
+                                        >
+                                            {showPassword ? <EyeOff /> : <Eye />}
+                                        </span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent className='max-w-xs text-wrap'>
+                                    Password must be at least 8 characters, include uppercase, lowercase, number, and special character.
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     </div>
                     <div>
                         <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-1">Confirm Password</label>
@@ -242,13 +275,14 @@ const ComponentResetPassword = () => {
                                 placeholder="Confirm your new password"
                                 onChange={handleChange}
                             />
-                            <button
-                                type="button"
+                            <span
                                 onClick={() => setShowPassword(!showPassword)}
                                 className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                                tabIndex={0}
+                                aria-label="Show/hide password"
                             >
-                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                            </button>
+                                {showPassword ? <EyeOff /> : <Eye />}
+                            </span>
                         </div>
                     </div>
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Reset Password</Button>

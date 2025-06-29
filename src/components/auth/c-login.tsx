@@ -121,7 +121,7 @@ const ComponentLogin = () => {
         <AuthTemplate title="Sign in" description={responseMessage || "Login to your ADMS account."}>
             <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
-                    <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
+                    <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-gray-700 mb-1">Email or Username</label>
                     <Input id="emailOrUsername" name="emailOrUsername" type="text" required placeholder="Enter your email or username" />
                 </div>
                 <div>

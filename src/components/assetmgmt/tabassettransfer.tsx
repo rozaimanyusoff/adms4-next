@@ -16,12 +16,14 @@ const TransferApp = () => {
         records: <AssetTransferForm />,
     };
 
+    const validTabValues = tabTitles.map(t => t.value);
     const [activeTab, setActiveTab] = useState<string>(() => {
-        return localStorage.getItem("usermgmtTabs") || "account";
+        const stored = localStorage.getItem("assettransferTabs");
+        return stored && validTabValues.includes(stored) ? stored : "dash";
     });
 
     useEffect(() => {
-        localStorage.setItem("usermgmtTabs", activeTab);
+        localStorage.setItem("assettransferTabs", activeTab);
     }, [activeTab]);
 
     return (

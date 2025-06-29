@@ -1,4 +1,5 @@
 import React from "react";
+import { Checkbox } from "@components/ui/checkbox";
 
 export interface NavNode {
     navId: number
@@ -25,11 +26,10 @@ const NavTreeView: React.FC<NavTreeViewProps> = ({ tree, className, checkedNavId
         <div key={node.navId} style={{ marginLeft: level * 18 }} className={`mb-1 ${level === 0 ? 'font-bold text-base' : level === 1 ? 'font-semibold text-sm' : 'font-normal text-xs'}`}>
             <div className={`flex items-center py-0.5 gap-1 ${level === 0 ? 'pl-0' : level === 1 ? 'pl-0' : 'pl-1'}`}>
                 {onToggleNav && (
-                    <input
-                        type="checkbox"
+                    <Checkbox
                         checked={checkedNavIds.includes(String(node.navId))}
-                        onChange={e => onToggleNav(String(node.navId), e.target.checked)}
-                        className="w-4.5 h-4.5 form-checkbox"
+                        onCheckedChange={checked => onToggleNav(String(node.navId), Boolean(checked))}
+                        className="w-4.5 h-4.5"
                     />
                 )}
                 <span className={`text-gray-800 dark:text-gray-100`}>

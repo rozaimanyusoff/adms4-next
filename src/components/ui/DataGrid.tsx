@@ -75,6 +75,7 @@ import { createPortal } from 'react-dom';
 import type { FC } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faMinus, faFileExcel, faFileCsv, faFilePdf, faGear } from '@fortawesome/free-solid-svg-icons';
+import { Plus, Minus } from 'lucide-react';
 
 // Types
 export interface ColumnDef<T> {
@@ -736,7 +737,7 @@ const CustomDataGridInner = <T,>({
                                             <Input
                                                 ref={headerCheckboxRef}
                                                 type="checkbox"
-                                                className="form-checkbox w-4.5 h-4.5 border-stone-300 dark:border-gray-400"
+                                                className="form-checkbox w-4.5 h-4.5 border-stone-300 dark:border-gray-400 ml-2"
                                                 checked={allSelected}
                                                 aria-checked={
                                                     allSelected ? "true" : (!noneSelected ? "mixed" : "false")
@@ -1060,19 +1061,12 @@ const CustomDataGridInner = <T,>({
                                                                 : expandCellCollapsed)
                                                         }
                                                     >
-                                                        <Button
-                                                            onClick={() => {
+                                                        <FontAwesomeIcon icon={expandedRows.has(key as number) ? faMinus : faPlus} className={`${expandedRows.has(key as number) ? 'text-red-600 dark:text-red-800' : 'text-green-600 dark:text-green-700'}`} onClick={() => {
                                                                 const newExpanded = new Set(expandedRows);
                                                                 if (newExpanded.has(key as number)) newExpanded.delete(key as number);
                                                                 else newExpanded.add(key as number);
                                                                 setExpandedRows(newExpanded);
-                                                            }}
-                                                            className={`${expandedRows.has(key as number) ? 'text-red-600 dark:text-red-800' : 'text-green-600 dark:text-green-700'}`}
-                                                            aria-label="Toggle expand"
-                                                            variant="ghost"
-                                                        >
-                                                            <FontAwesomeIcon icon={expandedRows.has(key as number) ? faMinus : faPlus} />
-                                                        </Button>
+                                                            }} />
                                                     </td>
                                                 )}
                                                 {flatColumns.filter(col => visibleColumns[String(col.key)]).map((col) => {

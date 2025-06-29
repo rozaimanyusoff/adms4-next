@@ -49,11 +49,11 @@ const ComponentForgotPassword = () => {
                     <Input id="email" name="email" type="email" required value={email} onChange={handleChange} placeholder="Enter your email" />
                 </div>
                 {/* Add contact field if needed */}
-                {/* <div>
+                <div>
                     <label htmlFor="contact" className="block text-sm font-semibold text-gray-700 mb-1">Contact</label>
-                    <Input id="contact" name="contact" type="text" value={contact} onChange={e => setContact(e.target.value)} placeholder="Enter your contact (optional)" />
-                </div> */}
-                <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Send Reset Link</Button>
+                    <Input id="contact" name="contact" type="text" value={contact} onChange={e => setContact(e.target.value)} placeholder="Enter your contact" />
+                </div>
+                <Button type="submit" size={'default'} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Send Reset Link</Button>
                 <div className="text-center mt-4">
                     <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>
                 </div>

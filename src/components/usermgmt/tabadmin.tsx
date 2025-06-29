@@ -6,6 +6,7 @@ import Accounts from "./c-acc";
 import Groups from "./c-group";
 import Navigations from "./c-nav";
 import Roles from "./c-role";
+import CLogs from "./c-logs";
 
 const UserMgmtMain = () => {
     const tabTitles = [
@@ -13,6 +14,7 @@ const UserMgmtMain = () => {
         { value: "roles", label: "Roles" },
         { value: "group", label: "Group" },
         { value: "navigation", label: "Navigation" },
+        { value: "logs", label: "Logs" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
@@ -20,10 +22,13 @@ const UserMgmtMain = () => {
         roles: <Roles />,
         group: <Groups />,
         navigation: <Navigations />,
+        logs: <CLogs />,
     };
 
+    const validTabValues = tabTitles.map(t => t.value);
     const [activeTab, setActiveTab] = useState<string>(() => {
-        return localStorage.getItem("usermgmtTabs") || "account";
+        const stored = localStorage.getItem("usermgmtTabs");
+        return stored && validTabValues.includes(stored) ? stored : "account";
     });
 
     useEffect(() => {

@@ -1,8 +1,13 @@
 import React, { useRef, useEffect, useState } from "react";
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
+import { Plus, PlusCircle, Trash2, MinusCircle } from "lucide-react";
+import { Button } from "@components/ui/button";
+import { Input } from "@components/ui/input";
+import { Checkbox } from "@components/ui/checkbox";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import NavTreeView from "@components/ui/NavTreeView";
 import { authenticatedApi } from "@/config/api";
+import { Textarea } from "@components/ui/textarea";
 
 interface FGroupFormProps {
 	group: any;
@@ -48,6 +53,7 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 	const userListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
 	const navListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
 	const [navTreeStructure, setNavTreeStructure] = useState<any[]>([]);
+	const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
 	useEffect(() => {
 		// Fetch navigation structure from /api/nav and extract navTree
@@ -64,51 +70,64 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 	}, []);
 
 	return (
-		<div className="bg-neutral-50 dark:bg-gray-900 p-6">
-			<h2 className="text-md font-semibold mb-4">{group.id ? `Edit Group: ${group.name}` : 'Create Group'}</h2>
-			<form className="space-y-4" onSubmit={onSubmit}>
+		<div className="bg-white dark:bg-gray-900 p-4 rounded shadow mx-auto">
+			<h2 className="text-xl font-bold mb-4 text-center">{group.id ? `Group ${group.name} Update` : 'Group Assignment'} Form</h2>
+			<form
+				onSubmit={e => {
+					e.preventDefault();
+					setShowConfirmDialog(true);
+				}}
+				className="space-y-4"
+			>
 				<div className="flex flex-col md:flex-row gap-4 items-center">
 					<div className="flex-1 w-full">
 						<label className="block text-sm font-medium mb-1">Name</label>
-						<input type="text" className="form-input w-full" value={editName} onChange={e => setEditName(e.target.value)} />
+						<Input className="w-full" value={editName} onChange={e => setEditName(e.target.value)} />
 					</div>
 					<div className="w-full md:w-40">
 						<label className="block text-sm font-medium mb-1">Status</label>
-						<select className="form-select w-full" value={editStatus} onChange={e => setEditStatus(Number(e.target.value))}>
-							<option value={1}>Active</option>
-							<option value={2}>Disabled</option>
-						</select>
+						<Select value={String(editStatus)} onValueChange={val => setEditStatus(Number(val))}>
+							<SelectTrigger className="w-full">
+								<SelectValue placeholder="Select status" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="1">Active</SelectItem>
+								<SelectItem value="2">Disabled</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
 				</div>
 				<div>
 					<label className="block text-sm font-medium mb-1">Description</label>
-					<textarea className="form-input w-full" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+					<Textarea className="w-full min-h-[80px]" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
 				</div>
 				<div className="flex flex-col lg:flex-row gap-4 w-full text-sm">
 					{/* Assigned Users */}
 					<div className="w-full lg:w-1/2 border dark:border-gray-700 rounded-sm p-3 shrink-0 min-w-0 max-w-full lg:min-w-[260px] lg:max-w-[340px] bg-gray-50 dark:bg-gray-800 mb-4 lg:mb-0">
 						<div className="flex items-center justify-between mb-1">
 							<span className="font-semibold underline underline-offset-4">Assigned Users</span>
-							<button
+							<Button
 								type="button"
-								className="px-2 py-1 text-sm rounded-full hover:bg-green-100 hover:shadow-sm transition flex items-center gap-1"
+								size={'sm'}
+								variant={"default"}
 								onClick={onAssignUsers}
 							>
-								<FontAwesomeIcon icon={faPlusCircle} className="text-green-600 text-lg" /> Assign Users
-							</button>
+								<Plus className="w-5 h-5" />
+							</Button>
 						</div>
 						{group.users && group.users.length > 0 ? (
-							<ul className="divide-y divide-gray-200 dark:divide-gray-600">
+							<ul className="divide-y divide-gray-200 dark:divide-gray-600 mt-2">
 								{group.users.map((user: any) => (
 									<li
 										key={user.id}
 										ref={el => { userListRef.current[user.id] = el; }}
 										className={`flex items-center justify-between py-1.5 text-sm ${newlyAssignedUserIds.includes(user.id) ? "bg-green-100" : ""}`}
 									>
-										<span>
-											{user.username} - <span className="capitalize">{user.fname || user.name}</span>
-										</span>
-										<FontAwesomeIcon icon={faMinusCircle} className="text-red-500 text-lg cursor-pointer ml-2" onClick={() => onRemoveUser(user.id)} />
+										<span className="flex flex-col">
+                                        <span className="capitalize">{user.username} - {user.fname || user.name}</span>
+                                        <span className="font-semibold text-xs">Current Groups: <span>{user.usergroups && user.usergroups.length > 0 ? user.usergroups.map((g: any) => g.name).join(', ') : '-'}</span></span>
+                                    </span>
+										<MinusCircle className="text-red-600 w-6 h-6 cursor-pointer ml-2" onClick={() => onRemoveUser(user.id)} />
 									</li>
 								))}
 							</ul>
@@ -117,7 +136,7 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 						)}
 					</div>
 					{/* Navigation Structure Assignment (with label and assign button) */}
-					<div className="flex-1 w-full dark:border-gray-700 rounded-sm min-w-0 max-w-full bg-gray-50 dark:bg-gray-800">
+					<div className="flex-1 w-full lg:w-1/2 dark:border-gray-700 rounded-sm min-w-0 max-w-full bg-gray-50 dark:bg-gray-800">
 						{navTreeStructure && navTreeStructure.length > 0 ? (
 							<NavTreeView
 								tree={navTreeStructure}
@@ -163,14 +182,40 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 					</div>
 				</div>
 				<div className="flex items-center justify-center sm:flex-row gap-2 mt-4">
-					<button type="button" className="btn rounded-full bg-slate-500 text-white hover:bg-slate-600 border-0 shadow-none w-full sm:w-auto" onClick={onCancel}>
+					<Button type="button" variant={'destructive'} onClick={onCancel}>
 						Cancel
-					</button>
-					<button type="submit" className="btn rounded-full bg-green-600 text-white hover:bg-green-700 border-0 shadow-none w-full sm:w-auto">
+					</Button>
+					<Button type="submit" variant={'default'} className="btn bg-green-600 text-white hover:bg-green-700 shadow-none w-full sm:w-auto">
 						Save
-					</button>
+					</Button>
 				</div>
 			</form>
+			<AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Confirm Group Changes</AlertDialogTitle>
+						<AlertDialogDescription>
+							Are you sure you want to save these group changes? This will update the group details and assignments.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel asChild>
+							<Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancel</Button>
+						</AlertDialogCancel>
+						<AlertDialogAction asChild>
+							<Button
+								variant="default"
+								onClick={() => {
+									setShowConfirmDialog(false);
+									onSubmit(new Event('submit') as any);
+								}}
+							>
+								Confirm
+							</Button>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 };

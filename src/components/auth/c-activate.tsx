@@ -4,12 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Footer from '@components/layouts/footer';
 import { api } from '@/config/api';
 import { Eye, EyeOff, Info } from 'lucide-react';
@@ -47,6 +42,7 @@ const ComponentActivate = () => {
         password: false,
         confirmPassword: false,
     });
+    const [userType, setUserType] = useState<number | null>(null);
 
     // --- Unnecessary: useEffect for activationCode error message (not performance related) ---
     useEffect(() => {
@@ -91,7 +87,6 @@ const ComponentActivate = () => {
         }
         try {
             setResponseMessage({ text: 'Validating...', type: 'info' });
-            // --- API call: this is where slowness would occur if backend is slow ---
             const response = await api.post('/api/auth/validate-activation', {
                 email: formData.email,
                 contact: formData.contact,
@@ -100,6 +95,7 @@ const ComponentActivate = () => {
             const data = response.data as any;
             if (data.status === 'success') {
                 setIsValidated(true);
+                setUserType(data.user_type ?? null);
                 setResponseMessage({
                     text: data.message || 'Validation successful! Create your password',
                     type: 'success',
@@ -116,17 +112,32 @@ const ComponentActivate = () => {
         }
     };
 
+    // Password complexity validation function
+    function isPasswordComplex(password: string) {
+        // At least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+        return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/.test(password);
+    }
+
     const handleActivate = async (e: React.FormEvent) => {
         e.preventDefault();
         let hasErrors = false;
         const newFieldErrors = { ...fieldErrors };
 
-        if (!formData.username) {
+        // Only require username for Employee (userType === 1)
+        if (userType !== 2 && !formData.username) {
             newFieldErrors.username = true;
             setResponseMessage({ text: 'Username is required', type: 'error' });
             hasErrors = true;
         }
 
+        // Password complexity check
+        if (!isPasswordComplex(formData.password)) {
+            newFieldErrors.password = true;
+            setResponseMessage({ text: 'Password does not meet complexity requirements', type: 'error' });
+            hasErrors = true;
+        }
+
+        // Confirm password match
         if (formData.password !== formData.confirmPassword) {
             newFieldErrors.password = true;
             newFieldErrors.confirmPassword = true;
@@ -135,12 +146,30 @@ const ComponentActivate = () => {
         }
 
         setFieldErrors(newFieldErrors);
-
         if (hasErrors) return;
+
+        // Ramco ID validation for Employee
+        if (userType === 1 && formData.username) {
+            try {
+                setResponseMessage({ text: 'Validating Ramco ID...', type: 'info' });
+                const res = await api.get(`/api/assets/employees/ramco/${formData.username}`);
+                const empRes = res.data as { status?: string; data?: { email?: string; contact?: string } };
+                if (empRes.status !== 'success' || !empRes.data || !empRes.data.email || !empRes.data.contact) {
+                    setResponseMessage({ text: 'Employee data not found or incomplete for this Ramco ID.', type: 'error' });
+                    return;
+                }
+                if (empRes.data.email.toLowerCase() !== formData.email.toLowerCase() || empRes.data.contact !== formData.contact) {
+                    setResponseMessage({ text: 'Your email/contact does not match our employee records. Please use your company email/contact.', type: 'error' });
+                    return;
+                }
+            } catch (err: any) {
+                setResponseMessage({ text: 'Failed to validate Ramco ID. Please check your entry.', type: 'error' });
+                return;
+            }
+        }
 
         try {
             setResponseMessage({ text: 'Activating account...', type: 'info' });
-            // --- API call: this is where slowness would occur if backend is slow ---
             await api.post('/api/auth/activate', {
                 email: formData.email,
                 contact: formData.contact,
@@ -148,12 +177,10 @@ const ComponentActivate = () => {
                 password: formData.password,
                 activationCode: activationCode,
             });
-
             setResponseMessage({
                 text: 'Account activated successfully! Redirecting...',
                 type: 'success',
             });
-
             setTimeout(() => {
                 router.push('/auth/login');
             }, 2000);
@@ -165,68 +192,75 @@ const ComponentActivate = () => {
 
     return (
         <AuthTemplate title="Activate Account" description={responseMessage.text || "Set your account password to activate your ADMS account."}>
-            <div className="relative flex min-h-screen items-center justify-center px-6 py-10 bg-neutral-300 dark:bg-[#060818] sm:px-16">
-                <div className="panel flex flex-col w-full items-center justify-between gap-5 px-4 py-1 sm:px-6 lg:max-w-[400px] dark:bg-[#060818] rounded-4xl shadow-md shadow-emerald-800/50 bg-gradient-to-r from-neutral-100 to-neutral-50 drop-shadow-accent-foreground/40 min-h-[520px]">
-                    <div className="w-full max-w-[440px] flex-1 flex flex-col px-4 justify-center">
-                        <div className="mb-10">
-                            <h1 className="text-3xl font-extrabold uppercase md:text-4xl text-shadow-lg">Activation</h1>
-                        </div>
-                        <form className="space-y-3" onSubmit={!isValidated ? handleValidate : handleActivate}>
-                            <div>
-                                <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="Enter Email"
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    disabled={isValidated}
-                                />
-                            </div>
+            <form className="space-y-3" onSubmit={!isValidated ? handleValidate : handleActivate}>
+                <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                    <Input
+                        id="email"
+                        type="email"
+                        placeholder="Enter Email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        disabled={isValidated}
+                    />
+                </div>
 
-                            <div>
-                                <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact</label>
-                                <Input
-                                    id="contact"
-                                    type="text"
-                                    placeholder="Enter Contact"
-                                    value={formData.contact}
-                                    onChange={handleChange}
-                                    onKeyPress={handleKeyPress}
-                                    disabled={isValidated}
-                                />
-                            </div>
+                <div>
+                    <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact</label>
+                    <Input
+                        id="contact"
+                        type="text"
+                        placeholder="Enter Contact"
+                        value={formData.contact}
+                        onChange={handleChange}
+                        onKeyPress={handleKeyPress}
+                        disabled={isValidated}
+                    />
+                </div>
 
-                            {isValidated && (
-                                <>
-                                    <div>
-                                        <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username
-                                            <TooltipProvider>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <span className="ml-2 text-blue-600 cursor-pointer">
-                                                            <Info size={18} />
-                                                        </span>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>You can use both email or username as credentials. For employees, prefer using Employee ID.</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
-                                        </label>
+                {isValidated && (
+                    <>
+                        <div>
+                            <label htmlFor="username" className="text-sm font-medium text-gray-700">Username</label>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
                                         <div className="relative flex items-center">
                                             <Input
                                                 id="username"
                                                 type="text"
-                                                placeholder="Enter Username"
+                                                placeholder="Enter Ramco ID (for employees) or blank for non-employees"
                                                 value={formData.username}
                                                 onChange={handleChange}
+                                                onFocus={e => e.currentTarget.setAttribute('data-state', 'open')}
+                                                onBlur={e => e.currentTarget.removeAttribute('data-state')}
+                                                inputMode="numeric"
+                                                pattern="[0-9]*"
+                                                onKeyPress={e => {
+                                                    if (!/^[0-9]$/.test(e.key)) {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                                readOnly={userType === 2}
                                             />
                                         </div>
-                                    </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className='max-w-xs text-wrap'>
+                                        <p>
+                                            {userType === 1 && 'You have registered as an Employee. '}
+                                            {userType === 2 && 'You have registered as a Non-Employee. '}
+                                            For employees, please enter your Ramco ID or leave blank for non-employee.<br />
+                                        </p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
 
-                                    <div>
-                                        <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+                        <div>
+                            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
                                         <div className="relative">
                                             <Input
                                                 id="password"
@@ -235,48 +269,51 @@ const ComponentActivate = () => {
                                                 value={formData.password}
                                                 onChange={handleChange}
                                             />
-                                            <button
-                                                type="button"
-                                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                                            <span
+                                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500 hover:text-red-500 hover:shadow-2xl cursor-pointer"
                                                 onClick={() => togglePassword('password')}
+                                                tabIndex={0}
+                                                aria-label="Show/hide password"
                                             >
                                                 {showPassword.password ? <EyeOff /> : <Eye />}
-                                            </button>
+                                            </span>
                                         </div>
-                                    </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className='max-w-xs text-wrap'>
+                                        <p>
+                                            Password must be at least 8 characters and include uppercase, lowercase, number, and special character.
+                                        </p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
 
-                                    <div>
-                                        <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm Password</label>
-                                        <div className="relative">
-                                            <Input
-                                                id="confirmPassword"
-                                                type={showPassword.confirmPassword ? 'text' : 'password'}
-                                                placeholder="Confirm Password"
-                                                value={formData.confirmPassword}
-                                                onChange={handleChange}
-                                            />
-                                            <button
-                                                type="button"
-                                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
-                                                onClick={() => togglePassword('confirmPassword')}
-                                            >
-                                                {showPassword.confirmPassword ? <EyeOff /> : <Eye />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
+                        <div>
+                            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                            <div className="relative">
+                                <Input
+                                    id="confirmPassword"
+                                    type={showPassword.confirmPassword ? 'text' : 'password'}
+                                    placeholder="Confirm Password"
+                                    value={formData.confirmPassword}
+                                    onChange={handleChange}
+                                />
+                                <span
+                                    className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500 hover:text-red-500"
+                                    onClick={() => togglePassword('confirmPassword')}
+                                >
+                                    {showPassword.confirmPassword ? <EyeOff /> : <Eye />}
+                                </span>
+                            </div>
+                        </div>
+                    </>
+                )}
 
-                            <Button type="submit" variant="outline" size="sm" className="w-full mt-3">
-                                {!isValidated ? 'Verify' : 'Activate Account'}
-                            </Button>
-                        </form>
-                    </div>
-                    <div className="flex justify-center w-full pt-0 text-xs">
-                        <Footer />
-                    </div>
-                </div>
-            </div>
+                <Button type="submit" size="default" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">
+                    {!isValidated ? 'Verify' : 'Activate Account'}
+                </Button>
+            </form>
+
         </AuthTemplate>
     );
 };

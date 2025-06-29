@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGrid";
 import { authenticatedApi } from "@/config/api";
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
+import { Plus, Pencil, Trash2, MinusCircle } from "lucide-react";
+import { Button } from "@components/ui/button";
 import FRoleForm from "./f-role";
-import { toast, Toaster } from "sonner";
+import { toast } from "sonner";
 
 interface Role {
     id: number;
@@ -66,8 +66,8 @@ const RoleManagement = () => {
     useEffect(() => {
         if (assignSidebarOpen) {
             authenticatedApi.get("/api/users").then(res => {
-                const data = res.data as any;
-                setAllUsers(data.users || []);
+                const data = (res.data as any)?.data || [];
+                setAllUsers(data);
             });
         }
     }, [assignSidebarOpen]);
@@ -105,7 +105,9 @@ const RoleManagement = () => {
         }
     };
 
-    const handleAssignUsers = () => setAssignSidebarOpen(true);
+    const handleAssignUsers = () => {
+        setAssignSidebarOpen(true);
+    };
     const handleRemoveUser = (userId: number) => {
         const el = userListRef.current[userId];
         if (el) {
@@ -241,19 +243,18 @@ const RoleManagement = () => {
     };
 
     return (
-        <>
-            <Toaster richColors position="top-center" />
-            <div>
+        <div className="mt-4">
+
                 <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-lg font-bold">Role Management * To add new permission [Approver, Verify]</h1>
+                    <h1 className="text-lg font-bold">Role Management</h1>
                     {!editRole && (
-                        <button
-                            className="btn bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded-full shadow-none border-0 text-sm font-semibold"
+                        <Button
+                            variant="default"
                             type="button"
                             onClick={() => setEditRole({ id: 0, name: '', description: '', permissions: { view: true, create: false, update: false, delete: false }, users: [] })}
                         >
-                            <span><FontAwesomeIcon icon={faPlusCircle} size="xl" className="mr-2" /> Role</span>
-                        </button>
+                            <Plus /> Role
+                        </Button>
                     )}
                 </div>
                 {editRole ? (
@@ -295,12 +296,7 @@ const RoleManagement = () => {
                             (col.key as string) === "action" ? {
                                 ...col,
                                 render: (row: Role) => (
-                                    <button
-                                        className="px-2 py-0.5 text-xs bg-amber-500 dark:bg-amber-700 hover:bg-amber-600 text-gray-700 dark:text-dark-light hover:text-white rounded-full"
-                                        onClick={() => setEditRole(row)}
-                                    >
-                                        Update
-                                    </button>
+                                    <Pencil className="w-5 h-5 text-amber-500 hover:text-amber-600" onClick={() => setEditRole(row)} />
                                 )
                             } : col
                         )}
@@ -310,8 +306,8 @@ const RoleManagement = () => {
                         theme={gridTheme}
                     />
                 )}
-            </div>
-        </>
+
+        </div>
     );
 };
 

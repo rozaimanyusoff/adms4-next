@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from "react";
 import NavTreeView from "@components/ui/NavTreeView";
 import { authenticatedApi } from "@/config/api";
 import ActionSidebar from "@components/ui/action-aside";
-import { Pencil, FolderPlus, Trash2, PlusCircle } from "lucide-react";
+import { Pencil, FolderPlus, Trash2, Plus, PlusCircle, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { AuthContext } from '@/store/AuthContext';
 import { Label } from "@/components/ui/label";
@@ -208,17 +208,129 @@ const NavigationMaintenance: React.FC = () => {
         }
         setPendingDeleteNav(null);
     }
+    // --- Navigation promote/demote logic ---
+    function findNodeAndParent(nodes: any[], navId: any, parent: any = null): { node: any, parent: any, index: number } | null {
+        for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            if (n.navId === navId) return { node: n, parent, index: i };
+            if (n.children && n.children.length > 0) {
+                const found = findNodeAndParent(n.children, navId, n);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function updatePositions(nodes: any[]) {
+        nodes.forEach((n, idx) => {
+            n.position = idx;
+            if (n.children && n.children.length > 0) updatePositions(n.children);
+        });
+    }
+
+    // Helper: Find root section for a node
+    function findRootSection(node: any, allNodes: any[]): any {
+        let current = node;
+        while (current && current.type !== 'section' && current.parent_nav_id != null) {
+            current = allNodes.find(n => n.navId === current.parent_nav_id);
+        }
+        return current && current.type === 'section' ? current : null;
+    }
+
+    // Helper: Flatten tree to array for lookup
+    function flattenTree(nodes: any[]): any[] {
+        const flat: any[] = [];
+        function walk(arr: any[]) {
+            arr.forEach(n => {
+                flat.push(n);
+                if (n.children) walk(n.children);
+            });
+        }
+        walk(nodes);
+        return flat;
+    }
+
+    // Helper: Build reorder payload for siblings (robust for all node types)
+    function buildReorderPayload(siblings: any[], parent: any, tree: any[]) {
+        const allNodes = flattenTree(tree);
+        return siblings.map(n => {
+            let parent_nav_id = parent ? parent.navId : null;
+            let section_id = null;
+            if (n.type === 'section') {
+                parent_nav_id = null;
+                section_id = null;
+            } else if (n.type === 'level-1') {
+                section_id = parent && parent.type === 'section' ? parent.navId : (n.section_id ?? null);
+            } else if (n.type === 'level-2') {
+                // Find root section for this node
+                const rootSection = findRootSection(n, allNodes);
+                section_id = rootSection ? rootSection.navId : null;
+            }
+            return {
+                navId: n.navId,
+                position: n.position,
+                parent_nav_id,
+                section_id
+            };
+        });
+    }
+
+    async function reorderNavOnBackend(siblings: any[], parent: any, tree: any[]) {
+        const payload = { nodes: buildReorderPayload(siblings, parent, tree) };
+        try {
+            await authenticatedApi.put('/api/nav/reorder', payload);
+            await fetchNavTree();
+            if (refreshNavTree) await refreshNavTree();
+            toast.success('Navigation order updated.');
+        } catch (e) {
+            toast.error('Failed to update navigation order.');
+        }
+    }
+
+    function handlePromoteNav(navId: any) {
+        setNavTree(prevTree => {
+            const tree = JSON.parse(JSON.stringify(prevTree));
+            const found = findNodeAndParent(tree, navId);
+            if (!found) return prevTree;
+            const { parent, index } = found;
+            let siblings = parent ? parent.children : tree;
+            if (index > 0) {
+                // Swap with previous sibling
+                [siblings[index - 1], siblings[index]] = [siblings[index], siblings[index - 1]];
+                updatePositions(siblings);
+                reorderNavOnBackend(siblings, parent, tree); // Backend call with full tree
+            }
+            return tree;
+        });
+    }
+
+    function handleDemoteNav(navId: any) {
+        setNavTree(prevTree => {
+            const tree = JSON.parse(JSON.stringify(prevTree));
+            const found = findNodeAndParent(tree, navId);
+            if (!found) return prevTree;
+            const { parent, index } = found;
+            let siblings = parent ? parent.children : tree;
+            if (index < siblings.length - 1) {
+                // Swap with next sibling
+                [siblings[index], siblings[index + 1]] = [siblings[index + 1], siblings[index]];
+                updatePositions(siblings);
+                reorderNavOnBackend(siblings, parent, tree); // Backend call with full tree
+            }
+            return tree;
+        });
+    }
 
     return (
-        <div>
+        <div className="mt-4">
             <div className="mb-4 flex items-center justify-between">
                 <h1 className="text-lg font-bold">Navigation Maintenance</h1>
-                <button className="btn border-0 bg-green-600 dark:bg-green-700 text-white px-4 py-1 rounded-full shadow-none" onClick={() => handleAddNav(null)} type="button">
-                    <span className="mr-2">
-                        <PlusCircle size={22} />
+                <Button variant={'default'} onClick={() => handleAddNav(null)} type="button">
+                    <span>
+                        <Plus />
                     </span>
-                    Navigation
-                </button>
+                    Nav
+                </Button>
             </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full border border-gray-200 dark:border-dark bg-white rounded-sm">
@@ -232,7 +344,7 @@ const NavigationMaintenance: React.FC = () => {
                 <ActionSidebar
                     title={sidebarOpen === 'create' && editingNav ? `Add navigation under "${editingNav.title || ''}"` : sidebarOpen === 'create' ? 'Create Navigation' : 'Edit Navigation'}
                     onClose={() => setSidebarOpen(null)}
-                    size="md"
+                    size="sm"
                     content={
                         <form onSubmit={handleFormSubmit} className="space-y-4 p-2">
                             <div>
@@ -300,6 +412,7 @@ const NavigationMaintenance: React.FC = () => {
                                     {groups.map(g => (
                                         <label key={g.id} className="inline-flex items-center gap-2 text-sm">
                                             <Checkbox
+                                                className="h-4.5 w-4.5"
                                                 checked={formState.groups.includes(String(g.id))}
                                                 onCheckedChange={checked => {
                                                     setFormState(f => {
@@ -320,7 +433,7 @@ const NavigationMaintenance: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex gap-2 justify-end mt-4">
-                                <Button type="button" variant="secondary" onClick={() => setSidebarOpen(null)}>Cancel</Button>
+                                <Button type="button" variant="destructive" onClick={() => setSidebarOpen(null)}>Cancel</Button>
                                 {sidebarOpen === 'edit' ? (
                                     <Button type="submit" variant="default">Update</Button>
                                 ) : (
@@ -351,47 +464,65 @@ const NavigationMaintenance: React.FC = () => {
 
     // Helper: Render navigation rows recursively with checkboxes for each group, styled like NavTreeView
     function renderNavRows(nodes: any[], level: number): React.ReactNode {
-        return nodes.map((node) => (
-            <React.Fragment key={node.navId}>
-                <tr className={
-                    `hover:bg-amber-100 dark:hover:bg-gray-700` +
-                    (editingNav && editingNav.navId === node.navId && sidebarOpen === 'edit' ? ' bg-blue-100 dark:bg-blue-900' : '')
-                }>
-                    <td className={`px-2 py-1 border-b border-gray-100 dark:border-dark align-middle bg-gray-50 dark:bg-gray-800`} style={{ paddingLeft: 18 * level }}>
-                        <span className={level === 0 ? "font-bold text-base ml-2" : level === 1 ? "font-semibold text-sm ml-2" : "font-normal text-xs ml-4 truncate"}>
-                            {node.title}
-                        </span>
-                        {node.path && <a href={node.path} className="ml-2 text-blue-600 no-underline text-xs" target="_blank" rel="noopener noreferrer">{node.path}</a>}
-                    </td>
-                    <td className="px-2 py-1 border-b border-gray-100 dark:border-dark bg-gray-50 dark:bg-gray-800 text-start">
-                        <span className="inline-flex gap-2 items-center justify-end">
-                            {node.status === 0 ? (
-                                <span className="ml-2 px-4 py-2 rounded-full bg-gray-400 dark:bg-gray-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
-                            ) : (
-                                <span className="ml-2 px-4 py-2 rounded-full bg-green-400 dark:bg-green-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
-                            )}
-                            <button onClick={() => handleEditNav(node)}><Pencil size={20} className="text-amber-500" /></button>
-                            <button onClick={() => handleDeleteNav(node)}><Trash2 size={20} className="text-red-500" /></button>
-                            {level < 2 && (
-                                <button onClick={() => handleAddNav(node.navId, node)}><FolderPlus size={20} className="text-blue-500" /></button>
-                            )}
-                        </span>
-                    </td>
-                    <td className="px-2 py-1 border-b border-gray-100 dark:border-dark bg-gray-50 dark:bg-gray-800 text-left">
-                        <span className="inline-flex gap-1 ml-2 items-center justify-end">
-                            {groups && groups.length > 0 ? (
-                                groups.filter(g => Array.isArray(g.navTree) && g.navTree.some((n: any) => String(n.navId) === String(node.navId))).map(g => (
-                                    <span key={g.id} className="text-xs bg-sky-600 dark:bg-sky-700 text-white dark:text-dark-light px-2 py-0.5 rounded-full">{g.name}</span>
-                                ))
-                            ) : (
-                                <span className="text-xs text-gray-500">No groups</span>
-                            )}
-                        </span>
-                    </td>
-                </tr>
-                {node.children && node.children.length > 0 && renderNavRows(node.children, level + 1)}
-            </React.Fragment>
-        ));
+        // Always sort nodes by position before rendering
+        const sortedNodes = [...nodes].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        return sortedNodes.map((node, idx, arr) => {
+            // Determine chevron disabled state
+            const isFirst = idx === 0;
+            const isLast = idx === arr.length - 1;
+            const canMove = node.type === 'section' || node.type === 'level-1' || node.type === 'level-2';
+            return (
+                <React.Fragment key={node.navId}>
+                    <tr className={
+                        `hover:bg-amber-100 dark:hover:bg-gray-700` +
+                        (editingNav && editingNav.navId === node.navId && sidebarOpen === 'edit' ? ' bg-blue-100 dark:bg-blue-900' : '')
+                    }>
+                        <td className={`px-2 py-1 border-b border-gray-100 dark:border-dark align-middle bg-gray-50 dark:bg-gray-800`} style={{ paddingLeft: 18 * level }}>
+                            <span className={level === 0 ? "font-bold text-base ml-2" : level === 1 ? "font-semibold text-sm ml-2" : "font-normal text-xs ml-4 truncate"}>
+                                {node.title}
+                            </span>
+                            {node.path && <a href={node.path} className="ml-2 text-blue-600 no-underline text-xs" target="_blank" rel="noopener noreferrer">{node.path}</a>}
+                        </td>
+                        <td className="px-2 py-1 border-b border-gray-100 dark:border-dark bg-gray-50 dark:bg-gray-800 text-start">
+                            <span className="inline-flex gap-2 items-center justify-end">
+                                {node.status === 0 ? (
+                                    <span className="ml-2 px-4 py-2 rounded-full bg-gray-400 dark:bg-gray-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
+                                ) : (
+                                    <span className="ml-2 px-4 py-2 rounded-full bg-green-400 dark:bg-green-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
+                                )}
+                                <span className="inline-flex items-center">
+                                    <ChevronUp 
+                                        className={canMove && !isFirst ? 'cursor-pointer text-gray-700 hover:text-amber-600' : 'text-gray-300'}
+                                        onClick={canMove && !isFirst ? () => handlePromoteNav(node.navId) : undefined}
+                                    />
+                                    <ChevronDown 
+                                        className={canMove && !isLast ? 'cursor-pointer text-gray-700 hover:text-amber-600' : 'text-gray-300'}
+                                        onClick={canMove && !isLast ? () => handleDemoteNav(node.navId) : undefined}
+                                    />
+                                </span>
+                                <Pencil size={20} className="text-amber-500" onClick={() => handleEditNav(node)} />
+                                <Trash2 size={20} className="text-red-500" onClick={() => handleDeleteNav(node)} />
+                                {level < 2 && (
+                                    <FolderPlus size={20} className="text-blue-500" onClick={() => handleAddNav(node.navId, node)} />
+                                )}
+                            </span>
+                        </td>
+                        <td className="px-2 py-1 border-b border-gray-100 dark:border-dark bg-gray-50 dark:bg-gray-800 text-left">
+                            <span className="inline-flex gap-1 ml-2 items-center justify-end">
+                                {groups && groups.length > 0 ? (
+                                    groups.filter(g => Array.isArray(g.navTree) && g.navTree.some((n: any) => String(n.navId) === String(node.navId))).map(g => (
+                                        <span key={g.id} className="text-xs bg-sky-600 dark:bg-sky-700 text-white dark:text-dark-light px-2 py-0.5 rounded-full">{g.name}</span>
+                                    ))
+                                ) : (
+                                    <span className="text-xs text-gray-500">No groups</span>
+                                )}
+                            </span>
+                        </td>
+                    </tr>
+                    {node.children && node.children.length > 0 && renderNavRows(node.children, level + 1)}
+                </React.Fragment>
+            );
+        });
     }
 };
 

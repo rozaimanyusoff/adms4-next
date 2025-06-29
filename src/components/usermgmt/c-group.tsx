@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGrid";
 import { authenticatedApi } from "@/config/api";
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlusCircle, faMinusCircle } from '@fortawesome/free-solid-svg-icons';
+import { Plus, Pencil, PlusCircle, Trash2, MinusCircle } from "lucide-react";
+import { Button } from "@components/ui/button";
+import { Input } from "@components/ui/input";
 import ActionSidebar from "@components/ui/action-aside";
 import { toast } from "sonner";
 import { Tabs, TabList, Tab, TabPanel } from 'react-tabs';
@@ -148,21 +149,13 @@ const GroupManagement = () => {
             colClass: "text-center",
             sortable: false,
             render: (row: any) => (
-                <button
-                    className="text-xs border-0 px-2 py-1 shadow-none bg-amber-500 dark:bg-amber-600 rounded-full hover:bg-amber-700 dark:hover:bg-amber-200 dark:hover:text-dark hover:text-white transition duration-200"
+                <Pencil
+                    className="w-5 h-5 text-amber-500 hover:text-amber-600 cursor-pointer"
                     onClick={() => setEditGroup(row)}
-                >
-                    Update
-                </button>
+                />
             ),
         },
     ];
-
-    const gridTheme: DataGridProps<Group>["theme"] = {
-        layouts: {
-            gridSize: "sm",
-        },
-    };
 
     const rowSelection = {
         enabled: true,
@@ -300,17 +293,17 @@ const GroupManagement = () => {
     };
 
     return (
-        <div>
+        <div className="mt-4">
             <div className="flex items-center justify-between mb-4">
                 <h1 className="text-lg font-bold">Group Management</h1>
                 {!editGroup && (
-                    <button
-                        className="btn bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded-full shadow-none border-0 text-sm font-semibold"
+                    <Button
+                        variant={'default'}
                         onClick={() => setEditGroup({ id: 0, name: '', desc: '', usercount: 0, users: [], navTree: [], status: 1 })}
                         type="button"
                     >
-                        <FontAwesomeIcon icon={faPlusCircle} size="xl" className="mr-2" /> Group
-                    </button>
+                        <Plus className="w-6 h-6" /> Group
+                    </Button>
                 )}
             </div>
             {editGroup ? (
@@ -339,12 +332,12 @@ const GroupManagement = () => {
             ) : (
                 <CustomDataGrid
                     key={groups.length + '-' + groups.map(g => g.id).join('-')}
+                    theme={'sm'}
                     data={filteredGroups}
                     columns={columns}
                     pageSize={10}
                     pagination={true}
                     inputFilter={false}
-                    theme={gridTheme}
                     rowExpandable={rowExpandable}
                     onRowDoubleClick={undefined}
                     rowClass={rowClass}
@@ -354,15 +347,23 @@ const GroupManagement = () => {
             {assignSidebarOpen === "users" && (
                 <ActionSidebar
                     title="Assign Users"
+                    size={'sm'}
                     content={
                         <>
-                            <input className="form-input w-full mb-2" placeholder="Search users..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+                            <Input className="w-full mb-2" placeholder="Search users..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
                             {loadingUsers ? <div>Loading...</div> : (
-                                <ul>
+                                <ul className="mt-1 text-sm overflow-y-auto divide-y">
                                     {availableUsers.map(user => (
-                                        <li key={user.id} className="flex items-center justify-between py-1.5 border-b">
-                                            <span>{user.username} - <span className="capitalize">{user.fname || user.name}</span></span>
-                                            <button className="text-green-600 hover:bg-green-100 rounded-full p-1" onClick={() => handleAssignUser(user)}><FontAwesomeIcon icon={faPlusCircle} size="lg" /></button>
+                                        <li key={user.id} className="flex flex-col gap-1 px-3 py-1.5 mb-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="flex flex-col">
+                                                    <span className="capitalize font-semibold text-base text-gray-800 dark:text-gray-100">{user.fname}</span>
+                                                    <span className="font-semibold text-xs dark:text-gray-400">Username: <span>{user.username}</span></span>
+                                                    <span className="font-semibold text-xs">Role: <span>{user.role && user.role.name ? user.role.name : '-'}</span></span>
+                                                    <span className="font-semibold text-xs">Groups: <span>{user.usergroups && user.usergroups.length > 0 ? user.usergroups.map((g: any) => g.name).join(', ') : '-'}</span></span>
+                                                </div>
+                                                <PlusCircle className="w-6 h-6 text-green-600" onClick={() => handleAssignUser(user)} />
+                                            </div>
                                         </li>
                                     ))}
                                     {availableUsers.length === 0 && <li className="text-gray-400 italic">No users found</li>}

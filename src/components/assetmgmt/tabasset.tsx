@@ -16,12 +16,14 @@ const AssetMgmtMain = () => {
         records: <CoreAsset />,
     };
 
+    const validTabValues = tabTitles.map(t => t.value);
     const [activeTab, setActiveTab] = useState<string>(() => {
-        return localStorage.getItem("usermgmtTabs") || "account";
+        const stored = localStorage.getItem("assetmgmtTabs");
+        return stored && validTabValues.includes(stored) ? stored : "dash";
     });
 
     useEffect(() => {
-        localStorage.setItem("usermgmtTabs", activeTab);
+        localStorage.setItem("assetmgmtTabs", activeTab);
     }, [activeTab]);
 
     return (
