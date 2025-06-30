@@ -1,11 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
+import { AuthContext } from "@store/AuthContext";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, InfoIcon } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { Switch } from "@components/ui/switch";
+import { Checkbox } from "@components/ui/checkbox";
 
 interface Brand { id: number; name: string; code: string; }
 interface Category { id: number; name: string; code: string; }
@@ -101,14 +104,43 @@ interface Asset {
     model?: string;
 }
 
+/* 
+-PROMPT:
+here the types backend data:
+{
+    "status": "success",
+    "message": "Asset type retrieved successfully",
+    "data": [
+        {
+            "id": 1,
+            "code": "1",
+            "name": "Computer",
+            "description": "Desktops, Laptops, Tablets, Mobile Devices (FIN)",
+            "image": "type_1749218983726.jpeg",
+            "ramco_id": "000277",
+            "manager": {
+                "ramco_id": "000277",
+                "full_name": "Rozaiman Bin Yusoff"
+            }
+        },
+    
+    i added const user = auth?.authData?.user;
+
+    if the user?.username = manager.ramco_id, the manager with fetch only their managed assets & make request to /api/assets/types/{type_id}
+
+*/
+
 const CoreAsset: React.FC = () => {
     const router = useRouter();
+    const auth = React.useContext(AuthContext);
+    const user = auth?.authData?.user;
     const [data, setData] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
     const [brands, setBrands] = useState<Brand[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [types, setTypes] = useState<Type[]>([]);
-    const [hideDisposed, setHideDisposed] = useState(false);
+    const [hideDisposed, setHideDisposed] = useState(true); // Default checked
+    const [hideNonAsset, setHideNonAsset] = useState(true); // New state for hiding non-asset, default checked
 
     const fetchData = async () => {
         try {
@@ -179,7 +211,6 @@ const CoreAsset: React.FC = () => {
         const contextData = hideDisposed
             ? transformedData.filter(asset => asset.status?.toLowerCase() !== 'disposed')
             : transformedData;
-
         return [
             { key: "id", header: "ID", sortable: true },
             { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect', filterParams: { options: ['asset', 'non-asset'] } },
@@ -264,19 +295,160 @@ const CoreAsset: React.FC = () => {
         ];
     }, [transformedData, hideDisposed]);
 
+    // Filtered data for DataGrid
+    const contextData = hideDisposed
+        ? transformedData.filter(asset => asset.status?.toLowerCase() !== 'disposed')
+        : transformedData;
+    const filteredData = hideNonAsset
+        ? contextData.filter(asset => asset.classification === 'asset')
+        : contextData;
+
+    
+    const [typeFilters, setTypeFilters] = useState<{ [key: string]: boolean }>({});
+    // Initialize all types checked for total and active on mount/data change
+    useEffect(() => {
+        const initial: { [key: string]: boolean } = {};
+        allTypes.forEach(type => { initial[type] = true; });
+        setTypeFilters(initial);
+    }, [data]);
+    // Handler for checkbox toggle
+    const handleTypeFilterChange = (type: string, checked: boolean) => {
+        setTypeFilters(prev => ({ ...prev, [type]: checked }));
+    };
+    // Filtered data for DataGrid based on checked types
+    const filteredGridData = filteredData.filter(a => typeFilters[(a.types?.name || a.classification || 'Unknown')]);
+
+    // Summary stats (filtered by current switches)
+    const total = filteredData.length;
+    const active = filteredData.filter(a => a.status && a.status.toLowerCase() === "active").length;
+    const disposed = filteredData.filter(a => a.status && a.status.toLowerCase() === "disposed").length;
+    // By type
+    const typeCount = (assets: Asset[]) => {
+        const counts: Record<string, number> = {};
+        assets.forEach(a => {
+            const type = (a as any).types?.name || a.classification || 'Unknown';
+            counts[type] = (counts[type] || 0) + 1;
+        });
+        return counts;
+    };
+    const totalByType = typeCount(filteredData);
+    const activeByType = typeCount(filteredData.filter(a => a.status && a.status.toLowerCase() === "active"));
+    const disposedByType = typeCount(filteredData.filter(a => a.status && a.status.toLowerCase() === "disposed"));
+    // Non-asset stats (only when non-assets are shown)
+    const nonAssets = filteredData.filter(a => (a.classification || '').toLowerCase() === 'non-asset');
+    const totalNonAssets = nonAssets.length;
+    const nonAssetByType = typeCount(nonAssets);
+
+    // Type filter state for summary cards
+    const allTypes = Array.from(new Set([
+        ...Object.keys(totalByType),
+        ...Object.keys(activeByType),
+        ...Object.keys(nonAssetByType)
+    ]));
+
     return (
         <div className="mt-4">
+            {/* Summary Cards */}
+            <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Total Assets</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{total}</div>
+                        <ul className="mt-2 text-sm text-gray-600">
+                            {Object.entries(totalByType).map(([type, count]) => (
+                                <li key={type} className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={!!typeFilters[type]}
+                                        onCheckedChange={checked => handleTypeFilterChange(type, !!checked)}
+                                        className="h-4.5 w-4.5 text-blue-600"
+                                    />
+                                    {type}: <span className="font-semibold">{count}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+                { !hideNonAsset && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Total Non-Assets</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-3xl font-bold text-blue-500">{totalNonAssets}</div>
+                            <ul className="mt-2 text-sm text-gray-600">
+                                {Object.entries(nonAssetByType).map(([type, count]) => (
+                                    <li key={type} className="flex items-center gap-2">
+                                        <Checkbox
+                                            checked={!!typeFilters[type]}
+                                            onCheckedChange={checked => handleTypeFilterChange(type, !!checked)}
+                                            className="h-4.5 w-4.5 text-blue-600"
+                                        />
+                                        {type}: <span className="font-semibold">{count}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </CardContent>
+                    </Card>
+                )}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Active</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-green-600">{active}</div>
+                        <ul className="mt-2 text-sm text-gray-600">
+                            {Object.entries(activeByType).map(([type, count]) => (
+                                <li key={type} className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={!!typeFilters[type]}
+                                        onCheckedChange={checked => handleTypeFilterChange(type, !!checked)}
+                                        className="h-4.5 w-4.5 text-blue-600"
+                                    />
+                                    {type}: <span className="font-semibold">{count}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Disposed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-red-500">{disposed}</div>
+                        <ul className="mt-2 text-sm text-gray-600">
+                            {Object.entries(disposedByType).map(([type, count]) => (
+                                <li key={type}>{type}: <span className="font-semibold">{count}</span></li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+            </div>
             <div className="flex items-center justify-between mb-2">
                 <h2 className="text-xl font-bold">Assets</h2>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="disposed-switch" className="text-sm select-none cursor-pointer my-1">
-                        Hide Disposed Assets
-                    </label>
-                    <Switch
-                        checked={hideDisposed}
-                        onCheckedChange={setHideDisposed}
-                        id="disposed-switch"
-                    />
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="disposed-switch" className="text-sm select-none cursor-pointer my-1">
+                            Hide Disposed Assets
+                        </label>
+                        <Switch
+                            checked={hideDisposed}
+                            onCheckedChange={setHideDisposed}
+                            id="disposed-switch"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="nonasset-switch" className="text-sm select-none cursor-pointer my-1">
+                            Hide Non-Asset
+                        </label>
+                        <Switch
+                            checked={hideNonAsset}
+                            onCheckedChange={setHideNonAsset}
+                            id="nonasset-switch"
+                        />
+                    </div>
                 </div>
             </div>
             {loading ? (
@@ -284,7 +456,7 @@ const CoreAsset: React.FC = () => {
             ) : (
                 <CustomDataGrid
                     columns={columns}
-                    data={hideDisposed ? transformedData.filter(a => a.status?.toLowerCase() !== 'disposed') : transformedData}
+                    data={filteredGridData}
                     inputFilter={false}
                     onRowDoubleClick={handleRowDoubleClick}
                     dataExport={true}
