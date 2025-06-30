@@ -31,6 +31,7 @@ import {
     AlertDialogCancel,
     AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // --- Asset Transfer API and Form Types ---
 export interface AssetTransferItem {
@@ -179,6 +180,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
     const [loading, setLoading] = React.useState(!!id);
     const [error, setError] = React.useState<string | null>(null);
+    const [showAccordionTooltip, setShowAccordionTooltip] = React.useState<{ [id: string]: boolean }>({});
+    const [showAddItemsTooltip, setShowAddItemsTooltip] = React.useState(false);
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -193,7 +196,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         setReturnToAssetManager({});
     }
 
-    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>, status?: 'draft' | 'submitted') {
         e.preventDefault();
         setSubmitError(null);
         for (const item of selectedItems) {
@@ -225,7 +228,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
             requestor: String(form.requestor.ramco_id),
             request_no: '',
             request_date: new Date().toISOString().slice(0, 10),
-            request_status: requestStatus,
+            request_status: status || requestStatus,
             details: selectedItems.map(item => {
                 const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
                 const reasons = itemReasons[item.id] || {};
@@ -288,7 +291,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         };
         try {
             await authenticatedApi.post('/api/assets/transfer-requests', payload);
-            toast.success(requestStatus === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
+            toast.success((status || requestStatus) === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
             clearFormAndItems();
             handleCancel();
         } catch (err) {
@@ -300,7 +303,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         clearFormAndItems();
         const formElement = document.createElement('form');
         const syntheticEvent = { preventDefault: () => { }, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
-        handleSubmit(syntheticEvent);
+        handleSubmit(syntheticEvent, 'draft');
     }
 
     // --- Internal handlers and helpers moved from parent ---
@@ -384,6 +387,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
             }
             if (newList.length > prev.length) {
                 toast.success('Item added to selection.');
+                // Show tooltip for the new item
+                const newItem = newList[newList.length - 1];
+                setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: true }));
+                setTimeout(() => {
+                    setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: false }));
+                }, 5000);
             }
             return newList;
         });
@@ -445,7 +454,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     async function handleOpenSidebar() {
         setSidebarLoading(true);
         try {
-            const param = user?.username;
+            const param = form?.requestor?.ramco_id || user?.username;
             const res: any = await authenticatedApi.get(`/api/assets/by-supervisor?ramco_id=${param}`);
             setSupervised(res.data?.data || []);
         } catch (err) {
@@ -508,15 +517,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     }, []);
 
     const handleSubmitConfirmed = () => {
-        setRequestStatus('submitted');
         setOpenSubmitDialog(false);
         if (formRef.current) {
             const event = { preventDefault: () => { }, target: formRef.current } as unknown as React.FormEvent<HTMLFormElement>;
-            handleSubmit(event);
+            handleSubmit(event, 'submitted');
         }
     };
     const handleSaveDraftConfirmed = () => {
-        setRequestStatus('draft');
         setOpenDraftDialog(false);
         handleSaveDraft();
     };
@@ -545,7 +552,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                   costcenter: item.curr_costcenter,
                   department: item.curr_department,
                   district: item.curr_district,
-                })));
+              })));
                 // Prefill effective dates
                 setItemEffectiveDates(
                   Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
@@ -594,6 +601,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
           });
       }
     }, [id]);
+
+    // Show tooltip to add items if none are selected
+    React.useEffect(() => {
+        if (selectedItems.length === 0) {
+            setShowAddItemsTooltip(true);
+            const timer = setTimeout(() => setShowAddItemsTooltip(false), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedItems.length]);
 
     if (loading) return <div className="p-8 text-center">Loading...</div>;
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
@@ -718,17 +734,28 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                 <fieldset className="border rounded p-4">
                     <legend className="font-semibold flex items-center text-lg gap-2">
                         Selected Items
-                        <Button
-                            type="button"
-                            onClick={handleOpenSidebar}
-                            size="icon"
-                            variant="default"
-                            className="ml-2"
-                            title="Add Items"
-                            disabled={sidebarLoading}
-                        >
-                            {sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                        </Button>
+                        <TooltipProvider>
+                            <Tooltip open={showAddItemsTooltip}>
+                                <TooltipTrigger asChild>
+                                    <span>
+                                        <Button
+                                            type="button"
+                                            onClick={handleOpenSidebar}
+                                            size="icon"
+                                            variant="default"
+                                            className="ml-2"
+                                            title="Add Items"
+                                            disabled={sidebarLoading}
+                                        >
+                                            {sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                                        </Button>
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" align="center" className="z-50">
+                                    Click here to add items for transfer.
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     </legend>
                     {selectedItems.length === 0 ? (
                         <div className="text-gray-400 text-center py-4">No items selected.</div>
@@ -766,6 +793,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                 </>
                                                             )}
                                                         </span>
+                                                        {/* Tooltip for expand notification */}
+                                                        <TooltipProvider>
+                                                            <Tooltip open={!!showAccordionTooltip[item.id]}>
+                                                                <TooltipTrigger asChild>
+                                                                    <span tabIndex={-1} />
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="top" align="center" className="z-50">
+                                                                    Please expand and complete the transfer details below.
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
                                                     </div>
                                                 </div>
                                             </AccordionTrigger>
