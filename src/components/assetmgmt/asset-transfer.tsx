@@ -4,6 +4,7 @@ import { AuthContext } from "@/store/AuthContext";
 import { authenticatedApi } from "@/config/api";
 import { Plus } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 
@@ -43,8 +44,56 @@ export default function AssetTransfer() {
         { key: "request_status", header: "Status" },
     ];
 
+    // Summary counts for each status
+    const summary = React.useMemo(() => {
+        const counts = { draft: 0, submitted: 0, approved: 0, completed: 0 };
+        data.forEach((row: any) => {
+            const status = (row.request_status || '').toLowerCase();
+            if (status.includes('draft')) counts.draft++;
+            else if (status.includes('submit')) counts.submitted++;
+            else if (status.includes('approve')) counts.approved++;
+            else if (status.includes('complete')) counts.completed++;
+        });
+        return counts;
+    }, [data]);
+
     return (
         <div className="mt-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm font-medium">Draft</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.draft}</div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm font-medium">Submitted</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.submitted}</div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm font-medium">Approved</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.approved}</div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm font-medium">Completed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.completed}</div>
+                    </CardContent>
+                </Card>
+            </div>
             <div className="flex justify-between items-center mb-2">
                 <h2 className="text-xl font-bold">Asset Transfer Requests</h2>
                 <Button
