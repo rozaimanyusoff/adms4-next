@@ -7,7 +7,7 @@ const inputFilterWrapper = "grow";
 const inputFilterInput = "form-input border-0 border-b form-input-sm bg-transparent/10 placeholder:text-sm dark:placeholder:text-dark-light p-2 border rounded-none w-full";
 
 /* Column Visibility Toggle */
-const columnToggleButton = "form-select bg-transparent/10 placeholder:text-base placeholder:text-gray-600 dark:placeholder:text-dark-light p-2 border rounded-xs text-left truncate min-w-[150px]";
+const columnToggleButton = "form-select placeholder:text-base placeholder:text-gray-600 dark:placeholder:text-dark-light p-2 border rounded-xs text-left truncate min-w-[150px]";
 const columnToggleItem = "block text-base cursor-pointer px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-amber-600";
 
 /* Export Dropdown */
@@ -677,6 +677,7 @@ const CustomDataGridInner = <T,>({
                                     return (
                                         <div className="relative z-10">
                                             <Button
+                                            size={'sm'}
                                                 ref={columnDropdownRef}
                                                 onClick={() => {
                                                     setOpenColumnDropdown(prev => {
@@ -692,6 +693,7 @@ const CustomDataGridInner = <T,>({
                                                 }}
                                                 className={columnToggleButton}
                                                 variant="default"
+                                                type='button'
                                             >
                                                 Visible Columns
                                             </Button>
