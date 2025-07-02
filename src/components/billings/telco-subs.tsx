@@ -231,7 +231,7 @@ const TelcoSubs = () => {
     return (
         <div className="mt-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold mb-4">Telco Subscribers</h1>
+                <h1 className="text-xl font-bold mb-4">Subscribers</h1>
                 <Button className="mb-4" onClick={() => handleOpen()}><Plus /></Button>
             </div>
             <CustomDataGrid

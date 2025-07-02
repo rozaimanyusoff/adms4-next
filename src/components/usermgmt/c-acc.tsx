@@ -101,6 +101,7 @@ const UserManagement = () => {
     const [bulkError, setBulkError] = useState<string | null>(null);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<number[]>([]);
     const [bulkSearch, setBulkSearch] = useState("");
+    const [bulkInviteFeedback, setBulkInviteFeedback] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -222,10 +223,9 @@ const UserManagement = () => {
                 inactive++;
             }
         });
-        // For the Pending Activation card, use pendingUsers count if summaryFilter is 'pending', else fallback to users logic
-        const pendingActivation = summaryFilter === 'pending' ? pendingUsers.length : pending;
-        return { active, inactive, pending: pendingActivation, suspended };
-    }, [users, pendingUsers, summaryFilter]);
+        // Always use pendingUsers count for the Pending Activation card
+        return { active, inactive, pending: pendingUsers.length, suspended };
+    }, [users, pendingUsers]);
 
     // Filtered users for grid, with summary filter
     const filteredUsers = useMemo(() => {
@@ -670,7 +670,7 @@ const UserManagement = () => {
             setShowSuspendDropdown(false);
             setModalOpen(null);
             setShowSidebar(false); // Close ActionSidebar
-            if (data?.status === 'Success') {
+            if (data?.status === 'success') {
                 toast.success('User(s) approved and activated.');
                 if (summaryFilter === 'pending') {
                     clearPendingUserSelection();
@@ -762,7 +762,7 @@ const UserManagement = () => {
     };
 
     // Shared invite function
-    const inviteUsers = async (users: any[], onSuccess?: () => void) => {
+    const inviteUsers = async (users: any[], onSuccess?: (feedback?: string) => void) => {
         setInviteLoading(true);
         setInviteError(null);
         try {
@@ -772,10 +772,10 @@ const UserManagement = () => {
             const results = (res.data && typeof res.data === 'object' && 'results' in res.data && Array.isArray((res.data as any).results))
                 ? (res.data as any).results
                 : [];
+            let feedback = '';
             if (status === 'success') {
                 if (results.length > 0) {
-                    // Show feedback for each result
-                    const feedback = results.map((r: any) => {
+                    feedback = results.map((r: any) => {
                         if (r.status === 'duplicate') {
                             return `User with email ${r.email} already exists.`;
                         } else if (r.status === 'success') {
@@ -787,19 +787,24 @@ const UserManagement = () => {
                     setInviteError(feedback); // Show as error for duplicate, or info for success
                     if (results.every((r: any) => r.status === 'success')) {
                         toast.success('Invitation sent successfully.');
-                        if (onSuccess) await onSuccess();
+                        if (onSuccess) await onSuccess(feedback);
                         await refreshUsers();
+                    } else {
+                        if (onSuccess) await onSuccess(feedback);
                     }
                 } else {
-                    toast.success('Invitation sent successfully.');
-                    if (onSuccess) await onSuccess();
+                    feedback = 'Invitation sent successfully.';
+                    toast.success(feedback);
+                    if (onSuccess) await onSuccess(feedback);
                     await refreshUsers();
                 }
             } else {
                 setInviteError(message || 'Failed to send invitation.');
+                if (onSuccess) await onSuccess(message || 'Failed to send invitation.');
             }
         } catch (err: any) {
             setInviteError(err?.response?.data?.message || 'Failed to send invitation.');
+            if (onSuccess) await onSuccess(err?.response?.data?.message || 'Failed to send invitation.');
         } finally {
             setInviteLoading(false);
         }
@@ -836,9 +841,10 @@ const UserManagement = () => {
             user_type: 1,
             username: e.ramco_id,
         }));
-        await inviteUsers(users, async () => {
+        await inviteUsers(users, async (feedback) => {
             setShowBulkInviteDialog(false);
             setBulkSelectedIds([]);
+            setBulkInviteFeedback(feedback || null);
         });
     };
 
@@ -861,10 +867,18 @@ const UserManagement = () => {
         }
     };
 
+    // Show feedback toast after dialog closes
+    useEffect(() => {
+        if (!showBulkInviteDialog && bulkInviteFeedback) {
+            toast.info(bulkInviteFeedback);
+            setBulkInviteFeedback(null);
+        }
+    }, [showBulkInviteDialog, bulkInviteFeedback]);
+
     return (
         <div className="mt-4">
             {/* Summary Cards Row */}
-            <div className="flex gap-4 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <Card
                     className={`flex-1 p-4 cursor-pointer flex items-center gap-3 transition-all border relative ${summaryFilter === 'active' ? 'ring-2 ring-blue-500' : ''}`}
                     onClick={() => handleSummaryCardClick('active')}

@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import TelcoAccounts from "./telco-accounts";
 import TelcoSubs from "./telco-subs";
+import TelcoSims from "./telco-sims";
 import Link from "next/link";
 
 const TelcoMaintenance: React.FC = () => {
@@ -15,7 +17,9 @@ const TelcoMaintenance: React.FC = () => {
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
+        account: <TelcoAccounts />,
         subs: <TelcoSubs />,
+        sims: <TelcoSims />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
@@ -29,7 +33,7 @@ const TelcoMaintenance: React.FC = () => {
     }, [activeTab]);
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
