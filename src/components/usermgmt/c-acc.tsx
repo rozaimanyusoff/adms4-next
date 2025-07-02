@@ -2,8 +2,9 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import { CustomDataGrid, ColumnDef, DataGridProps } from "@/components/ui/DataGrid";
 import ActionSidebar from "@components/ui/action-aside";
 import { authenticatedApi } from "@/config/api";
-import { Plus, Trash2, MinusCircle } from "lucide-react";
+import { Plus, Trash2, MinusCircle, Check } from "lucide-react";
 import { Button } from "@components/ui/button";
+import { Checkbox } from "@components/ui/checkbox";
 import { Card } from "@components/ui/card";
 import { Switch } from "@components/ui/switch";
 import { Input } from "@components/ui/input";
@@ -93,6 +94,13 @@ const UserManagement = () => {
     const [inviteForm, setInviteForm] = useState({ fullname: '', email: '', contact: '', user_type: 1 });
     const [inviteLoading, setInviteLoading] = useState(false);
     const [inviteError, setInviteError] = useState<string | null>(null);
+    // Bulk Invite dialog state
+    const [showBulkInviteDialog, setShowBulkInviteDialog] = useState(false);
+    const [bulkEmployees, setBulkEmployees] = useState<any[]>([]);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [bulkError, setBulkError] = useState<string | null>(null);
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<number[]>([]);
+    const [bulkSearch, setBulkSearch] = useState("");
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -753,20 +761,12 @@ const UserManagement = () => {
         }
     };
 
-    const handleInviteUser = async () => {
+    // Shared invite function
+    const inviteUsers = async (users: any[], onSuccess?: () => void) => {
         setInviteLoading(true);
         setInviteError(null);
         try {
-            const res = await authenticatedApi.post('/api/auth/invite-users', {
-                users: [
-                    {
-                        fullname: inviteForm.fullname,
-                        email: inviteForm.email,
-                        contact: inviteForm.contact,
-                        user_type: inviteForm.user_type,
-                    }
-                ]
-            });
+            const res = await authenticatedApi.post('/api/auth/invite-users', { users });
             const status = (res.data && typeof res.data === 'object' && 'status' in res.data) ? (res.data as any).status : undefined;
             const message = (res.data && typeof res.data === 'object' && 'message' in res.data) ? (res.data as any).message : undefined;
             const results = (res.data && typeof res.data === 'object' && 'results' in res.data && Array.isArray((res.data as any).results))
@@ -787,14 +787,12 @@ const UserManagement = () => {
                     setInviteError(feedback); // Show as error for duplicate, or info for success
                     if (results.every((r: any) => r.status === 'success')) {
                         toast.success('Invitation sent successfully.');
-                        setShowInviteDialog(false);
-                        setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
+                        if (onSuccess) await onSuccess();
                         await refreshUsers();
                     }
                 } else {
                     toast.success('Invitation sent successfully.');
-                    setShowInviteDialog(false);
-                    setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
+                    if (onSuccess) await onSuccess();
                     await refreshUsers();
                 }
             } else {
@@ -804,6 +802,62 @@ const UserManagement = () => {
             setInviteError(err?.response?.data?.message || 'Failed to send invitation.');
         } finally {
             setInviteLoading(false);
+        }
+    };
+
+    const handleInviteUser = async () => {
+        await inviteUsers([
+            {
+                fullname: inviteForm.fullname,
+                email: inviteForm.email,
+                contact: inviteForm.contact,
+                user_type: inviteForm.user_type,
+            }
+        ], async () => {
+            setShowInviteDialog(false);
+            setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
+        });
+    };
+
+    // Handle Bulk Invite click
+    const handleBulkInviteClick = () => {
+        setShowBulkInviteDialog(true);
+        if (bulkEmployees.length === 0) fetchEmployees();
+    };
+
+    // Handle inviting selected employees
+    const handleBulkInvite = async () => {
+        if (bulkSelectedIds.length === 0) return;
+        const selected = bulkEmployees.filter(e => bulkSelectedIds.includes(e.id));
+        const users = selected.map(e => ({
+            fullname: e.full_name,
+            email: e.email,
+            contact: e.contact,
+            user_type: 1,
+            username: e.ramco_id,
+        }));
+        await inviteUsers(users, async () => {
+            setShowBulkInviteDialog(false);
+            setBulkSelectedIds([]);
+        });
+    };
+
+    // Fetch employees for bulk invite
+    const fetchEmployees = async () => {
+        setBulkLoading(true);
+        setBulkError(null);
+        try {
+            const res = await authenticatedApi.get("/api/assets/employees");
+            const data = res.data as { status: string; message?: string; data?: any[] };
+            if (data.status === "success") {
+                setBulkEmployees(data.data || []);
+            } else {
+                setBulkError(data.message || "Failed to fetch employees.");
+            }
+        } catch (err: any) {
+            setBulkError(err?.response?.data?.message || "Failed to fetch employees.");
+        } finally {
+            setBulkLoading(false);
         }
     };
 
@@ -878,7 +932,7 @@ const UserManagement = () => {
                         <DropdownMenuItem onClick={() => setShowInviteDialog(true)}>
                             Individual
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => toast.info('Bulk invite coming soon!')}>
+                        <DropdownMenuItem onClick={handleBulkInviteClick}>
                             Bulk
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -1334,6 +1388,110 @@ const UserManagement = () => {
                             <Button type="submit" className="mt-4" variant="default" disabled={inviteLoading}>{inviteLoading ? 'Inviting...' : 'Invite'}</Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+            {/* Bulk Invite Dialog */}
+            <Dialog open={showBulkInviteDialog} onOpenChange={open => {
+                setShowBulkInviteDialog(open);
+                if (!open) {
+                    setBulkSelectedIds([]);
+                    setBulkSearch("");
+                    setBulkError(null);
+                }
+            }}>
+                <DialogContent className="min-w-2xl max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Invite Employees</DialogTitle>
+                        <DialogDescription>Select employees to invite. Only those with email will be shown.</DialogDescription>
+                        {bulkError && <div className="text-xs text-red-600">{bulkError}</div>}
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3">
+                        <Input
+                            placeholder="Search employees by name, email, or ID..."
+                            value={bulkSearch}
+                            onChange={e => setBulkSearch(e.target.value)}
+                        />
+                        <div className="max-h-80 overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-800">
+                            {bulkLoading ? (
+                                <div className="text-center py-8">Loading...</div>
+                            ) : (
+                                <ul className="divide-y">
+                                    {bulkEmployees
+                                        .filter(e => {
+                                            // Exclude resigned
+                                            if (e.employment_status === 'resigned') return false;
+                                            // Exclude if matches any user by username (ramco_id) or email
+                                            const exists = users.some(u =>
+                                                (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
+                                                (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
+                                            );
+                                            if (exists) return false;
+                                            // Only show if has email and matches search
+                                            return e.email &&
+                                                (!bulkSearch ||
+                                                    e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                    e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                    e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
+                                                );
+                                        })
+                                        .map(e => (
+                                            <li key={e.id} className="flex items-center gap-2 py-2">
+                                                <Checkbox
+                                                    checked={bulkSelectedIds.includes(e.id)}
+                                                    onChange={ev => {
+                                                        const checked = (ev.target as HTMLInputElement).checked;
+                                                        if (checked) {
+                                                            setBulkSelectedIds(prev => [...prev, e.id]);
+                                                        } else {
+                                                            setBulkSelectedIds(prev => prev.filter(id => id !== e.id));
+                                                        }
+                                                    }}
+                                                    className="w-4.5 h-4.5"
+                                                />
+                                                <span className="flex-1 text-xs">
+                                                    <span className="font-semibold">{e.full_name}</span>
+                                                    <span className="ml-2 text-xs text-gray-500">({e.ramco_id})</span>
+                                                    <span className="ml-2 text-xs text-gray-500">{e.email}</span>
+                                                    <span className="ml-2 text-xs text-gray-500">{e.contact}</span>
+                                                </span>
+                                            </li>
+                                        ))}
+                                    {bulkEmployees.filter(e => {
+                                        if (e.employment_status === 'resigned') return false;
+                                        const exists = users.some(u =>
+                                            (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
+                                            (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
+                                        );
+                                        if (exists) return false;
+                                        return e.email &&
+                                            (!bulkSearch ||
+                                                e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
+                                            );
+                                    }).length === 0 && (
+                                        <li className="text-gray-400 italic py-4 text-center">No employees found</li>
+                                    )}
+                                </ul>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <DialogClose>
+                                <Button variant="outline" onClick={() => setShowBulkInviteDialog(false)} className="mt-4">
+                                    Close
+                                </Button>
+                            </DialogClose>
+                            <Button
+                                type="button"
+                                className="mt-4"
+                                variant="default"
+                                disabled={inviteLoading || bulkSelectedIds.length === 0}
+                                onClick={handleBulkInvite}
+                            >
+                                {inviteLoading ? 'Inviting...' : `Invite Selected (${bulkSelectedIds.length})`}
+                            </Button>
+                        </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

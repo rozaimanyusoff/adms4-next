@@ -4,16 +4,19 @@ import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashTransfer from "./dash-transfer";
 import AssetTransferForm from "./asset-transfer";
+import AssetTransferChecklist from "./asset-transfer-checklist";
 
 const TransferApp = () => {
     const tabTitles = [
         { value: "dash", label: "Dashboard" },
         { value: "records", label: "Records" },
+        { value: "checklist", label: "Checklist" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         dash: <DashTransfer />,
         records: <AssetTransferForm />,
+        checklist: <AssetTransferChecklist />, // Assuming typeId 1 is for Asset Transfer
     };
 
     const validTabValues = tabTitles.map(t => t.value);
