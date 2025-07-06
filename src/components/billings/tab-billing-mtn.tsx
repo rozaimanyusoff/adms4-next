@@ -2,16 +2,23 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import VendorMaintenance from "./vendor";
+import Workshop from "./workshop";
+import FleetCardList from "./fleet-card";
+import VehicleMtnReport from "./vehicle-mtn-report";
 import Link from "next/link";
 
 const BillingMaintenance: React.FC = () => {
     const tabTitles = [
-        { value: "vendor", label: "Vendor" },
+        { value: "workshop", label: "Workshop" },
+        { value: "svcopt", label: "Service Option" },
+        { value: "fleet", label: "Fleet Card" },
+        { value: "vehicle", label: "Vehicle Maintenance Report" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        vendor: <VendorMaintenance />,
+        workshop: <Workshop />,
+        fleet: <FleetCardList />,
+        vehicle: <VehicleMtnReport />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
@@ -25,7 +32,7 @@ const BillingMaintenance: React.FC = () => {
     }, [activeTab]);
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
