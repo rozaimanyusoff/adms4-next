@@ -35,9 +35,9 @@ const columns: ColumnDef<FuelBill & { rowNumber: number }>[] = [
   { key: 'stmt_ron95', header: 'RON95', },
   { key: 'stmt_ron97', header: 'RON97', },
   { key: 'stmt_diesel', header: 'Diesel', },
-  { key: 'stmt_litre', header: 'Litre', },
+  { key: 'stmt_litre', header: 'Litre', colClass: 'text-right' },
   { key: 'stmt_total_odo', header: 'Odometer', },
-  { key: 'stmt_total', header: 'Total', },
+  { key: 'stmt_total', header: 'Total', colClass: 'text-right' },
 ];
 
 const FuelMtn = () => {
@@ -64,7 +64,7 @@ const FuelMtn = () => {
 
   const handleRowDoubleClick = (row: FuelBill & { rowNumber: number }) => {
     if (row.stmt_id) {
-      window.open(`/billings/mtn/${row.stmt_id}`);
+      window.open(`/billings/fuel/form?id=${row.stmt_id}`, '_blank');
     }
   };
 
@@ -73,7 +73,8 @@ const FuelMtn = () => {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold">Fuel Consumption Bills Summary</h2>
         <Button
-        variant={'default'}
+          variant={'default'}
+          onClick={() => window.open(`/billings/fuel/form`, '_blank')}
         >
           <Plus size={18} />
         </Button>
@@ -92,3 +93,11 @@ const FuelMtn = () => {
 };
 
 export default FuelMtn;
+
+
+/* 
+
+ToDo:
+- Add 3 dot menu on No column to download pdf report of total amount by cost center
+
+*/

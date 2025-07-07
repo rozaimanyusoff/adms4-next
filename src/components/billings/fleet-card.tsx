@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { authenticatedApi } from "@/config/api";
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from "@components/ui/action-aside";
-import { Plus, Replace, ArrowBigLeft, ArrowBigRight } from "lucide-react";
+import { Plus, Replace, ArrowBigLeft, ArrowBigRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,10 @@ import { toast } from "sonner";
 
 interface FleetCard {
     fc_id: number;
-    fuel_id: number;
+    fuel: {
+        fuel_id: number;
+        fuel_issuer: string;
+    };
     fc_no: string;
     fc_regdate: string;
     fc_pin: string;
@@ -59,6 +62,7 @@ const FleetCardList: React.FC = () => {
 
     // Add this state to track edit mode
     const [editingId, setEditingId] = useState<string | number | null>(null);
+    const [formLoading, setFormLoading] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -92,7 +96,15 @@ const FleetCardList: React.FC = () => {
         return () => window.removeEventListener('select-asset', handleSelectAsset);
     }, []);
 
-    const columns: ColumnDef<FleetCard>[] = [
+    const columns: ColumnDef<FleetCard>[] = ([
+        {
+            key: "__row" as any,
+            header: '#',
+            render: (row: FleetCard) => fleetCards.findIndex(fc => fc.fc_id === row.fc_id) + 1,
+            sortable: false,
+            filter: undefined,
+            width: 50
+        },
         {
             key: 'fc_no',
             header: 'Card No',
@@ -101,24 +113,30 @@ const FleetCardList: React.FC = () => {
         {
             key: 'asset',
             header: 'Asset',
-            render: (row) => row.asset?.serial_number,
+            render: (row: FleetCard) => row.asset?.serial_number,
             filter: 'input',
+        },
+        {
+            key: 'fuel',
+            header: 'Issuer',
+            render: (row: FleetCard) => row.fuel?.fuel_issuer,
+            filter: 'singleSelect',
         },
         {
             key: 'fc_pin',
             header: 'PIN',
-            render: (row) => row.fc_pin,
+            render: (row: FleetCard) => row.fc_pin,
         },
         {
             key: 'fc_stat',
             header: 'Status',
-            render: (row) => row.fc_stat,
+            render: (row: FleetCard) => row.fc_stat,
             filter: 'singleSelect',
         },
         {
             key: 'fc_regdate',
             header: 'Registration Date',
-            render: (row) => {
+            render: (row: FleetCard) => {
                 if (!row.fc_regdate) return '';
                 const d = new Date(row.fc_regdate);
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
@@ -127,13 +145,13 @@ const FleetCardList: React.FC = () => {
         {
             key: 'fc_termdate',
             header: 'Expiry Date',
-            render: (row) => {
+            render: (row: FleetCard) => {
                 if (!row.fc_termdate) return '';
                 const d = new Date(row.fc_termdate);
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             },
         },
-    ];
+    ]) as any;
 
     const handleOpenSidebar = (row?: FleetCard) => {
         setSidebarOpen(true);
@@ -141,6 +159,7 @@ const FleetCardList: React.FC = () => {
         setOptionSearch("");
         if (row) {
             setEditingId(row.fc_id);
+            setFormLoading(true); // Start loading
             // If assets not loaded, fetch first then set form
             if (assets.length === 0) {
                 authenticatedApi.get<{ data: any[] }>("/api/assets")
@@ -170,12 +189,13 @@ const FleetCardList: React.FC = () => {
                         setForm({
                             fc_no: row.fc_no || '',
                             asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
-                            fuel_id: row.fuel_id ? String(row.fuel_id) : '',
+                            fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
                             fc_pin: row.fc_pin || '',
                             fc_stat: row.fc_stat || 'Active',
                             fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
                             fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
                         });
+                        setFormLoading(false); // Done loading
                     });
             } else {
                 // Ensure current asset is included for display
@@ -195,12 +215,13 @@ const FleetCardList: React.FC = () => {
                 setForm({
                     fc_no: row.fc_no || '',
                     asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
-                    fuel_id: row.fuel_id ? String(row.fuel_id) : '',
+                    fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
                     fc_pin: row.fc_pin || '',
                     fc_stat: row.fc_stat || 'Active',
                     fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
                     fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
                 });
+                setFormLoading(false); // Done loading
             }
         } else {
             setEditingId(null);
@@ -213,6 +234,7 @@ const FleetCardList: React.FC = () => {
                 fc_regdate: '',
                 fc_termdate: '',
             });
+            setFormLoading(false); // Not loading for create
         }
     };
 
@@ -365,8 +387,11 @@ const FleetCardList: React.FC = () => {
                                     <Input type="date" value={form.fc_termdate} onChange={e => setForm(f => ({ ...f, fc_termdate: e.target.value }))} required />
                                 </div>
                             </div>
-                            <div className="pt-2 flex justify-end">
-                                <Button type="submit">Save</Button>
+                            <div className="pt-2 flex justify-start">
+                                <Button type="submit" disabled={formLoading}>
+                                    {formLoading ? <Loader2 className="animate-spin mr-2" /> : null}
+                                    {editingId ? 'Update' : 'Save'}
+                                </Button>
                             </div>
                         </form>
                         {/* End Inline Fleet Card Form */}
