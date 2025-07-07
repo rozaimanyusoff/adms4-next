@@ -33,6 +33,75 @@ interface User {
     name: string;
 }
 
+interface Brand {
+    id: number;
+    name: string;
+}
+
+interface Model {
+    id: number;
+    name: string;
+}
+
+interface Asset {
+    id: number;
+    classification: string;
+    asset_code: string | null;
+    finance_tag: string | null;
+    serial_number: string;
+    dop: string;
+    year: string;
+    unit_price: number | null;
+    depreciation_length: number;
+    depreciation_rate: string;
+    cost_center: string;
+    status: string;
+    disposed_date: string;
+    types: {
+        type_id: number;
+        type_code: string;
+        name: string;
+    };
+    specs: {
+        categories: {
+            category_id: number;
+            name: string;
+        };
+        brands: { id: number; name: string } | null;
+        models: { id: number; name: string } | null;
+        id: number;
+        asset_id: number;
+        type_id: number;
+        category_id: number;
+        brand_id: number | null;
+        model_id: number | null;
+        entry_code: string;
+        asset_code: string | null;
+        serial_number: string;
+        chassis_no: string;
+        engine_no: string;
+        transmission: string;
+        fuel_type: string;
+        cubic_meter: string;
+        avls_availability: string;
+        avls_install_date: string;
+        avls_removal_date: string;
+        avls_transfer_date: string;
+        updated_at: string;
+        updated_by: string;
+    };
+    owner: Array<{
+        ramco_id: string;
+        name: string;
+        email: string;
+        contact: string;
+        department: string;
+        cost_center: string | null;
+        district: string | null;
+        effective_date: string;
+    }>;
+}
+
 interface Subscriber {
     id: number;
     sub_no: string;
@@ -42,6 +111,7 @@ interface Subscriber {
     simcard: Simcard;
     costcenter: CostCenter;
     department: Department;
+    asset: Asset; // <-- added asset
     user: User;
     register_date: string;
 }
@@ -58,6 +128,7 @@ interface SubscriberForm {
     department?: number;
     user?: string;
     register_date?: string;
+    asset_id?: number; // <-- added asset_id
 }
 
 const TelcoSubs = () => {
@@ -67,7 +138,8 @@ const TelcoSubs = () => {
     const [form, setForm] = useState<SubscriberForm>({});
     const [editId, setEditId] = useState<number | null>(null);
     const [accountsOpt, setAccountsOpt] = useState<Account[]>([]);
-    const [replaceField, setReplaceField] = useState<null | 'simcard' | 'costcenter' | 'department' | 'user'>(null);
+    const [assetsOpt, setAssetsOpt] = useState<Asset[]>([]);
+    const [replaceField, setReplaceField] = useState<null | 'simcard' | 'costcenter' | 'department' | 'user' | 'asset'>(null);
     const [optionSearch, setOptionSearch] = useState("");
 
     // Move fetchSubscribers outside useEffect so it can be called after submit
@@ -98,6 +170,21 @@ const TelcoSubs = () => {
             }
         };
         fetchAccounts();
+    }, []);
+
+    useEffect(() => {
+        const fetchAssets = async () => {
+            try {
+                const res = await authenticatedApi.get("/api/assets");
+                const response = res.data as { status: string; message: string; data: Asset[] };
+                if (response?.status === "success") {
+                    setAssetsOpt(response.data.filter(a => a.types?.type_id === 2 && a.status === "active"));
+                }
+            } catch (e) {
+                // handle error
+            }
+        };
+        fetchAssets();
     }, []);
 
     const sortedSubscribers = React.useMemo(() => {
@@ -160,6 +247,10 @@ const TelcoSubs = () => {
         { key: 'costcenter', header: 'Cost Center', render: (row: Subscriber) => row.costcenter?.name ?? '—' },
         { key: 'department', header: 'Department', render: (row: Subscriber) => row.department?.name ?? '—' },
         { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.name ?? '—' },
+        // Asset columns
+        { key: 'asset' as keyof Subscriber, header: 'Asset S/N', render: (row: Subscriber) => row.asset?.serial_number ?? '—' },
+        { key: 'asset' as keyof Subscriber, header: 'Asset Brand', render: (row: Subscriber) => row.asset?.specs?.brands?.name ?? '—' },
+        { key: 'asset' as keyof Subscriber, header: 'Asset Model', render: (row: Subscriber) => row.asset?.specs?.models?.name ?? '—' },
     ];
 
     const rowClass = (row: Subscriber) => {
@@ -179,7 +270,8 @@ const TelcoSubs = () => {
                 simcard: subscriber.simcard?.id,
                 costcenter: subscriber.costcenter?.id,
                 department: subscriber.department?.id,
-                user: subscriber.user?.ramco_id
+                user: subscriber.user?.ramco_id,
+                asset_id: subscriber.asset?.id // <-- use id instead of asset_id
             });
             setEditId(subscriber.id);
         } else {
@@ -230,7 +322,8 @@ const TelcoSubs = () => {
                 simcard: form.simcard ? form.simcard : undefined,
                 costcenter: form.costcenter ? form.costcenter : undefined,
                 department: form.department ? form.department : undefined,
-                user: form.user ? form.user : undefined
+                user: form.user ? form.user : undefined,
+                asset_id: form.asset_id ? form.asset_id : undefined // <-- include asset_id in payload
             };
             if (editId) {
                 await authenticatedApi.put(`/api/telco/subs/${editId}`, submitData);
@@ -402,6 +495,32 @@ const TelcoSubs = () => {
                                         </TooltipProvider>
                                     </div>
                                 </label>
+                                <label className="block">
+                                    <span className="block mb-1">Asset</span>
+                                    <div className="relative group">
+                                        <Input
+                                            name="asset_id"
+                                            className="pr-8 group-focus-within:ring-2"
+                                            value={
+                                                form.asset_id && assetsOpt.length > 0
+                                                    ? (assetsOpt.find(a => a.id === Number(form.asset_id))?.serial_number || "")
+                                                    : ""
+                                            }
+                                            readOnly
+                                            required
+                                        />
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('asset')}>
+                                                        <ArrowBigRight />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left">Click to replace asset</TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                </label>
                                 <div className="flex gap-2 mt-6">
                                     <Button type="submit">{editId ? "Update" : "Create"}</Button>
                                     <Button type="button" variant="destructive" onClick={handleClose}>Cancel</Button>
@@ -447,6 +566,14 @@ const TelcoSubs = () => {
                                                 <div key={user.ramco_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                                     <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} />
                                                     <span onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{user.name}</span>
+                                                </div>
+                                            ))}
+                                        {replaceField === 'asset' && assetsOpt
+                                            .filter(asset => asset.serial_number.toLowerCase().includes(optionSearch.toLowerCase()))
+                                            .map(asset => (
+                                                <div key={asset.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                    <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{asset.serial_number} - {asset.specs.brands?.name || ''} {asset.specs.models?.name || ''}</span>
                                                 </div>
                                             ))}
                                     </div>

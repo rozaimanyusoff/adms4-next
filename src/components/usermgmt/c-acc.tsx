@@ -102,6 +102,9 @@ const UserManagement = () => {
     const [bulkSelectedIds, setBulkSelectedIds] = useState<number[]>([]);
     const [bulkSearch, setBulkSearch] = useState("");
     const [bulkInviteFeedback, setBulkInviteFeedback] = useState<string | null>(null);
+    // New states for sidebars
+    const [showInviteSidebar, setShowInviteSidebar] = useState(false);
+    const [showBulkInviteSidebar, setShowBulkInviteSidebar] = useState(false);
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -867,6 +870,14 @@ const UserManagement = () => {
         }
     };
 
+    // Fetch employees when Bulk Invite Sidebar opens
+    useEffect(() => {
+        if (showBulkInviteSidebar && bulkEmployees.length === 0) {
+            fetchEmployees();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showBulkInviteSidebar]);
+
     // Show feedback toast after dialog closes
     useEffect(() => {
         if (!showBulkInviteDialog && bulkInviteFeedback) {
@@ -943,10 +954,10 @@ const UserManagement = () => {
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setShowInviteDialog(true)}>
+                        <DropdownMenuItem onClick={() => setShowInviteSidebar(true)}>
                             Individual
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={handleBulkInviteClick}>
+                        <DropdownMenuItem onClick={() => setShowBulkInviteSidebar(true)}>
                             Bulk
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -1267,6 +1278,180 @@ const UserManagement = () => {
                     }}
                 />
             )}
+            {/* Invite New User Sidebar */}
+            {showInviteSidebar && (
+                <ActionSidebar
+                    title="Invite New User"
+                    size="sm"
+                    onClose={() => {
+                        setShowInviteSidebar(false);
+                        setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
+                        setInviteError(null);
+                    }}
+                    content={
+                        <form
+                            onSubmit={e => {
+                                e.preventDefault();
+                                handleInviteUser();
+                            }}
+                            className="flex flex-col gap-3"
+                        >
+                            <div>
+                                <label className="block text-sm font-medium mb-1">User Type</label>
+                                <Select
+                                    value={String(inviteForm.user_type)}
+                                    onValueChange={val => setInviteForm(f => ({ ...f, user_type: Number(val) }))}
+                                    required
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select user type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="1">Employee</SelectItem>
+                                        <SelectItem value="2">Non-employee</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Full Name</label>
+                                <Input
+                                    type="text"
+                                    value={inviteForm.fullname}
+                                    onChange={e => setInviteForm(f => ({ ...f, fullname: e.target.value }))}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Email</label>
+                                <Input
+                                    type="email"
+                                    value={inviteForm.email}
+                                    onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Contact</label>
+                                <Input
+                                    type="text"
+                                    value={inviteForm.contact}
+                                    onChange={e => {
+                                        const val = e.target.value.replace(/\D/g, '');
+                                        setInviteForm(f => ({ ...f, contact: val }));
+                                    }}
+                                    required
+                                />
+                            </div>
+                            {inviteError && <div className="text-xs text-red-600">{inviteError}</div>}
+                            <div className="flex gap-2 mt-4">
+                                <Button variant="outline" type="button" onClick={() => setShowInviteSidebar(false)}>
+                                    Close
+                                </Button>
+                                <Button type="submit" variant="default" disabled={inviteLoading}>
+                                    {inviteLoading ? 'Inviting...' : 'Invite'}
+                                </Button>
+                            </div>
+                        </form>
+                    }
+                />
+            )}
+            {/* Bulk Invite Employees Sidebar */}
+            {showBulkInviteSidebar && (
+                <ActionSidebar
+                    title="Bulk Invite Employees"
+                    size="sm"
+                    onClose={() => {
+                        setShowBulkInviteSidebar(false);
+                        setBulkSelectedIds([]);
+                        setBulkSearch("");
+                        setBulkError(null);
+                    }}
+                    content={
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <Input
+                                    placeholder="Search employees by name, email, or ID..."
+                                    value={bulkSearch}
+                                    onChange={e => setBulkSearch(e.target.value)}
+                                />
+                            </div>
+                            {bulkError && <div className="text-xs text-red-600">{bulkError}</div>}
+                            <div className="max-h-[600px] overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-800">
+                                {bulkLoading ? (
+                                    <div className="text-center py-8">Loading...</div>
+                                ) : (
+                                    <ul className="divide-y">
+                                        {bulkEmployees
+                                            .filter(e => {
+                                                if (e.employment_status === 'resigned') return false;
+                                                const exists = users.some(u =>
+                                                    (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
+                                                    (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
+                                                );
+                                                if (exists) return false;
+                                                return e.email &&
+                                                    (!bulkSearch ||
+                                                        e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                        e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                        e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
+                                                    );
+                                            })
+                                            .map(e => (
+                                                <li key={e.id} className="flex items-center gap-4 py-2">
+                                                    <Checkbox
+                                                        checked={bulkSelectedIds.includes(e.id)}
+                                                        onCheckedChange={(checked: boolean) => {
+                                                            if (checked) {
+                                                                setBulkSelectedIds(prev => [...prev, e.id]);
+                                                            } else {
+                                                                setBulkSelectedIds(prev => prev.filter(id => id !== e.id));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="flex flex-col text-xs">
+                                                        <span className="font-semibold text-sm">{e.full_name}</span>
+                                                        <span className="text-xs text-gray-800">RAMCO ID: {e.ramco_id}</span>
+                                                        <span className="text-xs text-gray-800">Email: {e.email}</span>
+                                                        <span className="text-xs text-gray-800">Contact: {e.contact}</span>
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        {bulkEmployees.filter(e => {
+                                            if (e.employment_status === 'resigned') return false;
+                                            const exists = users.some(u =>
+                                                (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
+                                                (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
+                                            );
+                                            if (exists) return false;
+                                            return e.email &&
+                                                (!bulkSearch ||
+                                                    e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                    e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
+                                                    e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
+                                                );
+                                        }).length === 0 && (
+                                                <li className="text-gray-400 italic py-4 text-center">No employees found</li>
+                                            )}
+                                    </ul>
+                                )}
+                            </div>
+                            <div className="flex gap-2 mt-4">
+                                <Button variant="outline" type="button" onClick={() => setShowBulkInviteSidebar(false)}>
+                                    Close
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    disabled={inviteLoading || bulkSelectedIds.length === 0}
+                                    onClick={handleBulkInvite}
+                                >
+                                    {inviteLoading ? 'Inviting...' : `Invite Selected (${bulkSelectedIds.length})`}
+                                </Button>
+                            </div>
+                        </div>
+                    }
+                />
+            )}
             {/* Confirmation Modal for all actions */}
             {modalOpen && (
                 <AlertDialog open={!!modalOpen} onOpenChange={open => { if (!open) setModalOpen(null); }}>
@@ -1326,188 +1511,6 @@ const UserManagement = () => {
                     </AlertDialogContent>
                 </AlertDialog>
             )}
-            {/* Invite User Dialog */}
-            <Dialog open={showInviteDialog} onOpenChange={open => {
-                setShowInviteDialog(open);
-                if (!open) {
-                    setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
-                    setInviteError(null);
-                }
-            }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Invite New User</DialogTitle>
-                        <DialogDescription>Fill in the details below:</DialogDescription>
-                        {inviteError && <div className="text-xs text-red-600">{inviteError}</div>}
-                    </DialogHeader>
-                    <form
-                        onSubmit={e => {
-                            e.preventDefault();
-                            handleInviteUser();
-                        }}
-                        className="flex flex-col gap-3"
-                    >
-                        <div>
-                            <label className="block text-sm font-medium mb-1">User Type</label>
-                            <Select
-                                value={String(inviteForm.user_type)}
-                                onValueChange={val => setInviteForm(f => ({ ...f, user_type: Number(val) }))}
-                                required
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select user type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">Employee</SelectItem>
-                                    <SelectItem value="2">Non-employee</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Full Name</label>
-                            <Input
-                                type="text"
-                                value={inviteForm.fullname}
-                                onChange={e => setInviteForm(f => ({ ...f, fullname: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Email</label>
-                            <Input
-                                type="email"
-                                value={inviteForm.email}
-                                onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Contact</label>
-                            <Input
-                                type="text"
-                                value={inviteForm.contact}
-                                onChange={e => {
-                                    const val = e.target.value.replace(/\D/g, '');
-                                    setInviteForm(f => ({ ...f, contact: val }));
-                                }}
-                                required
-                            />
-                        </div>
-                        <DialogFooter>
-                            <DialogClose>
-                                <Button variant="outline" onClick={() => setShowInviteDialog(false)} className="mt-4">
-                                    Close
-                                </Button>
-                            </DialogClose>
-                            <Button type="submit" className="mt-4" variant="default" disabled={inviteLoading}>{inviteLoading ? 'Inviting...' : 'Invite'}</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-            {/* Bulk Invite Dialog */}
-            <Dialog open={showBulkInviteDialog} onOpenChange={open => {
-                setShowBulkInviteDialog(open);
-                if (!open) {
-                    setBulkSelectedIds([]);
-                    setBulkSearch("");
-                    setBulkError(null);
-                }
-            }}>
-                <DialogContent className="min-w-2xl max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Bulk Invite Employees</DialogTitle>
-                        <DialogDescription>Select employees to invite. Only those with email will be shown.</DialogDescription>
-                        {bulkError && <div className="text-xs text-red-600">{bulkError}</div>}
-                    </DialogHeader>
-                    <div className="flex flex-col gap-3">
-                        <Input
-                            placeholder="Search employees by name, email, or ID..."
-                            value={bulkSearch}
-                            onChange={e => setBulkSearch(e.target.value)}
-                        />
-                        <div className="max-h-80 overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-800">
-                            {bulkLoading ? (
-                                <div className="text-center py-8">Loading...</div>
-                            ) : (
-                                <ul className="divide-y">
-                                    {bulkEmployees
-                                        .filter(e => {
-                                            // Exclude resigned
-                                            if (e.employment_status === 'resigned') return false;
-                                            // Exclude if matches any user by username (ramco_id) or email
-                                            const exists = users.some(u =>
-                                                (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
-                                                (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
-                                            );
-                                            if (exists) return false;
-                                            // Only show if has email and matches search
-                                            return e.email &&
-                                                (!bulkSearch ||
-                                                    e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
-                                                    e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
-                                                    e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
-                                                );
-                                        })
-                                        .map(e => (
-                                            <li key={e.id} className="flex items-center gap-2 py-2">
-                                                <Checkbox
-                                                    checked={bulkSelectedIds.includes(e.id)}
-                                                    onChange={ev => {
-                                                        const checked = (ev.target as HTMLInputElement).checked;
-                                                        if (checked) {
-                                                            setBulkSelectedIds(prev => [...prev, e.id]);
-                                                        } else {
-                                                            setBulkSelectedIds(prev => prev.filter(id => id !== e.id));
-                                                        }
-                                                    }}
-                                                    className="w-4.5 h-4.5"
-                                                />
-                                                <span className="flex-1 text-xs">
-                                                    <span className="font-semibold">{e.full_name}</span>
-                                                    <span className="ml-2 text-xs text-gray-500">({e.ramco_id})</span>
-                                                    <span className="ml-2 text-xs text-gray-500">{e.email}</span>
-                                                    <span className="ml-2 text-xs text-gray-500">{e.contact}</span>
-                                                </span>
-                                            </li>
-                                        ))}
-                                    {bulkEmployees.filter(e => {
-                                        if (e.employment_status === 'resigned') return false;
-                                        const exists = users.some(u =>
-                                            (u.username && u.username.toLowerCase() === String(e.ramco_id).toLowerCase()) ||
-                                            (u.email && u.email.toLowerCase() === String(e.email).toLowerCase())
-                                        );
-                                        if (exists) return false;
-                                        return e.email &&
-                                            (!bulkSearch ||
-                                                e.full_name.toLowerCase().includes(bulkSearch.toLowerCase()) ||
-                                                e.email.toLowerCase().includes(bulkSearch.toLowerCase()) ||
-                                                e.ramco_id.toLowerCase().includes(bulkSearch.toLowerCase())
-                                            );
-                                    }).length === 0 && (
-                                        <li className="text-gray-400 italic py-4 text-center">No employees found</li>
-                                    )}
-                                </ul>
-                            )}
-                        </div>
-                        <DialogFooter>
-                            <DialogClose>
-                                <Button variant="outline" onClick={() => setShowBulkInviteDialog(false)} className="mt-4">
-                                    Close
-                                </Button>
-                            </DialogClose>
-                            <Button
-                                type="button"
-                                className="mt-4"
-                                variant="default"
-                                disabled={inviteLoading || bulkSelectedIds.length === 0}
-                                onClick={handleBulkInvite}
-                            >
-                                {inviteLoading ? 'Inviting...' : `Invite Selected (${bulkSelectedIds.length})`}
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

@@ -282,6 +282,7 @@ const FleetCardList: React.FC = () => {
                 data={fleetCards}
                 pagination={false}
                 pageSize={10}
+                dataExport={true}
                 inputFilter={false}
                 onRowDoubleClick={handleOpenSidebar}
             />
