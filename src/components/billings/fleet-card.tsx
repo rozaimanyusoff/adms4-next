@@ -24,6 +24,10 @@ interface FleetCard {
     asset: {
         asset_id: number;
         serial_number: string;
+        costcenter?: {
+            id: number;
+            name: string;
+        };
     };
 }
 
@@ -37,16 +41,22 @@ interface IssuerOption {
     fuel_id: number;
     f_issuer: string;
 }
+// Add CostCenterOption interface
+interface CostCenterOption {
+    id: number;
+    name: string;
+}
 
 const FleetCardList: React.FC = () => {
     const [fleetCards, setFleetCards] = useState<FleetCard[]>([]);
     const [assets, setAssets] = useState<AssetOption[]>([]);
     const [issuers, setIssuers] = useState<IssuerOption[]>([]);
+    const [costcenters, setCostcenters] = useState<CostCenterOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [replaceField, setReplaceField] = useState<null | 'asset' | 'issuer'>(null);
+    const [replaceField, setReplaceField] = useState<null | 'asset' | 'issuer' | 'costcenter'>(null);
     const [optionSearch, setOptionSearch] = useState("");
 
     // Inline form state for ActionSidebar
@@ -58,6 +68,8 @@ const FleetCardList: React.FC = () => {
         fc_stat: 'Active',
         fc_regdate: '',
         fc_termdate: '',
+        costcenter_id: '',
+        costcenter_name: '',
     });
 
     // Add this state to track edit mode
@@ -83,6 +95,9 @@ const FleetCardList: React.FC = () => {
         // Fetch issuers for form select
         authenticatedApi.get<{ data: IssuerOption[] }>("/api/bills/fuel/issuer")
             .then(res => setIssuers(res.data.data || []));
+        // Fetch costcenters for form select
+        authenticatedApi.get<{ data: CostCenterOption[] }>("/api/assets/costcenters")
+            .then(res => setCostcenters(res.data.data || []));
     }, []);
 
     // Listen for asset selection from right panel
@@ -111,16 +126,22 @@ const FleetCardList: React.FC = () => {
             filter: 'input',
         },
         {
+            key: 'fuel',
+            header: 'Issuer',
+            render: (row: FleetCard) => row.fuel?.fuel_issuer,
+            filter: 'singleSelect',
+        },
+        {
             key: 'asset',
             header: 'Asset',
             render: (row: FleetCard) => row.asset?.serial_number,
             filter: 'input',
         },
         {
-            key: 'fuel',
-            header: 'Issuer',
-            render: (row: FleetCard) => row.fuel?.fuel_issuer,
-            filter: 'singleSelect',
+            key: 'costcenter',
+            header: 'Cost Center',
+            render: (row: FleetCard) => row.asset?.costcenter?.name || '',
+            filter: 'input',
         },
         {
             key: 'fc_pin',
@@ -194,6 +215,8 @@ const FleetCardList: React.FC = () => {
                             fc_stat: row.fc_stat || 'Active',
                             fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
                             fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
+                            costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
+                            costcenter_name: row.asset?.costcenter?.name || '',
                         });
                         setFormLoading(false); // Done loading
                     });
@@ -220,6 +243,8 @@ const FleetCardList: React.FC = () => {
                     fc_stat: row.fc_stat || 'Active',
                     fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
                     fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
+                    costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
+                    costcenter_name: row.asset?.costcenter?.name || '',
                 });
                 setFormLoading(false); // Done loading
             }
@@ -233,6 +258,8 @@ const FleetCardList: React.FC = () => {
                 fc_stat: 'Active',
                 fc_regdate: '',
                 fc_termdate: '',
+                costcenter_id: '',
+                costcenter_name: '',
             });
             setFormLoading(false); // Not loading for create
         }
@@ -266,6 +293,8 @@ const FleetCardList: React.FC = () => {
             fc_stat: form.fc_stat,
             fc_regdate: form.fc_regdate,
             fc_termdate: form.fc_termdate,
+            costcenter_id: form.costcenter_id,
+            // costcenter_name is excluded from payload
         };
         try {
             if (editingId) {
@@ -366,6 +395,27 @@ const FleetCardList: React.FC = () => {
                                 </div>
                             </div>
                             <div>
+                                <label className="block text-sm font-medium mb-1">Cost Center</label>
+                                <div className="flex gap-2 items-center relative">
+                                    <Input
+                                        value={form.costcenter_name}
+                                        readOnly
+                                        required
+                                        className="w-full pr-8"
+                                    />
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('costcenter')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace cost center</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </div>
+                            <div>
                                 <label className="block text-sm font-medium mb-1">Status</label>
                                 <Select value={form.fc_stat} onValueChange={v => setForm(f => ({ ...f, fc_stat: v }))} required>
                                     <SelectTrigger className="w-full">
@@ -397,9 +447,9 @@ const FleetCardList: React.FC = () => {
                         {/* End Inline Fleet Card Form */}
                         {replaceField && (
                             <div className="border-l px-4 mt-4 flex-1 min-w-[260px] max-w-md">
-                                <h3 className="font-semibold mb-2">Select a {replaceField === 'asset' ? 'asset' : 'issuer'}</h3>
+                                <h3 className="font-semibold mb-2">Select a {replaceField === 'asset' ? 'asset' : replaceField === 'issuer' ? 'issuer' : 'cost center'}</h3>
                                 <Input
-                                    placeholder={`Search ${replaceField === 'asset' ? 'asset' : 'issuer'}...`}
+                                    placeholder={`Search ${replaceField === 'asset' ? 'asset' : replaceField === 'issuer' ? 'issuer' : 'cost center'}...`}
                                     className="mb-3"
                                     value={optionSearch}
                                     onChange={e => setOptionSearch(e.target.value)}
@@ -409,6 +459,18 @@ const FleetCardList: React.FC = () => {
                                         <div key={a.asset_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                             <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { window.dispatchEvent(new CustomEvent('select-asset', { detail: a.asset_id })); setReplaceField(null); setOptionSearch(""); }}/>
                                                 <span className="flex-1 cursor-pointer">{a.serial_number}</span>
+                                        </div>
+                                    ))}
+                                    {replaceField === 'issuer' && issuers.filter(i => i.f_issuer.toLowerCase().includes(optionSearch.toLowerCase())).map(i => (
+                                        <div key={i.fuel_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                            <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm(f => ({ ...f, fuel_id: String(i.fuel_id) })); setReplaceField(null); setOptionSearch(""); }}/>
+                                            <span className="flex-1 cursor-pointer">{i.f_issuer}</span>
+                                        </div>
+                                    ))}
+                                    {replaceField === 'costcenter' && costcenters.filter(c => c.name.toLowerCase().includes(optionSearch.toLowerCase())).map(c => (
+                                        <div key={c.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                            <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm(f => ({ ...f, costcenter_id: String(c.id), costcenter_name: c.name })); setReplaceField(null); setOptionSearch(""); }}/>
+                                            <span className="flex-1 cursor-pointer">{c.name}</span>
                                         </div>
                                     ))}
                                 </div>
