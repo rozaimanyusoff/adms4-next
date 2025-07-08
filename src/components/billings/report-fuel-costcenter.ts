@@ -72,14 +72,14 @@ export async function generateFuelCostCenterReport({
     /* Dynamic Content */
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('FUEL BILLS - JUNE 2025', 15, 65);
+    doc.text('FUEL BILLS - JUNE 2025', 15, 62);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text('Kindly please make a payment to  as follows:', 15, 73);
+    doc.text('Kindly please make a payment to  as follows:', 15, 68);
 
     // Table
     autoTable(doc, {
-        startY: 80,
+        startY: 72,
         head: [[
             'No.',
             'Cost Center',
@@ -87,7 +87,7 @@ export async function generateFuelCostCenterReport({
         ]],
         body: rows.map(row => [row.no, row.costCenter, row.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })]),
         headStyles: { fillColor: [0, 0, 0] },
-        styles: { font: 'helvetica', fontSize: 9 },
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 }, // Reduced cell padding
         columnStyles: {
             0: { cellWidth: 20, halign: 'center' },
             1: { cellWidth: (pageWidth - 15 * 2) - 20 - 40 }, // dynamic width for cost center
@@ -131,35 +131,64 @@ export async function generateFuelCostCenterReport({
     doc.setLineWidth(0.5);
     doc.line(pageWidth - 85, lineY, pageWidth - 16, lineY);
 
-    y += 12;
+    y += 10;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.text('The payment shall be made before 10th.', 15, y);
-    y += 6;
+    y += 7;
     doc.text('Your cooperation on the above is highly appreciated', 15, y);
-    y += 8;
+    y += 10;
     doc.setFont('helvetica', 'bold');
     doc.text('Ranhill Technologies Sdn. Bhd.', 15, y);
 
-    y += 14;
+    y += 8;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text('Prepared by,', 15, y);
-    doc.text('Checked by,', pageWidth / 2 - 10, y);
-    doc.text('Approved by,', pageWidth - 50, y);
-    y += 18;
+    doc.text('Checked by,', pageWidth / 2 - 28, y);
+    doc.text('Approved by,', pageWidth - 73, y);
+    y += 15;
     doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
     doc.text('NUR AUFA FIRZANA BINTI SINANG', 15, y);
-    doc.text('MUHAMMAD ARIF BIN ABDUL JALIL', pageWidth / 2 - 10, y);
-    doc.text('KAMARIAH BINTI YUSOF', pageWidth - 50, y);
-    y += 6;
+    doc.text('MUHAMMAD ARIF BIN ABDUL JALIL', pageWidth / 2 - 28, y);
+    doc.text('KAMARIAH BINTI YUSOF', pageWidth -  73, y);
+    y += 5;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text('Admin Assistant', 15, y);
-    doc.text('Senior Executive Administration', pageWidth / 2 - 10, y);
-    doc.text('Head of Human Resources and Administration', pageWidth - 50, y);
-    y += 6;
+    doc.text('Senior Executive Administration', pageWidth / 2 - 28, y);
+    doc.text('Head of Human Resources and Administration', pageWidth -  73, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text('Date:', 15, y);
-    doc.text('Date:', pageWidth / 2 - 10, y);
-    doc.text('Date:', pageWidth - 50, y);
+    doc.text('Date:', pageWidth / 2 - 28, y);
+    doc.text('Date:', pageWidth -  73, y);
+
+    // Footer logo if available
+    const footerLogoUrl = process.env.NEXT_PUBLIC_REPORT_FOOTER_LOGO;
+    if (footerLogoUrl) {
+        try {
+            const response = await fetch(footerLogoUrl);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+            });
+            reader.readAsDataURL(blob);
+            const base64 = await base64Promise;
+            // Place the footer logo centered at the bottom (adjust y/height as needed)
+            const imgWidth = 215;
+            const imgHeight = 26;
+            const x = (pageWidth - imgWidth) / 2;
+            const pageHeight = doc.internal.pageSize.getHeight();
+            doc.addImage(base64, 'PNG', x, pageHeight - imgHeight - 3, imgWidth, imgHeight);
+        } catch (e) {
+            // If logo fails to load, continue without it
+        }
+    }
 
     // Optionally add footer, logo, etc.
 

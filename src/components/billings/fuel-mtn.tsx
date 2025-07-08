@@ -33,7 +33,8 @@ interface FuelBill {
 const FuelMtn = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-const [pdfDoc, setPdfDoc] = useState<any>(null); // To keep the doc for download
+  const [pdfDoc, setPdfDoc] = useState<any>(null); // To keep the doc for download
+  const [pdfStmtNo, setPdfStmtNo] = useState<string | null>(null); // To keep the stmt_no for download filename
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -106,9 +107,10 @@ const [pdfDoc, setPdfDoc] = useState<any>(null); // To keep the doc for download
       const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
       //doc.save(`Fuel-CostCenter-Report-${data.stmt_no}-${datetime}.pdf`);
       const pdfBlob = doc.output('blob');
-const pdfUrl = URL.createObjectURL(pdfBlob);
-setPdfPreviewUrl(pdfUrl);
-setPdfDoc(doc); // Save the doc for later download
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      setPdfPreviewUrl(pdfUrl);
+      setPdfDoc(doc); // Save the doc for later download
+      setPdfStmtNo(data.stmt_no || null); // Save stmt_no for filename
     } catch (err) {
       console.error('Failed to generate report:', err);
       alert('Failed to generate report.');
@@ -178,28 +180,28 @@ setPdfDoc(doc); // Save the doc for later download
         onRowDoubleClick={handleRowDoubleClick}
       />
       {pdfPreviewUrl && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-    <div className="bg-white rounded shadow-lg p-4 max-w-3xl w-full relative">
-      <button
-        className="absolute top-2 right-2 text-lg"
-        onClick={() => setPdfPreviewUrl(null)}
-      >✕</button>
-      <iframe src={pdfPreviewUrl} width="100%" height="600px" />
-      <div className="flex justify-end mt-2">
-        <Button onClick={() => { 
-          if (pdfDoc) {
-            const now = new Date();
-            const pad = (n: number) => n.toString().padStart(2, '0');
-            const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-            pdfDoc.save(`Fuel-CostCenter-Report-${data.stmt_no}-${datetime}.pdf`);
-          }
-        }}>
-          Download PDF
-        </Button>
-      </div>
-    </div>
-  </div>
-)}
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+          <div className="bg-white rounded shadow-lg p-4 max-w-3xl w-full relative">
+            <button
+              className="absolute top-2 right-2 text-lg"
+              onClick={() => setPdfPreviewUrl(null)}
+            >✕</button>
+            <iframe src={pdfPreviewUrl} width="100%" height="600px" />
+            <div className="flex justify-end mt-2">
+              <Button onClick={() => { 
+                if (pdfDoc) {
+                  const now = new Date();
+                  const pad = (n: number) => n.toString().padStart(2, '0');
+                  const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                  pdfDoc.save(`Fuel-CostCenter-Report-${pdfStmtNo || 'unknown'}-${datetime}.pdf`);
+                }
+              }}>
+                Download PDF
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
