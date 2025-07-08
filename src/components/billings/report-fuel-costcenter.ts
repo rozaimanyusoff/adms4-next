@@ -20,7 +20,7 @@ export interface FuelCostCenterReportProps {
     grandTotal: number;
 }
 
-export function generateFuelCostCenterReport({
+export async function generateFuelCostCenterReport({
     date,
     refNo,
     rows,
@@ -32,28 +32,49 @@ export function generateFuelCostCenterReport({
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    // Header
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.text('M E M O', pageWidth / 2, 20, { align: 'center' });
+    // Add logo if available
+    const logoUrl = process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT;
+    if (logoUrl) {
+        try {
+            // Fetch the image and convert to base64
+            const response = await fetch(logoUrl);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+            });
+            reader.readAsDataURL(blob);
+            const base64 = await base64Promise;
+            doc.addImage(base64, 'PNG', pageWidth - 32, 12, 16, 26); // right (lower number close to the right), top (lower number close to the top), width, height
+        } catch (e) {
+            // If logo fails to load, continue without it
+        }
+    }
 
-    doc.setFontSize(11);
+    // Header - Fixed Content
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('M E M O', pageWidth / 15, 20, { align: 'left' }); // right (lower number close to the right), top (lower number close to the top)
+
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Our Ref : ${refNo}`, 15, 32);
-    doc.text(`Date : ${date}`, pageWidth - 15, 32, { align: 'right' });
+    doc.text(`Date : ${date}`, pageWidth - 65, 32, { align: 'right' });
 
     doc.text('To      : Head of Finance', 15, 40);
-    doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 15, 40, { align: 'right' });
+    doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 40, { align: 'left' });
     doc.text('Copy  :', 15, 46);
-    doc.text('Of      :', pageWidth - 15, 46, { align: 'right' });
+    doc.text('Of      :', pageWidth - 95, 46, { align: 'left' });
     doc.text('From  : Human Resource & Administration', 15, 52);
-    doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 15, 52, { align: 'right' });
+    doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 52, { align: 'left' });
 
+    /* Dynamic Content */
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
+    doc.setFontSize(11);
     doc.text('FUEL BILLS - JUNE 2025', 15, 65);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
+    doc.setFontSize(9);
     doc.text('Kindly please make a payment to  as follows:', 15, 73);
 
     // Table
@@ -66,40 +87,53 @@ export function generateFuelCostCenterReport({
         ]],
         body: rows.map(row => [row.no, row.costCenter, row.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })]),
         headStyles: { fillColor: [0, 0, 0] },
-        styles: { font: 'helvetica', fontSize: 11 },
+        styles: { font: 'helvetica', fontSize: 9 },
         columnStyles: {
             0: { cellWidth: 20, halign: 'center' },
-            1: { cellWidth: 80 },
+            1: { cellWidth: (pageWidth - 15 * 2) - 20 - 40 }, // dynamic width for cost center
             2: { cellWidth: 40, halign: 'right' },
         },
         margin: { left: 15, right: 15 },
-        tableWidth: 'auto', // Let autoTable fit the table to the available width
+        tableWidth: 'wrap', // Use wrap to respect column widths and fit to page
         theme: 'grid',
     });
 
     let y = (doc as any).lastAutoTable.finalY + 4;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Sub-Total:`, pageWidth - 60, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(subTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 15, y, { align: 'right' });
+    doc.setFontSize(9);
+    doc.text(`Sub-Total:`, pageWidth - 85, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(subTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 16, y, { align: 'right' });
     y += 6;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Inv. Rounding:`, pageWidth - 60, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(rounding.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 15, y, { align: 'right' });
+    doc.setFontSize(9);
+    doc.text(`Inv. Rounding:`, pageWidth - 85, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(rounding.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 16, y, { align: 'right' });
     y += 6;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Adjustment/Rebate:`, pageWidth - 60, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(discount.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 15, y, { align: 'right' });
+    doc.setFontSize(9);
+    doc.text(`Adjustment/Rebate:`, pageWidth - 85, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(discount.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 16, y, { align: 'right' });
     y += 6;
     doc.setFont('helvetica', 'bold');
-    doc.text(`Grand-Total:`, pageWidth - 60, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 15, y, { align: 'right' });
+    doc.setFontSize(9);
+    doc.text(`Grand-Total:`, pageWidth - 85, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }), pageWidth - 16, y, { align: 'right' });
+    // Draw a line below the Grand-Total
+    const lineY = y + 2;
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth - 85, lineY, pageWidth - 16, lineY);
 
     y += 12;
     doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     doc.text('The payment shall be made before 10th.', 15, y);
     y += 6;
     doc.text('Your cooperation on the above is highly appreciated', 15, y);
