@@ -50,14 +50,17 @@ const VehicleMtnReport = () => {
           const res = await authenticatedApi.get(`/api/bills/fuel/filter?from=${startDate}&to=${endDate}`);
           const json = res.data as ApiResponse;
           if (json.status === 'success' && Array.isArray(json.data)) {
-            const allDetails = json.data.flatMap((item: Item) =>
+            const allDetails = json.data.flatMap((item: any) =>
               (item.details || []).map((detail: any, idx: number) => ({
                 No: idx + 1,
-                stmt_id: (item as any).stmt_id || '',
+                stmt_id: item.stmt_id || '',
+                stmt_no: item.stmt_no || '',
+                fleetcard_no: detail.fleetcard?.fc_no || '',
+                fleetcard_issuer: detail.fleetcard?.issuer || '',
                 register_number: detail.asset?.register_number || '',
                 costcenter: detail.costcenter?.name || '',
                 district: detail.district?.code || '',
-                amount: detail.amount || '',
+                amount: detail.amount !== undefined && detail.amount !== null ? Number(detail.amount) : 0,
                 stmt_date: item.stmt_date
               }))
             );
@@ -70,9 +73,9 @@ const VehicleMtnReport = () => {
             const date = new Date(allDetails[0].stmt_date);
             const title = `Fuel Consumption Report: ${date.toLocaleString('default', { month: 'long', year: 'numeric' })}`;
             // Calculate summary values from all parent items
-            const subtotal = json.data.reduce((sum, item: any) => sum + (parseFloat(item.stmt_stotal) || 0), 0);
-            const discount = json.data.reduce((sum, item: any) => sum + (parseFloat(item.stmt_disc) || 0), 0);
-            const billingTotal = json.data.reduce((sum, item: any) => sum + (parseFloat(item.stmt_total) || 0), 0);
+            const subtotal = json.data.reduce((sum: any, item: any) => sum + (parseFloat(item.stmt_stotal) || 0), 0);
+            const discount = json.data.reduce((sum: any, item: any) => sum + (parseFloat(item.stmt_disc) || 0), 0);
+            const billingTotal = json.data.reduce((sum: any, item: any) => sum + (parseFloat(item.stmt_total) || 0), 0);
             // Create workbook and worksheet
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Report');
@@ -82,14 +85,24 @@ const VehicleMtnReport = () => {
             worksheet.addRow([`Discount: ${discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
             worksheet.addRow([`Billing Total: ${billingTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]);
             worksheet.addRow([]); // Empty row
-            worksheet.addRow(['No', 'Statement No', 'Register Number', 'Costcenter', 'District', 'Amount']);
+            worksheet.addRow(['No', 'Statement ID', 'Statement No', 'Fleet Card No', 'Fleet Card Issuer', 'Register Number', 'Costcenter', 'District', 'Amount']);
             const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number : 6;
-            allDetails.forEach((row: { No: number; stmt_id: string | number; register_number: string; costcenter: string; district: string; amount: string }) => {
-              worksheet.addRow([row.No, row.stmt_id, row.register_number, row.costcenter, row.district, row.amount]);
+            allDetails.forEach((row: any) => {
+              worksheet.addRow([
+                row.No,
+                row.stmt_id,
+                row.stmt_no,
+                row.fleetcard_no,
+                row.fleetcard_issuer,
+                row.register_number,
+                row.costcenter,
+                row.district,
+                row.amount
+              ]);
             });
             // Calculate total
-            const totalAmount = allDetails.reduce((sum, row) => sum + (parseFloat(row.amount) || 0), 0);
-            worksheet.addRow(['', '', '', '', 'Total', totalAmount.toFixed(2)]);
+            const totalAmount = allDetails.reduce((sum: number, row: any) => sum + (parseFloat(row.amount) || 0), 0);
+            worksheet.addRow(['', '', '', '', '', '', '', 'Total', totalAmount.toFixed(2)]);
             // Add borders to table (header, data, total)
             const tableEndRow = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
             for (let rowNum = tableStartRow; rowNum <= tableEndRow; rowNum++) {
@@ -565,7 +578,7 @@ const VehicleMtnReport = () => {
               worksheet.lastRow.font = { bold: true };
             }
             // Set number format for Amount column
-            const amountColIdx = 11;
+            const amountColIdx = 9;
             for (let rowNum = tableStartRow + 1; rowNum <= tableEndRow; rowNum++) {
               const cell = worksheet.getRow(rowNum).getCell(amountColIdx);
               cell.numFmt = '#,##0.00';
