@@ -11,16 +11,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 
 interface FleetCard {
-    fc_id: number;
+    id: number;
     fuel: {
         fuel_id: number;
         fuel_issuer: string;
     };
-    fc_no: string;
-    fc_regdate: string;
-    fc_pin: string;
-    fc_stat: string;
-    fc_termdate: string;
+    card_no: string;
+    register_date: string | null;
+    category: string;
+    remarks: string | null;
+    pin_no: string | null;
+    status: string;
+    expiry: string | null;
     asset: {
         asset_id: number;
         serial_number: string;
@@ -70,6 +72,8 @@ const FleetCardList: React.FC = () => {
         fc_termdate: '',
         costcenter_id: '',
         costcenter_name: '',
+        category: 'personal',
+        remarks: '',
     });
 
     // Add this state to track edit mode
@@ -115,13 +119,13 @@ const FleetCardList: React.FC = () => {
         {
             key: "__row" as any,
             header: '#',
-            render: (row: FleetCard) => fleetCards.findIndex(fc => fc.fc_id === row.fc_id) + 1,
+            render: (row: FleetCard) => fleetCards.findIndex(fc => fc.id === row.id) + 1,
             sortable: false,
             filter: undefined,
             width: 50
         },
         {
-            key: 'fc_no',
+            key: 'card_no',
             header: 'Card No',
             filter: 'input',
         },
@@ -144,33 +148,39 @@ const FleetCardList: React.FC = () => {
             filter: 'input',
         },
         {
-            key: 'fc_pin',
+            key: 'pin_no',
             header: 'PIN',
-            render: (row: FleetCard) => row.fc_pin,
+            render: (row: FleetCard) => row.pin_no,
         },
         {
-            key: 'fc_stat',
+            key: 'status',
             header: 'Status',
-            render: (row: FleetCard) => row.fc_stat,
+            render: (row: FleetCard) => row.status,
             filter: 'singleSelect',
         },
         {
-            key: 'fc_regdate',
+            key: 'register_date',
             header: 'Registration Date',
             render: (row: FleetCard) => {
-                if (!row.fc_regdate) return '';
-                const d = new Date(row.fc_regdate);
+                if (!row.register_date) return '';
+                const d = new Date(row.register_date);
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             },
         },
         {
-            key: 'fc_termdate',
+            key: 'expiry',
             header: 'Expiry Date',
             render: (row: FleetCard) => {
-                if (!row.fc_termdate) return '';
-                const d = new Date(row.fc_termdate);
+                if (!row.expiry) return '';
+                const d = new Date(row.expiry);
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             },
+        },
+        {
+            key: 'category',
+            header: 'Category',
+            render: (row: FleetCard) => row.category,
+            filter: 'singleSelect',
         },
     ]) as any;
 
@@ -179,7 +189,7 @@ const FleetCardList: React.FC = () => {
         setReplaceField(null);
         setOptionSearch("");
         if (row) {
-            setEditingId(row.fc_id);
+            setEditingId(row.id);
             setFormLoading(true); // Start loading
             // If assets not loaded, fetch first then set form
             if (assets.length === 0) {
@@ -208,15 +218,17 @@ const FleetCardList: React.FC = () => {
                         }
                         setAssets(filtered);
                         setForm({
-                            fc_no: row.fc_no || '',
+                            fc_no: row.card_no || '',
                             asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                             fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
-                            fc_pin: row.fc_pin || '',
-                            fc_stat: row.fc_stat || 'Active',
-                            fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
-                            fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
+                            fc_pin: row.pin_no || '',
+                            fc_stat: row.status || 'Active',
+                            fc_regdate: row.register_date ? row.register_date.slice(0, 10) : '',
+                            fc_termdate: row.expiry ? row.expiry.slice(0, 10) : '',
                             costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
                             costcenter_name: row.asset?.costcenter?.name || '',
+                            category: row.category || 'personal',
+                            remarks: row.remarks || '',
                         });
                         setFormLoading(false); // Done loading
                     });
@@ -236,15 +248,17 @@ const FleetCardList: React.FC = () => {
                     setAssets(filtered);
                 }
                 setForm({
-                    fc_no: row.fc_no || '',
+                    fc_no: row.card_no || '',
                     asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                     fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
-                    fc_pin: row.fc_pin || '',
-                    fc_stat: row.fc_stat || 'Active',
-                    fc_regdate: row.fc_regdate ? row.fc_regdate.slice(0, 10) : '',
-                    fc_termdate: row.fc_termdate ? row.fc_termdate.slice(0, 10) : '',
+                    fc_pin: row.pin_no || '',
+                    fc_stat: row.status || 'Active',
+                    fc_regdate: row.register_date ? row.register_date.slice(0, 10) : '',
+                    fc_termdate: row.expiry ? row.expiry.slice(0, 10) : '',
                     costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
                     costcenter_name: row.asset?.costcenter?.name || '',
+                    category: row.category || 'personal',
+                    remarks: row.remarks || '',
                 });
                 setFormLoading(false); // Done loading
             }
@@ -260,6 +274,8 @@ const FleetCardList: React.FC = () => {
                 fc_termdate: '',
                 costcenter_id: '',
                 costcenter_name: '',
+                category: 'personal',
+                remarks: '',
             });
             setFormLoading(false); // Not loading for create
         }
@@ -294,6 +310,8 @@ const FleetCardList: React.FC = () => {
             fc_regdate: form.fc_regdate,
             fc_termdate: form.fc_termdate,
             costcenter_id: form.costcenter_id,
+            category: form.category,
+            remarks: form.remarks,
             // costcenter_name is excluded from payload
         };
         try {
@@ -426,6 +444,28 @@ const FleetCardList: React.FC = () => {
                                         <SelectItem value="Inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Category</label>
+                                <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))} required>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Category" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="personal">Personal</SelectItem>
+                                        <SelectItem value="project">Project</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Remarks</label>
+                                <textarea
+                                    className="w-full border rounded px-3 py-2 text-sm"
+                                    rows={2}
+                                    value={form.remarks}
+                                    onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+                                    placeholder="Enter remarks (optional)"
+                                />
                             </div>
                             <div className="flex gap-2">
                                 <div className="flex-1">
