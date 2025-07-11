@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import FuelMtnDetail from "@components/billings/fuel-mtn-detail";
+import FuelMtnDetail from "@components/billings/fuel-bill-form";
 import { useSearchParams } from "next/navigation";
 
 export default function FuelMtnBlankPage() {

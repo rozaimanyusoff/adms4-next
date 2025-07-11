@@ -30,7 +30,7 @@ interface FuelBill {
   issuer?: string;
 }
 
-const FuelMtn = () => {
+const FuelBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null); // To keep the doc for download
@@ -206,7 +206,7 @@ const FuelMtn = () => {
   );
 };
 
-export default FuelMtn;
+export default FuelBill;
 
 
 /* 
