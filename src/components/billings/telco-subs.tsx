@@ -263,7 +263,7 @@ const TelcoSubs = () => {
         { key: 'account', header: 'Account Master', filter: 'singleSelect', render: (row: Subscriber) => row.account?.account_master ?? '—' },
         { key: 'costcenter', header: 'Cost Center', filter: 'singleSelect', render: (row: Subscriber) => row.costcenter?.name ?? '—' },
         { key: 'department', header: 'Department', filter: 'singleSelect', render: (row: Subscriber) => row.department?.name ?? '—' },
-        { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.name ?? '—' },
+        { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.full_name ?? '—' },
         // Asset columns with unique keys
         { key: 'asset_sn' as any, header: 'Asset S/N', render: (row: Subscriber) => row.asset?.register_number ?? '—' },
         { key: 'asset_brand' as any, header: 'Asset Brand', render: (row: Subscriber) => row.asset?.specs?.brands?.name ?? '—' },
