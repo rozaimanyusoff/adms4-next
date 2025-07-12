@@ -17,7 +17,7 @@ interface FleetCard {
         fuel_issuer: string;
     };
     card_no: string;
-    register_date: string | null;
+    reg_date: string | null;
     category: string;
     remarks: string | null;
     pin_no: string | null;
@@ -25,7 +25,8 @@ interface FleetCard {
     expiry: string | null;
     asset: {
         asset_id: number;
-        serial_number: string;
+        register_number: string;
+        fuel_type: string;
         costcenter?: {
             id: number;
             name: string;
@@ -35,7 +36,7 @@ interface FleetCard {
 
 interface AssetOption {
     asset_id: number;
-    serial_number: string;
+    register_number: string;
     type_id?: number;
     status?: string;
 }
@@ -66,6 +67,7 @@ const FleetCardList: React.FC = () => {
         card_no: '',
         asset_id: '',
         fuel_id: '',
+        fuel_type: '',
         pin: '',
         status: 'Active',
         reg_date: '',
@@ -138,8 +140,15 @@ const FleetCardList: React.FC = () => {
         {
             key: 'asset',
             header: 'Asset',
-            render: (row: FleetCard) => row.asset?.serial_number,
+            render: (row: FleetCard) => row.asset?.register_number,
             filter: 'input',
+        },
+        {
+            key: 'fuel_type',
+            header: 'Fuel Type',
+            render: (row: FleetCard) => row.asset?.fuel_type || '',
+            filter: 'singleSelect',
+            colClass: 'capitalize'
         },
         {
             key: 'costcenter',
@@ -157,13 +166,14 @@ const FleetCardList: React.FC = () => {
             header: 'Status',
             render: (row: FleetCard) => row.status,
             filter: 'singleSelect',
+            colClass: 'capitalize'
         },
         {
-            key: 'register_date',
+            key: 'reg_date',
             header: 'Registration Date',
             render: (row: FleetCard) => {
-                if (!row.register_date) return '';
-                const d = new Date(row.register_date);
+                if (!row.reg_date) return '';
+                const d = new Date(row.reg_date);
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             },
         },
@@ -179,7 +189,18 @@ const FleetCardList: React.FC = () => {
         {
             key: 'category',
             header: 'Category',
-            render: (row: FleetCard) => row.category,
+            render: (row: FleetCard) => {
+                switch ((row.category || '').toLowerCase()) {
+                    case 'staffcost':
+                        return 'Staff Cost';
+                    case 'project':
+                        return 'Project';
+                    case 'poolcar':
+                        return 'Pool Car';
+                    default:
+                        return row.category;
+                }
+            },
             filter: 'singleSelect',
         },
     ]) as any;
@@ -192,15 +213,16 @@ const FleetCardList: React.FC = () => {
             setEditingId(row.id);
             setFormLoading(true); // Start loading
             // If assets not loaded, fetch first then set form
+            const fuelTypeValue = row.asset?.fuel_type ? row.asset.fuel_type.toLowerCase() : '';
             if (assets.length === 0) {
-                authenticatedApi.get<{ data: any[] }>("/api/assets")
+                authenticatedApi.get<{ data: any[] }>("/api/assets?type=2&status=active")
                     .then(res => {
                         const assetsRaw = res.data.data || [];
                         let filtered = assetsRaw
                             .filter(a => String(a.types?.type_id) === '2' && String(a.status).toLowerCase() === 'active')
                             .map(a => ({
                                 asset_id: a.id,
-                                serial_number: a.serial_number,
+                                register_number: a.register_number,
                                 type_id: a.types?.type_id,
                                 status: a.status
                             }));
@@ -210,7 +232,7 @@ const FleetCardList: React.FC = () => {
                                 ...filtered,
                                 {
                                     asset_id: row.asset.asset_id,
-                                    serial_number: row.asset.serial_number,
+                                    register_number: row.asset.register_number,
                                     type_id: undefined,
                                     status: undefined
                                 }
@@ -221,9 +243,10 @@ const FleetCardList: React.FC = () => {
                             card_no: row.card_no || '',
                             asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                             fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
+                            fuel_type: fuelTypeValue,
                             pin: row.pin_no || '',
                             status: row.status || 'Active',
-                            reg_date: row.register_date ? row.register_date.slice(0, 10) : '',
+                            reg_date: row.reg_date ? row.reg_date.slice(0, 10) : '',
                             expiry_date: row.expiry ? row.expiry.slice(0, 10) : '',
                             costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
                             costcenter_name: row.asset?.costcenter?.name || '', // Added for display
@@ -240,7 +263,7 @@ const FleetCardList: React.FC = () => {
                         ...filtered,
                         {
                             asset_id: row.asset.asset_id,
-                            serial_number: row.asset.serial_number,
+                            register_number: row.asset.register_number,
                             type_id: undefined,
                             status: undefined
                         }
@@ -251,9 +274,10 @@ const FleetCardList: React.FC = () => {
                     card_no: row.card_no || '',
                     asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                     fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
+                    fuel_type: fuelTypeValue,
                     pin: row.pin_no || '',
                     status: row.status || 'Active',
-                    reg_date: row.register_date ? row.register_date.slice(0, 10) : '',
+                    reg_date: row.reg_date ? row.reg_date.slice(0, 10) : '',
                     expiry_date: row.expiry ? row.expiry.slice(0, 10) : '',
                     costcenter_id: row.asset?.costcenter?.id ? String(row.asset.costcenter.id) : '',
                     costcenter_name: row.asset?.costcenter?.name || '', // Added for display
@@ -268,6 +292,7 @@ const FleetCardList: React.FC = () => {
                 card_no: '',
                 asset_id: '',
                 fuel_id: '',
+                fuel_type: '',
                 pin: '',
                 status: 'Active',
                 reg_date: '',
@@ -283,14 +308,14 @@ const FleetCardList: React.FC = () => {
 
     // Move fetchAssets to top-level so it can be passed to FleetCardForm
     const fetchAssets = () => {
-        authenticatedApi.get<{ data: any[] }>("/api/assets")
+        authenticatedApi.get<{ data: any[] }>("/api/assets?type=2&status=active")
             .then(res => {
                 const assetsRaw = res.data.data || [];
                 const filtered = assetsRaw
                     .filter(a => String(a.types?.type_id) === '2' && String(a.status).toLowerCase() === 'active')
                     .map(a => ({
                         asset_id: a.id,
-                        serial_number: a.serial_number,
+                        register_number: a.register_number,
                         type_id: a.types?.type_id,
                         status: a.status
                     }));
@@ -301,11 +326,18 @@ const FleetCardList: React.FC = () => {
     // Add submit handler for create/update
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        // Get fuel_type from selected asset
+        let fuel_type = '';
+        if (form.asset_id) {
+            const asset = assets.find(a => a.asset_id === Number(form.asset_id));
+            fuel_type = asset && 'fuel_type' in asset ? (asset as any).fuel_type || '' : '';
+        }
         const payload = {
             card_no: form.card_no,
             pin: form.pin,
             fuel_id: form.fuel_id,
             asset_id: form.asset_id,
+            fuel_type: form.fuel_type || fuel_type, // Use form value or fetched asset type
             status: form.status,
             reg_date: form.reg_date,
             expiry_date: form.expiry_date,
@@ -359,7 +391,7 @@ const FleetCardList: React.FC = () => {
                 <ActionSidebar
                     onClose={() => { setReplaceField(null); setSidebarOpen(false); }}
                     title="Add/Edit Fleet Card"
-                    size={replaceField ? 'lg' : 'sm'}
+                    size={replaceField ? 'md' : 'sm'}
                     content={
                         <div className={replaceField ? 'flex flex-row gap-6' : undefined}>
                             {/* Inline Fleet Card Form */}
@@ -393,7 +425,7 @@ const FleetCardList: React.FC = () => {
                                         <Input
                                             value={
                                                 form.asset_id
-                                                    ? assets.find(a => a.asset_id === Number(form.asset_id))?.serial_number || form.asset_id
+                                                    ? assets.find(a => a.asset_id === Number(form.asset_id))?.register_number || form.asset_id
                                                     : ""
                                             }
                                             readOnly
@@ -411,6 +443,22 @@ const FleetCardList: React.FC = () => {
                                             </Tooltip>
                                         </TooltipProvider>
                                     </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Fuel Type</label>
+                                    <Select
+                                        value={form.fuel_type || ''}
+                                        onValueChange={v => setForm(f => ({ ...f, fuel_type: v }))}
+                                        required
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select Fuel Type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="petrol">Petrol</SelectItem>
+                                            <SelectItem value="diesel">Diesel</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Cost Center</label>
@@ -440,8 +488,8 @@ const FleetCardList: React.FC = () => {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="Active">Active</SelectItem>
-                                            <SelectItem value="Inactive">Inactive</SelectItem>
+                                            <SelectItem value="active">Active</SelectItem>
+                                            <SelectItem value="inactive">Inactive</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -454,6 +502,7 @@ const FleetCardList: React.FC = () => {
                                         <SelectContent>
                                             <SelectItem value="staffcost">Staff Cost</SelectItem>
                                             <SelectItem value="project">Project</SelectItem>
+                                            <SelectItem value="poolcar">Pool Car</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -494,11 +543,11 @@ const FleetCardList: React.FC = () => {
                                         value={optionSearch}
                                         onChange={e => setOptionSearch(e.target.value)}
                                     />
-                                    <div className="max-h-96 overflow-y-auto space-y-2">
-                                        {replaceField === 'asset' && assets.filter(a => a.serial_number.toLowerCase().includes(optionSearch.toLowerCase())).map(a => (
+                                    <div className="max-h-[500px] overflow-y-auto space-y-2">
+                                        {replaceField === 'asset' && assets.filter(a => a.register_number.toLowerCase().includes(optionSearch.toLowerCase())).map(a => (
                                             <div key={a.asset_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                                 <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { window.dispatchEvent(new CustomEvent('select-asset', { detail: a.asset_id })); setReplaceField(null); setOptionSearch(""); }} />
-                                                <span className="flex-1 cursor-pointer">{a.serial_number}</span>
+                                                <span className="flex-1 cursor-pointer">{a.register_number}</span>
                                             </div>
                                         ))}
                                         {replaceField === 'issuer' && issuers.filter(i => i.f_issuer.toLowerCase().includes(optionSearch.toLowerCase())).map(i => (

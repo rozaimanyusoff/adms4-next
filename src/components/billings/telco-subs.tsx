@@ -30,7 +30,9 @@ interface Department {
 
 interface User {
     ramco_id: string;
+    full_name: string;
     name: string;
+    contact: string;
 }
 
 interface Brand {
@@ -48,7 +50,7 @@ interface Asset {
     classification: string;
     asset_code: string | null;
     finance_tag: string | null;
-    serial_number: string;
+    register_number: string;
     dop: string;
     year: string;
     unit_price: number | null;
@@ -77,7 +79,7 @@ interface Asset {
         model_id: number | null;
         entry_code: string;
         asset_code: string | null;
-        serial_number: string;
+        register_number: string;
         chassis_no: string;
         engine_no: string;
         transmission: string;
@@ -139,6 +141,7 @@ const TelcoSubs = () => {
     const [editId, setEditId] = useState<number | null>(null);
     const [accountsOpt, setAccountsOpt] = useState<Account[]>([]);
     const [assetsOpt, setAssetsOpt] = useState<Asset[]>([]);
+    const [userOpt, setUserOpt] = useState<any[]>([]);
     const [replaceField, setReplaceField] = useState<null | 'simcard' | 'costcenter' | 'department' | 'user' | 'asset'>(null);
     const [optionSearch, setOptionSearch] = useState("");
 
@@ -170,15 +173,29 @@ const TelcoSubs = () => {
             }
         };
         fetchAccounts();
+
+        // Fetch user options for replacement
+        const fetchUsers = async () => {
+            try {
+                const res = await authenticatedApi.get("/api/assets/employees?status=active");
+                const response = res.data as { status: string; message: string; data: any[] };
+                if (response?.status === "success") {
+                    setUserOpt(response.data);
+                }
+            } catch (e) {
+                // handle error
+            }
+        };
+        fetchUsers();
     }, []);
 
     useEffect(() => {
         const fetchAssets = async () => {
             try {
-                const res = await authenticatedApi.get("/api/assets");
+                const res = await authenticatedApi.get("/api/assets?type=1&status=active");
                 const response = res.data as { status: string; message: string; data: Asset[] };
                 if (response?.status === "success") {
-                    setAssetsOpt(response.data.filter(a => a.types?.type_id === 2 && a.status === "active"));
+                    setAssetsOpt(response.data.filter(a => a.status === "active"));
                 }
             } catch (e) {
                 // handle error
@@ -247,10 +264,10 @@ const TelcoSubs = () => {
         { key: 'costcenter', header: 'Cost Center', filter: 'singleSelect', render: (row: Subscriber) => row.costcenter?.name ?? '—' },
         { key: 'department', header: 'Department', filter: 'singleSelect', render: (row: Subscriber) => row.department?.name ?? '—' },
         { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.name ?? '—' },
-        // Asset columns
-        { key: 'asset' as keyof Subscriber, header: 'Asset S/N', render: (row: Subscriber) => row.asset?.serial_number ?? '—' },
-        { key: 'asset' as keyof Subscriber, header: 'Asset Brand', render: (row: Subscriber) => row.asset?.specs?.brands?.name ?? '—' },
-        { key: 'asset' as keyof Subscriber, header: 'Asset Model', render: (row: Subscriber) => row.asset?.specs?.models?.name ?? '—' },
+        // Asset columns with unique keys
+        { key: 'asset_sn' as any, header: 'Asset S/N', render: (row: Subscriber) => row.asset?.register_number ?? '—' },
+        { key: 'asset_brand' as any, header: 'Asset Brand', render: (row: Subscriber) => row.asset?.specs?.brands?.name ?? '—' },
+        { key: 'asset_model' as any, header: 'Asset Model', render: (row: Subscriber) => row.asset?.specs?.models?.name ?? '—' },
     ];
 
     const rowClass = (row: Subscriber) => {
@@ -326,7 +343,7 @@ const TelcoSubs = () => {
                 asset_id: form.asset_id ? form.asset_id : undefined // <-- include asset_id in payload
             };
             if (editId) {
-                await authenticatedApi.put(`/api/telco/subs/${editId}`, submitData);
+                await authenticatedApi.put(`/api/telco/subss/${editId}`, submitData);
             } else {
                 await authenticatedApi.post("/api/telco/subs", submitData);
             }
@@ -357,7 +374,7 @@ const TelcoSubs = () => {
             {open && (
                 <ActionSidebar
                     onClose={() => { setReplaceField(null); handleClose(); }}
-                    size={replaceField ? 'lg' : 'sm'}
+                    size={replaceField ? 'md' : 'sm'}
                     title={editId ? "Edit Subscriber" : "Add Subscriber"}
                     content={
                         <div className={replaceField ? "flex flex-row gap-6" : undefined}>
@@ -477,7 +494,7 @@ const TelcoSubs = () => {
                                             className="pr-8 group-focus-within:ring-2"
                                             value={
                                                 form.user
-                                                    ? subscribers.find(s => s.user?.ramco_id === form.user)?.user?.name || form.user
+                                                    ? (userOpt.find(u => u.ramco_id === form.user)?.full_name || "")
                                                     : ""
                                             }
                                             readOnly
@@ -503,7 +520,7 @@ const TelcoSubs = () => {
                                             className="pr-8 group-focus-within:ring-2"
                                             value={
                                                 form.asset_id && assetsOpt.length > 0
-                                                    ? (assetsOpt.find(a => a.id === Number(form.asset_id))?.serial_number || "")
+                                                    ? (assetsOpt.find(a => a.id === Number(form.asset_id))?.register_number || "")
                                                     : ""
                                             }
                                             readOnly
@@ -535,7 +552,7 @@ const TelcoSubs = () => {
                                         value={optionSearch}
                                         onChange={e => setOptionSearch(e.target.value)}
                                     />
-                                    <div className="max-h-96 overflow-y-auto space-y-2">
+                                    <div className="max-h-[500px] overflow-y-auto space-y-2">
                                         {replaceField === 'simcard' && Array.from(new Map(subscribers.filter(s => s.simcard).map(s => [s.simcard.id, s.simcard])).values())
                                             .filter(sim => sim.sim_sn.toLowerCase().includes(optionSearch.toLowerCase()))
                                             .map(sim => (
@@ -560,20 +577,30 @@ const TelcoSubs = () => {
                                                     <span onClick={() => { setForm({ ...form, department: dep.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{dep.name}</span>
                                                 </div>
                                             ))}
-                                        {replaceField === 'user' && Array.from(new Map(subscribers.filter(s => s.user).map(s => [s.user.ramco_id, s.user])).values())
-                                            .filter(user => user.name.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        {replaceField === 'user' && userOpt
+                                            .filter(user => user.full_name?.toLowerCase().includes(optionSearch.toLowerCase()))
                                             .map(user => (
                                                 <div key={user.ramco_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                                     <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{user.name}</span>
+                                                    <span onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">{user.full_name}
+                                                        <span className="text-gray-700 text-xs">Ramco ID: {user.ramco_id}</span>
+                                                        <span className="text-gray-700 text-xs">Contact: {user.contact}</span>
+                                                        <span className="text-gray-700 text-xs">Email: {user.email}</span>
+                                                        <span className="text-gray-700 text-xs">Department: {user.department?.name}</span>
+                                                        <span className="text-gray-700 text-xs">Position: {user.position?.name}</span>
+                                                    </span>
                                                 </div>
                                             ))}
                                         {replaceField === 'asset' && assetsOpt
-                                            .filter(asset => asset.serial_number.toLowerCase().includes(optionSearch.toLowerCase()))
+                                            .filter(asset => asset.register_number?.toLowerCase().includes(optionSearch.toLowerCase()))
                                             .map(asset => (
                                                 <div key={asset.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                                     <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{asset.serial_number} - {asset.specs.brands?.name || ''} {asset.specs.models?.name || ''}</span>
+                                                    <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">
+                                                        <span className="text-black">{asset.register_number}</span>
+                                                        <span className="text-gray-700 text-xs">Brand: <span className="uppercase ">{asset.specs && asset.specs.brands ? ` ${asset.specs.brands.name}` : ''}</span></span>
+                                                        <span className="text-gray-700 text-xs">Model: <span className="uppercase text-xs">{asset.specs && asset.specs.models ? ` ${asset.specs.models.name}` : ''}</span></span>
+                                                    </span>
                                                 </div>
                                             ))}
                                     </div>

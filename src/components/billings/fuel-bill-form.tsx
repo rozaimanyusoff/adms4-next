@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 interface Asset {
     asset_id: number;
     register_number: string;
+    fuel_type: string;
     costcenter?: CostCenter | null;
     district?: District | null;
 }
@@ -29,7 +30,7 @@ interface FuelDetail {
     s_id: number;
     stmt_id: number;
     asset: Asset;
-    fc_no?: string;
+    card_no?: string;
     stmt_date: string;
     start_odo: number;
     end_odo: number;
@@ -80,6 +81,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         stmt_rounding: '',
         stmt_total: '',
     });
+
+    // Auto-calculate subtotal and total from details and discount
+    useEffect(() => {
+        const sumAmount = editableDetails.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+        const discount = parseFloat(summary.stmt_disc) || 0;
+        setSummary(prev => ({
+            ...prev,
+            stmt_stotal: sumAmount.toFixed(2),
+            stmt_total: (sumAmount - discount).toFixed(2),
+        }));
+    }, [editableDetails, summary.stmt_disc]);
 
     // State for issuer select
     const [issuers, setIssuers] = useState<{ fuel_id: number; f_issuer: string; f_imgpath: string; image2: string }[]>([]);
@@ -206,11 +218,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     stmt_id: item.stmt_id || 0,
                     asset: {
                         asset_id: item.asset?.asset_id || item.asset?.id || 0,
-                        register_number: item.asset?.register_number || item.asset?.serial_number || '',
+                        register_number: item.asset?.register_number || item.asset?.register_number || '',
+                        fuel_type: item.asset?.fuel_type || '',
                         costcenter: item.asset?.costcenter || null,
                         district: item.asset?.district || null,
                     },
-                    fc_no: item.fc_no || '',
+                    card_no: item.card_no || '',
                     stmt_date: item.stmt_date || '',
                     start_odo: item.start_odo || 0,
                     end_odo: item.end_odo || 0,
@@ -290,44 +303,24 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-2">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                         <div className="flex flex-col">
                             <span className="font-medium mb-1">Subtotal</span>
                             <Input
                                 type="text"
-                                value={summary.stmt_stotal}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => handleSummaryChange('stmt_stotal', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                value={summary.stmt_stotal !== undefined && summary.stmt_stotal !== null && summary.stmt_stotal !== '' && !isNaN(Number(summary.stmt_stotal)) ? Number(summary.stmt_stotal).toFixed(2) : '0.00'}
+                                readOnly
                                 className="w-full text-right border-0 rounded-none bg-gray-100"
                             />
                         </div>
+                        
                         <div className="flex flex-col">
-                            <span className="font-medium mb-1">Discount</span>
+                            <span className="font-medium mb-1">Discount/Adjustment</span>
                             <Input
                                 type="text"
-                                value={summary.stmt_disc}
+                                value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
                                 onKeyDown={handleNumericInput}
                                 onChange={e => handleSummaryChange('stmt_disc', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                className="w-full text-right border-0 rounded-none bg-gray-100"
-                            />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="font-medium mb-1">SST</span>
-                            <Input
-                                type="text"
-                                value={summary.stmt_tax}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => handleSummaryChange('stmt_tax', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                className="w-full text-right border-0 rounded-none bg-gray-100"
-                            />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="font-medium mb-1">Rounding</span>
-                            <Input
-                                type="text"
-                                value={summary.stmt_rounding}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => handleSummaryChange('stmt_rounding', e.target.value.replace(/[^0-9.-]/g, ''))}
                                 className="w-full text-right border-0 rounded-none bg-gray-100"
                             />
                         </div>
@@ -335,9 +328,38 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                             <span className="font-medium mb-1">Total</span>
                             <Input
                                 type="text"
-                                value={summary.stmt_total}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => handleSummaryChange('stmt_total', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                value={summary.stmt_total !== undefined && summary.stmt_total !== null && summary.stmt_total !== '' && !isNaN(Number(summary.stmt_total)) ? Number(summary.stmt_total).toFixed(2) : '0.00'}
+                                readOnly
+                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-2">
+                        <div className="flex flex-col">
+                            <span className="font-medium mb-1">Petrol Amount</span>
+                            <Input
+                                type="text"
+                                value={(() => {
+                                    return editableDetails
+                                        .filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
+                                        .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
+                                        .toFixed(2);
+                                })()}
+                                readOnly
+                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                            />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="font-medium mb-1">Diesel Amount</span>
+                            <Input
+                                type="text"
+                                value={(() => {
+                                    return editableDetails
+                                        .filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
+                                        .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
+                                        .toFixed(2);
+                                })()}
+                                readOnly
                                 className="w-full text-right border-0 rounded-none bg-gray-100"
                             />
                         </div>
@@ -385,7 +407,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     <th className="border px-2 py-1.5">Fleet Card</th>
                                     <th className="border px-2 py-1.5">Asset</th>
                                     <th className="border px-2 py-1.5">Cost Center</th>
-                                    <th className="border px-2 py-1.5">District</th>
+                                    <th className="border px-2 py-1.5">Fuel Type</th>
                                     <th className="border px-2 py-1.5 text-right">Start ODO</th>
                                     <th className="border px-2 py-1.5 text-right">End ODO</th>
                                     <th className="border px-2 py-1.5 text-right">Total KM</th>
@@ -398,32 +420,32 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 {filteredDetails.map((detail, idx) => (
                                     <tr key={detail.s_id}>
                                         <td className="border px-2 text-center">{idx + 1}</td>
-                                        <td className="border px-2">{detail.fc_no || ''}</td>
-                                        <td className="border px-2">{detail.asset?.register_number}</td>
-                                        <td className="border px-2">{detail.asset?.costcenter?.name}</td>
-                                        <td className="border px-2">{detail.asset?.district?.code}</td>
+                                        <td className="border px-2">{detail.card_no || ''}</td>
+                                        <td className="border px-2">{detail.asset?.register_number || ''}</td>
+                                        <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
+                                        <td className="border px-2">{detail.asset?.fuel_type || ''}</td>
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
-                                                value={detail.start_odo}
+                                                value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
                                                 onKeyDown={handleNumericInput}
                                                 onChange={e => handleDetailChange(idx, 'start_odo', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                             />
                                         </td>
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
-                                                value={detail.end_odo}
+                                                value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
                                                 onKeyDown={handleNumericInput}
                                                 onChange={e => handleDetailChange(idx, 'end_odo', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                             />
                                         </td>
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
-                                                value={detail.total_km}
+                                                value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
                                                 readOnly
                                                 className="w-full text-right border-0 rounded-none bg-gray-100"
                                             />
@@ -431,33 +453,36 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
-                                                value={detail.total_litre}
+                                                value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
                                                 onKeyDown={handleNumericInput}
                                                 onChange={e => handleDetailChange(idx, 'total_litre', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                             />
                                         </td>
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
                                                 value={(() => {
-                                                    const totalKM = Number(detail.end_odo) - Number(detail.start_odo);
-                                                    const litre = parseFloat(detail.total_litre);
-                                                    if (!litre || isNaN(litre) || litre === 0) return '';
-                                                    if (!totalKM || isNaN(totalKM)) return '';
+                                                    const startOdo = detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? Number(detail.start_odo) : 0;
+                                                    const endOdo = detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? Number(detail.end_odo) : 0;
+                                                    const totalKM = endOdo - startOdo;
+                                                    const litre = detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) ? Number(detail.total_litre) : 0;
+                                                    if (litre === 0) return 0;
+                                                    if (totalKM === 0) return 0;
                                                     return (totalKM / litre).toFixed(2);
                                                 })()}
                                                 readOnly
+                                                tabIndex={-1}
                                                 className="w-full text-right border-0 rounded-none bg-gray-100"
                                             />
                                         </td>
                                         <td className="border text-right">
                                             <Input
                                                 type="text"
-                                                value={detail.amount}
+                                                value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
                                                 onKeyDown={handleNumericInput}
                                                 onChange={e => handleDetailChange(idx, 'amount', e.target.value.replace(/[^0-9.-]/g, ''))}
-                                                className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                             />
                                         </td>
                                     </tr>
