@@ -343,7 +343,7 @@ const TelcoSubs = () => {
                 asset_id: form.asset_id ? form.asset_id : undefined // <-- include asset_id in payload
             };
             if (editId) {
-                await authenticatedApi.put(`/api/telco/subss/${editId}`, submitData);
+                await authenticatedApi.put(`/api/telco/subs/${editId}`, submitData);
             } else {
                 await authenticatedApi.post("/api/telco/subs", submitData);
             }
