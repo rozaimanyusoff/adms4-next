@@ -12,7 +12,7 @@ import Portals from '@/components/portals';
 import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { DetectUserInactivity } from '@/config/detectUserInactivity';
-import { toast, Toaster } from "sonner";
+import { toast } from "sonner";
 import { useContext, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { scheduleTokenRefresh } from '@/config/scheduleTokenRefresh';

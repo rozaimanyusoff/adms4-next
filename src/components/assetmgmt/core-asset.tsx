@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { AuthContext } from "@store/AuthContext";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { Plus, InfoIcon } from "lucide-react";
+import { Plus, InfoIcon, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
 import { Switch } from "@components/ui/switch";
@@ -30,7 +30,7 @@ interface Specs {
     category_id: number;
     brand_id: number | null;
     model_id: number | null;
-    serial_number: string;
+    register_number: string;
     // Computer fields
     cpu?: string;
     cpu_generation?: string;
@@ -76,7 +76,7 @@ interface Asset {
     classification: string;
     asset_code: string | null;
     finance_tag?: string | null;
-    serial_number: string;
+    register_number: string;
     dop?: string | null;
     year?: string | null;
     unit_price?: number | string | null;
@@ -144,12 +144,40 @@ const CoreAsset: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const [assetsRes, brandsRes, categoriesRes, typesRes] = await Promise.all([
-                authenticatedApi.get<any>("/api/assets"),
+            // Always fetch types first
+            const typesRes = await authenticatedApi.get<any>("/api/assets/types");
+            const typesData = Array.isArray(typesRes.data) ? typesRes.data : (typesRes.data && typesRes.data.data ? typesRes.data.data : []);
+            setTypes(typesData);
+
+            let assetsRes;
+            // Only asset managers (role.id === 7 and username matches manager.ramco_id) use type param
+            if (user?.role?.id === 7) {
+                const managedTypeIds = typesData
+                    .filter((type: any) => type.manager && user?.username === type.manager.ramco_id)
+                    .map((type: any) => type.id);
+                if (managedTypeIds.length > 0) {
+                    const assetResults = await Promise.all(
+                        managedTypeIds.map((typeId: number) => authenticatedApi.get<any>(`/api/assets?type=${typeId}`))
+                    );
+                    const allAssets = assetResults.flatMap(res => res.data.data || []);
+                    assetsRes = { data: { data: allAssets } };
+                } else {
+                    assetsRes = await authenticatedApi.get<any>('/api/assets');
+                }
+            } else if (user?.role?.id === 1 || user?.role?.id === 8) {
+                // Roles 1 (admin) and 8 (developer) always fetch all assets
+                assetsRes = await authenticatedApi.get<any>('/api/assets');
+            } else {
+                // Other roles: fetch all assets
+                assetsRes = await authenticatedApi.get<any>('/api/assets');
+            }
+
+            // Fetch brands and categories as before
+            const [brandsRes, categoriesRes] = await Promise.all([
                 authenticatedApi.get<any>("/api/assets/brands"),
                 authenticatedApi.get<any>("/api/assets/categories"),
-                authenticatedApi.get<any>("/api/assets/types"),
             ]);
+
             // Map API data to grid data
             setData(
                 (assetsRes.data.data || []).map((a: any) => ({
@@ -161,7 +189,6 @@ const CoreAsset: React.FC = () => {
             );
             setBrands(Array.isArray(brandsRes.data) ? brandsRes.data : (brandsRes.data && brandsRes.data.data ? brandsRes.data.data : []));
             setCategories(Array.isArray(categoriesRes.data) ? categoriesRes.data : (categoriesRes.data && categoriesRes.data.data ? categoriesRes.data.data : []));
-            setTypes(Array.isArray(typesRes.data) ? typesRes.data : (typesRes.data && typesRes.data.data ? typesRes.data.data : []));
         } catch (error) {
             setData([]); setBrands([]); setCategories([]); setTypes([]);
         } finally {
@@ -215,7 +242,7 @@ const CoreAsset: React.FC = () => {
             { key: "id", header: "ID", sortable: true },
             { key: "classification", header: "Classification", sortable: true, filter: 'singleSelect', filterParams: { options: ['asset', 'non-asset'] } },
             { key: "asset_code", header: "Asset Code", render: (row) => row.asset_code || "-", filter: 'input' },
-            { key: "serial_number", header: "Registered Number", sortable: true, filter: 'input' },
+            { key: "register_number", header: "Registered Number", sortable: true, filter: 'input' },
             {
                 key: "types",
                 header: "Asset Type",
@@ -452,7 +479,9 @@ const CoreAsset: React.FC = () => {
                 </div>
             </div>
             {loading ? (
-                <p>Loading...</p>
+                <div className="flex justify-center items-center py-8">
+                    <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
+                </div>
             ) : (
                 <CustomDataGrid
                     columns={columns}

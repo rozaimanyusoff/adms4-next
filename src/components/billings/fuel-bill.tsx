@@ -13,21 +13,33 @@ interface FuelBill {
   stmt_id: number;
   stmt_no: string;
   stmt_date: string;
-  stmt_ron95?: string;
-  stmt_ron97?: string;
-  stmt_diesel?: string;
-  bill_payment?: string;
-  stmt_count?: number;
-  stmt_litre?: string;
-  stmt_total_odo?: number;
-  stmt_stotal?: string;
-  stmt_tax?: string;
-  stmt_rounding?: string;
-  stmt_disc?: string;
-  stmt_total?: string;
-  stmt_entry?: string;
-  fuel_issuer?: { issuer?: string };
-  issuer?: string;
+  petrol: string;
+  diesel: string;
+  stmt_ron95: string;
+  stmt_ron97: string;
+  stmt_diesel: string;
+  bill_payment: string | null;
+  stmt_count: number;
+  stmt_litre: string;
+  stmt_total_odo: number;
+  stmt_stotal: string;
+  stmt_tax: string;
+  stmt_rounding: string;
+  stmt_disc: string;
+  stmt_total: string;
+  stmt_entry: string;
+  fuel_issuer: {
+    fuel_id: string;
+    issuer: string;
+  };
+  issuer: string; // Added to fix DataGrid column type error
+}
+
+// Add global type for window.reloadFuelBillGrid
+declare global {
+  interface Window {
+    reloadFuelBillGrid?: () => void;
+  }
 }
 
 const FuelBill = () => {
@@ -38,7 +50,8 @@ const FuelBill = () => {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
+  // Refetch grid data
+  const fetchFuelBills = () => {
     setLoading(true);
     authenticatedApi.get('/api/bills/fuel')
       .then(res => {
@@ -50,9 +63,25 @@ const FuelBill = () => {
           stmt_date: item.stmt_date ? new Date(item.stmt_date).toLocaleDateString() : '',
           stmt_entry: item.stmt_entry ? new Date(item.stmt_entry).toLocaleDateString() : '',
         })));
+        setLoading(false);
       })
-      .catch(() => setRows([]));
-    setLoading(false);
+      .catch(() => {
+        setRows([]);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchFuelBills();
+  }, []);
+
+  useEffect(() => {
+    window.reloadFuelBillGrid = () => {
+      fetchFuelBills();
+    };
+    return () => {
+      delete window.reloadFuelBillGrid;
+    };
   }, []);
 
   const handleRowDoubleClick = (row: FuelBill & { rowNumber: number }) => {
@@ -151,11 +180,11 @@ const FuelBill = () => {
     { key: 'stmt_no', header: 'Statement No', filter: 'input' },
     { key: 'stmt_date', header: 'Date', },
     { key: 'issuer', header: 'Issuer', filter: 'singleSelect' },
-    { key: 'stmt_ron95', header: 'RON95', },
-    { key: 'stmt_ron97', header: 'RON97', },
-    { key: 'stmt_diesel', header: 'Diesel', },
+    { key: 'petrol', header: 'Petrol', colClass: 'text-right' },
+    { key: 'diesel', header: 'Diesel', colClass: 'text-right' },
     { key: 'stmt_litre', header: 'Litre', colClass: 'text-right' },
-    { key: 'stmt_total_odo', header: 'Odometer', },
+    { key: 'stmt_total_odo', header: 'Total KM', colClass: 'text-right' },
+    { key: 'stmt_disc', header: 'Adjustment', colClass: 'text-right' },
     { key: 'stmt_total', header: 'Total', colClass: 'text-right' },
   ];
 

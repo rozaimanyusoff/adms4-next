@@ -37,7 +37,7 @@ export interface AssetTransferItem {
     created_at?: string;
     updated_at?: string;
     // For form rendering convenience
-    serial_number?: string;
+    register_number?: string;
     ramco_id?: string;
     full_name?: string;
     owner?: { ramco_id: string; name: string } | null;
@@ -192,15 +192,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                 .some(([, v]) => v === true);
             const effectiveDateFilled = !!effectiveDate;
             if (!effectiveDateFilled) {
-                setSubmitError(`Please set the Effective Date for all selected items. Missing for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                setSubmitError(`Please set the Effective Date for all selected items. Missing for: ${item.full_name || item.register_number || item.asset_code || item.id}`);
                 return;
             }
             if (!transferDetailsFilled) {
-                setSubmitError(`Please fill at least one Transfer Detail (New) or check 'Return to Asset Manager' for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                setSubmitError(`Please fill at least one Transfer Detail (New) or check 'Return to Asset Manager' for: ${item.full_name || item.register_number || item.asset_code || item.id}`);
                 return;
             }
             if (!reasonFilled) {
-                setSubmitError(`Please select at least one Reason for Transfer for: ${item.full_name || item.serial_number || item.asset_code || item.id}`);
+                setSubmitError(`Please select at least one Reason for Transfer for: ${item.full_name || item.register_number || item.asset_code || item.id}`);
                 return;
             }
         }
@@ -253,7 +253,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     transfer_type: item.transfer_type,
                     effective_date: effectiveDate,
                     asset_type: item.type?.name || item.asset_type || '',
-                    identifier: String(item.serial_number || item.ramco_id || '0'),
+                    identifier: String(item.register_number || item.ramco_id || '0'),
                     curr_owner: item.owner ? { ramco_id: item.owner.ramco_id, name: item.owner.full_name } : item.curr_owner ? { ramco_id: item.curr_owner.ramco_id, name: item.curr_owner.name } : null,
                     curr_costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : item.curr_costcenter ? { id: item.curr_costcenter.id, name: item.curr_costcenter.name } : null,
                     curr_department: item.department ? { id: item.department.id, name: item.department.name } : item.curr_department ? { id: item.curr_department.id, name: item.curr_department.name } : null,
@@ -347,18 +347,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     {
                         ...item,
                         transfer_type: 'Employee',
-                        serial_number: '',
+                        register_number: '',
                         asset_code: '',
                     },
                 ];
-            } else if (item.serial_number) {
+            } else if (item.register_number) {
                 newList = [
                     ...prev,
                     {
                         ...item,
                         transfer_type: 'Asset',
-                        serial_number: item.serial_number,
-                        asset_code: item.asset_code || item.serial_number,
+                        register_number: item.register_number,
+                        asset_code: item.asset_code || item.register_number,
                         asset_type: item.type?.name || '',
                     },
                 ];
@@ -524,7 +524,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                   ...item,
                   id: item.id,
                   transfer_type: item.transfer_type,
-                  serial_number: typeof item.identifier === 'string' ? item.identifier : undefined,
+                  register_number: typeof item.identifier === 'string' ? item.identifier : undefined,
                   ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
                   full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
                   asset_type: item.asset_type,
@@ -765,7 +765,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                 <span>{renderValue(item.full_name) || renderValue(item.name) || renderValue(item.ramco_id)}</span>
                                                             ) : (
                                                                 <>
-                                                                    <span>S/N: {renderValue(item.serial_number)}
+                                                                    <span>S/N: {renderValue(item.register_number)}
                                                                         {item.asset_type && (
                                                                             <span className="text-blue-500 text-xs"> [ {renderValue(item.asset_type)} ]</span>
                                                                         )}
@@ -843,7 +843,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                     <div className="font-semibold mb-2 flex items-center justify-start gap-6">
                                                         <div className="flex items-center">Transfer Details</div>
                                                         {/* Show only Transfer Details error for this item */}
-                                                        {submitError && submitError.includes(item.serial_number || item.full_name || item.asset_code || item.id)
+                                                        {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
                                                             && submitError.toLowerCase().includes('transfer detail') && (
                                                                 <div className="text-red-600 text-xs font-semibold">
                                                                     {submitError}
@@ -1022,7 +1022,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                     <div className="font-semibold mb-2 flex items-center justify-start gap-6">
                                                         Reason for Transfer
                                                         {/* Show only Reason for Transfer error for this item */}
-                                                        {submitError && submitError.includes(item.serial_number || item.full_name || item.asset_code || item.id)
+                                                        {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
                                                             && submitError.toLowerCase().includes('reason for transfer') && (
                                                                 <div className="text-red-600 text-xs font-semibold">
                                                                     {submitError}
@@ -1167,7 +1167,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                         if (!assetSearch) return true;
                                                         const search = assetSearch.toLowerCase();
                                                         return (
-                                                            a.serial_number?.toLowerCase().includes(search) ||
+                                                            a.register_number?.toLowerCase().includes(search) ||
                                                             a.asset_code?.toLowerCase().includes(search) ||
                                                             a.category?.name?.toLowerCase().includes(search) ||
                                                             a.brand?.name?.toLowerCase().includes(search) ||
@@ -1182,7 +1182,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                             typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
                                                         }
                                                         return (
-                                                            <React.Fragment key={a.id || a.serial_number || j}>
+                                                            <React.Fragment key={a.id || a.register_number || j}>
                                                                 <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded px-3 py-0.5">
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="flex items-center gap-2">
@@ -1190,7 +1190,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                             {typeIcon && typeIcon}
                                                                         </div>
                                                                         <div>
-                                                                            <span className="font-medium dark:text-dark-light">{a.serial_number || a.asset_code}</span> <span className="text-xs text-gray-500 dark:text-dark-light">({a.asset_code || a.id})</span>
+                                                                            <span className="font-medium dark:text-dark-light">{a.register_number || a.asset_code}</span> <span className="text-xs text-gray-500 dark:text-dark-light">({a.asset_code || a.id})</span>
                                                                             <div className="text-xs text-gray-600  dark:text-dark-light mt-0.5">
                                                                                 {a.category?.name && <div>Category: {a.category.name}</div>}
                                                                                 {a.brand?.name && <div>Brand: {a.brand.name}</div>}
