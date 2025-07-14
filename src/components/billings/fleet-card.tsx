@@ -16,7 +16,10 @@ interface FleetCard {
         fuel_id: number;
         fuel_issuer: string;
     };
-    card_no: string;
+    fleetcard: {
+        id: number;
+        card_no: string;
+    };
     reg_date: string | null;
     category: string;
     remarks: string | null;
@@ -129,6 +132,7 @@ const FleetCardList: React.FC = () => {
         {
             key: 'card_no',
             header: 'Card No',
+            render: (row: FleetCard) => row.fleetcard?.card_no || '',
             filter: 'input',
         },
         {
@@ -215,19 +219,19 @@ const FleetCardList: React.FC = () => {
             // If assets not loaded, fetch first then set form
             const fuelTypeValue = row.asset?.fuel_type ? row.asset.fuel_type.toLowerCase() : '';
             if (assets.length === 0) {
-                authenticatedApi.get<{ data: any[] }>("/api/assets?type=2&status=active")
+                authenticatedApi.get<{ data: any[] }>('/api/assets?type=2&status=active')
                     .then(res => {
                         const assetsRaw = res.data.data || [];
-                        let filtered = assetsRaw
-                            .filter(a => String(a.types?.type_id) === '2' && String(a.status).toLowerCase() === 'active')
-                            .map(a => ({
+                        let filtered: AssetOption[] = assetsRaw
+                            .filter((a: any) => String(a.types?.type_id) === '2' && String(a.status).toLowerCase() === 'active')
+                            .map((a: any) => ({
                                 asset_id: a.id,
                                 register_number: a.register_number,
                                 type_id: a.types?.type_id,
                                 status: a.status
                             }));
                         // Ensure current asset is included for display
-                        if (row.asset?.asset_id && !filtered.some(a => a.asset_id === row.asset.asset_id)) {
+                        if (row.asset?.asset_id && !filtered.some((a: AssetOption) => a.asset_id === row.asset.asset_id)) {
                             filtered = [
                                 ...filtered,
                                 {
@@ -240,7 +244,7 @@ const FleetCardList: React.FC = () => {
                         }
                         setAssets(filtered);
                         setForm({
-                            card_no: row.card_no || '',
+                            card_no: row.fleetcard?.card_no || '',
                             asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                             fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
                             fuel_type: fuelTypeValue,
@@ -257,8 +261,8 @@ const FleetCardList: React.FC = () => {
                     });
             } else {
                 // Ensure current asset is included for display
-                let filtered = [...assets];
-                if (row.asset?.asset_id && !filtered.some(a => a.asset_id === row.asset.asset_id)) {
+                let filtered: AssetOption[] = [...assets];
+                if (row.asset?.asset_id && !filtered.some((a: AssetOption) => a.asset_id === row.asset.asset_id)) {
                     filtered = [
                         ...filtered,
                         {
@@ -269,9 +273,11 @@ const FleetCardList: React.FC = () => {
                         }
                     ];
                     setAssets(filtered);
+                } else {
+                    setAssets(filtered);
                 }
                 setForm({
-                    card_no: row.card_no || '',
+                    card_no: row.fleetcard?.card_no || '',
                     asset_id: row.asset?.asset_id ? String(row.asset.asset_id) : '',
                     fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
                     fuel_type: fuelTypeValue,
