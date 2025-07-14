@@ -12,7 +12,7 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
         if (!authContext?.authData) {
             // Store the intended path in sessionStorage before redirecting
             if (typeof window !== 'undefined') {
-                sessionStorage.setItem('redirectAfterLogin', pathname);
+                sessionStorage.setItem('redirectAfterLogin', pathname ?? '');
             }
             router.push('/auth/login');
         }

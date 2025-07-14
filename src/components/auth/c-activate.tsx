@@ -17,7 +17,7 @@ interface ValidateActivationResponse {
 const ComponentActivate = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const activationCode = searchParams.get('code');
+    const activationCode = searchParams?.get('code');
 
     const [formData, setFormData] = useState({
         email: '',

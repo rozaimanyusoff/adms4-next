@@ -55,7 +55,7 @@ interface VerifyResponse {
 const ComponentResetPassword = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const resetToken = searchParams.get('token');
+    const resetToken = searchParams?.get('token');
 
     const [formData, setFormData] = useState({
         email: '',

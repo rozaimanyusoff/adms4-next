@@ -6,7 +6,7 @@ import { Metadata } from "next";
 
 export default function PurchaseRequest() {
   const searchParams = useSearchParams();
-  const id = searchParams.get("id");
+  const id = searchParams?.get("id");
 
   return (
     <div className="w-full">

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 export default function AssetTransferBlankPage() {
   const searchParams = useSearchParams();
-  const id = searchParams.get("id");
+  const id = searchParams?.get("id");
 
   return (
     <div className="w-full">

@@ -2,19 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import FuelBill from "./fuel-bill";
-import FuelDash from "./fuel-dash";
+import TelcoBill from "./telco-bill";
 import Link from "next/link";
 
-const FuelMaintenance: React.FC = () => {
+const TelcoBillings: React.FC = () => {
     const tabTitles = [
-        { value: "fuel-dash", label: "Dashboard" },
-        { value: "fuel-bill", label: "Fuel Bills" },
+        { value: "telco-dash", label: "Dashboard" },
+        { value: "telco-bill", label: "Telco Bills" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        "fuel-dash": <FuelDash />,
-        "fuel-bill": <FuelBill />,
+        "telco-bill": <TelcoBill />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
@@ -32,7 +30,7 @@ const FuelMaintenance: React.FC = () => {
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
-                        Vehicle Maintenance
+                        Telco Maintenance
                     </Link>
                 </li>
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
@@ -55,4 +53,4 @@ const FuelMaintenance: React.FC = () => {
     );
 };
 
-export default FuelMaintenance;
+export default TelcoBillings;
