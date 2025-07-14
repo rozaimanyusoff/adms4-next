@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
@@ -8,6 +9,8 @@ import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { generateFuelCostCenterReport } from './report-fuel-costcenter';
+import { generateFuelCostCenterReportPuppeteer } from './report-fuel-costcenter-puppeteer';
+import { toast } from 'sonner';
 
 interface FuelBill {
   stmt_id: number;
@@ -93,55 +96,61 @@ const FuelBill = () => {
   const handleDownloadPdf = async (row: FuelBill & { rowNumber: number }) => {
     try {
       const res = await authenticatedApi.get(`/api/bills/fuel/${row.stmt_id}`);
-      console.log('API response:', res);
       const data = (res.data as { data: any }).data;
-      if (!data || !Array.isArray(data.summary)) {
-        console.error('No summary data found:', data);
-        alert('No summary data found for this statement.');
+      let summaryRows: any[] = [];
+      if (data && Array.isArray(data.summary)) {
+        summaryRows = data.summary.map((item: any, idx: number) => ({
+          no: idx + 1,
+          costCenter: item.name,
+          totalAmount: parseFloat(item.total_amount),
+        }));
+      } else if (data && Array.isArray(data.details)) {
+        // Generate summary from details
+        const costCenterTotals: Record<string, { name: string; totalAmount: number }> = {};
+        data.details.forEach((item: any) => {
+          const name = item.asset?.costcenter?.name || 'Unknown';
+          const amount = parseFloat(item.amount || '0');
+          if (!costCenterTotals[name]) {
+            costCenterTotals[name] = { name, totalAmount: 0 };
+          }
+          costCenterTotals[name].totalAmount += amount;
+        });
+        summaryRows = Object.values(costCenterTotals).map((cc, idx) => ({
+          no: idx + 1,
+          costCenter: cc.name,
+          totalAmount: cc.totalAmount,
+        }));
+      }
+      if (!summaryRows.length) {
+        toast('No summary data found for this statement.');
         return;
       }
-      const rows = data.summary.map((item: any, idx: number) => ({
-        no: idx + 1,
-        costCenter: item.name,
-        totalAmount: parseFloat(item.total_amount),
-      }));
-      console.log('PDF input:', {
+      // Prepare props for Puppeteer PDF
+      const pdfProps = {
         date: data.stmt_date ? new Date(data.stmt_date).toLocaleDateString() : '',
         refNo: data.stmt_no,
-        rows,
+        rows: summaryRows,
         subTotal: parseFloat(data.stmt_stotal || '0'),
         rounding: parseFloat(data.stmt_rounding || '0'),
         discount: parseFloat(data.stmt_disc || '0'),
         grandTotal: parseFloat(data.stmt_total || '0'),
+      };
+      // Call Puppeteer PDF generator (must be server-side)
+      const apiRes = await fetch('/api/report-fuel-costcenter-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pdfProps),
       });
-      let doc;
-      try {
-        doc = await generateFuelCostCenterReport({
-          date: data.stmt_date ? new Date(data.stmt_date).toLocaleDateString() : '',
-          refNo: data.stmt_no,
-          rows,
-          subTotal: parseFloat(data.stmt_stotal || '0'),
-          rounding: parseFloat(data.stmt_rounding || '0'),
-          discount: parseFloat(data.stmt_disc || '0'),
-          grandTotal: parseFloat(data.stmt_total || '0'),
-        });
-      } catch (pdfErr) {
-        console.error('PDF generation error:', pdfErr);
+      if (!apiRes.ok) {
         alert('PDF generation failed.');
         return;
       }
-      // Add datetime to filename
-      const now = new Date();
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-      //doc.save(`Fuel-CostCenter-Report-${data.stmt_no}-${datetime}.pdf`);
-      const pdfBlob = doc.output('blob');
+      const pdfBlob = await apiRes.blob();
       const pdfUrl = URL.createObjectURL(pdfBlob);
       setPdfPreviewUrl(pdfUrl);
-      setPdfDoc(doc); // Save the doc for later download
-      setPdfStmtNo(data.stmt_no || null); // Save stmt_no for filename
+      setPdfDoc(pdfBlob); // Save blob for download
+      setPdfStmtNo(data.stmt_no || null);
     } catch (err) {
-      console.error('Failed to generate report:', err);
       alert('Failed to generate report.');
     }
   };
@@ -217,16 +226,16 @@ const FuelBill = () => {
             >✕</button>
             <iframe src={pdfPreviewUrl} width="100%" height="600px" />
             <div className="flex justify-end mt-2">
-              <Button onClick={() => { 
-                if (pdfDoc) {
-                  const now = new Date();
-                  const pad = (n: number) => n.toString().padStart(2, '0');
-                  const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-                  pdfDoc.save(`Fuel-CostCenter-Report-${pdfStmtNo || 'unknown'}-${datetime}.pdf`);
-                }
-              }}>
-                Download PDF
-              </Button>
+            <Button onClick={() => { 
+              if (pdfDoc) {
+                const now = new Date();
+                const pad = (n: number) => n.toString().padStart(2, '0');
+                const datetime = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                downloadBlob(pdfDoc, `Fuel-CostCenter-Report-${pdfStmtNo || 'unknown'}-${datetime}.pdf`);
+              }
+            }}>
+              Download PDF
+            </Button>
             </div>
           </div>
         </div>
@@ -236,6 +245,16 @@ const FuelBill = () => {
 };
 
 export default FuelBill;
+
+// Helper to download a Blob as a file
+function downloadBlob(blob: Blob, filename: string) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 
 /* 
