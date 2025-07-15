@@ -566,7 +566,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 className="w-56"
                             />
                         </div>
-                        <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
+                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
                             <table className="min-w-full border text-sm">
                                 <thead className="bg-gray-200 sticky -top-1 z-10">
                                     <tr>

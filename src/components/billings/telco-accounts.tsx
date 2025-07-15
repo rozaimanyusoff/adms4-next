@@ -9,6 +9,7 @@ import { Textarea } from '@headlessui/react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ActionSidebar from '@components/ui/action-aside';
 import { Switch } from '@/components/ui/switch';
 
@@ -17,6 +18,8 @@ interface AccountData {
     account_master: string;
     description?: string;
     total_subs?: number;
+    plan?: number;
+    provider?: string;
 }
 
 const TelcoAccounts: React.FC = () => {
@@ -26,9 +29,13 @@ const TelcoAccounts: React.FC = () => {
     const [showCreate, setShowCreate] = useState(false);
     const [newAccount, setNewAccount] = useState('');
     const [newDescription, setNewDescription] = useState('');
+    const [newProvider, setNewProvider] = useState('');
     const [editAccount, setEditAccount] = useState<AccountData | null>(null);
     const [editValue, setEditValue] = useState('');
     const [editDescription, setEditDescription] = useState('');
+    const [newPlan, setNewPlan] = useState('');
+    const [editPlan, setEditPlan] = useState('');
+    const [editProvider, setEditProvider] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [subsLoading, setSubsLoading] = useState(false);
     const [subsAccount, setSubsAccount] = useState<AccountData | null>(null);
@@ -57,12 +64,19 @@ const TelcoAccounts: React.FC = () => {
 
     const handleCreateAccount = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newAccount.trim()) return;
+        if (!newAccount.trim() || isNaN(Number(newPlan)) || !newProvider) return;
         try {
-            await authenticatedApi.post('/api/telco/accounts', { account_master: newAccount, description: newDescription });
+            await authenticatedApi.post('/api/telco/accounts', {
+                account_master: newAccount,
+                description: newDescription,
+                plan: Number(newPlan),
+                provider: newProvider
+            });
             toast.success('Account created');
             setNewAccount('');
             setNewDescription('');
+            setNewPlan('');
+            setNewProvider('');
             setShowCreate(false);
             fetchAccounts();
         } catch (err) {
@@ -74,14 +88,21 @@ const TelcoAccounts: React.FC = () => {
         setEditAccount(account);
         setEditValue(account.account_master);
         setEditDescription(account.description || '');
+        setEditPlan(account['plan'] ? String(account['plan']) : '');
+        setEditProvider(account.provider || '');
         setShowCreate(false);
     };
 
     const handleUpdateAccount = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editAccount || !editValue.trim()) return;
+        if (!editAccount || !editValue.trim() || isNaN(Number(editPlan)) || !editProvider) return;
         try {
-            await authenticatedApi.put(`/api/telco/accounts/${editAccount.id}`, { account_master: editValue, description: editDescription });
+            await authenticatedApi.put(`/api/telco/accounts/${editAccount.id}`, {
+                account_master: editValue,
+                description: editDescription,
+                plan: Number(editPlan),
+                provider: editProvider
+            });
             toast.success('Account updated');
             setEditAccount(null);
             fetchAccounts();
@@ -113,7 +134,9 @@ const TelcoAccounts: React.FC = () => {
                 <span className="cursor-pointer text-blue-600 hover:underline" onClick={() => handleEditAccount(row)}>{row.account_master}</span>
             )
         },
+        { key: 'provider', header: 'Provider', sortable: true },
         { key: 'description', header: 'Description', sortable: false, render: (row: AccountData) => row.description || '-' },
+        { key: 'plan', header: 'Plan (RM)', sortable: true },
         {
             key: 'total_subs',
             header: 'Subscribers',
@@ -156,18 +179,37 @@ const TelcoAccounts: React.FC = () => {
                         <Input
                             value={newAccount}
                             onChange={e => setNewAccount(e.target.value)}
-                            placeholder="New account name"
+                            placeholder="New account number"
                             required
                         />
+                        <Select value={newProvider} onValueChange={setNewProvider} required>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select Provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectGroup>
+                                    <SelectLabel>Provider</SelectLabel>
+                                    <SelectItem value="Celcom">Celcom</SelectItem>
+                                    <SelectItem value="TM">TM</SelectItem>
+                                    <SelectItem value="Time">Time</SelectItem>
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
                         <Textarea
                             value={newDescription}
                             onChange={e => setNewDescription(e.target.value)}
                             placeholder="Description (optional)"
-                            className="min-h-[80px] border rounded-lg p-2 shadow"
+                            className="min-h-[80px] border text-sm rounded-lg p-2 shadow"
+                        />
+                        <Input
+                            type="text"
+                            value={newPlan}
+                            onChange={e => setNewPlan(e.target.value.replace(/[^0-9]/g, ''))}
+                            placeholder="0.00"
                         />
                         <DialogFooter className="flex gap-2">
                             <Button type="submit" variant="default">Create</Button>
-                            <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+                            <Button type="button" variant="destructive" onClick={() => setShowCreate(false)}>Cancel</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
@@ -184,11 +226,30 @@ const TelcoAccounts: React.FC = () => {
                             placeholder="Account name"
                             required
                         />
+                        <Select value={editProvider} onValueChange={setEditProvider} required>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select Provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectGroup>
+                                    <SelectLabel>Provider</SelectLabel>
+                                    <SelectItem value="Celcom">Celcom</SelectItem>
+                                    <SelectItem value="TM">TM</SelectItem>
+                                    <SelectItem value="Time">Time</SelectItem>
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
                         <Textarea
                             value={editDescription}
                             onChange={e => setEditDescription(e.target.value)}
                             placeholder="Describe accounts"
-                            className="min-h-[80px] border rounded-lg p-2 shadow"
+                            className="min-h-[80px] text-sm border rounded-lg p-2 shadow"
+                        />
+                        <Input
+                            type="text"
+                            value={editPlan}
+                            onChange={e => setEditPlan(e.target.value.replace(/[^0-9]/g, ''))}
+                            placeholder="0.00"
                         />
                         <DialogFooter className="flex gap-2">
                             <Button type="submit" variant="default">Update</Button>

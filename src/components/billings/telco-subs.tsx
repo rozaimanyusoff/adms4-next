@@ -11,6 +11,7 @@ import ActionSidebar from "@components/ui/action-aside";
 interface Account {
     id: number;
     account_master: string;
+    provider: string;
 }
 
 interface Simcard {
@@ -257,10 +258,12 @@ const TelcoSubs = () => {
         { key: 'id', header: 'ID', sortable: false },
         { key: 'sub_no', header: 'Subscriber Number', sortable: true, filter: 'input' },
         { key: 'account_sub', header: 'Sub Account', sortable: true, filter: 'input' },
+        { key: 'account', header: 'Master AC', filter: 'singleSelect', render: (row: Subscriber) => row.account?.account_master ?? '—' },
+        { key: 'provider' as any, header: 'Provider', filter: 'singleSelect', render: (row: Subscriber) => row.account?.provider ?? '—' },
         { key: 'status', header: 'Status', sortable: true, filter: 'singleSelect' },
         { key: 'register_date', header: 'Register Date', sortable: true, render: (row: Subscriber) => new Date(row.register_date).toLocaleDateString() },
         { key: 'simcard', header: 'SIM Number', filter: 'input', render: (row: Subscriber) => row.simcard?.sim_sn ?? '—' },
-        { key: 'account', header: 'Account Master', filter: 'singleSelect', render: (row: Subscriber) => row.account?.account_master ?? '—' },
+        { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.full_name ?? '—' },
         { key: 'costcenter', header: 'Cost Center', filter: 'singleSelect', render: (row: Subscriber) => row.costcenter?.name ?? '—' },
         { key: 'department', header: 'Department', filter: 'singleSelect', render: (row: Subscriber) => row.department?.name ?? '—' },
         { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.full_name ?? '—' },
