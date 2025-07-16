@@ -60,7 +60,7 @@ export async function generateFuelCostCenterReport({
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.text(`Our Ref : ${refNo}`, 15, 32);
-    doc.text(`Date : ${date}`, pageWidth - 65, 32, { align: 'right' });
+    doc.text(`Date : ${date}`, pageWidth - 60, 32, { align: 'right' });
 
     doc.text('To      : Head of Finance', 15, 40);
     doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 40, { align: 'left' });

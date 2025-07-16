@@ -3,12 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreVertical } from 'lucide-react';
+import { Plus, MoreVertical, Download } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
+import { exportTelcoBillSummaryPDF } from './report-telco-bill';
 
 interface TelcoBill {
   util_id: number;
@@ -94,8 +95,13 @@ const TelcoBill = () => {
                     </span>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="center" className='bg-stone-200'>
-                    <DropdownMenuItem onClick={() => toast('Feature coming soon!')} className='bg-stone-200 hover:bg-stone-300 shadow-lg'>
-                      Download Bill Report
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        await exportTelcoBillSummaryPDF(row.util_id);
+                      }}
+                      className='bg-stone-200 hover:bg-stone-300 shadow-lg flex items-center gap-2'
+                    >
+                      <Download size={14} /> Export PDF
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
