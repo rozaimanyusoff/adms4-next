@@ -101,7 +101,7 @@ const TelcoBill = () => {
                       }}
                       className='bg-stone-200 hover:bg-stone-300 shadow-lg flex items-center gap-2'
                     >
-                      <Download size={14} /> Export PDF
+                      <Download size={14} /> Generate Memo
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

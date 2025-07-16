@@ -53,26 +53,26 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 });
                 reader.readAsDataURL(blob);
                 const base64 = await base64Promise;
-                doc.addImage(base64, 'PNG', pageWidth - 32, 12, 18, 28);
+                doc.addImage(base64, 'PNG', pageWidth - 32, 14, 18, 28);
             } catch (e) { }
         }
 
         // Header - Memo style
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(18);
-        doc.text('M E M O', pageWidth / 15, 20, { align: 'left' });
+        doc.text('M E M O', pageWidth / 15, 24, { align: 'left' }); 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Our Ref : RT/NRW/JOHOR 8/TECH/IT/F04 ( )`, 15, 32);
+        doc.text(`Our Ref : RT/NRW/JOHOR 8/TECH/IT/F04 ( )`, 15, 34);
         // Use current date for header
         const currentDate = new Date();
-        doc.text(`Date : ${currentDate.toLocaleDateString()}`, pageWidth - 70, 32, { align: 'right' });
-        doc.text('To      : Head of Finance', 15, 40);
-        doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 40, { align: 'left' });
-        doc.text('Copy  :', 15, 44);
-        doc.text('Of      :', pageWidth - 95, 44, { align: 'left' });
-        doc.text(`From  : ${senderDepartment}`, 15, 48);
-        doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 48, { align: 'left' });
+        doc.text(`Date : ${currentDate.toLocaleDateString()}`, pageWidth - 70, 34, { align: 'right' });
+        doc.text('To      : Head of Finance', 15, 44);
+        doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 44, { align: 'left' });
+        doc.text('Copy  :', 15, 48);
+        doc.text('Of      :', pageWidth - 95, 48, { align: 'left' });
+        doc.text(`From  : ${senderDepartment}`, 15, 52);
+        doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 52, { align: 'left' });
 
         // Dynamic Content
         doc.setFont('helvetica', 'bold');
@@ -83,17 +83,17 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
             const billDate = new Date(bill.ubill_date);
             billMonthYear = billDate.toLocaleString(undefined, { month: 'long', year: 'numeric' });
         }
-        doc.text(`TELCO BILLS - ${billMonthYear}`, 15, 62);
+        doc.text(`TELCO BILLS - ${billMonthYear}`, 15, 64);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
-        doc.text(`Kindly please make a payment to ${bill.account?.provider || ''} as follows:`, 15, 68);
+        doc.text(`Kindly please make a payment to ${bill.account?.provider || ''} as follows:`, 15, 70);
 
 
         // Table with columns: No, A/c No, Date, Bill/Inv No, Cost Center, Amount (RM), Tax (RM), Total (RM)
 
         let y = 75;
         const tableHeaderRow = [
-            'No', 'A/c No', 'Date', 'Bill/Inv No', 'Cost Center', 'Amount (RM)', 'Total (RM)'
+            'No', 'Account No', 'Date', 'Bill/Inv No', 'Cost Center', 'Total (RM)'
         ];
         const tableBody = [
             tableHeaderRow,
@@ -103,7 +103,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 bill.ubill_date ? new Date(bill.ubill_date).toLocaleDateString() : '',
                 bill.ubill_no || '',
                 s.costcenter?.name || '-',
-                Number(s.total_amt).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                //Number(s.total_amt).toLocaleString(undefined, { minimumFractionDigits: 2 }),
                 Number(s.total_amt).toLocaleString(undefined, { minimumFractionDigits: 2 })
             ])
         ];
@@ -132,13 +132,12 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 }
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' },
-                1: { cellWidth: 22, halign: 'center' },
-                2: { cellWidth: 22, halign: 'center' },
-                3: { cellWidth: 30, halign: 'left' },
-                4: { cellWidth: 26, halign: 'left' },
-                5: { cellWidth: 24, halign: 'right' },
-                6: { cellWidth: 24, halign: 'right' },
+                0: { cellWidth: 12, halign: 'center' },
+                1: { cellWidth: 36, halign: 'center' },
+                2: { cellWidth: 28, halign: 'center' },
+                3: { cellWidth: 38, halign: 'center' },
+                4: { cellWidth: 36, halign: 'center' },
+                5: { cellWidth: 28, halign: 'right' },
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
@@ -147,27 +146,58 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
 
 
         y = (doc as any).lastAutoTable.finalY + 4;
+        // Subtotal row
+        const subtotalLabel = 'Subtotal (RM):';
+        const subtotalValue = Number(bill.ubill_stotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        
         // Calculate total tax
-        const totalTax = bill.summary.reduce((sum: number, s: any) => sum + Number(s.tax_amt || 0), 0);
+        const taxLabel = 'Tax (RM):';
         const totalTaxValue = Number(bill.ubill_tax).toLocaleString(undefined, { minimumFractionDigits: 2 });
+
+        // Rounding
+        const roundLabel = 'Rounding (RM):';
+        const roundValue = Number(bill.ubill_round).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        
         // Grand total
         const grandTotalLabel = 'Grand Total:';
         const grandTotalValue = Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const colCount = 7;
-        const colWidths = [8, 22, 22, 30, 26, 24, 24];
-        const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
+        
+        const colWidths = [12, 36, 28, 38, 36, 28]; // Column widths for the summary table
+        const totalTableWidth = colWidths.reduce((a, b) => a + b, 0); // Total width of the summary table
         const xStart = 14; //start from left margin
         const rowHeight = 6; // Row height for summary rows
 
+        // Draw subtotal row
+        doc.setFillColor(255,255,255);
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.1);
+        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD'); // Fill and draw rectangle
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(subtotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
+        doc.text(subtotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
+
         // Draw total tax row
+        y += rowHeight;
         doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
-        doc.text('Tax (RM):', xStart + totalTableWidth - 45, y, { align: 'left' });
+        doc.text(taxLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(totalTaxValue, xStart + totalTableWidth - 1, y, { align: 'right' });
+
+        // Draw rounding row
+        y += rowHeight;
+        doc.setFillColor(255,255,255);
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.1);
+        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(roundLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
+        doc.text(roundValue, xStart + totalTableWidth - 1, y, { align: 'right' });
 
         // Draw grand total row
         y += rowHeight;
@@ -177,7 +207,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(9);
-        doc.text(grandTotalLabel, xStart + totalTableWidth - 45, y, { align: 'left' });
+        doc.text(grandTotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
 
         // Footer section (signatures, etc.)
@@ -186,7 +216,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         doc.setFontSize(9);
         //doc.text('The payment shall be made before 10th.', 15, y);
         //y += 7;
-        doc.text('Your cooperation on the above is highly appreciated', 15, y);
+        doc.text('Your cooperation on the above is highly appreciated.', 15, y);
         y += 15;
         doc.setFont('helvetica', 'bold');
         doc.text('Ranhill Technologies Sdn. Bhd.', 15, y);
@@ -230,11 +260,12 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 });
                 reader.readAsDataURL(blob);
                 const base64 = await base64Promise;
-                const imgWidth = 215;
+                const imgWidth = 205;
                 const imgHeight = 26;
-                const x = (pageWidth - imgWidth) / 2;
+                const x = (pageWidth - imgWidth) / 4; // Centered horizontally
+                // Place the footer logo centered at the bottom (adjust y/height as needed)
                 const pageHeight = doc.internal.pageSize.getHeight();
-                doc.addImage(base64, 'PNG', x, pageHeight - imgHeight - 3, imgWidth, imgHeight);
+                doc.addImage(base64, 'PNG', x, pageHeight - imgHeight - 2, imgWidth, imgHeight); // Adjusted y position
             } catch (e) { }
         }
 
