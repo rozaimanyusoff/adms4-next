@@ -60,7 +60,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         // Header - Memo style
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(18);
-        doc.text('M E M O', pageWidth / 15, 24, { align: 'left' }); 
+        doc.text('M E M O', pageWidth / 15, 24, { align: 'left' });
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
         doc.text(`Our Ref : RT/NRW/JOHOR 8/TECH/IT/F04 ( )`, 15, 34);

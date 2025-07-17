@@ -4,11 +4,11 @@ import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 
 const AuthLayout = ({ children }: { children: React.ReactNode }) => {
-    const router = useRouter();
-    const authContext = useContext(AuthContext);
-    const pathname = usePathname();
+    //const router = useRouter();
+    //const authContext = useContext(AuthContext);
+    //const pathname = usePathname();
     
-    useEffect(() => {
+    /* useEffect(() => {
         if (!authContext?.authData) {
             // Store the intended path in sessionStorage before redirecting
             if (typeof window !== 'undefined') {
@@ -16,7 +16,7 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
             }
             router.push('/auth/login');
         }
-    }, [authContext, router, pathname]);
+    }, [authContext, router, pathname]); */
 
     return <div className="min-h-screen text-black dark:text-white-dark">{children} </div>;
 };
