@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { exportTelcoBillSummaryPDF } from './report-telco-bill';
 
 interface TelcoBill {
-  util_id: number;
+  id: number;
   bfcy_id: number;
   account: {
     id: number;
@@ -20,10 +20,10 @@ interface TelcoBill {
     provider: string;
     old_id: number;
   };
-  ubill_date: string;
-  ubill_no: string;
-  ubill_gtotal: string;
-  ubill_paystat: string;
+  bill_date: string;
+  bill_no: string;
+  grand_total: string;
+  status: string;
   provider?: string;
   account_no?: string; // Add this line to fix the error
 }
@@ -49,7 +49,7 @@ const TelcoBill = () => {
           rowNumber: idx + 1,
           provider: item.account?.provider || '',
           account_no: item.account?.account_no || '',
-          ubill_date_fmt: item.ubill_date ? new Date(item.ubill_date).toLocaleDateString() : '',
+          ubill_date_fmt: item.bill_date ? new Date(item.bill_date).toLocaleDateString() : '',
         })));
         setLoading(false);
       })
@@ -73,8 +73,8 @@ const TelcoBill = () => {
   }, []);
 
   const handleRowDoubleClick = (row: TelcoBill & { rowNumber: number }) => {
-    if (row.util_id) {
-      window.open(`/billings/telco/form?id=${row.util_id}`, '_blank');
+    if (row.id) {
+      window.open(`/billings/telco/form?id=${row.id}`, '_blank');
     }
   };
 
@@ -97,7 +97,7 @@ const TelcoBill = () => {
                   <DropdownMenuContent align="center" className='bg-stone-200'>
                     <DropdownMenuItem
                       onClick={async () => {
-                        await exportTelcoBillSummaryPDF(row.util_id);
+                        await exportTelcoBillSummaryPDF(row.id);
                       }}
                       className='bg-stone-200 hover:bg-stone-300 shadow-lg flex items-center gap-2'
                     >
@@ -114,16 +114,16 @@ const TelcoBill = () => {
         </div>
       ),
     },
-    { key: 'ubill_no', header: 'Bill No', filter: 'input' },
+    { key: 'bill_no', header: 'Bill No', filter: 'input' },
     {
-      key: 'ubill_date',
+      key: 'bill_date',
       header: 'Date',
-      render: (row) => row.ubill_date ? new Date(row.ubill_date).toLocaleDateString() : '',
+      render: (row) => row.bill_date ? new Date(row.bill_date).toLocaleDateString() : '',
     },
     { key: 'provider', header: 'Provider', filter: 'singleSelect' },
     { key: 'account_no', header: 'Account No' },
-    { key: 'ubill_gtotal', header: 'Total', colClass: 'text-right' },
-    { key: 'ubill_paystat', header: 'Status' },
+    { key: 'grand_total', header: 'Total', colClass: 'text-right' },
+    { key: 'status', header: 'Status' },
   ];
 
   return (

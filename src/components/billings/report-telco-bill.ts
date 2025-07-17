@@ -79,8 +79,8 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         doc.setFontSize(11);
         // Show month and year of bill date in TELCO BILLS - ...
         let billMonthYear = '';
-        if (bill.ubill_date) {
-            const billDate = new Date(bill.ubill_date);
+        if (bill.bill_date) {
+            const billDate = new Date(bill.bill_date);
             billMonthYear = billDate.toLocaleString(undefined, { month: 'long', year: 'numeric' });
         }
         doc.text(`TELCO BILLS - ${billMonthYear}`, 15, 64);
@@ -100,11 +100,10 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
             ...bill.summary.map((s: any, idx: number) => [
                 String(idx + 1),
                 bill.account?.account_no || '',
-                bill.ubill_date ? new Date(bill.ubill_date).toLocaleDateString() : '',
-                bill.ubill_no || '',
+                bill.bill_date ? new Date(bill.bill_date).toLocaleDateString() : '',
+                bill.bill_no || '',
                 s.costcenter?.name || '-',
-                //Number(s.total_amt).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                Number(s.total_amt).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                Number(s.cc_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }), //costcenter amount
             ])
         ];
 
@@ -148,19 +147,19 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         y = (doc as any).lastAutoTable.finalY + 4;
         // Subtotal row
         const subtotalLabel = 'Subtotal (RM):';
-        const subtotalValue = Number(bill.ubill_stotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const subtotalValue = Number(bill.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
         
         // Calculate total tax
         const taxLabel = 'Tax (RM):';
-        const totalTaxValue = Number(bill.ubill_tax).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const totalTaxValue = Number(bill.tax).toLocaleString(undefined, { minimumFractionDigits: 2 });
 
         // Rounding
         const roundLabel = 'Rounding (RM):';
-        const roundValue = Number(bill.ubill_round).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const roundValue = Number(bill.rounding).toLocaleString(undefined, { minimumFractionDigits: 2 });
         
         // Grand total
         const grandTotalLabel = 'Grand Total:';
-        const grandTotalValue = Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const grandTotalValue = Number(bill.grand_total).toLocaleString(undefined, { minimumFractionDigits: 2 });
         
         const colWidths = [12, 36, 28, 38, 36, 28]; // Column widths for the summary table
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0); // Total width of the summary table

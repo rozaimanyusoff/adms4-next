@@ -19,13 +19,13 @@ interface TelcoBillDetail {
     util_id: number;
     bfcy_id: number;
     account: TelcoAccount;
-    ubill_date: string;
-    ubill_no: string;
-    ubill_stotal: string;
-    ubill_tax: string;
-    ubill_round: string;
-    ubill_gtotal: string;
-    ubill_paystat: string;
+    bill_date: string;
+    bill_no: string;
+    subtotal: string;
+    tax: string;
+    rounding: string;
+    grand_total: string;
+    status: string;
     details: TelcoBillDetailItem[];
 }
 
@@ -36,14 +36,14 @@ interface TelcoBillDetailItem {
     bill_id: number;
     sim_id: number;
     loc_id: number;
-    cc_id: number;
+    costcenter_id: number;
     sim_user_id: string;
     cc_no: string;
     cc_user: string;
-    util2_plan: string;
-    util2_usage: string;
-    util2_disc: string;
-    util2_amt: string;
+    plan: string;
+    usage: string;
+    discount: string;
+    amount: string;
     cc_dt: string;
     costcenter?: { id: number; name: string };
     user?: { ramco_id: string; full_name: string };
@@ -92,18 +92,18 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
         const payload: any = {
             account_id: selectedAccountId,
             account_master: selectedAccount?.account_master ?? '',
-            ubill_no: billNo,
-            ubill_date: billDate,
-            ubill_stotal: subTotal,
-            ubill_tax: tax,
-            ubill_round: rounding,
-            ubill_gtotal: grandTotal,
-            ubill_paystat: (!utilId || utilId <= 0) ? status : (data?.ubill_paystat || ''),
+            bill_no: billNo,
+            bill_date: billDate,
+            subtotal: subTotal,
+            tax: tax,
+            rounding: rounding,
+            grand_total: grandTotal,
+            status: (!utilId || utilId <= 0) ? status : (data?.status || ''),
             details: (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || []).map((detail: any) => {
                 const editKey = String(detail.util2_id || detail.id);
-                const usage = detailsEdits[editKey]?.usage ?? detail.util2_usage ?? '0.00';
-                const disc = detailsEdits[editKey]?.disc ?? detail.util2_disc ?? '0.00';
-                let plan = (!utilId || utilId <= 0) ? accountInfo?.plan ?? '0.00' : detail.util2_plan ?? '0.00';
+                const usage = detailsEdits[editKey]?.usage ?? detail.usage ?? '0.00';
+                const disc = detailsEdits[editKey]?.disc ?? detail.discount ?? '0.00';
+                let plan = (!utilId || utilId <= 0) ? accountInfo?.plan ?? '0.00' : detail.plan ?? '0.00';
                 let subsId = null;
                 let costcenterId = null;
                 if (!utilId || utilId <= 0) {
@@ -132,10 +132,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                     util2_id: detail.util2_id || null,
                     old_sim_id: detail.sim_id || null,
                     new_sim_id: detail.sim?.id || null,
-                    util2_plan: plan,
-                    util2_usage: usage,
-                    util2_disc: disc,
-                    util2_amt: ((parseFloat(plan) + parseFloat(usage)) - parseFloat(disc)).toFixed(2),
+                    plan: plan,
+                    usage: usage,
+                    discount: disc,
+                    amount: ((parseFloat(plan) + parseFloat(usage)) - parseFloat(disc)).toFixed(2),
                     subs_id: subsId,
                     costcenter_id: costcenterId,
                     account_id: selectedAccountId,
@@ -187,23 +187,23 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
             setBillDate(prev => prev === '' ? '' : prev);
         } else if (data) {
             // Edit mode: set tax, rounding, billNo, billDate from API data
-            setTax(data.ubill_tax !== undefined && data.ubill_tax !== null && data.ubill_tax !== '' ? data.ubill_tax : '0.00');
-            setRounding(data.ubill_round !== undefined && data.ubill_round !== null && data.ubill_round !== '' ? data.ubill_round : '0.00');
-            setBillNo(data.ubill_no ?? '');
-            setBillDate(data.ubill_date ?? '');
+            setTax(data.tax !== undefined && data.tax !== null && data.tax !== '' ? data.tax : '0.00');
+            setRounding(data.rounding !== undefined && data.rounding !== null && data.rounding !== '' ? data.rounding : '0.00');
+            setBillNo(data.bill_no ?? '');
+            setBillDate(data.bill_date ?? '');
         }
         let total = 0;
         const summary: Record<string, number> = {};
         detailsSource.forEach((detail: any) => {
             const editKey = String(detail.util2_id || detail.id);
             // Get values from edits or fallback to detail
-            const usage = parseFloat(detailsEdits[editKey]?.usage ?? detail.util2_usage ?? detail.usage ?? '0') || 0;
-            const disc = parseFloat(detailsEdits[editKey]?.disc ?? detail.util2_disc ?? detail.disc ?? '0') || 0;
+            const usage = parseFloat(detailsEdits[editKey]?.usage ?? detail.usage ?? detail.usage ?? '0') || 0;
+            const disc = parseFloat(detailsEdits[editKey]?.disc ?? detail.discount ?? detail.disc ?? '0') || 0;
             let plan = 0;
             if (!utilId || utilId <= 0) {
                 plan = parseFloat(accountInfo?.plan ?? '0') || 0;
             } else {
-                plan = parseFloat(detail.util2_plan ?? '0') || 0;
+                plan = parseFloat(detail.plan ?? '0') || 0;
             }
             const amt = (plan + usage) - disc;
             total += amt;
@@ -245,16 +245,16 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                         res.data.data.details.forEach((detail: any) => {
                             const editKey = String(detail.util2_id || detail.id);
                             initialEdits[editKey] = {
-                                usage: detail.util2_usage !== undefined && detail.util2_usage !== null ? String(detail.util2_usage) : '0.00',
-                                disc: detail.util2_disc !== undefined && detail.util2_disc !== null ? String(detail.util2_disc) : '0.00',
-                                amt: detail.util2_amt !== undefined && detail.util2_amt !== null ? String(detail.util2_amt) : '0.00',
+                                usage: detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00',
+                                disc: detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00',
+                                amt: detail.amount !== undefined && detail.amount !== null ? String(detail.amount) : '0.00',
                             };
                         });
                         setDetailsEdits(initialEdits);
                     }
                     // Set Bill No and Bill Date from API
-                    setBillNo(res.data.data.ubill_no ?? '');
-                    setBillDate(res.data.data.ubill_date ?? '');
+                    setBillNo(res.data.data.bill_no ?? '');
+                    setBillDate(res.data.data.bill_date ?? '');
                     setLoading(false);
                 })
                 .catch(() => {
@@ -376,12 +376,12 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Status</span>
                                         <Select
-                                            value={(!utilId || utilId <= 0) ? status : (data?.ubill_paystat || '')}
+                                            value={(!utilId || utilId <= 0) ? status : (data?.status || '')}
                                             onValueChange={val => {
                                                 if (!utilId || utilId <= 0) {
                                                     setStatus(val);
                                                 } else {
-                                                    setData(prev => prev ? { ...prev, ubill_paystat: val } : prev);
+                                                    setData(prev => prev ? { ...prev, status: val } : prev);
                                                 }
                                             }}
                                         >
@@ -484,14 +484,14 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                             })
                                     ).map((detail: any, idx: number) => {
                                         const editKey = String(detail.util2_id || detail.id);
-                                        const usageVal = detailsEdits[editKey]?.usage ?? (detail.util2_usage !== undefined && detail.util2_usage !== null ? String(detail.util2_usage) : '0.00');
-                                        const discVal = detailsEdits[editKey]?.disc ?? (detail.util2_disc !== undefined && detail.util2_disc !== null ? String(detail.util2_disc) : '0.00');
+                                        const usageVal = detailsEdits[editKey]?.usage ?? (detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00');
+                                        const discVal = detailsEdits[editKey]?.disc ?? (detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00');
                                         // Calculate amount for each row
-                                        let plan = (!utilId || utilId <= 0) ? parseFloat(accountInfo?.plan ?? '0') || 0 : parseFloat(detail.util2_plan ?? '0') || 0;
+                                        let plan = (!utilId || utilId <= 0) ? parseFloat(accountInfo?.plan ?? '0') || 0 : parseFloat(detail.plan ?? '0') || 0;
                                         const usage = parseFloat(usageVal) || 0;
                                         const disc = parseFloat(discVal) || 0;
                                         const amtVal = ((plan + usage) - disc).toFixed(2);
-                                        const planVal = (!utilId || utilId <= 0) ? (accountInfo?.plan ?? '-') : (detail.util2_plan || '-');
+                                        const planVal = (!utilId || utilId <= 0) ? (accountInfo?.plan ?? '-') : (detail.plan || '-');
                                         return (
                                             <tr key={editKey}>
                                                 <td className="border px-2 text-center">{idx + 1}</td>
