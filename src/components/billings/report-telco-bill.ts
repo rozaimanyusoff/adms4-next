@@ -66,7 +66,12 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         doc.text(`Our Ref : RT/NRW/JOHOR 8/TECH/IT/F04 ( )`, 15, 34);
         // Use current date for header
         const currentDate = new Date();
-        doc.text(`Date : ${currentDate.toLocaleDateString()}`, pageWidth - 70, 34, { align: 'right' });
+        // Format current date as dd/m/yyyy
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const month = String(currentDate.getMonth() + 1); // no leading zero for month
+        const year = currentDate.getFullYear();
+        const formattedDate = `${day}/${month}/${year}`;
+        doc.text(`Date : ${formattedDate}`, pageWidth - 70, 34, { align: 'right' });
         doc.text('To      : Head of Finance', 15, 44);
         doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 44, { align: 'left' });
         doc.text('Copy  :', 15, 48);
