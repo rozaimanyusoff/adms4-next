@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import TelcoDash from "./telco-dash";
 import TelcoBill from "./telco-bill";
 import Link from "next/link";
 
@@ -12,6 +13,7 @@ const TelcoBillings: React.FC = () => {
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
+        "telco-dash": <TelcoDash />,
         "telco-bill": <TelcoBill />,
     };
 
