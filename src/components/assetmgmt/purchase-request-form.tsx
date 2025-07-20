@@ -426,314 +426,187 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
     if (loading) return <div className="p-8 text-center">Loading...</div>;
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
+    // Step form with tabs implementation
+    const [activeTab, setActiveTab] = React.useState<'info' | 'items' | 'delivery'>('info');
+    // Step states
+    const [info, setInfo] = React.useState({
+        request_no: '',
+        request_date: new Date().toISOString().slice(0, 10),
+        ramco_id: '',
+        costcenter_id: '',
+        department_id: '',
+        justification: '',
+        po_no: '',
+        po_date: '',
+    });
+    // Tab order for navigation
+    const tabOrder: Array<'info' | 'items' | 'delivery'> = ['info', 'items', 'delivery'];
+    const currentTabIndex = tabOrder.indexOf(activeTab);
+    const [items, setItems] = React.useState<any[]>([]);
+    const [delivery, setDelivery] = React.useState({
+        supplier_id: '',
+        do_no: '',
+        do_date: '',
+        inv_no: '',
+        inv_date: '',
+        delivery_status: '',
+        delivery_remarks: '',
+    });
+    // Dropdowns
+    // ...existing dropdown fetch logic can be reused...
+
     return (
         <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
-            {/* Navbar with centered title */}
             <nav className="w-full bg-white dark:bg-gray-900 shadow-sm mb-6">
                 <div className="max-w-6xl mx-auto px-4 py-4 flex justify-center items-center">
                     <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">Purchase Request Form</h1>
                 </div>
             </nav>
-            {/* AlertDialogs for confirmation */}
-            <AlertDialog open={openSubmitDialog} onOpenChange={setOpenSubmitDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Submit Transfer Request?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to submit this transfer request? You will not be able to edit after submission.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction asChild>
-                            <button
-                                type="submit"
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                                onClick={handleSubmitConfirmed}
-                            >
-                                Yes, Submit
-                            </button>
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <AlertDialog open={openDraftDialog} onOpenChange={setOpenDraftDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Save as Draft?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Do you want to save this transfer request as a draft? You can continue editing later.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction asChild>
-                            <button
-                                type="button"
-                                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
-                                onClick={handleSaveDraftConfirmed}
-                            >
-                                Yes, Save Draft
-                            </button>
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <AlertDialog open={openCancelDialog} onOpenChange={setOpenCancelDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Leave Form?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to leave this form? Unsaved changes will be lost.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Stay</AlertDialogCancel>
-                        <AlertDialogAction asChild>
-                            <button
-                                type="button"
-                                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-                                onClick={handleCancel}
-                            >
-                                Leave
-                            </button>
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 p-6 rounded shadow-md text-sm space-y-6" onSubmit={e => { e.preventDefault(); setOpenSubmitDialog(true); }} ref={formRef}>
-                {/* 1. Requestor Details */}
-                <fieldset className="border rounded p-4">
-                    <legend className="font-semibold text-lg">Requestor</legend>
-                    <div className="space-y-2">
-                        {/* Hidden inputs for payload */}
-                        <input type="hidden" name="ramco_id" value={form.requestor.ramco_id} />
-                        <input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Name</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.full_name}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Ramco ID</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.ramco_id || form.requestor.ramco_id}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Position</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.position?.name || form.requestor.position || ''}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Department</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.department?.name || ''}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Cost Center</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.costcenter?.name || ''}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">District</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.district?.name || ''}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Request Date</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{dateRequest ? new Date(dateRequest).toLocaleString() : ''}</span>
-                            </div>
-                        </div>
-                    </div>
-                </fieldset>
-
-                {/* 2. Select Items (Button to open ActionSidebar) */}
-                <fieldset className="border rounded p-4">
-                    <legend className="font-semibold flex items-center text-lg gap-2">
-                        Requested Items
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant="default"
-                            className='ml-2'
-                            onClick={() => setSelectedItems(prev => [...prev, { id: Date.now() }])}
-                            aria-label="Add Item"
-                        >
-                            <span className="text-2xl leading-none"><Plus className='w-5 h-5' /></span>
-                        </Button>
-                    </legend>
-                    {selectedItems.length === 0 ? (
-                        <div className="text-gray-400 text-center py-4">No items selected.</div>
-                    ) : (
-                        <div className="mt-2 px-1">
-                            {selectedItems.map((item, idx) => (
-                                <Accordion type="single" collapsible key={item.id} className="mb-4 bg-gray-50 dark:bg-gray-800 rounded px-4">
-                                    <AccordionItem value={`item-${item.id}`}>
-                                        <AccordionTrigger>
-                                            <div className="flex items-center justify-between w-full">
-                                                <div className="flex items-center gap-2">
-                                                    <Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
-                                                        <X />
-                                                    </Button>
-                                                    <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{`Item ${idx + 1}`}</span>
-                                                    {/* Render Type & Category if selected */}
-                                                    {item.type?.name && (
-                                                        <span className="ml-3 text-xs font-medium text-gray-700 dark:text-gray-300">{item.type.name}</span>
-                                                    )}
-                                                    {item.category?.name && (
-                                                        <span className="ml-2 text-xs font-medium text-gray-500 dark:text-gray-400">/ {item.category.name}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </AccordionTrigger>
-                                        <AccordionContent>
-                                            <div className="flex flex-wrap gap-4 items-start justify-between py-2">
-                                                {/* Type Select */}
-                                                <div className="flex flex-col w-full md:w-[30%]">
-                                                    <label className="min-w-[60px] font-medium mb-1">Type</label>
-                                                    <Select
-                                                        value={item.type?.id ? String(item.type.id) : ''}
-                                                        onValueChange={val => {
-                                                            const selectedType = types.find(t => String(t.id) === val);
-                                                            setSelectedItems(prev => prev.map((itm, i) =>
-                                                                i === idx
-                                                                    ? { ...itm, type: selectedType, category: undefined }
-                                                                    : itm
-                                                            ));
-                                                        }}
-                                                    >
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select type" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {types.map(type => (
-                                                                <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                {/* Category Select (chained to type) */}
-                                                <div className="flex flex-col w-full md:w-[30%]">
-                                                    <label className="min-w-[70px] font-medium mb-1">Category</label>
-                                                    <Select
-                                                        value={item.category?.id ? String(item.category.id) : ''}
-                                                        onValueChange={val => {
-                                                            const selectedCategory = categories.find(c => String(c.id) === val);
-                                                            setSelectedItems(prev => prev.map((itm, i) =>
-                                                                i === idx
-                                                                    ? { ...itm, category: selectedCategory }
-                                                                    : itm
-                                                            ));
-                                                        }}
-                                                        disabled={!item.type?.id}
-                                                    >
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select category" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {categories.filter(cat => item.type?.id && cat.type_id === item.type.id).map(category => (
-                                                                <SelectItem key={category.id} value={String(category.id)}>{category.name}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                {/* Required Date Input */}
-                                                <div className="flex flex-col w-full md:w-[30%]">
-                                                    <label className="min-w-[100px] font-medium mb-1">Required Date</label>
-                                                    <Input
-                                                        type="date"
-                                                        className="w-full"
-                                                        value={item.required_date || ''}
-                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, required_date: e.target.value } : itm))}
-                                                    />
-                                                </div>
-                                                {/* Request Details Textarea */}
-                                                <div className="flex flex-col w-full md:w-[48%] mt-4">
-                                                    <label className="min-w-[120px] font-medium mb-1">Request Details</label>
-                                                    <Textarea
-                                                        className="flex-1 min-h-[40px] max-h-[120px]"
-                                                        value={item.item_desc || ''}
-                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, item_desc: e.target.value } : itm))}
-                                                        placeholder="Enter request details"
-                                                    />
-                                                </div>
-                                                {/* Justification Textarea */}
-                                                <div className="flex flex-col w-full md:w-[48%] mt-4">
-                                                    <label className="min-w-[120px] font-medium mb-1">Justification</label>
-                                                    <Textarea
-                                                        className="flex-1 min-h-[40px] max-h-[120px]"
-                                                        value={item.justification || ''}
-                                                        onChange={e => setSelectedItems(prev => prev.map((itm, i) => i === idx ? { ...itm, justification: e.target.value } : itm))}
-                                                        placeholder="Enter justification"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                </Accordion>
-                            ))}
-                        </div>
-                    )}
-                </fieldset>
-                <div className="flex justify-center gap-2 mt-4">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white"
-                        onClick={() => setOpenDraftDialog(true)}
-                    >
-                        Save Draft
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="default"
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => setOpenSubmitDialog(true)}
-                    >
-                        Submit
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                        onClick={() => setOpenCancelDialog(true)}
-                    >
-                        Cancel
-                    </Button>
+            {/* Tabs */}
+            <div className="max-w-6xl mx-auto mb-4">
+                <div className="flex border-b">
+                    <button className={`px-6 py-2 font-semibold text-sm focus:outline-none ${activeTab === 'info' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setActiveTab('info')}>Purchase Information</button>
+                    <button className={`px-6 py-2 font-semibold text-sm focus:outline-none ${activeTab === 'items' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setActiveTab('items')}>Purchase Items</button>
+                    <button className={`px-6 py-2 font-semibold text-sm focus:outline-none ${activeTab === 'delivery' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`} onClick={() => setActiveTab('delivery')}>Delivery Information</button>
                 </div>
-                {/* 7. Workflow Section */}
-                <fieldset className="border rounded p-4">
-                    <legend className="font-semibold text-lg">Workflow</legend>
-                    <div className="space-y-4">
-                        {/* Asset Manager */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">Asset Manager</label>
-                            <span className="w-full md:max-w-xs">{workflow.assetManager?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.assetManager?.date ? new Date(workflow.assetManager.date).toLocaleString() : '-'}</span>
+            </div>
+            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 p-6 rounded shadow-md text-sm space-y-6">
+                {/* Tab 1: Purchase Information */}
+                {activeTab === 'info' && (
+                    <fieldset className="border rounded p-4">
+                        <legend className="font-semibold text-lg">Purchase Information</legend>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block font-medium mb-1">Request No</label>
+                                <Input type="text" name="request_no" value={info.request_no} disabled />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Request Date</label>
+                                <Input type="date" name="request_date" value={info.request_date} onChange={e => setInfo(prev => ({ ...prev, request_date: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Requestor (Ramco ID)</label>
+                                <Input type="text" name="ramco_id" value={info.ramco_id} onChange={e => setInfo(prev => ({ ...prev, ramco_id: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Cost Center</label>
+                                <Input type="text" name="costcenter_id" value={info.costcenter_id} onChange={e => setInfo(prev => ({ ...prev, costcenter_id: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Department</label>
+                                <Input type="text" name="department_id" value={info.department_id} onChange={e => setInfo(prev => ({ ...prev, department_id: e.target.value }))} />
+                            </div>
+                            <div className="col-span-2">
+                                <label className="block font-medium mb-1">Justification</label>
+                                <Textarea name="justification" value={info.justification} onChange={e => setInfo(prev => ({ ...prev, justification: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Purchase Order No</label>
+                                <Input type="text" name="po_no" value={info.po_no} onChange={e => setInfo(prev => ({ ...prev, po_no: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Purchase Order Date</label>
+                                <Input type="date" name="po_date" value={info.po_date} onChange={e => setInfo(prev => ({ ...prev, po_date: e.target.value }))} />
+                            </div>
                         </div>
-                        {workflow.assetManager?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.assetManager.comment}</span>
+                        {/* Step Navigation Buttons */}
+                        <div className="flex justify-end gap-2 mt-6">
+                            <Button type="button" variant="default" disabled={currentTabIndex === tabOrder.length - 1} onClick={() => setActiveTab(tabOrder[currentTabIndex + 1])}>Next</Button>
+                        </div>
+                    </fieldset>
+                )}
+                {/* Tab 2: Purchase Items */}
+                {activeTab === 'items' && (
+                    <fieldset className="border rounded p-4">
+                        <legend className="font-semibold text-lg">Purchase Items</legend>
+                        <Button type="button" onClick={() => setItems(prev => [...prev, { id: Date.now(), item_desc: '', quantity: 1, justification: '', type: null, category: null }])}>Add Item</Button>
+                        {items.length === 0 ? (
+                            <div className="text-gray-400 text-center py-4">No items added.</div>
+                        ) : (
+                            <div className="space-y-4">
+                                {items.map((item, idx) => (
+                                    <div key={item.id} className="border rounded p-3 bg-gray-50 dark:bg-gray-800">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="font-semibold">Item {idx + 1}</span>
+                                            <Button type="button" variant="destructive" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>Remove</Button>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block font-medium mb-1">Description</label>
+                                                <Textarea value={item.item_desc} onChange={e => setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, item_desc: e.target.value } : itm))} />
+                                            </div>
+                                            <div>
+                                                <label className="block font-medium mb-1">Quantity</label>
+                                                <Input type="number" min={1} value={item.quantity} onChange={e => setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, quantity: e.target.value } : itm))} />
+                                            </div>
+                                            <div className="col-span-2">
+                                                <label className="block font-medium mb-1">Justification</label>
+                                                <Textarea value={item.justification} onChange={e => setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, justification: e.target.value } : itm))} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
-                        {/* Approved By */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">Approved By</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.date ? new Date(workflow.approvedBy.date).toLocaleString() : '-'}</span>
+                        {/* Step Navigation Buttons */}
+                        <div className="flex justify-between gap-2 mt-6">
+                            <Button type="button" variant="secondary" disabled={currentTabIndex === 0} onClick={() => setActiveTab(tabOrder[currentTabIndex - 1])}>Previous</Button>
+                            <Button type="button" variant="default" disabled={currentTabIndex === tabOrder.length - 1} onClick={() => setActiveTab(tabOrder[currentTabIndex + 1])}>Next</Button>
                         </div>
-                        {workflow.approvedBy?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.approvedBy.comment}</span>
+                    </fieldset>
+                )}
+                {/* Tab 3: Delivery Information */}
+                {activeTab === 'delivery' && (
+                    <fieldset className="border rounded p-4">
+                        <legend className="font-semibold text-lg">Delivery Information</legend>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block font-medium mb-1">Supplier</label>
+                                <Input type="text" name="supplier_id" value={delivery.supplier_id} onChange={e => setDelivery(prev => ({ ...prev, supplier_id: e.target.value }))} />
                             </div>
-                        )}
-                    </div>
-                </fieldset>
+                            <div>
+                                <label className="block font-medium mb-1">Delivery Order No</label>
+                                <Input type="text" name="do_no" value={delivery.do_no} onChange={e => setDelivery(prev => ({ ...prev, do_no: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Delivery Date</label>
+                                <Input type="date" name="do_date" value={delivery.do_date} onChange={e => setDelivery(prev => ({ ...prev, do_date: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Invoice No</label>
+                                <Input type="text" name="inv_no" value={delivery.inv_no} onChange={e => setDelivery(prev => ({ ...prev, inv_no: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Invoice Date</label>
+                                <Input type="date" name="inv_date" value={delivery.inv_date} onChange={e => setDelivery(prev => ({ ...prev, inv_date: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block font-medium mb-1">Delivery Status</label>
+                                <select name="delivery_status" value={delivery.delivery_status} onChange={e => setDelivery(prev => ({ ...prev, delivery_status: e.target.value }))} className="input w-full">
+                                    <option value="">Select Status</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Partial Deliver">Partial Deliver</option>
+                                    <option value="Wrong Items">Wrong Items</option>
+                                </select>
+                            </div>
+                            <div className="col-span-2">
+                                <label className="block font-medium mb-1">Delivery Remarks</label>
+                                <Textarea name="delivery_remarks" value={delivery.delivery_remarks} onChange={e => setDelivery(prev => ({ ...prev, delivery_remarks: e.target.value }))} />
+                            </div>
+                        </div>
+                        {/* Step Navigation Buttons */}
+                        <div className="flex justify-between gap-2 mt-6">
+                            <Button type="button" variant="secondary" disabled={currentTabIndex === 0} onClick={() => setActiveTab(tabOrder[currentTabIndex - 1])}>Previous</Button>
+                            {/* Actions only on last step */}
+                            <div className="flex justify-center gap-2">
+                                <Button type="button" variant="secondary" className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white">Save Draft</Button>
+                                <Button type="button" variant="default" className="bg-blue-600 hover:bg-blue-700 text-white">Submit</Button>
+                                <Button type="button" variant="destructive" className="bg-red-600 hover:bg-red-700 text-white">Cancel</Button>
+                            </div>
+                        </div>
+                    </fieldset>
+                )}
+                {/* Actions moved to last step only */}
             </form>
         </div>
     );

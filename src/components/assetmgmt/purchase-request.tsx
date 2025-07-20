@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useContext, useEffect } from "react";
 import { authenticatedApi } from "@/config/api";
+import Link from "next/link";
 import { Plus } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -99,6 +100,13 @@ export default function PurchaseRequest() {
 
     return (
         <div className="mt-4">
+            <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
+                <li>
+                    <Link href="#" className="text-primary hover:underline">
+                        Asset Transfer
+                    </Link>
+                </li>
+            </ul>
             <div className="flex justify-between items-center mb-2">
                 <h2 className="text-xl font-bold">Purchase Requests</h2>
                 <Button
