@@ -104,6 +104,8 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
     const [itemTransferDetails, setItemTransferDetails] = React.useState<any>({});
     const [costCenters, setCostCenters] = React.useState<CostCenter[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
+    // State for uploaded delivery document (PDF)
+    const [deliveryDoc, setDeliveryDoc] = React.useState<File | null>(null);
     const [districts, setDistricts] = React.useState<District[]>([]);
     const [itemReasons, setItemReasons] = React.useState<any>({});
     const [workflow, setWorkflow] = React.useState<any>({});
@@ -133,52 +135,113 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
         setReturnToAssetManager({});
     }
 
-    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    // Confirmation dialog state
+    const [showConfirmDialog, setShowConfirmDialog] = React.useState(false);
+    const [pendingEvent, setPendingEvent] = React.useState<React.FormEvent<HTMLFormElement> | null>(null);
+
+    // Intercept form submit to show confirmation dialog
+    function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
+        setPendingEvent(e);
+        setShowConfirmDialog(true);
+    }
+
+    // Actual submit logic
+    async function doSubmit() {
         setSubmitError(null);
-        // Validation logic for items can be added here if needed
-        const payload = {
-            request_type: (form.request_type || '').toLowerCase(),
-            backdated_purchase: backdated,
-            request_reference: backdated ? manualPrNo : '',
-            request_no: info.request_no || '',
-            request_date: info.request_date || '',
-            ramco_id: requestor?.ramco_id || '',
-            costcenter_id: Number(requestor?.costcenter?.id) || 0,
-            department_id: Number(requestor?.department?.id) || 0,
-            po_no: purchase.po_no || '',
-            po_date: purchase.po_date || '',
-            supplier: purchase.supplier || '',
-            do_no: delivery.do_no || '',
-            do_date: delivery.do_date || '',
-            inv_no: delivery.inv_no || '',
-            inv_date: delivery.inv_date || '',
-            delivery_status: (delivery.delivery_status || '').toLowerCase(),
-            delivery_remarks: delivery.delivery_remarks || '',
-            request_upload: '', // Set this if you have file upload logic
-            items: items.map(item => ({
+        const itemsPayload = items.map(item => {
+            const base = {
                 type_id: item.type?.id || 0,
                 category_id: item.category?.id || 0,
                 qty: Number(item.quantity) || 0,
                 description: item.item_desc || '',
                 justification: item.justification || '',
-            })),
-        };
+                supplier: item.supplier || '',
+                unit_price: item.unit_price || '',
+                delivery_status: (delivery.delivery_status || '').toLowerCase(),
+                delivery_remarks: delivery.delivery_remarks || '',
+            };
+            if (backdated) {
+                return {
+                    ...base,
+                    register_numbers: Array.isArray(item.register_numbers) ? item.register_numbers : []
+                };
+            }
+            return base;
+        });
+        let payload: any;
+        let useFormData = !!deliveryDoc;
+        if (useFormData) {
+            payload = new FormData();
+            payload.append('request_type', (form.request_type || '').toLowerCase());
+            payload.append('backdated_purchase', String(backdated));
+            payload.append('request_reference', backdated ? manualPrNo : '');
+            payload.append('request_no', info.request_no || '');
+            payload.append('request_date', info.request_date || '');
+            payload.append('ramco_id', requestor?.ramco_id || '');
+            payload.append('costcenter_id', String(Number(requestor?.costcenter?.id) || 0));
+            payload.append('department_id', String(Number(requestor?.department?.id) || 0));
+            payload.append('po_no', purchase.po_no || '');
+            payload.append('po_date', purchase.po_date || '');
+            payload.append('supplier', purchase.supplier || '');
+            payload.append('do_no', delivery.do_no || '');
+            payload.append('do_date', delivery.do_date || '');
+            payload.append('inv_no', delivery.inv_no || '');
+            payload.append('inv_date', delivery.inv_date || '');
+            payload.append('items', JSON.stringify(itemsPayload));
+            payload.append('request_upload', deliveryDoc);
+        } else {
+            payload = {
+                request_type: (form.request_type || '').toLowerCase(),
+                backdated_purchase: backdated,
+                request_reference: backdated ? manualPrNo : '',
+                request_no: info.request_no || '',
+                request_date: info.request_date || '',
+                ramco_id: requestor?.ramco_id || '',
+                costcenter_id: Number(requestor?.costcenter?.id) || 0,
+                department_id: Number(requestor?.department?.id) || 0,
+                po_no: purchase.po_no || '',
+                po_date: purchase.po_date || '',
+                supplier: purchase.supplier || '',
+                do_no: delivery.do_no || '',
+                do_date: delivery.do_date || '',
+                inv_no: delivery.inv_no || '',
+                inv_date: delivery.inv_date || '',
+                request_upload: '',
+                items: itemsPayload,
+            };
+        }
         try {
-            await authenticatedApi.post('/api/assets/transfer-requests', payload);
-            toast.success(requestStatus === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
+            let apiUrl = '/api/purchase';
+            if (id) {
+                apiUrl = `/api/purchase/${id}`;
+                if (useFormData) {
+                    await authenticatedApi.put(apiUrl, payload, {
+                        headers: { 'Content-Type': 'multipart/form-data' },
+                    });
+                } else {
+                    await authenticatedApi.put(apiUrl, payload);
+                }
+            } else {
+                if (useFormData) {
+                    await authenticatedApi.post(apiUrl, payload, {
+                        headers: { 'Content-Type': 'multipart/form-data' },
+                    });
+                } else {
+                    await authenticatedApi.post(apiUrl, payload);
+                }
+            }
+            toast.success(requestStatus === 'draft' ? 'Draft saved successfully!' : 'Purchase request submitted successfully!');
             clearFormAndItems();
             handleCancel();
         } catch (err) {
-            setSubmitError('Failed to submit transfer. Please try again.');
+            setSubmitError('Failed to submit purchase request. Please try again.');
         }
     }
 
     async function handleSaveDraft() {
         clearFormAndItems();
-        const formElement = document.createElement('form');
-        const syntheticEvent = { preventDefault: () => { }, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
-        handleSubmit(syntheticEvent);
+        await doSubmit();
     }
 
     // Remove a selected item by index
@@ -245,13 +308,10 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
         fetchTypeCategoryData();
     }, []);
 
-    const handleSubmitConfirmed = () => {
+    const handleSubmitConfirmed = async () => {
         setRequestStatus('submitted');
         setOpenSubmitDialog(false);
-        if (formRef.current) {
-            const event = { preventDefault: () => { }, target: formRef.current } as unknown as React.FormEvent<HTMLFormElement>;
-            handleSubmit(event);
-        }
+        await doSubmit();
     };
     const handleSaveDraftConfirmed = () => {
         setRequestStatus('draft');
@@ -454,7 +514,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                     </button>
                 </div>
             </div>
-            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 py-6 px-4 rounded shadow-md text-sm space-y-6">
+            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 py-6 px-4 rounded shadow-md text-sm space-y-6" onSubmit={handleFormSubmit} ref={formRef}>
                 {/* Tab 1: Request Information */}
                 {activeTab === 'info' && (
                     <fieldset className="border rounded p-4">
@@ -465,35 +525,35 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                             </div>
                         </legend>
                         <div className='flex items-center gap-6 justify-end mb-10'>
-                    <div className="flex flex-col">
-                        <Label
-                            className={`block font-medium mb-1 mr-2${requestTypeError ? ' text-red-500 font-semibold' : ''}`}
-                            htmlFor="request_type"
-                        >
-                            Request Type:
-                        </Label>
-                        {requestTypeError && (
-                            <span className="text-red-500 text-xs mt-1">Please select a request type</span>
-                        )}
-                    </div>
-                    <RadioGroup
-                        id="request_type"
-                        className="flex items-center gap-4"
-                        value={form.request_type || ''}
-                        onValueChange={val => {
-                            setForm((prev: typeof form) => ({ ...prev, request_type: val }));
-                            setRequestTypeError(false);
-                        }}
-                    >
-                        <div className="flex items-center">
-                            <RadioGroupItem value="Opex" id="request_type_opex" />
-                            <Label htmlFor="request_type_opex" className="ml-2">Opex</Label>
-                        </div>
-                        <div className="flex items-center">
-                            <RadioGroupItem value="Capex" id="request_type_capex" />
-                            <Label htmlFor="request_type_capex" className="ml-2">Capex</Label>
-                        </div>
-                    </RadioGroup>
+                            <div className="flex flex-col">
+                                <Label
+                                    className={`block font-medium mb-1 mr-2${requestTypeError ? ' text-red-500 font-semibold' : ''}`}
+                                    htmlFor="request_type"
+                                >
+                                    Request Type:
+                                </Label>
+                                {requestTypeError && (
+                                    <span className="text-red-500 text-xs mt-1">Please select a request type</span>
+                                )}
+                            </div>
+                            <RadioGroup
+                                id="request_type"
+                                className="flex items-center gap-4"
+                                value={form.request_type || ''}
+                                onValueChange={val => {
+                                    setForm((prev: typeof form) => ({ ...prev, request_type: val }));
+                                    setRequestTypeError(false);
+                                }}
+                            >
+                                <div className="flex items-center">
+                                    <RadioGroupItem value="Opex" id="request_type_opex" />
+                                    <Label htmlFor="request_type_opex" className="ml-2">Opex</Label>
+                                </div>
+                                <div className="flex items-center">
+                                    <RadioGroupItem value="Capex" id="request_type_capex" />
+                                    <Label htmlFor="request_type_capex" className="ml-2">Capex</Label>
+                                </div>
+                            </RadioGroup>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             {/* Row 1: Manual PR No, Request No, Request Date */}
@@ -578,7 +638,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                 <span className='font-semibold'>Each added item must have the same type and category.</span>
                                 <span className='text-xs'>For example: "Computer + Desktop" and "Computer + Laptop" are considered different items.</span>
                             </div>
-                            <Button type="button" onClick={() => setItems(prev => [...prev, { id: Date.now(), item_desc: '', quantity: 1, justification: '', type: null, category: null, supplier: '', unit_price: '' }])}><Plus size='sm' /></Button>
+                            <Button type="button" onClick={() => setItems(prev => [...prev, { id: Date.now(), item_desc: '', quantity: 1, justification: '', type: null, category: null, supplier: '', unit_price: '' }])}><Plus size={20} /></Button>
                         </div>
                         {items.length === 0 ? (
                             <div className="text-gray-400 text-center py-4">No items added.</div>
@@ -898,7 +958,29 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                 <label className="block font-medium mb-1">Invoice Date</label>
                                 <Input type="date" name="inv_date" value={delivery.inv_date} onChange={e => setDelivery(prev => ({ ...prev, inv_date: e.target.value }))} />
                             </div>
+                            <div>
+                                <label className="block font-medium mb-1">Upload All Documents</label>
+                                <Input
+                                    type="file"
+                                    accept="application/pdf"
+                                    onChange={e => {
+                                        const file = e.target.files && e.target.files[0];
+                                        if (file && file.type === 'application/pdf') {
+                                            setDeliveryDoc(file);
+                                        } else if (file) {
+                                            alert('Only PDF files are allowed.');
+                                            e.target.value = '';
+                                            setDeliveryDoc(null);
+                                        }
+                                    }}
+                                />
+                                {deliveryDoc && (
+                                    <span className="text-xs text-green-600 block mt-1">Selected: {deliveryDoc.name}</span>
+                                )}
+                                <span className="text-xs text-red-500">Only PDF files are allowed. Max size: 10MB.</span>
+                            </div>
                         </div>
+
                         {/* Items summary table for Delivery Information (no supplier/unit price columns) */}
                         {items.length > 0 && (
                             <div className="mt-4">
@@ -960,8 +1042,8 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                             <Button type="button" variant="secondary" disabled={currentTabIndex === 0} onClick={() => setActiveTab(tabOrder[currentTabIndex - 1])}>Previous</Button>
                             {/* Actions only on last step */}
                             <div className="flex justify-center gap-2">
-                                <Button type="button" variant="secondary" className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white">Save Draft</Button>
-                                <Button type="button" variant="default" className="bg-blue-600 hover:bg-blue-700 text-white">Submit</Button>
+                                <Button type="submit" variant="secondary" className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white">Save Draft</Button>
+                                <Button type="submit" variant="default">Submit</Button>
                                 <Button type="button" variant="destructive" className="bg-red-600 hover:bg-red-700 text-white">Cancel</Button>
                             </div>
                         </div>
@@ -969,6 +1051,25 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                 )}
                 {/* Actions moved to last step only */}
             </form>
+            {/* Confirmation Dialog */}
+            <AlertDialog open={showConfirmDialog} onOpenChange={open => { if (!open) { setShowConfirmDialog(false); setPendingEvent(null); } }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Submit Purchase Request?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to submit this purchase request? You will not be able to edit after submission.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { setShowConfirmDialog(false); setPendingEvent(null); }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={async () => {
+                            setShowConfirmDialog(false);
+                            await doSubmit();
+                            setPendingEvent(null);
+                        }}>Yes, Submit</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };
