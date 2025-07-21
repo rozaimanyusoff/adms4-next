@@ -129,7 +129,7 @@ interface District {
 
 // Change AssetTransferForm to a self-contained component
 interface AssetTransferFormProps {
-  id?: string | null;
+    id?: string | null;
 }
 
 const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
@@ -510,76 +510,76 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
 
     // Fetch transfer request if id is provided
     React.useEffect(() => {
-      if (id) {
-        setLoading(true);
-        authenticatedApi.get(`/api/assets/transfer-requests/${id}`)
-          .then((res: any) => {
-            const data = res?.data?.data;
-            if (data) {
-              // Prefill form state for edit mode
-              setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
-              // Map items to selectedItems
-              if (Array.isArray(data.items)) {
-                setSelectedItems(data.items.map((item: any) => ({
-                  ...item,
-                  id: item.id,
-                  transfer_type: item.transfer_type,
-                  register_number: typeof item.identifier === 'string' ? item.identifier : undefined,
-                  ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
-                  full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
-                  asset_type: item.asset_type,
-                  owner: item.curr_owner,
-                  costcenter: item.curr_costcenter,
-                  department: item.curr_department,
-                  district: item.curr_district,
-              })));
-                // Prefill effective dates
-                setItemEffectiveDates(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
-                );
-                // Prefill transfer details (current/new)
-                setItemTransferDetails(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, {
-                    current: {
-                      ownerName: item.curr_owner?.name || '',
-                      ownerStaffId: item.curr_owner?.ramco_id || '',
-                      costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
-                      department: item.curr_department?.id ? String(item.curr_department.id) : '',
-                      location: item.curr_district?.id ? String(item.curr_district.id) : '',
-                    },
-                    new: {
-                      ownerName: item.new_owner?.name || '',
-                      ownerStaffId: item.new_owner?.ramco_id || '',
-                      costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
-                      department: item.new_department?.id ? String(item.new_department.id) : '',
-                      location: item.new_district?.id ? String(item.new_district.id) : '',
-                    },
-                    effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
-                  }]))
-                );
-                // Prefill reasons
-                setItemReasons(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
-                );
-                // Prefill returnToAssetManager
-                setReturnToAssetManager(
-                  Object.fromEntries(data.items.map((item: any) => [item.id, !!item.return_to_asset_manager]))
-                );
-              }
-              // Prefill workflow if present
-              if (data.workflow) setWorkflow(data.workflow);
-              // Prefill request status
-              if (data.request_status) setRequestStatus(data.request_status);
-              // Prefill request date
-              if (data.request_date) setDateRequest(data.request_date);
-            }
-            setLoading(false);
-          })
-          .catch(() => {
-            setError('Failed to load transfer request.');
-            setLoading(false);
-          });
-      }
+        if (id) {
+            setLoading(true);
+            authenticatedApi.get(`/api/assets/transfer-requests/${id}`)
+                .then((res: any) => {
+                    const data = res?.data?.data;
+                    if (data) {
+                        // Prefill form state for edit mode
+                        setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
+                        // Map items to selectedItems
+                        if (Array.isArray(data.items)) {
+                            setSelectedItems(data.items.map((item: any) => ({
+                                ...item,
+                                id: item.id,
+                                transfer_type: item.transfer_type,
+                                register_number: typeof item.identifier === 'string' ? item.identifier : undefined,
+                                ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
+                                full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
+                                asset_type: item.asset_type,
+                                owner: item.curr_owner,
+                                costcenter: item.curr_costcenter,
+                                department: item.curr_department,
+                                district: item.curr_district,
+                            })));
+                            // Prefill effective dates
+                            setItemEffectiveDates(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
+                            );
+                            // Prefill transfer details (current/new)
+                            setItemTransferDetails(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, {
+                                    current: {
+                                        ownerName: item.curr_owner?.name || '',
+                                        ownerStaffId: item.curr_owner?.ramco_id || '',
+                                        costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
+                                        department: item.curr_department?.id ? String(item.curr_department.id) : '',
+                                        location: item.curr_district?.id ? String(item.curr_district.id) : '',
+                                    },
+                                    new: {
+                                        ownerName: item.new_owner?.name || '',
+                                        ownerStaffId: item.new_owner?.ramco_id || '',
+                                        costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
+                                        department: item.new_department?.id ? String(item.new_department.id) : '',
+                                        location: item.new_district?.id ? String(item.new_district.id) : '',
+                                    },
+                                    effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
+                                }]))
+                            );
+                            // Prefill reasons
+                            setItemReasons(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
+                            );
+                            // Prefill returnToAssetManager
+                            setReturnToAssetManager(
+                                Object.fromEntries(data.items.map((item: any) => [item.id, !!item.return_to_asset_manager]))
+                            );
+                        }
+                        // Prefill workflow if present
+                        if (data.workflow) setWorkflow(data.workflow);
+                        // Prefill request status
+                        if (data.request_status) setRequestStatus(data.request_status);
+                        // Prefill request date
+                        if (data.request_date) setDateRequest(data.request_date);
+                    }
+                    setLoading(false);
+                })
+                .catch(() => {
+                    setError('Failed to load transfer request.');
+                    setLoading(false);
+                });
+        }
     }, [id]);
 
     // Show tooltip to add items if none are selected
@@ -1306,5 +1306,3 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
 };
 
 export default AssetTransferForm;
-
-
