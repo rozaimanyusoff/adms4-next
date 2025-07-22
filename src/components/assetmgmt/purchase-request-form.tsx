@@ -171,13 +171,19 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
         });
         let payload: any;
         let useFormData = !!deliveryDoc;
+        // Always ensure request_date is a valid string (YYYY-MM-DD)
+        let requestDate = (info.request_date || '').trim();
+        if (!requestDate) {
+            const today = new Date();
+            requestDate = today.toISOString().slice(0, 10);
+        }
         if (useFormData) {
             payload = new FormData();
             payload.append('request_type', (form.request_type || '').toLowerCase());
             payload.append('backdated_purchase', String(backdated));
             payload.append('request_reference', backdated ? manualPrNo : '');
             payload.append('request_no', info.request_no || '');
-            payload.append('request_date', info.request_date || '');
+            payload.append('request_date', requestDate);
             payload.append('ramco_id', requestor?.ramco_id || '');
             payload.append('costcenter_id', String(Number(requestor?.costcenter?.id) || 0));
             payload.append('department_id', String(Number(requestor?.department?.id) || 0));
@@ -189,14 +195,16 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
             payload.append('inv_no', delivery.inv_no || '');
             payload.append('inv_date', delivery.inv_date || '');
             payload.append('items', JSON.stringify(itemsPayload));
-            payload.append('request_upload', deliveryDoc);
+            if (deliveryDoc) {
+                payload.append('request_upload', deliveryDoc);
+            }
         } else {
             payload = {
                 request_type: (form.request_type || '').toLowerCase(),
                 backdated_purchase: backdated,
                 request_reference: backdated ? manualPrNo : '',
                 request_no: info.request_no || '',
-                request_date: info.request_date || '',
+                request_date: requestDate,
                 ramco_id: requestor?.ramco_id || '',
                 costcenter_id: Number(requestor?.costcenter?.id) || 0,
                 department_id: Number(requestor?.department?.id) || 0,
