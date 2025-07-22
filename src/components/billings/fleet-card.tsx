@@ -4,6 +4,7 @@ import { authenticatedApi } from "@/config/api";
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from "@components/ui/action-aside";
 import { Plus, Replace, ArrowBigLeft, ArrowBigRight, Loader2 } from "lucide-react";
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,6 +43,8 @@ interface AssetOption {
     register_number: string;
     type_id?: number;
     status?: string;
+    fuel_type?: string;
+    card_no?: string; // Optional for displaying in asset selection
 }
 interface IssuerOption {
     fuel_id: number;
@@ -64,6 +67,13 @@ const FleetCardList: React.FC = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [replaceField, setReplaceField] = useState<null | 'asset' | 'issuer' | 'costcenter'>(null);
     const [optionSearch, setOptionSearch] = useState("");
+    const [assetListLoading, setAssetListLoading] = useState(false);
+    // --- Summary Card Filter State ---
+    const [summaryFilter, setSummaryFilter] = useState<'noAsset' | 'unassignedCostcenter' | null>(null);
+        // Dialog state for asset assignment confirmation
+    const [showAssetDialog, setShowAssetDialog] = useState(false);
+    const [pendingAsset, setPendingAsset] = useState<AssetOption | null>(null);
+    const [pendingAssetId, setPendingAssetId] = useState<number | null>(null);
 
     // Inline form state for ActionSidebar
     const [form, setForm] = useState({
@@ -109,16 +119,22 @@ const FleetCardList: React.FC = () => {
             .then(res => setCostcenters(res.data.data || []));
     }, []);
 
-    // Listen for asset selection from right panel
     useEffect(() => {
         const handleSelectAsset = (e: any) => {
             if (e.detail) {
+                const selectedAsset = assets.find(a => a.asset_id === e.detail);
+                if (selectedAsset && selectedAsset.card_no) {
+                    setPendingAsset(selectedAsset);
+                    setPendingAssetId(e.detail);
+                    setShowAssetDialog(true);
+                    return;
+                }
                 setForm(f => ({ ...f, asset_id: String(e.detail) }));
             }
         };
         window.addEventListener('select-asset', handleSelectAsset);
         return () => window.removeEventListener('select-asset', handleSelectAsset);
-    }, []);
+    }, [assets]);
 
     const columns: ColumnDef<FleetCard>[] = ([
         {
@@ -157,8 +173,8 @@ const FleetCardList: React.FC = () => {
         {
             key: 'costcenter',
             header: 'Cost Center',
-            render: (row: FleetCard) => row.asset?.costcenter?.name || '',
-            filter: 'input',
+            render: (row: FleetCard) => row.asset?.costcenter?.name || 'Unassigned',
+            filter: 'singleSelect',
         },
         {
             key: 'pin_no',
@@ -228,20 +244,11 @@ const FleetCardList: React.FC = () => {
                                 asset_id: a.id,
                                 register_number: a.register_number,
                                 type_id: a.types?.type_id,
-                                status: a.status
+                                status: a.status,
+                                fuel_type: a.specs?.fuel_type, // get fuel_type from specs
+                                card_no: a.specs?.card_no // get card_no from asset
                             }));
-                        // Ensure current asset is included for display
-                        if (row.asset?.asset_id && !filtered.some((a: AssetOption) => a.asset_id === row.asset.asset_id)) {
-                            filtered = [
-                                ...filtered,
-                                {
-                                    asset_id: row.asset.asset_id,
-                                    register_number: row.asset.register_number,
-                                    type_id: undefined,
-                                    status: undefined
-                                }
-                            ];
-                        }
+
                         setAssets(filtered);
                         setForm({
                             card_no: row.fleetcard?.card_no || '',
@@ -314,18 +321,38 @@ const FleetCardList: React.FC = () => {
 
     // Move fetchAssets to top-level so it can be passed to FleetCardForm
     const fetchAssets = () => {
-        authenticatedApi.get<{ data: any[] }>("/api/assets?type=2&status=active")
+        setAssetListLoading(true);
+        authenticatedApi.get<{ data: any[] }>('/api/assets?type=2&status=active')
             .then(res => {
-                const assetsRaw = res.data.data || [];
-                const filtered = assetsRaw
-                    .filter(a => String(a.types?.type_id) === '2' && String(a.status).toLowerCase() === 'active')
-                    .map(a => ({
-                        asset_id: a.id,
-                        register_number: a.register_number,
-                        type_id: a.types?.type_id,
-                        status: a.status
-                    }));
+                console.log('Asset API response:', res);
+                const assetsRaw: any[] = res?.data?.data || [];
+                // If assetsRaw is empty, log a warning
+                if (!Array.isArray(assetsRaw) || assetsRaw.length === 0) {
+                    console.warn('No assets returned from backend or wrong structure:', assetsRaw);
+                }
+                // Try to map, but if mapping fails, fallback to raw
+                let filtered: any[] = [];
+                try {
+                    filtered = assetsRaw
+                        .map((a: any) => ({
+                            asset_id: a.id,
+                            register_number: a.register_number,
+                            type_id: a.types?.type_id,
+                            status: a.status,
+                            fuel_type: a.specs?.fuel_type, // get fuel_type from specs
+                            card_no: a.specs?.card_no || '' // get card_no from asset
+                        }));
+                } catch (err) {
+                    console.error('Asset mapping error:', err);
+                    filtered = assetsRaw;
+                }
                 setAssets(filtered);
+                setAssetListLoading(false);
+            })
+            .catch((err) => {
+                console.error('Asset API error:', err);
+                setAssets([]);
+                setAssetListLoading(false);
             });
     };
 
@@ -373,8 +400,78 @@ const FleetCardList: React.FC = () => {
     if (loading) return <div className="p-4">Loading...</div>;
     if (error) return <div className="p-4 text-red-600">{error}</div>;
 
+
+    // Counts
+    const cardsNoAssetCount = fleetCards.filter(fc => !fc.asset || !fc.asset.asset_id).length;
+    const cardsUnassignedCostcenterCount = fleetCards.filter(fc => fc.asset && fc.asset.asset_id && (!fc.asset.costcenter || !fc.asset.costcenter.name || fc.asset.costcenter.name === 'Unassigned')).length;
+
+    // Filtered data for grid
+    const filteredFleetCards = summaryFilter === 'noAsset'
+        ? fleetCards.filter(fc => !fc.asset || !fc.asset.asset_id)
+        : summaryFilter === 'unassignedCostcenter'
+            ? fleetCards.filter(fc => fc.asset && fc.asset.asset_id && (!fc.asset.costcenter || !fc.asset.costcenter.name || fc.asset.costcenter.name === 'Unassigned'))
+            : fleetCards;
+
     return (
         <div className="mt-4">
+            {/* Asset Assignment Confirmation Dialog */}
+            <AlertDialog open={showAssetDialog} onOpenChange={setShowAssetDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Asset Already Assigned</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {pendingAsset && (
+                                <>
+                                    The asset <b>{pendingAsset.register_number}</b> is already assigned to card number <b>{pendingAsset.card_no}</b>.<br />
+                                    Are you sure you want to assign this asset to this fleet card?
+                                </>
+                            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => {
+                            setShowAssetDialog(false);
+                            setPendingAsset(null);
+                            setPendingAssetId(null);
+                        }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => {
+                            if (pendingAssetId) {
+                                setForm(f => ({ ...f, asset_id: String(pendingAssetId) }));
+                            }
+                            setShowAssetDialog(false);
+                            setPendingAsset(null);
+                            setPendingAssetId(null);
+                        }}>Assign Anyway</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            {/* Summary Cards */}
+            <div className="flex flex-wrap gap-4 mb-4">
+                {/* Card: No Asset */}
+                <div
+                    className={`bg-red-100 dark:bg-slate-800 rounded shadow-lg p-4 min-w-[180px] dark:border-slate-700 flex flex-col justify-between cursor-pointer transition-all ${summaryFilter === 'noAsset' ? 'bg-amber-200 dark:bg-amber-700 font-bold' : ''}`}
+                    onClick={() => setSummaryFilter(summaryFilter === 'noAsset' ? null : 'noAsset')}
+                >
+                    <div className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Cards w/o Asset</div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl font-mono">{cardsNoAssetCount}</span>
+                        <span className="text-xs text-gray-500">card{cardsNoAssetCount === 1 ? '' : 's'}</span>
+                    </div>
+                    {/* No Clear button, just click card again to clear filter */}
+                </div>
+                {/* Card: Unassigned Costcenter */}
+                <div
+                    className={`bg-red-100 dark:bg-slate-800 rounded shadow-lg p-4 min-w-[180px] dark:border-slate-700 flex flex-col justify-between cursor-pointer transition-all ${summaryFilter === 'unassignedCostcenter' ? 'bg-amber-200 dark:bg-amber-700 font-bold' : ''}`}
+                    onClick={() => setSummaryFilter(summaryFilter === 'unassignedCostcenter' ? null : 'unassignedCostcenter')}
+                >
+                    <div className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Unassigned Cost Center</div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl font-mono">{cardsUnassignedCostcenterCount}</span>
+                        <span className="text-xs text-gray-500">card{cardsUnassignedCostcenterCount === 1 ? '' : 's'}</span>
+                    </div>
+                    {/* No Clear button, just click card again to clear filter */}
+                </div>
+            </div>
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Fleet Cards Management</h2>
                 <Button
@@ -386,12 +483,18 @@ const FleetCardList: React.FC = () => {
             </div>
             <CustomDataGrid
                 columns={columns}
-                data={fleetCards}
+                data={filteredFleetCards}
                 pagination={false}
                 pageSize={10}
                 dataExport={true}
                 inputFilter={false}
                 onRowDoubleClick={handleOpenSidebar}
+                rowClass={row => {
+                    // Red if asset is missing or costcenter is Unassigned
+                    if (!row.asset || !row.asset.asset_id) return 'text-red-500';
+                    if ((row.asset.costcenter?.name || 'Unassigned') === 'Unassigned') return 'text-red-500';
+                    return '';
+                }}
             />
             {sidebarOpen && (
                 <ActionSidebar
@@ -550,12 +653,34 @@ const FleetCardList: React.FC = () => {
                                         onChange={e => setOptionSearch(e.target.value)}
                                     />
                                     <div className="max-h-[500px] overflow-y-auto space-y-2">
-                                        {replaceField === 'asset' && assets.filter(a => a.register_number.toLowerCase().includes(optionSearch.toLowerCase())).map(a => (
-                                            <div key={a.asset_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { window.dispatchEvent(new CustomEvent('select-asset', { detail: a.asset_id })); setReplaceField(null); setOptionSearch(""); }} />
-                                                <span className="flex-1 cursor-pointer">{a.register_number}</span>
-                                            </div>
-                                        ))}
+                                        {replaceField === 'asset' && (
+                                            assetListLoading ? (
+                                                <div className="text-center text-gray-400 py-4">Loading assets...</div>
+                                            ) : (
+                                                assets.length === 0 ? (
+                                                    <div className="text-center text-gray-400 py-4">No assets found. (Debug: {assets.length} assets)</div>
+                                                ) : (
+                                                    <>
+                                                        <div className="text-xs text-gray-400 px-2">{assets.length} assets loaded</div>
+                                                        {assets.filter(a => {
+                                                            const search = optionSearch.toLowerCase();
+                                                            const reg = a.register_number?.toLowerCase() || '';
+                                                            const card = a.card_no?.toLowerCase() || '';
+                                                            return reg.includes(search) || card.includes(search);
+                                                        }).map(a => (
+                                                            <div key={a.asset_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { window.dispatchEvent(new CustomEvent('select-asset', { detail: a.asset_id })); setReplaceField(null); setOptionSearch(""); }} />
+                                                                <div className="flex flex-col">
+                                                                    <span className="flex-1 cursor-pointer">{a.register_number}</span>
+                                                                    <span className="text-xs capitalize text-gray-500">Fuel Type: {a.fuel_type || 'Unknown Fuel Type'}</span>
+                                                                    <span className={`text-xs capitalize ${a.card_no ? 'text-red-500' : 'text-gray-500'}`}>Fleet Card: {a.card_no || 'No Card Number'}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                )
+                                            )
+                                        )}
                                         {replaceField === 'issuer' && issuers.filter(i => i.f_issuer.toLowerCase().includes(optionSearch.toLowerCase())).map(i => (
                                             <div key={i.fuel_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
                                                 <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm(f => ({ ...f, fuel_id: String(i.fuel_id) })); setReplaceField(null); setOptionSearch(""); }} />

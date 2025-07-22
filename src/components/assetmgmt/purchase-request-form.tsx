@@ -119,6 +119,8 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
    const [error, setError] = React.useState<string | null>(null);
    const [types, setTypes] = React.useState<{ id: number; name: string }[]>([]);
    const [categories, setCategories] = React.useState<{ id: number; name: string; type_id: number }[]>([]);
+   const [purchaseInfoError, setPurchaseInfoError] = React.useState<{ po_no?: boolean; po_date?: boolean }>({});
+   const [purchaseItemFieldErrors, setPurchaseItemFieldErrors] = React.useState<any[]>([]);
 
    const authContext = useContext(AuthContext);
    const user = authContext?.authData?.user;
@@ -138,6 +140,9 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
    // Confirmation dialog state
    const [showConfirmDialog, setShowConfirmDialog] = React.useState(false);
    const [pendingEvent, setPendingEvent] = React.useState<React.FormEvent<HTMLFormElement> | null>(null);
+   const [deliveryFieldErrors, setDeliveryFieldErrors] = React.useState({ do_no: false, do_date: false, inv_no: false, inv_date: false });
+   const [deliveryUploadError, setDeliveryUploadError] = React.useState(false);
+   const [deliveryItemFieldErrors, setDeliveryItemFieldErrors] = React.useState<any[]>([]);
 
    // Intercept form submit to show confirmation dialog
    function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -584,7 +589,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                     setManualPrNo(e.target.value);
                                     setManualPrNoError(false);
                                  }}
-                                 className={manualPrNoError ? 'ring-0 border-0 outline-none text-red-500 font-semibold' : ''}
+                                 className={manualPrNoError ? 'uppercase placeholder:normal-case ring-0 border-0 outline-none text-red-500 font-semibold' : ''}
                               />
                               {manualPrNoError && (
                                  <span className="text-red-500 text-xs mt-1">Manual PR No is required for backdated purchase</span>
@@ -670,7 +675,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                   <div className='flex items-center justify-between mb-10'>
                      <div className="flex flex-col text-red-600">
                         <span className='font-semibold'>Each added item must have the same type, category, and unit price.</span>
-                        <span className='text-xs'>For example: "Computer + Desktop" and "Computer + Laptop" are considered different items. <br/>Even if type and category are the same, different unit prices will also be treated as different items.</span>
+                        <span className='text-xs'>For example: "Computer + Desktop" and "Computer + Laptop" are considered different items. <br />Even if type and category are the same, different unit prices will also be treated as different items.</span>
                      </div>
                      <Button type="button" onClick={() => setItems(prev => [...prev, { id: Date.now(), item_desc: '', quantity: 1, justification: '', type: null, category: null, supplier: '', unit_price: '' }])}><Plus size={20} /></Button>
                   </div>
@@ -1037,15 +1042,35 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                   </legend>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                      <div>
-                        <label className="block font-medium mb-1">Purchase Order No</label>
-                        <Input type="text" placeholder='Enter PO number' name="po_no" className='uppercase placeholder:normal-case' value={purchase.po_no} onChange={e => setPurchase(prev => ({ ...prev, po_no: e.target.value.toUpperCase() }))} />
+                        <label className={`block font-medium mb-1${purchaseInfoError.po_no ? ' text-red-500 font-semibold' : ''}`}>Purchase Order No</label>
+                        <Input
+                           type="text"
+                           placeholder='Enter PO number'
+                           name="po_no"
+                           className={`uppercase placeholder:normal-case${purchaseInfoError.po_no ? ' border-red-500' : ''}`}
+                           value={purchase.po_no}
+                           onChange={e => {
+                              setPurchase(prev => ({ ...prev, po_no: e.target.value.toUpperCase() }));
+                              setPurchaseInfoError(err => ({ ...err, po_no: false }));
+                           }}
+                        />
+                        {purchaseInfoError.po_no && <span className="text-red-500 text-xs mt-1">PO No is required</span>}
                      </div>
                      <div>
-                        <label className="block font-medium mb-1">Purchase Order Date</label>
-                        <Input type="date" name="po_date" value={purchase.po_date} onChange={e => setPurchase(prev => ({ ...prev, po_date: e.target.value }))} />
+                        <label className={`block font-medium mb-1${purchaseInfoError.po_date ? ' text-red-500 font-semibold' : ''}`}>Purchase Order Date</label>
+                        <Input
+                           type="date"
+                           name="po_date"
+                           className={purchaseInfoError.po_date ? 'border-red-500' : ''}
+                           value={purchase.po_date}
+                           onChange={e => {
+                              setPurchase(prev => ({ ...prev, po_date: e.target.value }));
+                              setPurchaseInfoError(err => ({ ...err, po_date: false }));
+                           }}
+                        />
+                        {purchaseInfoError.po_date && <span className="text-red-500 text-xs mt-1">PO Date is required</span>}
                      </div>
                   </div>
-
                   {/* Items summary table */}
                   {items.length > 0 && (
                      <div className="mt-4">
@@ -1058,7 +1083,7 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                     <th className="border px-2 py-1">Type</th>
                                     <th className="border px-2 py-1">Category</th>
                                     <th className="border px-2 py-1">Supplier</th>
-                                    <th className="border px-2 py-1">Unit Price <span className='text-blue-500 text-xs'>. *Quotation Sub-section coming soon</span></th>
+                                    <th className="border px-2 py-1">Unit Price</th>
                                     <th className="border px-2 py-1">Qty</th>
                                     <th className="border px-2 py-1">Total</th>
                                  </tr>
@@ -1068,44 +1093,44 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                     const unitPrice = parseFloat(item.unit_price ?? '0.00');
                                     const qty = parseInt(item.quantity || 0, 10);
                                     const total = unitPrice * qty;
+                                    const fieldErr = purchaseItemFieldErrors[idx] || {};
                                     return (
                                        <tr key={item.id}>
                                           <td className="border px-2 py-1 text-center">{idx + 1}</td>
-                                          <td className="border px-2 py-1">{getTypeName(item.type?.id)}</td>
-                                          <td className="border px-2 py-1">{getCategoryName(item.category?.id)}</td>
+                                          <td className="border px-2 py-1">{item.type?.name || '-'}</td>
+                                          <td className="border px-2 py-1">{item.category?.name || '-'}</td>
                                           <td className="border px-2 py-1">
                                              <Input
                                                 type="text"
-                                                className="capitalize"
+                                                className={`capitalize${fieldErr.supplier ? ' border-red-500' : ''}`}
                                                 placeholder="Enter supplier"
                                                 value={item.supplier || ''}
                                                 onChange={e => {
-                                                   const val = e.target.value;
-                                                   setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, supplier: val } : itm));
+                                                   const value = e.target.value;
+                                                   setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, supplier: value } : itm));
+                                                   setPurchaseItemFieldErrors(prev => prev.map((err, i) => i === idx ? { ...err, supplier: false } : err));
                                                 }}
                                              />
+                                             {fieldErr.supplier && <span className="text-red-500 text-xs mt-1">Supplier is required</span>}
                                           </td>
-                                          <td className="border px-2 py-1 text-right">
+                                          <td className="border px-2 py-1">
                                              <Input
-                                                type="text"
-                                                inputMode="decimal"
-                                                pattern="^[0-9]*[.,]?[0-9]*$"
-                                                placeholder="0.00"
-                                                value={item.unit_price === undefined || item.unit_price === null ? '' : item.unit_price}
+                                                type="number"
+                                                min={0}
+                                                step={0.01}
+                                                className={fieldErr.unit_price ? 'border-red-500' : ''}
+                                                placeholder="Enter unit price"
+                                                value={item.unit_price || ''}
                                                 onChange={e => {
-                                                   let val = e.target.value.replace(/[^0-9.]/g, '');
-                                                   // Only allow one decimal point
-                                                   const parts = val.split('.');
-                                                   if (parts.length > 2) {
-                                                      val = parts[0] + '.' + parts.slice(1).join('');
-                                                   }
-                                                   setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, unit_price: val } : itm));
+                                                   const value = e.target.value;
+                                                   setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, unit_price: value } : itm));
+                                                   setPurchaseItemFieldErrors(prev => prev.map((err, i) => i === idx ? { ...err, unit_price: false } : err));
                                                 }}
-                                                className="text-right"
                                              />
+                                             {fieldErr.unit_price && <span className="text-red-500 text-xs mt-1">Unit Price is required</span>}
                                           </td>
-                                          <td className="border px-2 py-1 text-center">{item.quantity}</td>
-                                          <td className="border px-2 py-1 text-right">{item.unit_price && item.quantity ? (total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</td>
+                                          <td className="border px-2 py-1">{item.quantity}</td>
+                                          <td className="border px-2 py-1">{isNaN(total) ? '-' : total.toFixed(2)}</td>
                                        </tr>
                                     );
                                  })}
@@ -1120,7 +1145,45 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                   {/* Step Navigation Buttons */}
                   <div className="flex justify-between gap-2 mt-6">
                      <Button type="button" variant="secondary" disabled={currentTabIndex === 0} onClick={() => setActiveTab(tabOrder[currentTabIndex - 1])}>Previous</Button>
-                     <Button type="button" variant="default" disabled={currentTabIndex === tabOrder.length - 1} onClick={() => setActiveTab(tabOrder[currentTabIndex + 1])}>Next</Button>
+                     <Button type="button" variant="default" disabled={currentTabIndex === tabOrder.length - 1} onClick={() => {
+                        // --- Purchase Info Validation ---
+                        const purchaseErr: any = { po_no: false, po_date: false };
+                        if (!purchase.po_no || !purchase.po_no.trim()) purchaseErr.po_no = true;
+                        if (!purchase.po_date || !purchase.po_date.trim()) purchaseErr.po_date = true;
+                        setPurchaseInfoError(purchaseErr);
+                        // Validate items supplier & unit_price
+                        const itemErrs = items.map(item => {
+                           const err: any = {};
+                           if (!item.supplier || !item.supplier.trim()) err.supplier = true;
+                           if (!item.unit_price || isNaN(Number(item.unit_price)) || Number(item.unit_price) <= 0) err.unit_price = true;
+                           return err;
+                        });
+                        setPurchaseItemFieldErrors(itemErrs);
+                        // If any error, scroll to first error and do not proceed
+                        const hasPurchaseErr = Object.values(purchaseErr).some(Boolean);
+                        const hasItemErr = itemErrs.some(err => Object.values(err).some(Boolean));
+                        if (hasPurchaseErr || hasItemErr) {
+                           setTimeout(() => {
+                              // Scroll to first error field
+                              if (purchaseErr.po_no) {
+                                 const el = document.getElementsByName('po_no')[0];
+                                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              } else if (purchaseErr.po_date) {
+                                 const el = document.getElementsByName('po_date')[0];
+                                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              } else {
+                                 // For item errors
+                                 const firstIdx = itemErrs.findIndex(err => Object.values(err).some(Boolean));
+                                 if (firstIdx !== -1) {
+                                    const el = document.querySelectorAll('input')[firstIdx];
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 }
+                              }
+                           }, 100);
+                           return;
+                        }
+                        setActiveTab(tabOrder[currentTabIndex + 1]);
+                     }}>Next</Button>
                   </div>
                </fieldset>
             )}
@@ -1137,19 +1200,59 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                      {/* Supplier field removed from Delivery Information */}
                      <div>
                         <label className="block font-medium mb-1">Delivery Order No</label>
-                        <Input type="text" name="do_no" className='uppercase' value={delivery.do_no} onChange={e => setDelivery(prev => ({ ...prev, do_no: e.target.value }))} />
+                        <Input
+                           type="text"
+                           name="do_no"
+                           className={`uppercase${deliveryFieldErrors.do_no ? ' border-red-500' : ''}`}
+                           value={delivery.do_no}
+                           onChange={e => {
+                              setDelivery(prev => ({ ...prev, do_no: e.target.value }));
+                              setDeliveryFieldErrors(err => ({ ...err, do_no: false }));
+                           }}
+                        />
+                        {deliveryFieldErrors.do_no && <span className="text-red-500 text-xs mt-1">Delivery Order No is required</span>}
                      </div>
                      <div>
                         <label className="block font-medium mb-1">Delivery Date</label>
-                        <Input type="date" name="do_date" value={delivery.do_date} onChange={e => setDelivery(prev => ({ ...prev, do_date: e.target.value }))} />
+                        <Input
+                           type="date"
+                           name="do_date"
+                           className={`${deliveryFieldErrors.do_date ? ' border-red-500' : ''}`}
+                           value={delivery.do_date}
+                           onChange={e => {
+                              setDelivery(prev => ({ ...prev, do_date: e.target.value }));
+                              setDeliveryFieldErrors(err => ({ ...err, do_date: false }));
+                           }}
+                        />
+                        {deliveryFieldErrors.do_date && <span className="text-red-500 text-xs mt-1">Delivery Date is required</span>}
                      </div>
                      <div>
                         <label className="block font-medium mb-1">Invoice No</label>
-                        <Input type="text" name="inv_no" className='uppercase' value={delivery.inv_no} onChange={e => setDelivery(prev => ({ ...prev, inv_no: e.target.value }))} />
+                        <Input
+                           type="text"
+                           name="inv_no"
+                           className={`uppercase${deliveryFieldErrors.inv_no ? ' border-red-500' : ''}`}
+                           value={delivery.inv_no}
+                           onChange={e => {
+                              setDelivery(prev => ({ ...prev, inv_no: e.target.value }));
+                              setDeliveryFieldErrors(err => ({ ...err, inv_no: false }));
+                           }}
+                        />
+                        {deliveryFieldErrors.inv_no && <span className="text-red-500 text-xs mt-1">Invoice No is required</span>}
                      </div>
                      <div>
                         <label className="block font-medium mb-1">Invoice Date</label>
-                        <Input type="date" name="inv_date" value={delivery.inv_date} onChange={e => setDelivery(prev => ({ ...prev, inv_date: e.target.value }))} />
+                        <Input
+                           type="date"
+                           name="inv_date"
+                           className={deliveryFieldErrors.inv_date ? 'border-red-500' : ''}
+                           value={delivery.inv_date}
+                           onChange={e => {
+                              setDelivery(prev => ({ ...prev, inv_date: e.target.value }));
+                              setDeliveryFieldErrors(err => ({ ...err, inv_date: false }));
+                           }}
+                        />
+                        {deliveryFieldErrors.inv_date && <span className="text-red-500 text-xs mt-1">Invoice Date is required</span>}
                      </div>
                      <div>
                         <label className="block font-medium mb-1">Upload All Documents</label>
@@ -1160,13 +1263,16 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                               const file = e.target.files && e.target.files[0];
                               if (file && file.type === 'application/pdf') {
                                  setDeliveryDoc(file);
+                                 setDeliveryUploadError(false);
                               } else if (file) {
                                  alert('Only PDF files are allowed.');
                                  e.target.value = '';
                                  setDeliveryDoc(null);
+                                 setDeliveryUploadError(true);
                               }
                            }}
                         />
+                        {deliveryUploadError && <span className="text-red-500 text-xs mt-1">Document upload is required</span>}
                         {deliveryDoc && (
                            <span className="text-xs text-green-600 block mt-1">Selected: {deliveryDoc.name}</span>
                         )}
@@ -1200,7 +1306,14 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                        <td className="border px-2 py-1 text-center">
                                           <Select
                                              value={item.delivery_status || ''}
-                                             onValueChange={val => setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, delivery_status: val } : itm))}
+                                             onValueChange={val => {
+                                                setItems(prev => prev.map((itm, i) => i === idx ? { ...itm, delivery_status: val } : itm));
+                                                setDeliveryItemFieldErrors(errs => {
+                                                   const newErrs = [...errs];
+                                                   if (newErrs[idx]) newErrs[idx].delivery_status = false;
+                                                   return newErrs;
+                                                });
+                                             }}
                                           >
                                              <SelectTrigger className="input w-full min-w-[120px]">
                                                 <SelectValue placeholder="Select Status" />
@@ -1211,6 +1324,9 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                                                 <SelectItem value="Wrong Items">Wrong Items</SelectItem>
                                              </SelectContent>
                                           </Select>
+                                          {deliveryItemFieldErrors[idx]?.delivery_status && (
+                                             <span className="text-red-500 text-xs mt-1">Delivery Status is required</span>
+                                          )}
                                        </td>
                                        <td className="border px-2 py-1">
                                           <Textarea
@@ -1236,8 +1352,82 @@ const PurchaseRequestForm: React.FC<PurchaseRequestFormProps> = ({ id }) => {
                      {/* Actions only on last step */}
                      <div className="flex justify-center gap-2">
                         <Button type="submit" variant="secondary" className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white">Save Draft</Button>
-                        <Button type="submit" variant="default">Submit</Button>
-                        <Button type="button" variant="destructive" className="bg-red-600 hover:bg-red-700 text-white">Cancel</Button>
+                        <Button type="button" variant="default" onClick={() => {
+                           // --- Delivery Info Validation ---
+                           const deliveryErr = {
+                              do_no: !delivery.do_no || !delivery.do_no.trim(),
+                              do_date: !delivery.do_date || !delivery.do_date.trim(),
+                              inv_no: !delivery.inv_no || !delivery.inv_no.trim(),
+                              inv_date: !delivery.inv_date || !delivery.inv_date.trim(),
+                           };
+                           const uploadErr = !deliveryDoc;
+                           // Validate delivery_status for all items
+                           const itemDeliveryErrs = items.map(item => {
+                              const err: any = {};
+                              if (!item.delivery_status || !item.delivery_status.trim()) err.delivery_status = true;
+                              return err;
+                           });
+                           setDeliveryFieldErrors(deliveryErr);
+                           setDeliveryUploadError(uploadErr);
+                           setDeliveryItemFieldErrors(itemDeliveryErrs);
+                           // If any error, scroll to first error and do not proceed
+                           const hasDeliveryErr = Object.values(deliveryErr).some(Boolean);
+                           const hasUploadErr = uploadErr;
+                           const hasItemDeliveryErr = itemDeliveryErrs.some(err => Object.values(err).some(Boolean));
+                           if (hasDeliveryErr || hasUploadErr || hasItemDeliveryErr) {
+                              setTimeout(() => {
+                                 if (deliveryErr.do_no) {
+                                    const el = document.getElementsByName('do_no')[0];
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 } else if (deliveryErr.do_date) {
+                                    const el = document.getElementsByName('do_date')[0];
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 } else if (deliveryErr.inv_no) {
+                                    const el = document.getElementsByName('inv_no')[0];
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 } else if (deliveryErr.inv_date) {
+                                    const el = document.getElementsByName('inv_date')[0];
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 } else if (hasUploadErr) {
+                                    const el = document.querySelector('input[type=\"file\"]');
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                 } else {
+                                    // For item delivery_status errors
+                                    const firstIdx = itemDeliveryErrs.findIndex(err => Object.values(err).some(Boolean));
+                                    if (firstIdx !== -1) {
+                                       const el = document.querySelectorAll('select')[firstIdx];
+                                       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }
+                                 }
+                              }, 100);
+                              return;
+                           }
+                           setPendingEvent({ preventDefault: () => { } } as any);
+                           setShowConfirmDialog(true);
+                        }}>Submit</Button>
+                        <Button
+                           type="button"
+                           variant="destructive"
+                           className="bg-red-600 hover:bg-red-700 text-white"
+                           onClick={() => setOpenCancelDialog(true)}
+                        >
+                           Cancel
+                        </Button>
+                        {/* Cancel Confirmation Dialog */}
+                        <AlertDialog open={openCancelDialog} onOpenChange={open => setOpenCancelDialog(open)}>
+                           <AlertDialogContent>
+                              <AlertDialogHeader>
+                                 <AlertDialogTitle>Cancel Purchase Request?</AlertDialogTitle>
+                                 <AlertDialogDescription>
+                                    Are you sure you want to cancel? All unsaved changes will be lost and this tab will be closed.
+                                 </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                 <AlertDialogCancel onClick={() => setOpenCancelDialog(false)}>No, Go Back</AlertDialogCancel>
+                                 <AlertDialogAction onClick={() => { setOpenCancelDialog(false); window.close(); }}>Yes, Cancel & Close</AlertDialogAction>
+                              </AlertDialogFooter>
+                           </AlertDialogContent>
+                        </AlertDialog>
                      </div>
                   </div>
                </fieldset>

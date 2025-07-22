@@ -85,17 +85,17 @@ export default function PurchaseRequest() {
         }).catch(() => setLoading(false));
     }, []);
 
-    const columns: ColumnDef<PurchaseRequestData & { row_number: number }>[] = [
+    const columns: ColumnDef<any>[] = [
         { key: "row_number", header: "#", render: row => row.row_number },
-        { key: "req_no", header: "PR No" },
-        { key: "requestor", header: "Requestor", render: row => row.requestor?.name || "-" },
-        { key: "department", header: "Department", render: row => row.department?.name || "-" },
+        { key: "request_type", header: "Type", render: row => row.request_type ? row.request_type.toUpperCase() : "-" },
+        { key: "request_reference", header: "Reference" },
+        { key: "requestor", header: "Requestor", render: row => row.requestor?.full_name || "-" },
         { key: "costcenter", header: "Cost Center", render: row => row.costcenter?.name || "-" },
-        { key: "district", header: "District", render: row => row.district?.name || "-" },
-        { key: "total_items", header: "Items Count" },
-        { key: "req_date", header: "Request Date", render: row => row.req_date ? new Date(row.req_date).toLocaleDateString() : "-" },
-        { key: "required_date", header: "Required Date", render: row => row.required_date ? new Date(row.required_date).toLocaleDateString() : "-" },
-        { key: "req_status", header: "Status" },
+        { key: "department", header: "Department", render: row => row.department?.name || "-" },
+        { key: "po_no", header: "PO No" },
+        { key: "do_no", header: "DO No" },
+        { key: "inv_no", header: "Invoice No" },
+        { key: "request_date", header: "Request Date", render: row => row.request_date ? new Date(row.request_date).toLocaleDateString() : "-" },
     ];
 
     return (

@@ -279,9 +279,22 @@ const CustomDataGridInner = <T,>({
             const search = filterText.toLowerCase();
             result = result.filter(row =>
                 columns.some(col => {
-                    const value = row[col.key];
+                    // Use render if available, else raw value
+                    let value: any;
+                    if (col.render) {
+                        const rendered = col.render(row);
+                        value = typeof rendered === 'string' || typeof rendered === 'number'
+                            ? rendered
+                            : '';
+                    } else {
+                        value = row[col.key];
+                    }
                     if (typeof value === 'string' || typeof value === 'number') {
                         return String(value).toLowerCase().includes(search);
+                    }
+                    // If value is object, try to join its values
+                    if (typeof value === 'object' && value !== null) {
+                        return Object.values(value).join(' ').toLowerCase().includes(search);
                     }
                     return false;
                 })
@@ -294,15 +307,26 @@ const CustomDataGridInner = <T,>({
             result = result.filter(row => {
                 // Find the column definition for key
                 const col = columns.find(c => String(c.key) === key);
-                const rawValue = row[key as keyof T];
-                const rowValue = typeof rawValue === 'object' && rawValue !== null
-                    ? JSON.stringify(rawValue).toLowerCase()
-                    : String(rawValue ?? '').toLowerCase();
+                let cellValue: any;
+                if (col && col.render) {
+                    const rendered = col.render(row);
+                    cellValue = typeof rendered === 'string' || typeof rendered === 'number'
+                        ? rendered
+                        : '';
+                } else {
+                    cellValue = row[key as keyof T];
+                }
+                let rowValue: string;
+                if (typeof cellValue === 'object' && cellValue !== null) {
+                    rowValue = Object.values(cellValue).join(' ').toLowerCase();
+                } else {
+                    rowValue = String(cellValue ?? '').toLowerCase();
+                }
                 if (Array.isArray(value)) {
                     return value.some(v => {
                         const filterVal = String(v).toLowerCase();
-                        if (typeof rawValue === 'object' && rawValue !== null) {
-                            return Object.values(rawValue).some(rv =>
+                        if (typeof cellValue === 'object' && cellValue !== null) {
+                            return Object.values(cellValue).some(rv =>
                                 String(rv).toLowerCase() === filterVal
                             );
                         }
@@ -868,20 +892,11 @@ const CustomDataGridInner = <T,>({
                                                                         return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '';
                                                                     }).filter(Boolean)));
                                                                 })()
-                                                            ).map(opt => {
-                                                                const value = String(opt) || "__invalid__";
-                                                                const isUsed = filteredData.some(row => {
-                                                                    const rawValue = col.render ? col.render(row) : row[col.key as keyof T];
-                                                                    return typeof rawValue === 'string' || typeof rawValue === 'number'
-                                                                        ? String(rawValue) === value
-                                                                        : false;
-                                                                });
-                                                                return (
-                                                                    <SelectItem key={value} value={value} disabled={!isUsed}>
-                                                                        {String(col.filterParams?.labelMap?.[value] ?? opt)}
-                                                                    </SelectItem>
-                                                                );
-                                                            })}
+                                                            ).map(opt => (
+                                                                <SelectItem key={String(opt) || "__invalid__"} value={String(opt) || "__invalid__"}>
+                                                                    {String(col.filterParams?.labelMap?.[String(opt) || "__invalid__"] ?? opt)}
+                                                                </SelectItem>
+                                                            ))}
                                                         </SelectContent>
                                                     </Select>
                                                 </>
