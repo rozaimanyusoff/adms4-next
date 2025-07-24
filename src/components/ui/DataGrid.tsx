@@ -377,7 +377,7 @@ const CustomDataGridInner = <T,>({
             });
             const filteredKeys = dataSelected.map((row, i) => resolveRowKey(row, i));
             rowSelection.onSelect(filteredKeys, dataSelected);
-            alert("Triggered from DataGrid - Selected Keys: " + filteredKeys.join(", "));
+            // alert removed: no popup on row selection
         }
         if (onRowSelected) {
             const keys = Array.from(selectedRowKeys);

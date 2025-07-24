@@ -69,8 +69,8 @@ const FleetCardList: React.FC = () => {
     const [optionSearch, setOptionSearch] = useState("");
     const [assetListLoading, setAssetListLoading] = useState(false);
     // --- Summary Card Filter State ---
-    const [summaryFilter, setSummaryFilter] = useState<'noAsset' | 'unassignedCostcenter' | null>(null);
-        // Dialog state for asset assignment confirmation
+    const [summaryFilter, setSummaryFilter] = useState<'noAsset' | 'unassignedCostcenter' | 'duplicatedAsset' | 'duplicatedCardNo' | null>(null);
+    // Dialog state for asset assignment confirmation
     const [showAssetDialog, setShowAssetDialog] = useState(false);
     const [pendingAsset, setPendingAsset] = useState<AssetOption | null>(null);
     const [pendingAssetId, setPendingAssetId] = useState<number | null>(null);
@@ -405,12 +405,39 @@ const FleetCardList: React.FC = () => {
     const cardsNoAssetCount = fleetCards.filter(fc => !fc.asset || !fc.asset.asset_id).length;
     const cardsUnassignedCostcenterCount = fleetCards.filter(fc => fc.asset && fc.asset.asset_id && (!fc.asset.costcenter || !fc.asset.costcenter.name || fc.asset.costcenter.name === 'Unassigned')).length;
 
+
+    // Duplicated asset logic
+    const assetIdCounts = fleetCards.reduce((acc: Record<string, number>, fc) => {
+        if (fc.asset && fc.asset.asset_id) {
+            const id = String(fc.asset.asset_id);
+            acc[id] = (acc[id] || 0) + 1;
+        }
+        return acc;
+    }, {});
+    const duplicatedAssetIds = Object.keys(assetIdCounts).filter(id => assetIdCounts[id] > 1);
+    const cardsDuplicatedAssetCount = duplicatedAssetIds.length;
+
+    // Duplicated card_no logic
+    const cardNoCounts = fleetCards.reduce((acc: Record<string, number>, fc) => {
+        const cardNo = fc.fleetcard?.card_no;
+        if (cardNo) {
+            acc[cardNo] = (acc[cardNo] || 0) + 1;
+        }
+        return acc;
+    }, {});
+    const duplicatedCardNos = Object.keys(cardNoCounts).filter(cardNo => cardNoCounts[cardNo] > 1);
+    const cardsDuplicatedCardNoCount = duplicatedCardNos.length;
+
     // Filtered data for grid
     const filteredFleetCards = summaryFilter === 'noAsset'
         ? fleetCards.filter(fc => !fc.asset || !fc.asset.asset_id)
         : summaryFilter === 'unassignedCostcenter'
             ? fleetCards.filter(fc => fc.asset && fc.asset.asset_id && (!fc.asset.costcenter || !fc.asset.costcenter.name || fc.asset.costcenter.name === 'Unassigned'))
-            : fleetCards;
+            : summaryFilter === 'duplicatedAsset'
+                ? fleetCards.filter(fc => fc.asset && duplicatedAssetIds.includes(String(fc.asset.asset_id)))
+                : summaryFilter === 'duplicatedCardNo'
+                    ? fleetCards.filter(fc => fc.fleetcard && duplicatedCardNos.includes(fc.fleetcard.card_no))
+                    : fleetCards;
 
     return (
         <div className="mt-4">
@@ -457,7 +484,6 @@ const FleetCardList: React.FC = () => {
                         <span className="text-2xl font-mono">{cardsNoAssetCount}</span>
                         <span className="text-xs text-gray-500">card{cardsNoAssetCount === 1 ? '' : 's'}</span>
                     </div>
-                    {/* No Clear button, just click card again to clear filter */}
                 </div>
                 {/* Card: Unassigned Costcenter */}
                 <div
@@ -469,7 +495,28 @@ const FleetCardList: React.FC = () => {
                         <span className="text-2xl font-mono">{cardsUnassignedCostcenterCount}</span>
                         <span className="text-xs text-gray-500">card{cardsUnassignedCostcenterCount === 1 ? '' : 's'}</span>
                     </div>
-                    {/* No Clear button, just click card again to clear filter */}
+                </div>
+                {/* Card: Duplicated Asset */}
+                <div
+                    className={`bg-red-100 dark:bg-slate-800 rounded shadow-lg p-4 min-w-[180px] dark:border-slate-700 flex flex-col justify-between cursor-pointer transition-all ${summaryFilter === 'duplicatedAsset' ? 'bg-amber-200 dark:bg-amber-700 font-bold' : ''}`}
+                    onClick={() => setSummaryFilter(summaryFilter === 'duplicatedAsset' ? null : 'duplicatedAsset')}
+                >
+                    <div className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Duplicated Asset</div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl font-mono">{cardsDuplicatedAssetCount}</span>
+                        <span className="text-xs text-gray-500">asset{cardsDuplicatedAssetCount === 1 ? '' : 's'}</span>
+                    </div>
+                </div>
+                {/* Card: Duplicated Card No */}
+                <div
+                    className={`bg-red-100 dark:bg-slate-800 rounded shadow-lg p-4 min-w-[180px] dark:border-slate-700 flex flex-col justify-between cursor-pointer transition-all ${summaryFilter === 'duplicatedCardNo' ? 'bg-amber-200 dark:bg-amber-700 font-bold' : ''}`}
+                    onClick={() => setSummaryFilter(summaryFilter === 'duplicatedCardNo' ? null : 'duplicatedCardNo')}
+                >
+                    <div className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Duplicated Card No</div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-2xl font-mono">{cardsDuplicatedCardNoCount}</span>
+                        <span className="text-xs text-gray-500">card{cardsDuplicatedCardNoCount === 1 ? '' : 's'}</span>
+                    </div>
                 </div>
             </div>
             <div className="flex items-center justify-between mb-4">
@@ -534,7 +581,11 @@ const FleetCardList: React.FC = () => {
                                         <Input
                                             value={
                                                 form.asset_id
-                                                    ? assets.find(a => a.asset_id === Number(form.asset_id))?.register_number || form.asset_id
+                                                    ? (
+                                                        assets.find(a => String(a.asset_id) === String(form.asset_id))?.register_number
+                                                        || fleetCards.find(fc => String(fc.asset?.asset_id) === String(form.asset_id))?.asset?.register_number
+                                                        || ""
+                                                    )
                                                     : ""
                                             }
                                             readOnly

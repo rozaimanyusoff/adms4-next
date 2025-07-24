@@ -37,6 +37,7 @@ declare global {
 const TelcoBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
   const router = useRouter();
 
   const fetchTelcoBills = () => {
@@ -83,34 +84,8 @@ const TelcoBill = () => {
       key: 'rowNumber',
       header: 'No',
       render: (row) => (
-        <div className="flex items-center justify-between gap-2 min-w-[60px]">
+        <div className="flex items-center min-w-[60px]">
           <span>{row.rowNumber}</span>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <span className="p-1 hover:bg-stone-300 rounded" aria-label="More options">
-                      <MoreVertical size={16} />
-                    </span>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="center" className='bg-stone-200'>
-                    <DropdownMenuItem
-                      onClick={async () => {
-                        await exportTelcoBillSummaryPDF(row.id);
-                      }}
-                      className='bg-stone-200 hover:bg-stone-300 shadow-lg flex items-center gap-2'
-                    >
-                      <Download size={14} /> Generate Memo
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TooltipTrigger>
-              <TooltipContent>
-                Click to see more options
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       ),
     },
@@ -129,7 +104,22 @@ const TelcoBill = () => {
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold">Telco Bills Summary</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold">Telco Bills Summary</h2>
+          {selectedRowIds.length > 0 && (
+            <Button
+              variant="secondary"
+              className="ml-2"
+              onClick={() => {
+                if (selectedRowIds.length > 0) {
+                  window.open(`/billings/telco/report?ids=${selectedRowIds.join(',')}`);
+                }
+              }}
+            >
+              <Download size={16} className="mr-1" /> Export PDF
+            </Button>
+          )}
+        </div>
         <Button
           variant={'default'}
           onClick={() => window.open(`/billings/telco/form`, '_blank')}
@@ -145,6 +135,13 @@ const TelcoBill = () => {
         theme="sm"
         dataExport={true}
         onRowDoubleClick={handleRowDoubleClick}
+        rowSelection={{
+          enabled: true,
+          getRowId: (row: any) => row.id,
+          onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
+            setSelectedRowIds(selectedKeys.map(Number));
+          },
+        }}
       />
     </div>
   );
