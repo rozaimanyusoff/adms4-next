@@ -10,15 +10,14 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         return `${day}/${month}/${year}`;
     }
     try {
-        // Fetch all bills and flatten all summary rows
-        const bills: any[] = [];
-        for (const utilId of utilIds) {
-            const res = await authenticatedApi.get(`/api/telco/bills/${utilId}`) as { data: { data: any } };
-            const bill = (res as any)?.data?.data;
-            if (bill && bill.summary) bills.push(bill);
-        }
+        // Fetch all bills in one request
+        const res = await authenticatedApi.post('/api/telco/bills/by-ids',
+            JSON.stringify({ ids: utilIds }),
+            { headers: { 'Content-Type': 'application/json' } }
+        ) as { data: { data: any[] } };
+        const bills = (res as any)?.data?.data || [];
         if (bills.length === 0) {
-            toast.error('No summary data found for selected bills.');
+            toast.error('No bill data found for selected bills.');
             return;
         }
         const doc = new jsPDF();
@@ -74,15 +73,15 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         let rowNum = 1;
         const tableBody = [
             tableHeaderRow,
-            ...bills.flatMap((bill) => bill.summary.map((s: any) => [
+            ...bills.map((bill: any) => [
                 String(rowNum++),
                 bill.account?.account_no || '',
                 bill.bill_date ? formatDate(bill.bill_date) : '',
                 bill.bill_no || '',
                 bill.account?.provider || '',
-                s.costcenter?.name || '-',
-                Number(s.cc_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-            ]))
+                bill.subscriber?.costcenter?.name || '-',
+                Number(bill.grand_total).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ])
         ];
         autoTable(doc, {
             startY: y,
@@ -106,13 +105,13 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
                 }
             },
             columnStyles: {
-                0: { cellWidth: 12, halign: 'center' },
-                1: { cellWidth: 36, halign: 'center' },
-                2: { cellWidth: 28, halign: 'center' },
+                0: { cellWidth: 10, halign: 'center' },
+                1: { cellWidth: 28, halign: 'center' },
+                2: { cellWidth: 25, halign: 'center' },
                 3: { cellWidth: 38, halign: 'center' },
-                4: { cellWidth: 36, halign: 'center' },
-                5: { cellWidth: 36, halign: 'center' },
-                6: { cellWidth: 28, halign: 'right' },
+                4: { cellWidth: 27, halign: 'center' },
+                5: { cellWidth: 26, halign: 'center' },
+                6: { cellWidth: 25, halign: 'right' },
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
@@ -120,10 +119,10 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         });
         y = (doc as any).lastAutoTable.finalY + 4;
         // Calculate totals for all selected bills
-        const subtotal = bills.reduce((sum, bill) => sum + Number(bill.subtotal || 0), 0);
-        const totalTax = bills.reduce((sum, bill) => sum + Number(bill.tax || 0), 0);
-        const totalRounding = bills.reduce((sum, bill) => sum + Number(bill.rounding || 0), 0);
-        const grandTotal = bills.reduce((sum, bill) => sum + Number(bill.grand_total || 0), 0);
+        const subtotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.subtotal || 0), 0);
+        const totalTax = bills.reduce((sum: number, bill: any) => sum + Number(bill.tax || 0), 0);
+        const totalRounding = bills.reduce((sum: number, bill: any) => sum + Number(bill.rounding || 0), 0);
+        const grandTotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.grand_total || 0), 0);
         const subtotalLabel = 'Subtotal (RM):';
         const subtotalValue = subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const taxLabel = 'Tax (RM):';
@@ -132,11 +131,11 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         const roundValue = totalRounding.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const grandTotalLabel = 'Grand Total:';
         const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const colWidths = [12, 36, 28, 38, 36, 36, 28];
+        const colWidths = [10, 28, 25, 38, 27, 26, 25];
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
         const xStart = 14;
         const rowHeight = 6;
-        doc.setFillColor(255,255,255);
+        /* doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -144,8 +143,8 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         doc.setFontSize(9);
         doc.text(subtotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(subtotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight;
-        doc.setFillColor(255,255,255);
+        y += rowHeight; */
+        /* doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -153,8 +152,8 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         doc.setFontSize(9);
         doc.text(taxLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(totalTaxValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight;
-        doc.setFillColor(255,255,255);
+        y += rowHeight; */
+        /* doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -162,7 +161,7 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         doc.setFontSize(9);
         doc.text(roundLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(roundValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight;
+        y += rowHeight; */
         doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);

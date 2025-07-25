@@ -109,10 +109,12 @@ const TelcoBill = () => {
           {selectedRowIds.length > 0 && (
             <Button
               variant="secondary"
-              className="ml-2"
-              onClick={() => {
+              className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
+              onClick={async () => {
                 if (selectedRowIds.length > 0) {
-                  window.open(`/billings/telco/report?ids=${selectedRowIds.join(',')}`);
+                  // Directly call the batch export function
+                  const { exportTelcoBillSummaryPDFs } = await import('./report-telco-bill');
+                  exportTelcoBillSummaryPDFs(selectedRowIds);
                 }
               }}
             >
@@ -120,12 +122,12 @@ const TelcoBill = () => {
             </Button>
           )}
         </div>
-        <Button
+        {/* <Button
           variant={'default'}
           onClick={() => window.open(`/billings/telco/form`, '_blank')}
         >
           <Plus size={18} />
-        </Button>
+        </Button> */}
       </div>
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
@@ -133,7 +135,7 @@ const TelcoBill = () => {
         pagination={false}
         inputFilter={false}
         theme="sm"
-        dataExport={true}
+        dataExport={false}
         onRowDoubleClick={handleRowDoubleClick}
         rowSelection={{
           enabled: true,
