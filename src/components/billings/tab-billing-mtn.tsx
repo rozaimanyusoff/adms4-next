@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Workshop from "./workshop";
 import FleetCardList from "./fleet-card";
+import TempVehicle from "./temp-vehicle";
 import VehicleMtnReport from "./vehicle-mtn-report";
 import Link from "next/link";
 
@@ -12,13 +13,15 @@ const BillingMaintenance: React.FC = () => {
         { value: "workshop", label: "Workshop" },
         { value: "svcopt", label: "Service Option" },
         { value: "fleet", label: "Fleet Card" },
-        { value: "vehicle", label: "Vehicle Maintenance Report" },
+        { value: "tempvehicle", label: "Vehiclec Records" },
+        { value: "vehiclereport", label: "Vehicle Maintenance Report" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         workshop: <Workshop />,
         fleet: <FleetCardList />,
-        vehicle: <VehicleMtnReport />,
+        tempvehicle: <TempVehicle />,
+        vehiclereport: <VehicleMtnReport />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {

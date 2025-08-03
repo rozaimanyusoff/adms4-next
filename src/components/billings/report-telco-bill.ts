@@ -1,4 +1,10 @@
 // Batch export: Generate a single PDF for multiple telco bills
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { toast } from 'sonner';
+import { authenticatedApi } from '@/config/api';
+
+
 export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
     if (!utilIds || utilIds.length === 0) return;
     function formatDate(dateInput: string | Date | undefined): string {
@@ -235,10 +241,7 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         toast.error('Failed to export batch PDF.');
     }
 }
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { toast } from 'sonner';
-import { authenticatedApi } from '@/config/api';
+
 
 
 // Utility to generate and download PDF for bill summary using jsPDF

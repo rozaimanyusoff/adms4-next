@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
@@ -8,9 +7,8 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { generateFuelCostCenterReport } from './report-fuel-costcenter';
-import { generateFuelCostCenterReportPuppeteer } from './report-fuel-costcenter-puppeteer';
 import { toast } from 'sonner';
+import { generateFuelCostCenterReport } from './report-fuel-costcenter';
 
 interface FuelBill {
   stmt_id: number;
@@ -93,68 +91,6 @@ const FuelBill = () => {
     }
   };
 
-  const handleDownloadPdf = async (row: FuelBill & { rowNumber: number }) => {
-    try {
-      const res = await authenticatedApi.get(`/api/bills/fuel/${row.stmt_id}`);
-      const data = (res.data as { data: any }).data;
-      let summaryRows: any[] = [];
-      if (data && Array.isArray(data.summary)) {
-        summaryRows = data.summary.map((item: any, idx: number) => ({
-          no: idx + 1,
-          costCenter: item.name,
-          totalAmount: parseFloat(item.total_amount),
-        }));
-      } else if (data && Array.isArray(data.details)) {
-        // Generate summary from details
-        const costCenterTotals: Record<string, { name: string; totalAmount: number }> = {};
-        data.details.forEach((item: any) => {
-          const name = item.asset?.costcenter?.name || 'Unknown';
-          const amount = parseFloat(item.amount || '0');
-          if (!costCenterTotals[name]) {
-            costCenterTotals[name] = { name, totalAmount: 0 };
-          }
-          costCenterTotals[name].totalAmount += amount;
-        });
-        summaryRows = Object.values(costCenterTotals).map((cc, idx) => ({
-          no: idx + 1,
-          costCenter: cc.name,
-          totalAmount: cc.totalAmount,
-        }));
-      }
-      if (!summaryRows.length) {
-        toast('No summary data found for this statement.');
-        return;
-      }
-      // Prepare props for Puppeteer PDF
-      const pdfProps = {
-        date: data.stmt_date ? new Date(data.stmt_date).toLocaleDateString() : '',
-        refNo: data.stmt_no,
-        rows: summaryRows,
-        subTotal: parseFloat(data.stmt_stotal || '0'),
-        rounding: parseFloat(data.stmt_rounding || '0'),
-        discount: parseFloat(data.stmt_disc || '0'),
-        grandTotal: parseFloat(data.stmt_total || '0'),
-      };
-      // Call Puppeteer PDF generator (must be server-side)
-      const apiRes = await fetch('/api/report-fuel-costcenter-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pdfProps),
-      });
-      if (!apiRes.ok) {
-        alert('PDF generation failed.');
-        return;
-      }
-      const pdfBlob = await apiRes.blob();
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      setPdfPreviewUrl(pdfUrl);
-      setPdfDoc(pdfBlob); // Save blob for download
-      setPdfStmtNo(data.stmt_no || null);
-    } catch (err) {
-      alert('Failed to generate report.');
-    }
-  };
-
   const columns: ColumnDef<FuelBill & { rowNumber: number }>[] = [
     {
       key: 'rowNumber',
@@ -172,7 +108,19 @@ const FuelBill = () => {
                     </span>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="center" className='bg-stone-200'>
-                    <DropdownMenuItem onClick={() => handleDownloadPdf(row)} className='bg-stone-200 hover:bg-stone-300 shadow-lg'>
+                    <DropdownMenuItem onClick={async () => {
+                        try {
+                            const pdfBlob = await generateFuelCostCenterReport({ stmt_id: row.stmt_id });
+                            console.log('PDF Blob:', pdfBlob);
+                            const now = new Date();
+                            const pad = (n: number) => n.toString().padStart(2, '0');
+                            const datetime = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                            downloadBlob(pdfBlob, `Fuel-CostCenter-Report-${row.stmt_id}-${datetime}.pdf`);
+                        } catch (err) {
+                            console.error('Error generating PDF:', err);
+                            toast('Failed to generate PDF report.');
+                        }
+                    }} className='bg-stone-200 hover:bg-stone-300 shadow-lg'>
                       Download Cost Center Report
                     </DropdownMenuItem>
                   </DropdownMenuContent>

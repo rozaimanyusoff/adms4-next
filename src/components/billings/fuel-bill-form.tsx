@@ -9,11 +9,11 @@ import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Asset {
-    asset_id: number;
-    register_number: string;
-    fuel_type: string;
+    vehicle_id: number;
+    vehicle_regno: string;
+    vfuel_type: string;
     costcenter?: CostCenter | null;
-    district?: District | null;
+    purpose?: string;
 }
 
 interface CostCenter {
@@ -34,17 +34,14 @@ interface FleetCard {
 interface FuelDetail {
     s_id: number;
     stmt_id: number;
+    fleetcard: FleetCard;
     asset: Asset;
-    card_no?: string;
-    card_id?: string;
-    category?: string;
     stmt_date: string;
     start_odo: number;
     end_odo: number;
     total_km: number;
     total_litre: string;
     amount: string;
-    fleetcard?: FleetCard;
 }
 
 interface FuelBillDetail {
@@ -77,6 +74,9 @@ interface FuelMtnDetailProps {
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     // Save handler for form submission
     const handleSave = async () => {
+        if (!validateForm()) {
+            return;
+        }
         const payload = buildFormPayload();
         try {
             // POST for create, PUT for update
@@ -111,9 +111,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         const summary: { [key: string]: number } = {};
         editableDetails.forEach(detail => {
             const ccName = detail.asset?.costcenter?.name || 'Unknown';
-            const category = detail.category || 'project';
-            // Split by cost center and category
-            const key = category === 'staffcost' ? `${ccName} (Staff cost)` : ccName;
+            const category = detail.asset?.purpose || 'project';
+            const key = category === 'staff cost' ? `${ccName} (Staff Cost)` : ccName;
             const amt = parseFloat(detail.amount) || 0;
             if (!summary[key]) summary[key] = 0;
             summary[key] += amt;
@@ -124,10 +123,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     // Helper to build form payload for API submission
     const buildFormPayload = () => {
         const petrolAmount = editableDetails
-            .filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
+            .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'petrol')
             .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
         const dieselAmount = editableDetails
-            .filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
+            .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'diesel')
             .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
         const totalKM = editableDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0);
         const totalLitre = editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0);
@@ -163,11 +162,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                 const totalKM = fmtNum(detail.total_km);
                 const litre = fmtNum(detail.total_litre);
                 return {
-                    asset_id: asset.asset_id,
+                    vehicle_id: asset.vehicle_id,
                     stmt_date: header.stmt_date,
-                    card_id: detail.card_id || '',
+                    card_id: detail.fleetcard?.id || '',
                     costcenter_id: costcenter ? costcenter.id : null,
-                    category: detail.category || 'project',
+                    category: asset.purpose || 'project',
                     start_odo: fmtNum(detail.start_odo),
                     end_odo: fmtNum(detail.end_odo),
                     total_km: totalKM,
@@ -216,6 +215,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     // Add state for loadingDetails
     const [loadingDetails, setLoadingDetails] = useState(false);
 
+    // Validation state
+    const [errors, setErrors] = useState({
+        issuer: false,
+        stmt_no: false,
+        stmt_date: false,
+    });
+
     useEffect(() => {
         setLoading(true);
         setError(null);
@@ -232,7 +238,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     setEditableDetails(res.data.data.details.map(d => ({
                         ...d,
                         card_id: d.fleetcard ? String(d.fleetcard.id) : '',
-                        card_no: d.fleetcard?.card_no ?? d.card_no ?? '',
+                        card_no: d.fleetcard?.card_no ?? '',
                     })));
                     setSummary({
                         stmt_stotal: res.data.data.stmt_stotal || '',
@@ -316,7 +322,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
 
     // Filtered details based on asset search
     const filteredDetails = editableDetails.filter(detail =>
-        detail.asset?.register_number?.toLowerCase().includes(search.toLowerCase())
+        detail.asset?.vehicle_regno?.toLowerCase().includes(search.toLowerCase())
     );
 
     const handleIssuerChange = async (fuelId: string) => {
@@ -333,18 +339,18 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     items = res.data;
                 }
                 const details = items.map((item: any) => ({
-                    s_id: item.id || item.fleetcard?.id || 0,
+                    s_id: item.id || 0,
                     stmt_id: 0,
                     asset: {
-                        asset_id: item.asset?.asset_id || item.asset?.id || 0,
-                        register_number: item.asset?.register_number || '',
-                        fuel_type: item.asset?.fuel_type || '',
+                        asset_id: item.asset?.vehicle_id || 0,
+                        register_number: item.asset?.vehicle_regno || '',
+                        fuel_type: item.asset?.vfuel_type || '',
                         costcenter: item.asset?.costcenter || null,
-                        district: item.asset?.district || null,
+                        purpose: item.asset?.purpose || '',
                     },
-                    card_no: item.fleetcard?.card_no || '',
-                    card_id: item.fleetcard?.id || '',
-                    category: item.category || '',
+                    card_no: item.card_no || '',
+                    card_id: item.id || '',
+                    category: item.asset?.purpose || 'project',
                     stmt_date: item.reg_date ? item.reg_date.slice(0, 10) : '',
                     start_odo: item.start_odo || 0,
                     end_odo: item.end_odo || 0,
@@ -360,6 +366,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                 setLoadingDetails(false);
             }
         }
+    };
+
+    // Form validation
+    const validateForm = () => {
+        const newErrors = {
+            issuer: !selectedIssuer,
+            stmt_no: !header.stmt_no.trim(),
+            stmt_date: !header.stmt_date.trim(),
+        };
+        setErrors(newErrors);
+        return !Object.values(newErrors).includes(true);
     };
 
     if (loading) return <div className="p-4">Loading...</div>;
@@ -379,7 +396,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                         <h3 className="text-lg font-semibold mb-2">Statement Info</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             <div className="flex flex-col">
-                                <span className="font-medium mb-1">Issuer</span>
+                                <label className={`font-medium mb-1 ${errors.issuer ? 'text-red-500' : 'text-gray-800'}`}>Issuer</label>
                                 <Select value={selectedIssuer} onValueChange={handleIssuerChange}>
                                     <SelectTrigger className="w-full bg-gray-100 border-0 rounded-none">
                                         <SelectValue placeholder="Select Issuer" />
@@ -397,18 +414,20 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 </Select>
                             </div>
                             <div className="flex flex-col">
-                                <span className="font-medium mb-1">Statement No</span>
+                                <label htmlFor="stmt_no" className={`font-medium mb-1 ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>Statement No</label>
                                 <Input
+                                    id="stmt_no"
                                     type="text"
                                     value={header.stmt_no}
                                     onChange={e => handleHeaderChange('stmt_no', e.target.value)}
-                                    className="w-full text-right border-0 rounded-none bg-gray-100"
+                                    className="w-full text-right border-0 rounded-none bg-gray-100 uppercase"
                                 />
                             </div>
 
                             <div className="flex flex-col">
-                                <span className="font-medium mb-1">Statement Date</span>
+                                <label htmlFor="stmt_date" className={`font-medium mb-1 ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>Statement Date</label>
                                 <Input
+                                    id="stmt_date"
                                     type="date"
                                     value={header.stmt_date}
                                     onChange={e => handleHeaderChange('stmt_date', e.target.value)}
@@ -466,7 +485,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                             type="text"
                                             value={(() => {
                                                 return editableDetails
-                                                    .filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
+                                                    .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'petrol')
                                                     .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
                                                     .toFixed(2);
                                             })()}
@@ -480,7 +499,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                             type="text"
                                             value={(() => {
                                                 return editableDetails
-                                                    .filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
+                                                    .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'diesel')
                                                     .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
                                                     .toFixed(2);
                                             })()}
@@ -575,6 +594,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                         <th className="border px-2 py-1.5">Asset</th>
                                         <th className="border px-2 py-1.5">Cost Center</th>
                                         <th className="border px-2 py-1.5">Fuel Type</th>
+                                        <th className="border px-2 py-1.5">Purpose</th>
                                         <th className="border px-2 py-1.5 text-right">Start ODO</th>
                                         <th className="border px-2 py-1.5 text-right">End ODO</th>
                                         <th className="border px-2 py-1.5 text-right">Total KM</th>
@@ -587,10 +607,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     {filteredDetails.map((detail, idx) => (
                                         <tr key={detail.s_id}>
                                             <td className="border px-2 text-center">{idx + 1}</td>
-                                            <td className="border px-2">{detail.card_no || ''}</td>
-                                            <td className="border px-2">{detail.asset?.register_number || ''}</td>
+                                            <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
+                                            <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
                                             <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
-                                            <td className="border px-2">{detail.asset?.fuel_type || ''}</td>
+                                            <td className="border px-2">{detail.asset?.vfuel_type || ''}</td>
+                                            <td className="border px-2">{detail.asset?.purpose || ''}</td>
                                             <td className="border text-right">
                                                 <Input
                                                     type="text"
@@ -673,6 +694,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                         <td className="border px-2 py-1.5 text-right">{amt.toFixed(2)}</td>
                                     </tr>
                                 ))}
+                                <tr>
+                                    <td className="border px-2 py-1.5 font-semibold">Total</td>
+                                    <td className="border px-2 py-1.5 text-right font-semibold">
+                                        {Object.values(costCenterSummary).reduce((sum, amt) => sum + amt, 0).toFixed(2)}
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
