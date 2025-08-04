@@ -86,6 +86,7 @@ const TempVehicle: React.FC = () => {
     { key: 'model', header: 'Model', render: (row: Vehicle) => row.model?.name || '', filter: 'singleSelect' },
     { key: 'vtrans_type', header: 'Transmission', filter: 'singleSelect',colClass: 'capitalize' },
     { key: 'vfuel_type', header: 'Fuel Type', filter: 'singleSelect',colClass: 'capitalize' },
+    /* { key: 'fleetcard', header: 'Fleet Card ID', render: (row: Vehicle) => row.fleetcard?.id || '', filter: 'input' }, */
     { key: 'fleetcard', header: 'Fleet Card', render: (row: Vehicle) => row.fleetcard?.card_no || '', filter: 'input' },
     { key: 'costcenter', header: 'Cost Center', render: (row: Vehicle) => row.costcenter?.name || '', filter: 'singleSelect' },
     { key: 'department', header: 'Department', render: (row: Vehicle) => row.department?.name || '', filter: 'singleSelect' },
@@ -240,11 +241,13 @@ const TempVehicle: React.FC = () => {
       <CustomDataGrid
         data={filteredVehicles}
         columns={columns}
+        pagination={false}
         inputFilter={false}
         onRowDoubleClick={row => {
           setSelectedVehicle(row);
           setSidebarOpen(true);
         }}
+        dataExport={true}
       />
       {sidebarOpen && (
         <ActionSidebar
