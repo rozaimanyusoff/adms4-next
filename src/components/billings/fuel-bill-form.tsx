@@ -332,25 +332,28 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
             setLoadingDetails(true);
             try {
                 const res = await authenticatedApi.get(`/api/bills/fleet/${fuelId}/issuer`);
+                console.log('API Response:', res.data); // Debug log
                 let items = [];
                 if (res.data && typeof res.data === 'object' && 'data' in res.data && Array.isArray((res.data as any).data)) {
                     items = (res.data as any).data;
                 } else if (Array.isArray(res.data)) {
                     items = res.data;
                 }
+                console.log('Items to map:', items); // Debug log
                 const details = items.map((item: any) => ({
                     s_id: item.id || 0,
                     stmt_id: 0,
+                    fleetcard: {
+                        id: item.id || 0,
+                        card_no: item.card_no || '',
+                    },
                     asset: {
-                        asset_id: item.asset?.vehicle_id || 0,
-                        register_number: item.asset?.vehicle_regno || '',
-                        fuel_type: item.asset?.vfuel_type || '',
+                        vehicle_id: item.asset?.vehicle_id || 0,
+                        vehicle_regno: item.asset?.vehicle_regno || '',
+                        vfuel_type: item.asset?.vfuel_type || '',
                         costcenter: item.asset?.costcenter || null,
                         purpose: item.asset?.purpose || '',
                     },
-                    card_no: item.card_no || '',
-                    card_id: item.id || '',
-                    category: item.asset?.purpose || 'project',
                     stmt_date: item.reg_date ? item.reg_date.slice(0, 10) : '',
                     start_odo: item.start_odo || 0,
                     end_odo: item.end_odo || 0,
@@ -358,8 +361,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     total_litre: item.total_litre || '',
                     amount: item.amount || '',
                 }));
+                console.log('Mapped details:', details); // Debug log
                 setEditableDetails(details);
             } catch (err) {
+                console.error('Error fetching issuer details:', err); // Debug log
                 toast.error('Failed to load asset details for issuer.');
                 setEditableDetails([]);
             } finally {
@@ -449,7 +454,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                             <div className="flex-1">
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4">
                                     <div className="flex flex-col">
-                                        <span className="font-medium mb-1">Subtotal</span>
+                                        <span className="font-medium mb-1">Sub-Total</span>
                                         <Input
                                             type="text"
                                             value={summary.stmt_stotal !== undefined && summary.stmt_stotal !== null && summary.stmt_stotal !== '' && !isNaN(Number(summary.stmt_stotal)) ? Number(summary.stmt_stotal).toFixed(2) : '0.00'}
@@ -459,7 +464,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     </div>
 
                                     <div className="flex flex-col">
-                                        <span className="font-medium mb-1">Discount/Adj.</span>
+                                        <span className="font-medium mb-1">Discount/Rebate</span>
                                         <Input
                                             type="text"
                                             value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
@@ -469,7 +474,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                         />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="font-medium mb-1">Total</span>
+                                        <span className="font-medium mb-1">Grand-Total</span>
                                         <Input
                                             type="text"
                                             value={summary.stmt_total !== undefined && summary.stmt_total !== null && summary.stmt_total !== '' && !isNaN(Number(summary.stmt_total)) ? Number(summary.stmt_total).toFixed(2) : '0.00'}

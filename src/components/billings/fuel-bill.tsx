@@ -2,10 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreVertical } from 'lucide-react';
+import { Plus, Printer, Download } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { generateFuelCostCenterReport } from './report-fuel-costcenter';
@@ -101,33 +100,24 @@ const FuelBill = () => {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <span className="p-1 hover:bg-stone-300 rounded" aria-label="More options">
-                      <MoreVertical size={16} />
-                    </span>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="center" className='bg-stone-200'>
-                    <DropdownMenuItem onClick={async () => {
-                        try {
-                            const pdfBlob = await generateFuelCostCenterReport({ stmt_id: row.stmt_id });
-                            console.log('PDF Blob:', pdfBlob);
-                            const now = new Date();
-                            const pad = (n: number) => n.toString().padStart(2, '0');
-                            const datetime = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-                            downloadBlob(pdfBlob, `Fuel-CostCenter-Report-${row.stmt_id}-${datetime}.pdf`);
-                        } catch (err) {
-                            console.error('Error generating PDF:', err);
-                            toast('Failed to generate PDF report.');
-                        }
-                    }} className='bg-stone-200 hover:bg-stone-300 shadow-lg'>
-                      Download Cost Center Report
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <span className="p-1 hover:bg-stone-300 rounded" aria-label="Print Report" onClick={async () => {
+                  try {
+                    const pdfBlob = await generateFuelCostCenterReport({ stmt_id: row.stmt_id });
+                    console.log('PDF Blob:', pdfBlob);
+                    const now = new Date();
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    const datetime = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                    downloadBlob(pdfBlob, `Fuel-CostCenter-Report-${row.stmt_id}-${datetime}.pdf`);
+                  } catch (err) {
+                    console.error('Error generating PDF:', err);
+                    toast('Failed to generate PDF report.');
+                  }
+                }}>
+                  <Download size={16} />
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                Click to see more options
+                Download billing memo
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
