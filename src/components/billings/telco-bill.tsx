@@ -122,12 +122,12 @@ const TelcoBill = () => {
             </Button>
           )}
         </div>
-        {/* <Button
+        <Button
           variant={'default'}
           onClick={() => window.open(`/billings/telco/form`, '_blank')}
         >
           <Plus size={18} />
-        </Button> */}
+        </Button>
       </div>
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}

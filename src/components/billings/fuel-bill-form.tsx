@@ -312,12 +312,39 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         const allowed = [
             'Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End', '.', '-', // allow dot and minus for floats/negatives
         ];
+        
+        // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X for copy/paste operations
+        if (e.ctrlKey || e.metaKey) {
+            return; // Allow all Ctrl/Cmd key combinations
+        }
+        
         if (
             !/^[0-9.-]$/.test(e.key) &&
             !allowed.includes(e.key)
         ) {
             e.preventDefault();
         }
+    };
+
+    // Helper for numeric value validation without aggressive replacement
+    const validateNumericInput = (value: string): string => {
+        // Allow empty string
+        if (value === '') return '';
+        
+        // Remove any non-numeric characters except dot and minus
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        
+        // Ensure only one decimal point and minus only at the beginning
+        const parts = cleaned.split('.');
+        if (parts.length > 2) {
+            return parts[0] + '.' + parts.slice(1).join('');
+        }
+        
+        // Handle negative numbers
+        const hasNegative = cleaned.includes('-');
+        const withoutNegative = cleaned.replace(/-/g, '');
+        
+        return hasNegative ? '-' + withoutNegative : withoutNegative;
     };
 
     // Filtered details based on asset search
@@ -469,7 +496,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                             type="text"
                                             value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
                                             onKeyDown={handleNumericInput}
-                                            onChange={e => handleSummaryChange('stmt_disc', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                            onChange={e => handleSummaryChange('stmt_disc', validateNumericInput(e.target.value))}
                                             className="w-full text-right border-0 rounded-none bg-gray-100"
                                         />
                                     </div>
@@ -530,7 +557,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     <Input
                                         type="text"
                                         value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
-                                        onChange={e => handleSummaryChange('stmt_ron95', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                        onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
                                         className="w-full text-right border-0 rounded-none bg-gray-100"
                                     />
                                 </div>
@@ -539,7 +566,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     <Input
                                         type="text"
                                         value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
-                                        onChange={e => handleSummaryChange('stmt_ron97', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                        onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
                                         className="w-full text-right border-0 rounded-none bg-gray-100"
                                     />
                                 </div>
@@ -548,7 +575,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     <Input
                                         type="text"
                                         value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
-                                        onChange={e => handleSummaryChange('stmt_diesel', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                        onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
                                         className="w-full text-right border-0 rounded-none bg-gray-100"
                                     />
                                 </div>
@@ -622,7 +649,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                     type="text"
                                                     value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
                                                     onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'start_odo', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                                    onChange={e => handleDetailChange(idx, 'start_odo', validateNumericInput(e.target.value))}
                                                     className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                                 />
                                             </td>
@@ -631,7 +658,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                     type="text"
                                                     value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
                                                     onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'end_odo', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                                    onChange={e => handleDetailChange(idx, 'end_odo', validateNumericInput(e.target.value))}
                                                     className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                                 />
                                             </td>
@@ -649,7 +676,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                     type="text"
                                                     value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
                                                     onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'total_litre', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                                    onChange={e => handleDetailChange(idx, 'total_litre', validateNumericInput(e.target.value))}
                                                     className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                                 />
                                             </td>
@@ -671,7 +698,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                     type="text"
                                                     value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
                                                     onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'amount', e.target.value.replace(/[^0-9.-]/g, ''))}
+                                                    onChange={e => handleDetailChange(idx, 'amount', validateNumericInput(e.target.value))}
                                                     className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
                                                 />
                                             </td>
