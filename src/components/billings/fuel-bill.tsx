@@ -131,7 +131,9 @@ const FuelBill = () => {
     { key: 'diesel', header: 'Diesel', colClass: 'text-right' },
     { key: 'stmt_litre', header: 'Litre', colClass: 'text-right' },
     { key: 'stmt_total_odo', header: 'Total KM', colClass: 'text-right' },
-    { key: 'stmt_disc', header: 'Adjustment', colClass: 'text-right' },
+    { key: 'stmt_stotal', header: 'Sub Total', colClass: 'text-right' },
+    { key: 'stmt_rounding', header: 'Rounding', colClass: 'text-right' },
+    { key: 'stmt_disc', header: 'Rebate', colClass: 'text-right' },
     { key: 'stmt_total', header: 'Total', colClass: 'text-right' },
   ];
 

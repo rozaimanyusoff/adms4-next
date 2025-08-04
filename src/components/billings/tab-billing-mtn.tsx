@@ -5,23 +5,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Workshop from "./workshop";
 import FleetCardList from "./fleet-card";
 import TempVehicle from "./temp-vehicle";
-import VehicleMtnReport from "./vehicle-mtn-report";
 import Link from "next/link";
 
 const BillingMaintenance: React.FC = () => {
     const tabTitles = [
         { value: "workshop", label: "Workshop" },
         { value: "svcopt", label: "Service Option" },
-        { value: "fleet", label: "Fleet Card" },
-        { value: "tempvehicle", label: "Vehiclec Records" },
-        { value: "vehiclereport", label: "Vehicle Maintenance Report" },
+        { value: "fleet", label: "Fleetcard Records" },
+        { value: "tempvehicle", label: "Vehicle Records" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         workshop: <Workshop />,
         fleet: <FleetCardList />,
         tempvehicle: <TempVehicle />,
-        vehiclereport: <VehicleMtnReport />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComposedChart, Bar, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-import TelcoReportControls from './telco-report-controls';
+import TelcoReportControls from './excel-telco-report';
 
 interface TelcoBill {
     id: number;

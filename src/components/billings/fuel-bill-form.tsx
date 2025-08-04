@@ -105,6 +105,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     const [error, setError] = useState<string | null>(null);
     const [editableDetails, setEditableDetails] = useState<FuelDetail[]>([]);
     const [search, setSearch] = useState('');
+    const [showEmptyRowsOnly, setShowEmptyRowsOnly] = useState(false);
 
     // Split cost center summary by category (project, staffcost)
     const costCenterSummary = React.useMemo(() => {
@@ -347,10 +348,26 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         return hasNegative ? '-' + withoutNegative : withoutNegative;
     };
 
-    // Filtered details based on asset search
-    const filteredDetails = editableDetails.filter(detail =>
-        detail.asset?.vehicle_regno?.toLowerCase().includes(search.toLowerCase())
-    );
+    // Helper function to check if a detail row is considered "filled"
+    const isRowFilled = (detail: FuelDetail): boolean => {
+        const hasValidOdo = (detail.start_odo && Number(detail.start_odo) > 0) || (detail.end_odo && Number(detail.end_odo) > 0);
+        const hasValidLitre = detail.total_litre && parseFloat(String(detail.total_litre)) > 0;
+        const hasValidAmount = detail.amount && parseFloat(String(detail.amount)) > 0;
+        return Boolean(hasValidOdo || hasValidLitre || hasValidAmount);
+    };
+
+    // Filtered details based on asset search and empty row filter
+    const filteredDetails = editableDetails.filter(detail => {
+        const matchesSearch = detail.asset?.vehicle_regno?.toLowerCase().includes(search.toLowerCase());
+        if (showEmptyRowsOnly) {
+            return matchesSearch && !isRowFilled(detail);
+        }
+        return matchesSearch;
+    });
+
+    // Calculate entry status
+    const filledRowsCount = editableDetails.filter(isRowFilled).length;
+    const totalRowsCount = editableDetails.length;
 
     const handleIssuerChange = async (fuelId: string) => {
         setSelectedIssuer(fuelId);
@@ -605,10 +622,44 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     </div>
                     <div>
                         <div className="flex items-center justify-between mb-2 gap-2">
-                            <h3 className="text-xl font-semibold flex items-center gap-2">
-                                Details
-                                {loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
-                            </h3>
+                            <div className="flex items-center gap-4">
+                                <h3 className="text-xl font-semibold flex items-center gap-2">
+                                    Details
+                                    {loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
+                                </h3>
+                                <div className="flex items-center gap-2">
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger>
+                                                <span className={`text-sm px-4 py-1.5 rounded-full ${
+                                                    filledRowsCount === totalRowsCount 
+                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                                                        : 'bg-amber-600 text-white dark:bg-yellow-900 dark:text-yellow-200'
+                                                }`}>
+                                                    {filledRowsCount} / {totalRowsCount} filled
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p>
+                                                    {filledRowsCount === totalRowsCount 
+                                                        ? 'All entries have been filled' 
+                                                        : `${totalRowsCount - filledRowsCount} entries remaining to fill`
+                                                    }
+                                                </p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                    <Button
+                                        type="button"
+                                        variant={showEmptyRowsOnly ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => setShowEmptyRowsOnly(!showEmptyRowsOnly)}
+                                        className="text-xs bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
+                                    >
+                                        {showEmptyRowsOnly ? "Show All" : "Show Empty Rows Only"}
+                                    </Button>
+                                </div>
+                            </div>
                             <Input
                                 type="text"
                                 placeholder="Search Asset..."
@@ -617,6 +668,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 className="w-56"
                             />
                         </div>
+                        {(showEmptyRowsOnly || search) && (
+                            <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                                {showEmptyRowsOnly && "Showing empty rows only"}
+                                {showEmptyRowsOnly && search && " • "}
+                                {search && `Filtered by: "${search}"`}
+                                {" • "}{filteredDetails.length} row{filteredDetails.length !== 1 ? 's' : ''} displayed
+                            </div>
+                        )}
                         <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
                             <table className="min-w-full border text-sm">
                                 <thead className="bg-gray-200 sticky -top-1 z-10">
@@ -636,8 +695,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredDetails.map((detail, idx) => (
-                                        <tr key={detail.s_id}>
+                                    {filteredDetails.map((detail, idx) => {
+                                        const isEmpty = !isRowFilled(detail);
+                                        return (
+                                            <tr 
+                                                key={detail.s_id}
+                                                className={showEmptyRowsOnly && isEmpty ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
+                                            >
                                             <td className="border px-2 text-center">{idx + 1}</td>
                                             <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
                                             <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
@@ -703,7 +767,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                 />
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>

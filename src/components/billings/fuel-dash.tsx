@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import VehicleMtnReport from "./excel-fuel-report";
 
 interface FuelBill {
     stmt_id: number;
@@ -72,6 +73,7 @@ const FuelDash: React.FC = () => {
     }, [selectedYear]);
 
     return (
+        <>
         <Card className="mt-4 w-full">
             <CardHeader>
                 <CardTitle>Fuel Maintenance - Monthly Statement Total</CardTitle>
@@ -117,6 +119,8 @@ const FuelDash: React.FC = () => {
                 )}
             </CardContent>
         </Card>
+        <VehicleMtnReport />
+        </>
     );
 };
 
