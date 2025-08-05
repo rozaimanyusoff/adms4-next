@@ -94,6 +94,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         if (!validateForm()) {
             return;
         }
+        
+        setSaving(true);
         const payload = buildFormPayload();
         try {
             // POST for create, PUT for update
@@ -128,6 +130,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             }
         } catch (err: any) {
             toast.error('Failed to save fuel statement.');
+        } finally {
+            setSaving(false);
         }
     };
     // ...existing state declarations...
@@ -266,6 +270,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
 
     // Add state for loadingDetails
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [updatingDetail, setUpdatingDetail] = useState(false);
 
     // Validation state
     const [errors, setErrors] = useState({
@@ -528,6 +534,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         const detail = editableDetails[editingDetailIndex];
         if (!detail) return;
 
+        setUpdatingDetail(true);
         try {
             // Prepare payload
             const payload = {
@@ -588,6 +595,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             console.error('Error updating detail:', error);
             const errorMessage = error.response?.data?.message || error.message || 'Failed to update detail';
             toast.error(errorMessage);
+        } finally {
+            setUpdatingDetail(false);
         }
     };
 
@@ -905,9 +914,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                 type="button"
                                                 variant={isRequiredFieldsFilled() ? "default" : "outline"}
                                                 onClick={handleSave}
+                                                disabled={saving}
                                                 className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
                                             >
-                                                {isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application"}
+                                                {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
+                                                {saving 
+                                                    ? "Submitting..." 
+                                                    : (isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application")
+                                                }
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={4}>
@@ -921,8 +935,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     </Tooltip>
                                 </TooltipProvider>
                             ) : (
-                                <Button type="button" variant="default" onClick={handleSave}>
-                                    Save Changes
+                                <Button type="button" variant="default" onClick={handleSave} disabled={saving}>
+                                    {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
+                                    {saving ? "Saving..." : "Save Changes"}
                                 </Button>
                             )}
                             <AlertDialog>
@@ -956,8 +971,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         <Tooltip>
                                             <TooltipTrigger>
                                                 <span className={`text-sm px-4 py-1.5 rounded-full ${filledRowsCount === totalRowsCount
-                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                                    : 'bg-amber-600 text-white dark:bg-yellow-900 dark:text-yellow-200'
+                                                    ? 'text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                    : 'text-red-500 dark:bg-yellow-900 dark:text-yellow-200'
                                                     }`}>
                                                     {filledRowsCount} / {totalRowsCount} filled
                                                 </span>
@@ -986,7 +1001,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         variant="outline"
                                         size="sm"
                                         onClick={handleOpenAddFleetCard}
-                                        className="text-xs bg-green-500 text-white hover:bg-green-600 hover:text-white flex items-center gap-1"
+                                        className="text-xs bg-green-600 text-white hover:bg-green-700 hover:text-white flex items-center gap-1"
                                     >
                                         <PlusCircle className="w-4 h-4" />
                                         Add Fleet Card
@@ -1225,8 +1240,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 </div>
 
                                 <div className="flex gap-2 pt-4">
-                                    <Button onClick={handleUpdateDetail} className="flex-1">
-                                        Save Changes
+                                    <Button onClick={handleUpdateDetail} className="flex-1" disabled={updatingDetail}>
+                                        {updatingDetail && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
+                                        {updatingDetail ? "Saving..." : "Save Changes"}
                                     </Button>
                                     <Button
                                         variant="outline"
