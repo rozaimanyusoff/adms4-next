@@ -94,6 +94,8 @@ const TempVehicle: React.FC = () => {
     { key: 'classification', header: 'Classification', filter: 'singleSelect', colClass: 'capitalize' },
     { key: 'condition_status', header: 'Condition Status', filter: 'singleSelect', colClass: 'capitalize' },
     { key: 'record_status', header: 'Record Status', filter: 'singleSelect', colClass: 'capitalize' },
+    //purpose
+    { key: 'purpose', header: 'Purpose', filter: 'singleSelect', colClass: 'capitalize' },
   ]);
 
   // Filtered vehicles based on switch
