@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2, Plus, Edit3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import ActionSidebar from '@/components/ui/action-aside';
 
 interface Asset {
     vehicle_id: number;
@@ -71,7 +72,10 @@ interface FuelMtnDetailProps {
     stmtId: number;
 }
 
-const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
+const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) => {
+    // Add state for current statement ID (can change after creation)
+    const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
+    
     // Save handler for form submission
     const handleSave = async () => {
         if (!validateForm()) {
@@ -80,19 +84,35 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         const payload = buildFormPayload();
         try {
             // POST for create, PUT for update
-            if (!stmtId || stmtId === 0) {
-                await authenticatedApi.post('/api/bills/fuel', payload);
+            if (!currentStmtId || currentStmtId === 0) {
+                const response = await authenticatedApi.post<{ status: string; message: string; id: number }>('/api/bills/fuel', payload);
                 toast.success('Fuel statement created successfully.');
-            } else {
-                await authenticatedApi.put(`/api/bills/fuel/${stmtId}`, payload);
-                toast.success('Fuel statement updated successfully.');
-            }
-            setTimeout(() => {
-                if (window.opener && typeof window.opener.reloadFuelBillGrid === 'function') {
-                    window.opener.reloadFuelBillGrid();
+                
+                // Check if response contains the new ID
+                if (response.data && response.data.id) {
+                    const newId = response.data.id;
+                    setCurrentStmtId(newId);
+                    
+                    // Update URL to include the new ID and reload to show the created record
+                    const currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('id', newId.toString());
+                    window.history.replaceState({}, '', currentUrl.toString());
+                    
+                    // Reload to fetch the newly created record
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
                 }
-                window.close();
-            }, 1000);
+            } else {
+                await authenticatedApi.put(`/api/bills/fuel/${currentStmtId}`, payload);
+                toast.success('Fuel statement updated successfully.');
+                setTimeout(() => {
+                    if (window.opener && typeof window.opener.reloadFuelBillGrid === 'function') {
+                        window.opener.reloadFuelBillGrid();
+                    }
+                    window.close();
+                }, 1000);
+            }
         } catch (err: any) {
             toast.error('Failed to save fuel statement.');
         }
@@ -106,6 +126,19 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     const [editableDetails, setEditableDetails] = useState<FuelDetail[]>([]);
     const [search, setSearch] = useState('');
     const [showEmptyRowsOnly, setShowEmptyRowsOnly] = useState(false);
+
+    // ActionSidebar state
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
+    const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
+    const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
+    
+    // Edit form state
+    const [editFormData, setEditFormData] = useState({
+        card_no: '',
+        costcenter_id: '',
+        purpose: 'project'
+    });
 
     // Split cost center summary by category (project, staffcost)
     const costCenterSummary = React.useMemo(() => {
@@ -231,9 +264,21 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
             .then(res => {
                 setIssuers(res.data.data);
             });
-        // Only fetch bill detail if stmtId is a valid positive number
-        if (stmtId && stmtId > 0) {
-            authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${stmtId}`)
+
+        // Fetch fleet cards and cost centers for editing
+        Promise.all([
+            authenticatedApi.get<{ data: FleetCard[] }>('/api/bills/fleet'),
+            authenticatedApi.get<{ data: CostCenter[] }>('/api/assets/costcenters')
+        ]).then(([fleetRes, costRes]) => {
+            setAvailableFleetCards(fleetRes.data.data || []);
+            setAvailableCostCenters(costRes.data.data || []);
+        }).catch(err => {
+            console.error('Error fetching reference data:', err);
+        });
+
+        // Only fetch bill detail if currentStmtId is a valid positive number
+        if (currentStmtId && currentStmtId > 0) {
+            authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${currentStmtId}`)
                 .then(res => {
                     setData(res.data.data);
                     setEditableDetails(res.data.data.details.map(d => ({
@@ -285,7 +330,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
             setSelectedIssuer('');
             setLoading(false);
         }
-    }, [stmtId]);
+    }, [currentStmtId]);
 
     const handleDetailChange = (idx: number, field: keyof FuelDetail, value: string | number) => {
         setEditableDetails(prev => prev.map((detail, i) => {
@@ -371,8 +416,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
 
     const handleIssuerChange = async (fuelId: string) => {
         setSelectedIssuer(fuelId);
-        // Only in create mode (stmtId falsy or 0)
-        if (!stmtId || stmtId === 0) {
+        // Only in create mode (currentStmtId falsy or 0)
+        if (!currentStmtId || currentStmtId === 0) {
             setLoadingDetails(true);
             try {
                 const res = await authenticatedApi.get(`/api/bills/fleet/${fuelId}/issuer`);
@@ -428,9 +473,112 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         return !Object.values(newErrors).includes(true);
     };
 
+    // Check if all required fields are filled (for visual feedback)
+    const isRequiredFieldsFilled = () => {
+        return selectedIssuer && header.stmt_no.trim() && header.stmt_date.trim();
+    };
+
+    // Get progress status for each required field
+    const getFieldProgress = () => {
+        const fields = [
+            { name: 'Issuer', completed: !!selectedIssuer },
+            { name: 'Statement No', completed: !!header.stmt_no.trim() },
+            { name: 'Statement Date', completed: !!header.stmt_date.trim() }
+        ];
+        const completedCount = fields.filter(f => f.completed).length;
+        return { fields, completedCount, totalCount: fields.length };
+    };
+
+    // Handle opening the ActionSidebar for editing detail row
+    const handleEditDetail = (index: number) => {
+        const detail = editableDetails[index];
+        if (detail) {
+            setEditFormData({
+                card_no: detail.fleetcard?.card_no || '',
+                costcenter_id: String(detail.asset?.costcenter?.id || ''),
+                purpose: detail.asset?.purpose || 'project'
+            });
+        }
+        setEditingDetailIndex(index);
+        setSidebarOpen(true);
+    };
+
+    // Handle updating the detail row from ActionSidebar
+    const handleUpdateDetail = async () => {
+        if (editingDetailIndex === null) return;
+
+        const detail = editableDetails[editingDetailIndex];
+        if (!detail) return;
+
+        try {
+            // Prepare payload
+            const payload = {
+                card_id: detail.fleetcard?.id,
+                card_no: editFormData.card_no.trim(),
+                vehicle_id: detail.asset?.vehicle_id,
+                costcenter_id: editFormData.costcenter_id ? parseInt(editFormData.costcenter_id) : null,
+                purpose: editFormData.purpose
+            };
+
+            // Make PUT request to update the fleet card
+            let response;
+            if (detail.fleetcard?.id) {
+                response = await authenticatedApi.put<{ status: string; message: string }>(`/api/bills/fleet/${detail.fleetcard.id}/billing`, payload);
+            }
+
+            // Check if the response indicates success
+            if (response && response.data && response.data.status === 'success') {
+                // Update local state immediately
+                setEditableDetails(prev => prev.map((item, i) => {
+                    if (i !== editingDetailIndex) return item;
+
+                    const updated = { ...item };
+
+                    // Update fleet card number
+                    if (updated.fleetcard) {
+                        updated.fleetcard = { ...updated.fleetcard, card_no: payload.card_no };
+                    }
+
+                    // Update cost center
+                    if (payload.costcenter_id) {
+                        const costcenter = availableCostCenters.find(cc => cc.id === payload.costcenter_id);
+                        if (costcenter && updated.asset) {
+                            updated.asset = { ...updated.asset, costcenter };
+                        }
+                    } else {
+                        // Clear cost center if none selected
+                        if (updated.asset) {
+                            updated.asset = { ...updated.asset, costcenter: null };
+                        }
+                    }
+
+                    // Update purpose
+                    if (updated.asset) {
+                        updated.asset = { ...updated.asset, purpose: payload.purpose };
+                    }
+
+                    return updated;
+                }));
+
+                setSidebarOpen(false);
+                setEditingDetailIndex(null);
+                toast.success(response.data.message || 'Detail updated successfully');
+            } else {
+                throw new Error('Update failed: Invalid response from server');
+            }
+        } catch (error: any) {
+            console.error('Error updating detail:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'Failed to update detail';
+            toast.error(errorMessage);
+        }
+    };
+
+    // Get current editing detail
+    const currentEditingDetail = editingDetailIndex !== null ? editableDetails[editingDetailIndex] : null;
+
     if (loading) return <div className="p-4">Loading...</div>;
     // Only show No data found if in edit mode and no data
-    if ((stmtId && stmtId > 0) && !data) return <div className="p-4">No data found.</div>;
+    if ((currentStmtId && currentStmtId > 0) && !data) return <div className="p-4">No data found.</div>;
 
     return (
         <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
@@ -443,11 +591,53 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                 <div className="pt-4 w-full space-y-6">
                     <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
                         <h3 className="text-lg font-semibold mb-2">Statement Info</h3>
+                        {(!currentStmtId || currentStmtId === 0) && (
+                            <div className={`mb-4 p-3 border rounded-lg ${isRequiredFieldsFilled() 
+                                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'}`}>
+                                <p className={`text-sm ${isRequiredFieldsFilled() 
+                                    ? 'text-green-800 dark:text-green-200' 
+                                    : 'text-blue-800 dark:text-blue-200'}`}>
+                                    {isRequiredFieldsFilled() ? (
+                                        <>
+                                            <strong>✓ Ready to Submit:</strong> All required fields are filled. You can now submit your fuel billing application.
+                                        </>
+                                    ) : (
+                                        <>
+                                            <strong>Progress ({getFieldProgress().completedCount}/{getFieldProgress().totalCount}):</strong> 
+                                            {getFieldProgress().fields.map((field, index) => (
+                                                <span key={field.name}>
+                                                    {index > 0 && ' • '}
+                                                    <span className={field.completed ? 'text-green-600 font-medium' : 'text-red-500'}>
+                                                        {field.completed ? '✓' : '○'} {field.name}
+                                                    </span>
+                                                </span>
+                                            ))}
+                                            <br />
+                                            <span className="text-xs mt-1 block">Fill in the remaining fields to create your fuel billing application. <span className="text-red-500">*</span> indicates required fields.</span>
+                                        </>
+                                    )}
+                                </p>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             <div className="flex flex-col">
-                                <label className={`font-medium mb-1 ${errors.issuer ? 'text-red-500' : 'text-gray-800'}`}>Issuer</label>
+                                <TooltipProvider>
+                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !selectedIssuer}>
+                                        <TooltipTrigger asChild>
+                                            <label className={`font-medium mb-1 cursor-help ${errors.issuer ? 'text-red-500' : 'text-gray-800'}`}>
+                                                Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                            </label>
+                                        </TooltipTrigger>
+                                        {(!currentStmtId || currentStmtId === 0) && (
+                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={-7}>
+                                                <p>Select the fuel issuer/provider (e.g., Petronas, Shell, BHP). This field is required.</p>
+                                            </TooltipContent>
+                                        )}
+                                    </Tooltip>
+                                </TooltipProvider>
                                 <Select value={selectedIssuer} onValueChange={handleIssuerChange}>
-                                    <SelectTrigger className="w-full bg-gray-100 border-0 rounded-none">
+                                    <SelectTrigger className={`w-full bg-gray-100 border-0 rounded-none ${(!currentStmtId || currentStmtId === 0) && !selectedIssuer ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
                                         <SelectValue placeholder="Select Issuer" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -463,24 +653,50 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 </Select>
                             </div>
                             <div className="flex flex-col">
-                                <label htmlFor="stmt_no" className={`font-medium mb-1 ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>Statement No</label>
+                                <TooltipProvider>
+                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim()}>
+                                        <TooltipTrigger asChild>
+                                            <label htmlFor="stmt_no" className={`font-medium mb-1 cursor-help ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>
+                                                Statement No {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                            </label>
+                                        </TooltipTrigger>
+                                        {(!currentStmtId || currentStmtId === 0) && (
+                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={-5}>
+                                                <p>Enter the unique statement number from your fuel bill. This field is required and will be converted to uppercase.</p>
+                                            </TooltipContent>
+                                        )}
+                                    </Tooltip>
+                                </TooltipProvider>
                                 <Input
                                     id="stmt_no"
                                     type="text"
                                     value={header.stmt_no}
                                     onChange={e => handleHeaderChange('stmt_no', e.target.value)}
-                                    className="w-full text-right border-0 rounded-none bg-gray-100 uppercase"
+                                    className={`w-full text-right border-0 rounded-none bg-gray-100 uppercase ${(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
                                 />
                             </div>
 
                             <div className="flex flex-col">
-                                <label htmlFor="stmt_date" className={`font-medium mb-1 ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>Statement Date</label>
+                                <TooltipProvider>
+                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim()}>
+                                        <TooltipTrigger asChild>
+                                            <label htmlFor="stmt_date" className={`font-medium mb-1 cursor-help ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>
+                                                Statement Date {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                            </label>
+                                        </TooltipTrigger>
+                                        {(!currentStmtId || currentStmtId === 0) && (
+                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={2}>
+                                                <p>Select the date of the fuel statement. This is the date shown on your fuel bill and is required.</p>
+                                            </TooltipContent>
+                                        )}
+                                    </Tooltip>
+                                </TooltipProvider>
                                 <Input
                                     id="stmt_date"
                                     type="date"
                                     value={header.stmt_date}
                                     onChange={e => handleHeaderChange('stmt_date', e.target.value)}
-                                    className="w-full text-right border-0 rounded-none bg-gray-100"
+                                    className={`w-full text-right border-0 rounded-none bg-gray-100 ${(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
                                 />
                             </div>
                             <div className="flex flex-col">
@@ -600,7 +816,34 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                         </div>
 
                         <div className="flex justify-center gap-2 mt-6">
-                            <Button type="button" variant="default" onClick={handleSave}>Save</Button>
+                            {(!currentStmtId || currentStmtId === 0) ? (
+                                <TooltipProvider>
+                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !isRequiredFieldsFilled()}>
+                                        <TooltipTrigger asChild>
+                                            <Button 
+                                                type="button" 
+                                                variant={isRequiredFieldsFilled() ? "default" : "outline"} 
+                                                onClick={handleSave}
+                                                className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
+                                            >
+                                                {isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application"}
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={4}>
+                                            <p>
+                                                {isRequiredFieldsFilled() 
+                                                    ? "All required fields are completed. Submit your fuel billing application." 
+                                                    : "Please fill in all required fields (Issuer, Statement No, and Statement Date) before submitting. You can also submit incomplete and complete later."
+                                                }
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            ) : (
+                                <Button type="button" variant="default" onClick={handleSave}>
+                                    Save Changes
+                                </Button>
+                            )}
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                     <Button type="button" variant="destructive">Close</Button>
@@ -632,8 +875,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                         <Tooltip>
                                             <TooltipTrigger>
                                                 <span className={`text-sm px-4 py-1.5 rounded-full ${filledRowsCount === totalRowsCount
-                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                                        : 'bg-amber-600 text-white dark:bg-yellow-900 dark:text-yellow-200'
+                                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                                    : 'bg-amber-600 text-white dark:bg-yellow-900 dark:text-yellow-200'
                                                     }`}>
                                                     {filledRowsCount} / {totalRowsCount} filled
                                                 </span>
@@ -679,7 +922,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                             <table className="min-w-full border text-sm">
                                 <thead className="bg-gray-200 sticky -top-1 z-10">
                                     <tr>
-                                        <th className="border px-2 py-1.5">#</th>
+                                        <th className="border px-2 py-1.5 w-12">#</th>
                                         <th className="border px-2 py-1.5">Fleet Card</th>
                                         <th className="border px-2 py-1.5">Asset</th>
                                         <th className="border px-2 py-1.5">Cost Center</th>
@@ -702,7 +945,29 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                                 key={detail.s_id}
                                                 className={showEmptyRowsOnly && isEmpty ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
                                             >
-                                                <td className="border px-2 text-center">{idx + 1}</td>
+                                                <td className="border px-2 text-center">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <span>{idx + 1}</span>
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleEditDetail(originalIndex)}
+                                                                        className="p-1 h-6 w-6 hover:bg-blue-100"
+                                                                    >
+                                                                        <Edit3 size={12} className="text-blue-600" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Edit Fleet Card, Cost Center & Purpose</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    </div>
+                                                </td>
                                                 <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
                                                 <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
                                                 <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
@@ -802,6 +1067,92 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                     </div>
                 </div>
             </div>
+
+            {/* ActionSidebar for editing detail row */}
+            {sidebarOpen && (
+                <ActionSidebar
+                    title="Edit Detail Row"
+                    onClose={() => {
+                        setSidebarOpen(false);
+                        setEditingDetailIndex(null);
+                    }}
+                    size={'sm'}
+                    content={
+                        currentEditingDetail ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Fleet Card</label>
+                                    <Input
+                                        type="text"
+                                        value={editFormData.card_no}
+                                        onChange={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value }))}
+                                        placeholder="Enter fleet card number"
+                                        className="w-full"
+                                        onBlur={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value.trim() }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Cost Center</label>
+                                    <Select
+                                        value={editFormData.costcenter_id}
+                                        onValueChange={(value) => setEditFormData(prev => ({ ...prev, costcenter_id: value }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select Cost Center" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectLabel>Cost Centers</SelectLabel>
+                                                {availableCostCenters.map(cc => (
+                                                    <SelectItem key={cc.id} value={String(cc.id)}>
+                                                        {cc.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Purpose</label>
+                                    <Select
+                                        value={editFormData.purpose}
+                                        onValueChange={(value) => setEditFormData(prev => ({ ...prev, purpose: value }))}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Select Purpose" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectLabel>Purpose</SelectLabel>
+                                                <SelectItem value="project">Project</SelectItem>
+                                                <SelectItem value="staff cost">Staff Cost</SelectItem>
+                                                <SelectItem value="pool">Poolcar</SelectItem>
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex gap-2 pt-4">
+                                    <Button onClick={handleUpdateDetail} className="flex-1">
+                                        Save Changes
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setSidebarOpen(false);
+                                            setEditingDetailIndex(null);
+                                        }}
+                                        className="flex-1"
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : null
+                    }
+                />
+            )}
         </div>
 
     );
