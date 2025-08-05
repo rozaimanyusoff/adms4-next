@@ -313,12 +313,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
         const allowed = [
             'Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End', '.', '-', // allow dot and minus for floats/negatives
         ];
-        
+
         // Allow Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X for copy/paste operations
         if (e.ctrlKey || e.metaKey) {
             return; // Allow all Ctrl/Cmd key combinations
         }
-        
+
         if (
             !/^[0-9.-]$/.test(e.key) &&
             !allowed.includes(e.key)
@@ -331,20 +331,20 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
     const validateNumericInput = (value: string): string => {
         // Allow empty string
         if (value === '') return '';
-        
+
         // Remove any non-numeric characters except dot and minus
         const cleaned = value.replace(/[^0-9.-]/g, '');
-        
+
         // Ensure only one decimal point and minus only at the beginning
         const parts = cleaned.split('.');
         if (parts.length > 2) {
             return parts[0] + '.' + parts.slice(1).join('');
         }
-        
+
         // Handle negative numbers
         const hasNegative = cleaned.includes('-');
         const withoutNegative = cleaned.replace(/-/g, '');
-        
+
         return hasNegative ? '-' + withoutNegative : withoutNegative;
     };
 
@@ -631,18 +631,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger>
-                                                <span className={`text-sm px-4 py-1.5 rounded-full ${
-                                                    filledRowsCount === totalRowsCount 
-                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                                                <span className={`text-sm px-4 py-1.5 rounded-full ${filledRowsCount === totalRowsCount
+                                                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                                                         : 'bg-amber-600 text-white dark:bg-yellow-900 dark:text-yellow-200'
-                                                }`}>
+                                                    }`}>
                                                     {filledRowsCount} / {totalRowsCount} filled
                                                 </span>
                                             </TooltipTrigger>
                                             <TooltipContent>
                                                 <p>
-                                                    {filledRowsCount === totalRowsCount 
-                                                        ? 'All entries have been filled' 
+                                                    {filledRowsCount === totalRowsCount
+                                                        ? 'All entries have been filled'
                                                         : `${totalRowsCount - filledRowsCount} entries remaining to fill`
                                                     }
                                                 </p>
@@ -697,76 +696,77 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId }) => {
                                 <tbody>
                                     {filteredDetails.map((detail, idx) => {
                                         const isEmpty = !isRowFilled(detail);
+                                        const originalIndex = editableDetails.findIndex(d => d.s_id === detail.s_id);
                                         return (
-                                            <tr 
+                                            <tr
                                                 key={detail.s_id}
                                                 className={showEmptyRowsOnly && isEmpty ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
                                             >
-                                            <td className="border px-2 text-center">{idx + 1}</td>
-                                            <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
-                                            <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
-                                            <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
-                                            <td className="border px-2">{detail.asset?.vfuel_type || ''}</td>
-                                            <td className="border px-2">{detail.asset?.purpose || ''}</td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
-                                                    onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'start_odo', validateNumericInput(e.target.value))}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                />
-                                            </td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
-                                                    onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'end_odo', validateNumericInput(e.target.value))}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                />
-                                            </td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
-                                                    readOnly
-                                                    tabIndex={-1}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100"
-                                                />
-                                            </td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
-                                                    onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'total_litre', validateNumericInput(e.target.value))}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                />
-                                            </td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={
-                                                        detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && Number(detail.total_litre) !== 0
-                                                            ? (Number(detail.total_km) / Number(detail.total_litre)).toFixed(2)
-                                                            : '0.00'
-                                                    }
-                                                    readOnly
-                                                    tabIndex={-1}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100"
-                                                />
-                                            </td>
-                                            <td className="border text-right">
-                                                <Input
-                                                    type="text"
-                                                    value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
-                                                    onKeyDown={handleNumericInput}
-                                                    onChange={e => handleDetailChange(idx, 'amount', validateNumericInput(e.target.value))}
-                                                    className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                />
-                                            </td>
-                                        </tr>
+                                                <td className="border px-2 text-center">{idx + 1}</td>
+                                                <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
+                                                <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
+                                                <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
+                                                <td className="border px-2">{detail.asset?.vfuel_type || ''}</td>
+                                                <td className="border px-2">{detail.asset?.purpose || ''}</td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
+                                                        onKeyDown={handleNumericInput}
+                                                        onChange={e => handleDetailChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
+                                                    />
+                                                </td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
+                                                        onKeyDown={handleNumericInput}
+                                                        onChange={e => handleDetailChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
+                                                    />
+                                                </td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
+                                                        readOnly
+                                                        tabIndex={-1}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                    />
+                                                </td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
+                                                        onKeyDown={handleNumericInput}
+                                                        onChange={e => handleDetailChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
+                                                    />
+                                                </td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={
+                                                            detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && Number(detail.total_litre) !== 0
+                                                                ? (Number(detail.total_km) / Number(detail.total_litre)).toFixed(2)
+                                                                : '0.00'
+                                                        }
+                                                        readOnly
+                                                        tabIndex={-1}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                    />
+                                                </td>
+                                                <td className="border text-right">
+                                                    <Input
+                                                        type="text"
+                                                        value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
+                                                        onKeyDown={handleNumericInput}
+                                                        onChange={e => handleDetailChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
+                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
+                                                    />
+                                                </td>
+                                            </tr>
                                         );
                                     })}
                                 </tbody>
