@@ -318,7 +318,7 @@ const FleetCardList: React.FC = () => {
                                             value={
                                                 form.vehicle_id
                                                     ? (
-                                                        fleetCards.find(fc => String(fc.asset?.vehicle_id) === String(form.vehicle_id))?.asset?.vehicle_regno
+                                                        assets.find(a => String(a.vehicle_id) === String(form.vehicle_id))?.vehicle_regno
                                                         || ""
                                                     )
                                                     : ""

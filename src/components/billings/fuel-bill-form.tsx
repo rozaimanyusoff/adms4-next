@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, Plus, Edit3 } from 'lucide-react';
+import { Loader2, PlusCircle, Edit3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,6 +30,19 @@ interface District {
 interface FleetCard {
     id: number;
     card_no: string;
+}
+
+// Extended interface for API responses that include asset data
+interface FleetCardWithAsset {
+    id: number;
+    card_no: string;
+    asset?: Asset;
+    reg_date?: string;
+    start_odo?: number;
+    end_odo?: number;
+    total_km?: number;
+    total_litre?: string;
+    amount?: string;
 }
 
 interface FuelDetail {
@@ -75,7 +88,7 @@ interface FuelMtnDetailProps {
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) => {
     // Add state for current statement ID (can change after creation)
     const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
-    
+
     // Save handler for form submission
     const handleSave = async () => {
         if (!validateForm()) {
@@ -87,17 +100,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             if (!currentStmtId || currentStmtId === 0) {
                 const response = await authenticatedApi.post<{ status: string; message: string; id: number }>('/api/bills/fuel', payload);
                 toast.success('Fuel statement created successfully.');
-                
+
                 // Check if response contains the new ID
                 if (response.data && response.data.id) {
                     const newId = response.data.id;
                     setCurrentStmtId(newId);
-                    
+
                     // Update URL to include the new ID and reload to show the created record
                     const currentUrl = new URL(window.location.href);
                     currentUrl.searchParams.set('id', newId.toString());
                     window.history.replaceState({}, '', currentUrl.toString());
-                    
+
                     // Reload to fetch the newly created record
                     setTimeout(() => {
                         window.location.reload();
@@ -132,7 +145,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
     const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
     const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
-    
+
+    // Add Fleet Card sidebar state
+    const [addFleetCardSidebarOpen, setAddFleetCardSidebarOpen] = useState(false);
+    const [availableFleetCardsToAdd, setAvailableFleetCardsToAdd] = useState<FleetCardWithAsset[]>([]);
+    const [fleetCardSearch, setFleetCardSearch] = useState('');
+
     // Edit form state
     const [editFormData, setEditFormData] = useState({
         card_no: '',
@@ -439,7 +457,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     asset: {
                         vehicle_id: item.asset?.vehicle_id || 0,
                         vehicle_regno: item.asset?.vehicle_regno || '',
-                        vfuel_type: item.asset?.vfuel_type || '',
+                        vfuel_type: item.asset?.fuel_type || item.asset?.vfuel_type || '',
                         costcenter: item.asset?.costcenter || null,
                         purpose: item.asset?.purpose || '',
                     },
@@ -573,6 +591,69 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         }
     };
 
+    // Handle opening the Add Fleet Card sidebar
+    const handleOpenAddFleetCard = async () => {
+        try {
+            // Fetch all available fleet cards
+            const response = await authenticatedApi.get<{ data: FleetCardWithAsset[] }>('/api/bills/fleet');
+            const allFleetCards = response.data.data || [];
+
+            // Filter out fleet cards that are already in the details table
+            const existingCardIds = editableDetails.map(detail => detail.fleetcard?.id).filter(Boolean);
+            const availableCards = allFleetCards.filter(card => !existingCardIds.includes(card.id));
+
+            setAvailableFleetCardsToAdd(availableCards);
+            setAddFleetCardSidebarOpen(true);
+        } catch (error) {
+            console.error('Error fetching available fleet cards:', error);
+            toast.error('Failed to load available fleet cards');
+        }
+    };
+
+    // Handle adding a fleet card to the details table
+    const handleAddFleetCard = (fleetCard: FleetCardWithAsset) => {
+        // Note: Cost center data may not be available in the API response for all fleet cards
+        // If cost center is needed, it should be assigned manually after adding the fleet card
+
+        // Create a new detail row with the selected fleet card
+        const newDetail: FuelDetail = {
+            s_id: Date.now(), // Use timestamp as temporary ID
+            stmt_id: currentStmtId || 0,
+            fleetcard: {
+                id: fleetCard.id,
+                card_no: fleetCard.card_no || '',
+            },
+            asset: {
+                vehicle_id: fleetCard.asset?.vehicle_id || 0,
+                vehicle_regno: fleetCard.asset?.vehicle_regno || '',
+                vfuel_type: (fleetCard.asset as any)?.fuel_type || fleetCard.asset?.vfuel_type || '',
+                costcenter: fleetCard.asset?.costcenter || null,
+                purpose: fleetCard.asset?.purpose || 'project',
+            },
+            stmt_date: header.stmt_date || '',
+            start_odo: 0,
+            end_odo: 0,
+            total_km: 0,
+            total_litre: '',
+            amount: '',
+        };
+
+        // Add the new detail to the editableDetails array
+        setEditableDetails(prev => [...prev, newDetail]);
+
+        // Remove the added card from available cards
+        setAvailableFleetCardsToAdd(prev => {
+            const updatedCards = prev.filter(card => card.id !== fleetCard.id);
+            // Close sidebar if no more cards available
+            if (updatedCards.length === 0) {
+                setAddFleetCardSidebarOpen(false);
+            }
+            return updatedCards;
+        });
+
+        toast.success(`Fleet card ${fleetCard.card_no} added successfully`);
+    };
+
     // Get current editing detail
     const currentEditingDetail = editingDetailIndex !== null ? editableDetails[editingDetailIndex] : null;
 
@@ -592,11 +673,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
                         <h3 className="text-lg font-semibold mb-2">Statement Info</h3>
                         {(!currentStmtId || currentStmtId === 0) && (
-                            <div className={`mb-4 p-3 border rounded-lg ${isRequiredFieldsFilled() 
-                                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' 
+                            <div className={`mb-4 p-3 border rounded-lg ${isRequiredFieldsFilled()
+                                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                                 : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'}`}>
-                                <p className={`text-sm ${isRequiredFieldsFilled() 
-                                    ? 'text-green-800 dark:text-green-200' 
+                                <p className={`text-sm ${isRequiredFieldsFilled()
+                                    ? 'text-green-800 dark:text-green-200'
                                     : 'text-blue-800 dark:text-blue-200'}`}>
                                     {isRequiredFieldsFilled() ? (
                                         <>
@@ -604,7 +685,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         </>
                                     ) : (
                                         <>
-                                            <strong>Progress ({getFieldProgress().completedCount}/{getFieldProgress().totalCount}):</strong> 
+                                            <strong>Progress ({getFieldProgress().completedCount}/{getFieldProgress().totalCount}):</strong>
                                             {getFieldProgress().fields.map((field, index) => (
                                                 <span key={field.name}>
                                                     {index > 0 && ' • '}
@@ -820,9 +901,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 <TooltipProvider>
                                     <Tooltip open={(!currentStmtId || currentStmtId === 0) && !isRequiredFieldsFilled()}>
                                         <TooltipTrigger asChild>
-                                            <Button 
-                                                type="button" 
-                                                variant={isRequiredFieldsFilled() ? "default" : "outline"} 
+                                            <Button
+                                                type="button"
+                                                variant={isRequiredFieldsFilled() ? "default" : "outline"}
                                                 onClick={handleSave}
                                                 className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
                                             >
@@ -831,8 +912,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         </TooltipTrigger>
                                         <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={4}>
                                             <p>
-                                                {isRequiredFieldsFilled() 
-                                                    ? "All required fields are completed. Submit your fuel billing application." 
+                                                {isRequiredFieldsFilled()
+                                                    ? "All required fields are completed. Submit your fuel billing application."
                                                     : "Please fill in all required fields (Issuer, Statement No, and Statement Date) before submitting. You can also submit incomplete and complete later."
                                                 }
                                             </p>
@@ -899,6 +980,16 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         className="text-xs bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
                                     >
                                         {showEmptyRowsOnly ? "Show All" : "Show Empty Rows Only"}
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleOpenAddFleetCard}
+                                        className="text-xs bg-green-500 text-white hover:bg-green-600 hover:text-white flex items-center gap-1"
+                                    >
+                                        <PlusCircle className="w-4 h-4" />
+                                        Add Fleet Card
                                     </Button>
                                 </div>
                             </div>
@@ -1150,6 +1241,115 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 </div>
                             </div>
                         ) : null
+                    }
+                />
+            )}
+
+            {/* ActionSidebar for adding fleet cards */}
+            {addFleetCardSidebarOpen && (
+                <ActionSidebar
+                    title="Add Fleet Card"
+                    onClose={() => {
+                        setAddFleetCardSidebarOpen(false);
+                        setAvailableFleetCardsToAdd([]);
+                        setFleetCardSearch('');
+                    }}
+                    size={'sm'}
+                    content={
+                        <div className="space-y-4">
+                            <div className="text-sm text-gray-600 mb-4">
+                                Select a fleet card to add to your fuel statement. Only fleet cards not already in the details table are shown.
+                            </div>
+
+                            {/* Search Input */}
+                            <div className="mb-4">
+                                <Input
+                                    type="text"
+                                    placeholder="Search by card number or vehicle..."
+                                    value={fleetCardSearch}
+                                    onChange={(e) => setFleetCardSearch(e.target.value)}
+                                    className="w-full"
+                                />
+                            </div>
+
+                            {availableFleetCardsToAdd.length === 0 ? (
+                                <div className="text-center py-8 text-gray-500">
+                                    <p>No available fleet cards to add.</p>
+                                    <p className="text-xs mt-2">All fleet cards are already included in the details table.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {availableFleetCardsToAdd
+                                        .filter(card => {
+                                            if (!fleetCardSearch) return true;
+                                            const searchLower = fleetCardSearch.toLowerCase();
+                                            return (
+                                                card.card_no?.toLowerCase().includes(searchLower) ||
+                                                card.asset?.vehicle_regno?.toLowerCase().includes(searchLower)
+                                            );
+                                        })
+                                        .map((card) => (
+                                            <div
+                                                key={card.id}
+                                                className="border rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                                                onClick={() => handleAddFleetCard(card)}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3 flex-1">
+                                                        <PlusCircle
+                                                            className="w-5 h-5 text-green-600 hover:text-green-700 cursor-pointer flex-shrink-0"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleAddFleetCard(card);
+                                                            }}
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="font-medium text-gray-900">
+                                                                Fleet Card: {card.card_no}
+                                                            </div>
+                                                            {card.asset && (
+                                                                <div className="text-sm text-gray-600 mt-1">
+                                                                    <div>Vehicle: {card.asset.vehicle_regno}</div>
+                                                                    <div>Fuel Type: {(card.asset as any).fuel_type || card.asset.vfuel_type}</div>
+                                                                    {card.asset.costcenter && (
+                                                                        <div>Cost Center: {card.asset.costcenter.name}</div>
+                                                                    )}
+                                                                    <div>Purpose: {card.asset.purpose || 'project'}</div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    {availableFleetCardsToAdd.filter(card => {
+                                        if (!fleetCardSearch) return true;
+                                        const searchLower = fleetCardSearch.toLowerCase();
+                                        return (
+                                            card.card_no?.toLowerCase().includes(searchLower) ||
+                                            card.asset?.vehicle_regno?.toLowerCase().includes(searchLower)
+                                        );
+                                    }).length === 0 && fleetCardSearch && (
+                                            <div className="text-center py-8 text-gray-500">
+                                                <p>No fleet cards found matching "{fleetCardSearch}"</p>
+                                            </div>
+                                        )}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end pt-4 border-t">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setAddFleetCardSidebarOpen(false);
+                                        setAvailableFleetCardsToAdd([]);
+                                        setFleetCardSearch('');
+                                    }}
+                                >
+                                    Close
+                                </Button>
+                            </div>
+                        </div>
                     }
                 />
             )}
