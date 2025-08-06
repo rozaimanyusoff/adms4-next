@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
-import { exportTelcoBillSummaryPDF } from './report-telco-bill';
+import { exportTelcoBillSummaryPDF } from './pdfreport-telco-costcenter';
 
 interface TelcoBill {
   id: number;
@@ -113,7 +113,7 @@ const TelcoBill = () => {
               onClick={async () => {
                 if (selectedRowIds.length > 0) {
                   // Directly call the batch export function
-                  const { exportTelcoBillSummaryPDFs } = await import('./report-telco-bill');
+                  const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-telco-costcenter');
                   exportTelcoBillSummaryPDFs(selectedRowIds);
                 }
               }}

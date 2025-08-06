@@ -143,6 +143,7 @@ const TelcoSubs = () => {
     const [accountsOpt, setAccountsOpt] = useState<Account[]>([]);
     const [assetsOpt, setAssetsOpt] = useState<Asset[]>([]);
     const [userOpt, setUserOpt] = useState<any[]>([]);
+    const [costCentersOpt, setCostCentersOpt] = useState<CostCenter[]>([]);
     const [replaceField, setReplaceField] = useState<null | 'simcard' | 'costcenter' | 'department' | 'user' | 'asset'>(null);
     const [optionSearch, setOptionSearch] = useState("");
 
@@ -188,6 +189,20 @@ const TelcoSubs = () => {
             }
         };
         fetchUsers();
+
+        // Fetch cost centers for replacement
+        const fetchCostCenters = async () => {
+            try {
+                const res = await authenticatedApi.get("/api/assets/costcenters");
+                const response = res.data as { status: string; message: string; data: CostCenter[] };
+                if (response?.status === "success") {
+                    setCostCentersOpt(response.data);
+                }
+            } catch (e) {
+                // handle error
+            }
+        };
+        fetchCostCenters();
     }, []);
 
     useEffect(() => {
@@ -445,7 +460,7 @@ const TelcoSubs = () => {
                                             className="pr-8 group-focus-within:ring-2"
                                             value={
                                                 form.costcenter
-                                                    ? subscribers.find(s => s.costcenter?.id === Number(form.costcenter))?.costcenter?.name || form.costcenter.toString()
+                                                    ? costCentersOpt.find(cc => cc.id === Number(form.costcenter))?.name || form.costcenter.toString()
                                                     : ""
                                             }
                                             readOnly
@@ -564,7 +579,7 @@ const TelcoSubs = () => {
                                                     <span onClick={() => { setForm({ ...form, simcard: sim.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{sim.sim_sn}</span>
                                                 </div>
                                             ))}
-                                        {replaceField === 'costcenter' && Array.from(new Map(subscribers.filter(s => s.costcenter).map(s => [s.costcenter.id, s.costcenter])).values())
+                                        {replaceField === 'costcenter' && costCentersOpt
                                             .filter(cc => cc.name.toLowerCase().includes(optionSearch.toLowerCase()))
                                             .map(cc => (
                                                 <div key={cc.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">

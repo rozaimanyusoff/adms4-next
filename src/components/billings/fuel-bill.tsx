@@ -7,7 +7,7 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
-import { generateFuelCostCenterReport } from './report-fuel-costcenter';
+import { generateFuelCostCenterReport } from './pdfreport-fuel-costcenter';
 
 interface FuelBill {
   stmt_id: number;

@@ -29,6 +29,7 @@ const NavigationMaintenance: React.FC = () => {
         groups: [] as string[]
     });
     const [pendingDeleteNav, setPendingDeleteNav] = useState<any | null>(null);
+    const [reorderTimeoutId, setReorderTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
     // Fetch nav tree from backend and update local state
     const fetchNavTree = async () => {
@@ -224,7 +225,9 @@ const NavigationMaintenance: React.FC = () => {
     function updatePositions(nodes: any[]) {
         nodes.forEach((n, idx) => {
             n.position = idx;
-            if (n.children && n.children.length > 0) updatePositions(n.children);
+            if (n.children && n.children.length > 0) {
+                updatePositions(n.children);
+            }
         });
     }
 
@@ -279,10 +282,18 @@ const NavigationMaintenance: React.FC = () => {
         const payload = { nodes: buildReorderPayload(siblings, parent, tree) };
         try {
             await authenticatedApi.put('/api/nav/reorder', payload);
-            await fetchNavTree();
-            if (refreshNavTree) await refreshNavTree();
-            toast.success('Navigation order updated.');
+            // Don't immediately fetch the tree again to avoid conflicts
+            // Only refresh after a successful backend update
+            if (refreshNavTree) {
+                setTimeout(async () => {
+                    await refreshNavTree();
+                }, 200);
+            }
+            // Show success message only once per batch
+            // toast.success('Navigation order updated.');
         } catch (e) {
+            // On error, refetch the tree to restore correct state
+            await fetchNavTree();
             toast.error('Failed to update navigation order.');
         }
     }
@@ -292,13 +303,23 @@ const NavigationMaintenance: React.FC = () => {
             const tree = JSON.parse(JSON.stringify(prevTree));
             const found = findNodeAndParent(tree, navId);
             if (!found) return prevTree;
-            const { parent, index } = found;
+            
+            const { node, parent, index } = found;
             let siblings = parent ? parent.children : tree;
+            
             if (index > 0) {
                 // Swap with previous sibling
                 [siblings[index - 1], siblings[index]] = [siblings[index], siblings[index - 1]];
                 updatePositions(siblings);
-                reorderNavOnBackend(siblings, parent, tree); // Backend call with full tree
+                
+                // Clear existing timeout and set new one for debouncing
+                if (reorderTimeoutId) {
+                    clearTimeout(reorderTimeoutId);
+                }
+                const newTimeoutId = setTimeout(() => {
+                    reorderNavOnBackend(siblings, parent, tree);
+                }, 300);
+                setReorderTimeoutId(newTimeoutId);
             }
             return tree;
         });
@@ -309,13 +330,23 @@ const NavigationMaintenance: React.FC = () => {
             const tree = JSON.parse(JSON.stringify(prevTree));
             const found = findNodeAndParent(tree, navId);
             if (!found) return prevTree;
-            const { parent, index } = found;
+            
+            const { node, parent, index } = found;
             let siblings = parent ? parent.children : tree;
+            
             if (index < siblings.length - 1) {
                 // Swap with next sibling
                 [siblings[index], siblings[index + 1]] = [siblings[index + 1], siblings[index]];
                 updatePositions(siblings);
-                reorderNavOnBackend(siblings, parent, tree); // Backend call with full tree
+                
+                // Clear existing timeout and set new one for debouncing
+                if (reorderTimeoutId) {
+                    clearTimeout(reorderTimeoutId);
+                }
+                const newTimeoutId = setTimeout(() => {
+                    reorderNavOnBackend(siblings, parent, tree);
+                }, 300);
+                setReorderTimeoutId(newTimeoutId);
             }
             return tree;
         });
