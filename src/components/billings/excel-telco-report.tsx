@@ -366,7 +366,7 @@ const TelcoReportControls: React.FC<{ onExport: (params: any) => void }> = ({ on
     };
     return (
         <div className='mt-8'>
-            <h1 className='text-2xl font-bold'>Telco Report</h1>
+            <h1 className='text-2xl font-bold'>Telco Billing Report</h1>
            <div className="grid grid-cols-1 md:grid-cols-7 gap-2 items-center my-4">
             <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger className='w-full' >

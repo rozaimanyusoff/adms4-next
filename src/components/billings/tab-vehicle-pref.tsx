@@ -7,7 +7,7 @@ import FleetCardList from "./fleet-card";
 import TempVehicle from "./temp-vehicle";
 import Link from "next/link";
 
-const BillingMaintenance: React.FC = () => {
+const VehiclePref: React.FC = () => {
     const tabTitles = [
         { value: "workshop", label: "Workshop" },
         { value: "svcopt", label: "Service Option" },
@@ -59,4 +59,4 @@ const BillingMaintenance: React.FC = () => {
     );
 };
 
-export default BillingMaintenance;
+export default VehiclePref;

@@ -1,4 +1,4 @@
-import UtilityBilling from "@/components/billings/tab-utility";
+import UtilityBilling from "@components/billings/tab-utility-bill";
 import { Metadata } from "next";
 import React from "react";
 

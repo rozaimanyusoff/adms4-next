@@ -398,6 +398,7 @@ const UtilityReport = () => {
 
   return (
     <div className="mt-6">
+      <h2 className="text-2xl font-bold">Utilities Billing Report</h2>
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
         <div>
           <label className="block text-sm font-medium">Report Type</label>

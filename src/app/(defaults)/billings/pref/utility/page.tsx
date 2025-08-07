@@ -1,4 +1,4 @@
-import BillingMaintenance from "@components/billings/tab-billing-mtn";
+import UtilityBilling from "@components/billings/tab-utility-bill";
 import { Metadata } from "next";
 import React from "react";
 
@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 const Billings = () => {
   return (
     <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-2xl font-bold">Billing Maintenance</h1>
-      <BillingMaintenance />
+      <h1 className="text-2xl font-bold">Utility Bills Preference</h1>
+      <UtilityBilling />
     </div>
   );
 }

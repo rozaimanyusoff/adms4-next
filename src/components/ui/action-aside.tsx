@@ -23,9 +23,12 @@ interface ActionSidebarProps extends VariantProps<typeof actionSidebarVariants> 
     title: string;
     content: React.ReactNode;
     onClose: () => void;
+    isOpen?: boolean;
 }
 
-const ActionSidebar: React.FC<ActionSidebarProps> = ({ title, content, onClose, size }) => {
+const ActionSidebar: React.FC<ActionSidebarProps> = ({ title, content, onClose, size, isOpen = true }) => {
+    if (!isOpen) return null;
+    
     return (
         <div className={actionSidebarVariants({ size })}>
             <div className="flex justify-between items-center mb-2">

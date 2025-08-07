@@ -2,34 +2,32 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import TelcoAccounts from "./telco-accounts";
-import TelcoSubs from "./telco-subs";
-import TelcoSims from "./telco-sims";
+import UtilityBill from "./utility-bill";
+import UtilityDash from "./utility-dash";
+import BillingAccount from "./billing-account";
 import Link from "next/link";
 
-const TelcoMaintenance: React.FC = () => {
+const UtilityBilling: React.FC = () => {
     const tabTitles = [
-        { value: "account", label: "Account" },
-        { value: "subs", label: "Subscriber" },
-        { value: "sims", label: "SIMs" },
-        { value: "devices", label: "Devices" },
-        { value: "contracts", label: "Contracts" },
+        { value: "utility-dash", label: "Dashboard" },
+        { value: "utility-bill", label: "Utility Bills" },
+        { value: "billing-account", label: "Accounts" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        account: <TelcoAccounts />,
-        subs: <TelcoSubs />,
-        sims: <TelcoSims />,
+        "utility-dash": <UtilityDash />,
+        "utility-bill": <UtilityBill />,
+        "billing-account": <BillingAccount />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        // Retrieve the last active tab from localStorage or default to "assets"
-        return localStorage.getItem("billingTab") || "vendor";
+        // Retrieve the last active tab from localStorage or default to "utility-dash"
+        return localStorage.getItem("utilityTab") || "utility-dash";
     });
 
     useEffect(() => {
         // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("billingTab", activeTab);
+        localStorage.setItem("utilityTab", activeTab);
     }, [activeTab]);
 
     return (
@@ -37,7 +35,7 @@ const TelcoMaintenance: React.FC = () => {
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
-                        Vendor Maintenance
+                        Utility Billing
                     </Link>
                 </li>
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
@@ -60,4 +58,4 @@ const TelcoMaintenance: React.FC = () => {
     );
 };
 
-export default TelcoMaintenance;
+export default UtilityBilling;

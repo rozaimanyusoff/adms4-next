@@ -6,7 +6,7 @@ import TelcoDash from "./telco-dash";
 import TelcoBill from "./telco-bill";
 import Link from "next/link";
 
-const TelcoBillings: React.FC = () => {
+const TelcoBillTab: React.FC = () => {
     const tabTitles = [
         { value: "telco-dash", label: "Dashboard" },
         { value: "telco-bill", label: "Telco Bills" },
@@ -55,4 +55,4 @@ const TelcoBillings: React.FC = () => {
     );
 };
 
-export default TelcoBillings;
+export default TelcoBillTab;

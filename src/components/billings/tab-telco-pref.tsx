@@ -2,29 +2,34 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import FuelBill from "./fuel-bill";
-import FuelDash from "./fuel-dash";
+import TelcoAccounts from "./telco-accounts";
+import TelcoSubs from "./telco-subs";
+import TelcoSims from "./telco-sims";
 import Link from "next/link";
 
-const FuelMaintenance: React.FC = () => {
+const TelcoPref: React.FC = () => {
     const tabTitles = [
-        { value: "fuel-dash", label: "Dashboard" },
-        { value: "fuel-bill", label: "Fuel Bills" },
+        { value: "account", label: "Account" },
+        { value: "subs", label: "Subscriber" },
+        { value: "sims", label: "SIMs" },
+        { value: "devices", label: "Devices" },
+        { value: "contracts", label: "Contracts" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        "fuel-dash": <FuelDash />,
-        "fuel-bill": <FuelBill />,
+        account: <TelcoAccounts />,
+        subs: <TelcoSubs />,
+        sims: <TelcoSims />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
         // Retrieve the last active tab from localStorage or default to "assets"
-        return localStorage.getItem("fuelTab") || "vendor";
+        return localStorage.getItem("billingTab") || "vendor";
     });
 
     useEffect(() => {
         // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("fuelTab", activeTab);
+        localStorage.setItem("billingTab", activeTab);
     }, [activeTab]);
 
     return (
@@ -32,7 +37,7 @@ const FuelMaintenance: React.FC = () => {
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
-                        Vehicle Maintenance
+                        Vendor Maintenance
                     </Link>
                 </li>
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
@@ -55,4 +60,4 @@ const FuelMaintenance: React.FC = () => {
     );
 };
 
-export default FuelMaintenance;
+export default TelcoPref;

@@ -2,29 +2,29 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import UtilityBill from "./utility-bill";
-import UtilityDash from "./utility-dash";
+import FuelBill from "./fuel-bill";
+import FuelDash from "./fuel-dash";
 import Link from "next/link";
 
-const UtilityBilling: React.FC = () => {
+const FuelBillTab: React.FC = () => {
     const tabTitles = [
-        { value: "utility-dash", label: "Dashboard" },
-        { value: "utility-bill", label: "Utility Bills" },
+        { value: "fuel-dash", label: "Dashboard" },
+        { value: "fuel-bill", label: "Fuel Bills" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        "utility-dash": <UtilityDash />,
-        "utility-bill": <UtilityBill />,
+        "fuel-dash": <FuelDash />,
+        "fuel-bill": <FuelBill />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        // Retrieve the last active tab from localStorage or default to "utility-dash"
-        return localStorage.getItem("utilityTab") || "utility-dash";
+        // Retrieve the last active tab from localStorage or default to "assets"
+        return localStorage.getItem("fuelTab") || "vendor";
     });
 
     useEffect(() => {
         // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("utilityTab", activeTab);
+        localStorage.setItem("fuelTab", activeTab);
     }, [activeTab]);
 
     return (
@@ -32,7 +32,7 @@ const UtilityBilling: React.FC = () => {
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
-                        Utility Billing
+                        Vehicle Maintenance
                     </Link>
                 </li>
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
@@ -55,4 +55,4 @@ const UtilityBilling: React.FC = () => {
     );
 };
 
-export default UtilityBilling;
+export default FuelBillTab;
