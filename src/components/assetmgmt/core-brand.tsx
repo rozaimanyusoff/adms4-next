@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { CustomDataGrid } from "@components/ui/DataGrid";
+import { ColumnDef, CustomDataGrid } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, Pencil } from "lucide-react";
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { MultiSelect, SingleSelect, type ComboboxOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
 
 interface Brand {
@@ -122,10 +123,10 @@ const CoreBrand: React.FC = () => {
         }
     };
 
-    const columns = [
+    const columns: ColumnDef<Brand>[] = [
         { key: "id" as keyof Brand, header: "ID" },
         { key: "code" as keyof Brand, header: "Code" },
-        { key: "name" as keyof Brand, header: "Name" },
+        { key: "name" as keyof Brand, header: "Name", filter: 'input' },
         { key: "logo" as keyof Brand, header: "Logo", render: (row: Brand) => {
             const imgSrc = row.logo || row.image;
             if (imgSrc) {
@@ -137,54 +138,46 @@ const CoreBrand: React.FC = () => {
         }},
         { key: "type" as keyof Brand, header: "Type", render: (row: Brand) => {
             // Prefer row.type.name, else map type_code to types
-            if (row.type?.name) return row.type.name;
+            if (row.type?.name) return (
+                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                    {row.type.name}
+                </span>
+            );
             if ((row as any).type_code) {
                 const found = types.find(t => t.code === (row as any).type_code);
-                return found ? found.name : (row as any).type_code;
+                return found ? (
+                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                        {found.name}
+                    </span>
+                ) : (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                        {(row as any).type_code}
+                    </span>
+                );
             }
             return <span className="text-gray-500">N/A</span>;
-        } },
+        }, filter: 'singleSelect' },
         {
             key: "categories" as keyof Brand,
             header: "Categories",
-            render: (row: Brand) => (
-                <div className="flex flex-wrap gap-2">
-                    {categories.map(cat => {
-                        const checked = row.categories?.some(c => c.id === cat.id);
-                        return (
-                            <div key={cat.id} className="flex items-center gap-1">
-                                <Checkbox
-                                    id={`grid-cat-${row.code}-${cat.code}`}
-                                    checked={checked}
-                                    onCheckedChange={async (checked) => {
-                                        if (!row.code || !cat.code) return;
-                                        try {
-                                            if (checked) {
-                                                await authenticatedApi.post(`/api/assets/brands/${row.code}/categories/${cat.code}`);
-                                                toast.success(`Assigned category: ${cat.name}`);
-                                            } else {
-                                                await authenticatedApi.delete(`/api/assets/brands/${row.code}/categories/${cat.code}`);
-                                                toast.success(`Unassigned category: ${cat.name}`);
-                                            }
-                                            fetchData();
-                                        } catch (err) {
-                                            toast.error(`Failed to update category: ${cat.name}`);
-                                        }
-                                    }}
-                                />
-                                <Label htmlFor={`grid-cat-${row.code}-${cat.code}`}>{cat.name}</Label>
-                            </div>
-                        );
-                    })}
-                </div>
-            ),
+            render: (row: Brand) => {
+                const totalCategories = categories.length;
+                const checkedCount = row.categories?.length || 0;
+                
+                return (
+                    <div className="flex items-center justify-center">
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                            {checkedCount} / {totalCategories}
+                        </span>
+                    </div>
+                );
+            },
         },
         {
             key: "actions" as keyof Brand,
             header: "Actions",
             render: (row: Brand) => (
                 <Pencil
-                    size={20}
                     className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
                     tabIndex={0}
                     role="button"
@@ -194,8 +187,8 @@ const CoreBrand: React.FC = () => {
                             ...row,
                             code: row.code,
                             logo: row.logo || row.image || "",
-                            typeId: row.type?.id || 0,
-                            categoryId: 0,
+                            type_code: row.type?.code || "",
+                            categoryCodes: row.categories ? row.categories.map(c => c.code) : [],
                         });
                         setIsModalOpen(true);
                     }}
@@ -205,8 +198,8 @@ const CoreBrand: React.FC = () => {
                                 ...row,
                                 code: row.code,
                                 logo: row.logo || row.image || "",
-                                typeId: row.type?.id || 0,
-                                categoryId: 0,
+                                type_code: row.type?.code || "",
+                                categoryCodes: row.categories ? row.categories.map(c => c.code) : [],
                             });
                             setIsModalOpen(true);
                         }
@@ -241,7 +234,7 @@ const CoreBrand: React.FC = () => {
             {loading ? (
                 <p>Loading...</p>
             ) : (
-                <CustomDataGrid columns={columns} data={data} />
+                <CustomDataGrid columns={columns} data={data} inputFilter={false} />
             )}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogContent>
@@ -287,47 +280,38 @@ const CoreBrand: React.FC = () => {
                         </div>
                         <div className="mb-4">
                             <Label htmlFor="type">Type</Label>
-                            <Select
+                            <SingleSelect
+                                options={types.map(type => ({
+                                    value: type.code,
+                                    label: type.name
+                                }))}
                                 value={formData.type_code || ""}
-                                onValueChange={value => setFormData({ ...formData, type_code: value })}
-                            >
-                                <SelectTrigger id="type" className="w-full">
-                                    <SelectValue placeholder="Select Type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Types</SelectLabel>
-                                        {types.map(type => (
-                                            <SelectItem key={type.code} value={type.code}>{type.name}</SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
+                                onValueChange={(value) => setFormData({ ...formData, type_code: value })}
+                                placeholder="Select type..."
+                                searchPlaceholder="Search types..."
+                                clearable
+                                className="w-full"
+                            />
                         </div>
                         <div className="mb-4">
                             <Label>Categories</Label>
-                            <div className="flex items-center flex-wrap gap-4">
-                                {categories.map(cat => (
-                                    <div key={cat.id} className="flex items-center gap-2">
-                                        <Checkbox
-                                            id={`cat-${cat.code}`}
-                                            checked={Array.isArray(formData.categoryCodes) ? formData.categoryCodes.includes(cat.code) : (formData.categories?.some((c: Category) => c.code === cat.code) || false)}
-                                            onCheckedChange={checked => {
-                                                let codes = Array.isArray(formData.categoryCodes)
-                                                    ? [...formData.categoryCodes]
-                                                    : (formData.categories ? formData.categories.map((c: Category) => c.code) : []);
-                                                if (checked) {
-                                                    if (!codes.includes(cat.code)) codes.push(cat.code);
-                                                } else {
-                                                    codes = codes.filter((code: string) => code !== cat.code);
-                                                }
-                                                setFormData({ ...formData, categoryCodes: codes });
-                                            }}
-                                        />
-                                        <Label htmlFor={`cat-${cat.code}`}>{cat.name}</Label>
-                                    </div>
-                                ))}
-                            </div>
+                            <MultiSelect
+                                options={categories.map(cat => ({
+                                    value: cat.code,
+                                    label: cat.name
+                                }))}
+                                value={Array.isArray(formData.categoryCodes) 
+                                    ? formData.categoryCodes 
+                                    : (formData.categories ? formData.categories.map((c: Category) => c.code) : [])
+                                }
+                                onValueChange={(selectedCodes) => {
+                                    setFormData({ ...formData, categoryCodes: selectedCodes });
+                                }}
+                                placeholder="Select categories..."
+                                searchPlaceholder="Search categories..."
+                                clearable
+                                className="w-full"
+                            />
                         </div>
                         <Button type="submit" className="mt-4">Submit</Button>
                     </form>

@@ -52,6 +52,7 @@ const TempVehicle: React.FC = () => {
   const [owners, setOwners] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchResults, setOwnerSearchResults] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
+  const [classificationFilter, setClassificationFilter] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -61,7 +62,7 @@ const TempVehicle: React.FC = () => {
         setVehicles(data);
       });
     // Fetch dropdown data
-    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/categories?type=2')
+    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/categories?type[]=2&type[]=10')
       .then(res => setCategories(res.data?.data || []));
     authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/brands?type=2')
       .then(res => setBrands(res.data?.data || []));
@@ -98,10 +99,53 @@ const TempVehicle: React.FC = () => {
     { key: 'purpose', header: 'Purpose', filter: 'singleSelect', colClass: 'capitalize' },
   ]);
 
-  // Filtered vehicles based on switch
-  const filteredVehicles = hideDisposed
-    ? vehicles.filter(v => v.record_status !== 'disposed' && v.record_status !== 'archived')
-    : vehicles;
+  // Filtered vehicles based on switch and classification filter
+  const filteredVehicles = useMemo(() => {
+    let result = hideDisposed
+      ? vehicles.filter(v => v.record_status !== 'disposed' && v.record_status !== 'archived')
+      : vehicles;
+    
+    if (classificationFilter) {
+      result = result.filter(v => v.classification === classificationFilter);
+    }
+    
+    return result;
+  }, [vehicles, hideDisposed, classificationFilter]);
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    const stats = {
+      asset: { total: 0, active: 0, disposed: 0, archived: 0, maintenance: 0 },
+      consumable: { total: 0, active: 0, disposed: 0, archived: 0, maintenance: 0 },
+      personal: { total: 0, active: 0, disposed: 0, archived: 0, maintenance: 0 },
+      rental: { total: 0, active: 0, disposed: 0, archived: 0, maintenance: 0 },
+    };
+
+    vehicles.forEach(vehicle => {
+      const classification = vehicle.classification as keyof typeof stats;
+      const status = vehicle.record_status;
+      
+      if (stats[classification]) {
+        stats[classification].total++;
+        if (status === 'active') stats[classification].active++;
+        else if (status === 'disposed') stats[classification].disposed++;
+        else if (status === 'archived') stats[classification].archived++;
+        else if (status === 'maintenance') stats[classification].maintenance++;
+      }
+    });
+
+    return stats;
+  }, [vehicles]);
+
+  const handleClassificationFilter = (classification: string) => {
+    if (classificationFilter === classification) {
+      // Reset filter if clicking the same card
+      setClassificationFilter(null);
+    } else {
+      // Set new filter
+      setClassificationFilter(classification);
+    }
+  };
 
   const validateFields = () => {
     const errors: Record<string, string> = {};
@@ -209,6 +253,96 @@ const TempVehicle: React.FC = () => {
 
   return (
     <div className="mt-4">
+      {/* Classification Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {(['asset', 'consumable', 'personal', 'rental'] as const).map((classification, index) => {
+          const stats = summaryStats[classification];
+          const isActive = classificationFilter === classification;
+          
+          // Modern gradient backgrounds for each card
+          const cardBackgrounds = [
+            'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900', // Asset
+            'bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900', // Consumable
+            'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900', // Personal
+            'bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900', // Rental
+          ];
+
+          const cardBorders = [
+            'border-blue-200 dark:border-blue-800', // Asset
+            'border-green-200 dark:border-green-800', // Consumable
+            'border-purple-200 dark:border-purple-800', // Personal
+            'border-orange-200 dark:border-orange-800', // Rental
+          ];
+
+          const activeBorders = [
+            'border-blue-400 dark:border-blue-500', // Asset
+            'border-green-400 dark:border-green-500', // Consumable
+            'border-purple-400 dark:border-purple-500', // Personal
+            'border-orange-400 dark:border-orange-500', // Rental
+          ];
+
+          const activeBackgrounds = [
+            'bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800', // Asset
+            'bg-gradient-to-br from-green-100 to-green-200 dark:from-green-900 dark:to-green-800', // Consumable
+            'bg-gradient-to-br from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800', // Personal
+            'bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-900 dark:to-orange-800', // Rental
+          ];
+
+          const titleColors = [
+            'text-blue-700 dark:text-blue-300', // Asset
+            'text-green-700 dark:text-green-300', // Consumable
+            'text-purple-700 dark:text-purple-300', // Personal
+            'text-orange-700 dark:text-orange-300', // Rental
+          ];
+          
+          return (
+            <div
+              key={classification}
+              onClick={() => handleClassificationFilter(classification)}
+              className={`
+                p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105
+                ${isActive 
+                  ? `${activeBackgrounds[index]} ${activeBorders[index]} shadow-lg` 
+                  : `${cardBackgrounds[index]} ${cardBorders[index]} hover:${activeBorders[index]}`
+                }
+              `}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`text-lg font-semibold capitalize ${isActive ? titleColors[index] : titleColors[index]}`}>
+                  {classification}
+                </h3>
+                <span className={`text-2xl font-bold ${isActive ? titleColors[index] : titleColors[index]}`}>
+                  {stats.total}
+                </span>
+              </div>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Active:</span>
+                  <span className="text-green-600 dark:text-green-400 font-medium">{stats.active}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Maintenance:</span>
+                  <span className="text-yellow-600 dark:text-yellow-400 font-medium">{stats.maintenance}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Disposed:</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium">{stats.disposed}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Archived:</span>
+                  <span className="text-gray-500 dark:text-gray-500 font-medium">{stats.archived}</span>
+                </div>
+              </div>
+              {isActive && (
+                <div className={`mt-2 pt-2 border-t ${activeBorders[index]}`}>
+                  <span className={`text-xs font-medium ${titleColors[index]}`}>Click to reset filter</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       <div className="flex justify-between items-center gap-4 mb-4">
         <h2 className="text-lg font-bold">Vehicle Record Maintenance</h2>
         <div className="flex items-center gap-2">

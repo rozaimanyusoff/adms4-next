@@ -48,6 +48,113 @@
 
 @config '../../tailwind.config.js';
 
+/* Global Text Size Classes */
+@layer base {
+  :root {
+    --text-size-base: 1rem;
+    --text-size-small: 0.875rem;
+    --text-size-large: 1.125rem;
+  }
+  
+  /* Global text size application */
+  .text-size-xs {
+    font-size: 0.75rem !important;
+  }
+  .text-size-xs * {
+    font-size: inherit !important;
+  }
+  
+  .text-size-sm {
+    font-size: 0.875rem !important;
+  }
+  .text-size-sm * {
+    font-size: inherit !important;
+  }
+  
+  .text-size-md {
+    font-size: 1rem !important;
+  }
+  .text-size-md * {
+    font-size: inherit !important;
+  }
+  
+  .text-size-lg {
+    font-size: 1.125rem !important;
+  }
+  .text-size-lg * {
+    font-size: inherit !important;
+  }
+  
+  .text-size-xl {
+    font-size: 1.25rem !important;
+  }
+  .text-size-xl * {
+    font-size: inherit !important;
+  }
+  
+  /* Apply to common elements */
+  .text-size-xs h1, .text-size-xs h2, .text-size-xs h3, 
+  .text-size-xs h4, .text-size-xs h5, .text-size-xs h6 {
+    font-size: 0.875rem !important;
+  }
+  
+  .text-size-sm h1, .text-size-sm h2, .text-size-sm h3, 
+  .text-size-sm h4, .text-size-sm h5, .text-size-sm h6 {
+    font-size: 1rem !important;
+  }
+  
+  .text-size-md h1, .text-size-md h2, .text-size-md h3, 
+  .text-size-md h4, .text-size-md h5, .text-size-md h6 {
+    font-size: 1.125rem !important;
+  }
+  
+  .text-size-lg h1, .text-size-lg h2, .text-size-lg h3, 
+  .text-size-lg h4, .text-size-lg h5, .text-size-lg h6 {
+    font-size: 1.25rem !important;
+  }
+  
+  .text-size-xl h1, .text-size-xl h2, .text-size-xl h3, 
+  .text-size-xl h4, .text-size-xl h5, .text-size-xl h6 {
+    font-size: 1.5rem !important;
+  }
+  
+  /* Enhanced scrollbar styling for tabs */
+  .tabs-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+  
+  .tabs-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  .tabs-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .tabs-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 3px;
+    transition: background-color 0.2s ease;
+  }
+  
+  .tabs-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.8);
+  }
+  
+  .dark .tabs-scroll {
+    scrollbar-color: rgba(107, 114, 128, 0.5) transparent;
+  }
+  
+  .dark .tabs-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(107, 114, 128, 0.5);
+  }
+  
+  .dark .tabs-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(107, 114, 128, 0.8);
+  }
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still

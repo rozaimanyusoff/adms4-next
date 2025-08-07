@@ -6,10 +6,13 @@ import { toggleRTL, toggleTheme, toggleMenu, toggleLayout, toggleAnimation, togg
 import Loading from '@/components/layouts/loading';
 import { AuthProvider } from '@store/AuthContext';
 import { getTranslation } from '@/i18n';
+import { TextSizeProvider, useTextSize } from '@/contexts/text-size-context';
 
-function App({ children }: PropsWithChildren) {
+// Main App component that uses text size
+function AppContent({ children }: PropsWithChildren) {
     const themeConfig = useSelector((state: IRootState) => state.themeConfig);
     const dispatch = useDispatch();
+    const { textSizeClasses } = useTextSize();
     //const { initLocale } = getTranslation();
     const [isLoading, setIsLoading] = useState(true);
 
@@ -28,14 +31,22 @@ function App({ children }: PropsWithChildren) {
     }, [dispatch, themeConfig.theme, themeConfig.menu, themeConfig.layout, themeConfig.rtlClass, themeConfig.animation, themeConfig.navbar, themeConfig.locale, themeConfig.semidark]);
 
     return (
+        <div
+            className={`${(themeConfig.sidebar && 'toggle-sidebar') || ''} ${themeConfig.menu} ${themeConfig.layout} ${
+                themeConfig.rtlClass
+            } main-section relative font-nunito ${textSizeClasses.base} font-normal antialiased`}
+        >
+            {isLoading ? <Loading /> : children}
+        </div>
+    );
+}
+
+function App({ children }: PropsWithChildren) {
+    return (
         <AuthProvider>
-            <div
-                className={`${(themeConfig.sidebar && 'toggle-sidebar') || ''} ${themeConfig.menu} ${themeConfig.layout} ${
-                    themeConfig.rtlClass
-                } main-section relative font-nunito text-sm font-normal antialiased`}
-            >
-                {isLoading ? <Loading /> : children}
-            </div>
+            <TextSizeProvider>
+                <AppContent>{children}</AppContent>
+            </TextSizeProvider>
         </AuthProvider>
     );
 }

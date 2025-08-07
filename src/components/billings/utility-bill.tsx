@@ -138,7 +138,7 @@ const UtilityBill = () => {
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
         data={rows}
-        pagination={false}
+        pagination={true}
         inputFilter={false}
         theme="sm"
         dataExport={true}

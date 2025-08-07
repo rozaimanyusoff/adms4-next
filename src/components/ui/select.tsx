@@ -2,9 +2,10 @@
 
 import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, Search } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
 
 function Select({
   ...props
@@ -54,25 +55,78 @@ function SelectContent({
   className,
   children,
   position = "popper",
+  searchable = false,
+  searchPlaceholder = "Search...",
+  onSearchChange,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & {
+  searchable?: boolean
+  searchPlaceholder?: string
+  onSearchChange?: (search: string) => void
+}) {
+  const [search, setSearch] = React.useState("")
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    onSearchChange?.(value)
+  }
+
+  // Prevent the select from closing when typing in the search input
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+  }
+
+  const handleInputClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+  }
+
+  React.useEffect(() => {
+    if (searchable && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [searchable])
+
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md",
+          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 origin-(--radix-select-content-transform-origin) overflow-x-hidden rounded-md border shadow-md",
+          searchable ? "max-h-[280px]" : "max-h-(--radix-select-content-available-height)",
+          "min-w-[8rem]",
           position === "popper" &&
             "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
           className
         )}
         position={position}
+        onCloseAutoFocus={(e) => {
+          if (searchable) {
+            e.preventDefault()
+          }
+        }}
         {...props}
       >
         <SelectScrollUpButton />
+        {searchable && (
+          <div className="flex items-center px-2 py-1.5 border-b" onMouseDown={(e) => e.preventDefault()}>
+            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+            <Input
+              ref={inputRef}
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onClick={handleInputClick}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="flex-1 h-8 border-0 bg-transparent px-0 py-0 text-sm placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+          </div>
+        )}
         <SelectPrimitive.Viewport
           className={cn(
             "p-1",
+            searchable ? "max-h-[200px] overflow-y-auto" : "",
             position === "popper" &&
               "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
           )}
@@ -171,6 +225,92 @@ function SelectScrollDownButton({
   )
 }
 
+// SearchableSelect Component
+interface SearchableSelectProps {
+  options: { value: string; label: string; disabled?: boolean }[]
+  value?: string
+  onValueChange: (value: string) => void
+  placeholder?: string
+  searchPlaceholder?: string
+  emptyMessage?: string
+  disabled?: boolean
+  className?: string
+  size?: "sm" | "default"
+}
+
+function SearchableSelect({
+  options,
+  value,
+  onValueChange,
+  placeholder = "Select an option...",
+  searchPlaceholder = "Search...",
+  emptyMessage = "No results found.",
+  disabled = false,
+  className,
+  size = "default",
+}: SearchableSelectProps) {
+  const [search, setSearch] = React.useState("")
+  const [open, setOpen] = React.useState(false)
+
+  const filteredOptions = React.useMemo(() => {
+    if (!search) return options
+    return options.filter((option) =>
+      option.label.toLowerCase().includes(search.toLowerCase())
+    )
+  }, [options, search])
+
+  const selectedOption = options.find((option) => option.value === value)
+
+  const handleSelect = (selectedValue: string) => {
+    onValueChange(selectedValue)
+    setOpen(false)
+    setSearch("") // Clear search when item is selected
+  }
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen)
+    if (!newOpen) {
+      setSearch("") // Clear search when dropdown closes
+    }
+  }
+
+  return (
+    <Select value={value} onValueChange={handleSelect} open={open} onOpenChange={handleOpenChange}>
+      <SelectTrigger 
+        className={cn("w-full", className)} 
+        size={size}
+        disabled={disabled}
+      >
+        <SelectValue placeholder={placeholder}>
+          {selectedOption?.label || placeholder}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent 
+        searchable 
+        searchPlaceholder={searchPlaceholder}
+        onSearchChange={setSearch}
+        className="max-h-[280px]"
+      >
+        {filteredOptions.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        ) : (
+          filteredOptions.map((option) => (
+            <SelectItem
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+            >
+              {option.label}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
+  )
+}
+
 export {
   Select,
   SelectContent,
@@ -182,4 +322,5 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  SearchableSelect,
 }

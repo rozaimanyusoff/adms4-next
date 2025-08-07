@@ -38,6 +38,7 @@ import { usePathname } from 'next/navigation';
 import { AuthContext } from '@store/AuthContext'; // Ensure correct typing for AuthContext
 import { io } from 'socket.io-client';
 import { authenticatedApi } from '@/config/api';
+import { useTextSize } from '@/contexts/text-size-context';
 
 // Define Notification type
 interface Notification {
@@ -54,6 +55,7 @@ const Header = () => {
         throw new Error('AuthContext is not provided. Ensure the component is wrapped in an AuthProvider.');
     }
     const { authData } = authContext; // Safely access authData
+    const { textSize, setTextSize, textSizeClasses } = useTextSize();
     const [navTree, setNavTree] = useState<any[]>([]);
     const dispatch = useDispatch();
     const [isCustomSidebarOpen, setCustomSidebarOpen] = useState(false);
@@ -180,7 +182,7 @@ const Header = () => {
                     <div className="horizontal-logo flex items-center justify-between gap-4 ltr:mr-2 rtl:ml-2 lg:hidden">
                         <Link href="/" className="main-logo flex shrink-0 items-center gap-4">
                             <img className="inline w-8 ltr:-ml-1 rtl:-mr-1" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
-                            <span className="hidden text-3xl text-shadow-2xs font-extrabold  transition-all duration-300 ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light md:inline">{process.env.NEXT_PUBLIC_APP_NAME}</span>
+                            <span className={`hidden ${textSizeClasses.heading} text-shadow-2xs font-extrabold  transition-all duration-300 ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light md:inline`}>{process.env.NEXT_PUBLIC_APP_NAME}</span>
                         </Link>
                         <button
                             type="button"
@@ -219,6 +221,41 @@ const Header = () => {
                                 <IconSearch className="mx-auto h-4.5 w-4.5 dark:text-[#d0d2d6]" />
                             </button>
                         </div> */}
+                        <div className="flex items-center shrink-0">
+                            <div className="flex items-center bg-white-light/40 dark:bg-dark/40 rounded-full p-1">
+                                <button
+                                    type="button"
+                                    className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-white-light/90 dark:hover:bg-dark/60 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => {
+                                        const sizes: Array<'xs' | 'sm' | 'md' | 'lg' | 'xl'> = ['xs', 'sm', 'md', 'lg', 'xl'];
+                                        const currentIndex = sizes.indexOf(textSize);
+                                        if (currentIndex > 0) {
+                                            setTextSize(sizes[currentIndex - 1]);
+                                        }
+                                    }}
+                                    disabled={textSize === 'xs'}
+                                >
+                                    <span className="text-lg font-bold">-</span>
+                                </button>
+                                <div className="flex items-center px-2 min-w-[40px] justify-center">
+                                    <span className="text-sm font-semibold">T</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-white-light/90 dark:hover:bg-dark/60 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => {
+                                        const sizes: Array<'xs' | 'sm' | 'md' | 'lg' | 'xl'> = ['xs', 'sm', 'md', 'lg', 'xl'];
+                                        const currentIndex = sizes.indexOf(textSize);
+                                        if (currentIndex < sizes.length - 1) {
+                                            setTextSize(sizes[currentIndex + 1]);
+                                        }
+                                    }}
+                                    disabled={textSize === 'xl'}
+                                >
+                                    <span className="text-lg font-bold">+</span>
+                                </button>
+                            </div>
+                        </div>
                         <div>
                             {themeConfig.theme === 'light' ? (
                                 <button
@@ -271,7 +308,7 @@ const Header = () => {
                                 <ul className="w-[300px] divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-[350px]">
                                     <li onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-between px-4 py-2 font-semibold">
-                                            <h4 className="text-lg">Notification</h4>
+                                            <h4 className={textSizeClasses.heading}>Notification</h4>
                                             {notifications.length ? <span className="badge bg-primary/80">{notifications.length} New</span> : ''}
                                         </div>
                                     </li>
@@ -293,7 +330,7 @@ const Header = () => {
                                                                         __html: notification.message,
                                                                     }}
                                                                 ></h6>
-                                                                <span className="block text-xs font-normal dark:text-gray-500">{notification.time}</span>
+                                                                <span className={`block ${textSizeClasses.small} font-normal dark:text-gray-500`}>{notification.time}</span>
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -337,9 +374,9 @@ const Header = () => {
                                         <div className="flex items-center px-4 py-4">
                                             <img className="h-10 w-10 rounded-md object-cover" src="/assets/images/user-profile.jpeg" alt="userProfile" />
                                             <div className="truncate ltr:pl-4 rtl:pr-4">
-                                                <h4 className="text-base">
+                                                <h4 className={textSizeClasses.base}>
                                                     John Doe
-                                                    <span className="rounded bg-success-light px-1 text-xs text-success ltr:ml-2 rtl:ml-2">Pro</span>
+                                                    <span className={`rounded bg-success-light px-1 ${textSizeClasses.small} text-success ltr:ml-2 rtl:ml-2`}>Pro</span>
                                                 </h4>
                                                 <button type="button" className="text-black/60 hover:text-primary dark:text-dark-light/60 dark:hover:text-white">
                                                     johndoe@gmail.com
