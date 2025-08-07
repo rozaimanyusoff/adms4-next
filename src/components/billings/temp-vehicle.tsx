@@ -18,6 +18,7 @@ interface Vehicle {
   vehicle_regno: string;
   vtrans_type: string;
   vfuel_type: string;
+  v_dop?: string; // Date of Purchase
   cc_id: string;
   dept_id: number;
   loc_id: number;
@@ -25,6 +26,7 @@ interface Vehicle {
   record_status: string;
   purpose: string;
   condition_status: string;
+  age?: string; // Computed field for vehicle age
   costcenter?: { id: number; name: string };
   owner?: { ramco_id: string; full_name: string };
   brand?: { id: number; name: string };
@@ -85,6 +87,35 @@ const TempVehicle: React.FC = () => {
     { key: 'category', header: 'Category', render: (row: Vehicle) => row.category?.name || '', filter: 'singleSelect' },
     { key: 'brand', header: 'Brand', render: (row: Vehicle) => row.brand?.name || '', filter: 'singleSelect' },
     { key: 'model', header: 'Model', render: (row: Vehicle) => row.model?.name || '', filter: 'singleSelect' },
+    { 
+      key: 'v_dop', 
+      header: 'Date Purchased',
+      render: (row: Vehicle) => {
+        if (!row.v_dop) return '';
+        const date = new Date(row.v_dop);
+        if (date.getFullYear() < 2005) return '';
+        return date.toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+      }
+    },
+    { 
+      key: 'age', 
+      header: 'Age',
+      render: (row: Vehicle) => {
+        if (!row.v_dop) return '';
+        const purchaseDate = new Date(row.v_dop);
+        if (purchaseDate.getFullYear() < 2005) return '';
+        const today = new Date();
+        const diffTime = Math.abs(today.getTime() - purchaseDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const years = Math.floor(diffDays / 365);
+        
+        return String(years);
+      }
+    },
     { key: 'vtrans_type', header: 'Transmission', filter: 'singleSelect',colClass: 'capitalize' },
     { key: 'vfuel_type', header: 'Fuel Type', filter: 'singleSelect',colClass: 'capitalize' },
     /* { key: 'fleetcard', header: 'Fleet Card ID', render: (row: Vehicle) => row.fleetcard?.id || '', filter: 'input' }, */
