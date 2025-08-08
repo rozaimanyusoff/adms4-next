@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react'
 
 type TextSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -36,9 +36,13 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
 
   // Load saved text size from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('text-size')
-    if (saved && ['xs', 'sm', 'md', 'lg', 'xl'].includes(saved)) {
-      setTextSize(saved as TextSize)
+    try {
+      const saved = localStorage.getItem('text-size')
+      if (saved && ['xs', 'sm', 'md', 'lg', 'xl'].includes(saved)) {
+        setTextSize(saved as TextSize)
+      }
+    } catch (error) {
+      console.error('Error loading text size from localStorage:', error)
     }
     setMounted(true)
   }, [])
@@ -46,71 +50,90 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
   // Save text size to localStorage
   useEffect(() => {
     if (mounted) {
-      localStorage.setItem('text-size', textSize)
-      // Apply text size class to document root for global effect
-      const root = document.documentElement
-      
-      // Remove existing text size classes
-      root.classList.remove('text-size-xs', 'text-size-sm', 'text-size-md', 'text-size-lg', 'text-size-xl')
-      
-      // Add the current text size class
-      root.classList.add(`text-size-${textSize}`)
-      
-      // Apply CSS custom properties for global text sizing
-      const textSizeMap = {
-        xs: { base: '0.75rem', small: '0.6875rem', large: '0.875rem' },   // 12px, 11px, 14px
-        sm: { base: '0.875rem', small: '0.75rem', large: '1rem' },        // 14px, 12px, 16px  
-        md: { base: '1rem', small: '0.875rem', large: '1.125rem' },       // 16px, 14px, 18px
-        lg: { base: '1.125rem', small: '1rem', large: '1.25rem' },        // 18px, 16px, 20px
-        xl: { base: '1.25rem', small: '1.125rem', large: '1.5rem' }       // 20px, 18px, 24px
+      try {
+        localStorage.setItem('text-size', textSize)
+      } catch (error) {
+        console.error('Error saving text size to localStorage:', error)
       }
       
-      const currentSizes = textSizeMap[textSize]
-      root.style.setProperty('--text-size-base', currentSizes.base)
-      root.style.setProperty('--text-size-small', currentSizes.small)
-      root.style.setProperty('--text-size-large', currentSizes.large)
+      // Apply text size class to document root for global effect
+      const root = document.documentElement
+      if (root) {
+        // Remove existing text size classes
+        root.classList.remove('text-size-xs', 'text-size-sm', 'text-size-md', 'text-size-lg', 'text-size-xl')
+        
+        // Add the current text size class
+        root.classList.add(`text-size-${textSize}`)
+        
+        // Apply CSS custom properties for global text sizing
+        const textSizeMap = {
+          xs: { base: '0.625rem', small: '0.5625rem', large: '0.6875rem' }, // 10px, 9px, 11px
+          sm: { base: '0.6875rem', small: '0.625rem', large: '0.75rem' },   // 11px, 10px, 12px  
+          md: { base: '0.75rem', small: '0.6875rem', large: '0.875rem' },   // 12px, 11px, 14px
+          lg: { base: '0.875rem', small: '0.75rem', large: '1rem' },        // 14px, 12px, 16px
+          xl: { base: '1rem', small: '0.875rem', large: '1.125rem' }        // 16px, 14px, 18px
+        }
+        
+        const currentSizes = textSizeMap[textSize]
+        root.style.setProperty('--text-size-base', currentSizes.base)
+        root.style.setProperty('--text-size-small', currentSizes.small)
+        root.style.setProperty('--text-size-large', currentSizes.large)
+      }
     }
   }, [textSize, mounted])
 
-  const textSizeClasses = {
+  // Memoize textSizeClasses to prevent unnecessary re-renders
+  const textSizeClasses = useMemo(() => ({
     xs: {
+      base: 'text-[10px]',
+      heading: 'text-[11px]',
+      small: 'text-[9px]',
+      button: 'text-[10px]',
+      input: 'text-[10px]'
+    },
+    sm: {
+      base: 'text-[11px]',
+      heading: 'text-xs',
+      small: 'text-[10px]',
+      button: 'text-[11px]',
+      input: 'text-[11px]'
+    },
+    md: {
       base: 'text-xs',
       heading: 'text-sm',
-      small: 'text-xs',
+      small: 'text-[11px]',
       button: 'text-xs',
       input: 'text-xs'
     },
-    sm: {
+    lg: {
       base: 'text-sm',
       heading: 'text-base',
       small: 'text-xs',
       button: 'text-sm',
       input: 'text-sm'
     },
-    md: {
+    xl: {
       base: 'text-base',
       heading: 'text-lg',
       small: 'text-sm',
       button: 'text-base',
       input: 'text-base'
-    },
-    lg: {
-      base: 'text-lg',
-      heading: 'text-xl',
-      small: 'text-base',
-      button: 'text-lg',
-      input: 'text-lg'
-    },
-    xl: {
-      base: 'text-xl',
-      heading: 'text-2xl',
-      small: 'text-lg',
-      button: 'text-xl',
-      input: 'text-xl'
     }
-  }
+  }), [])
 
-  const currentClasses = textSizeClasses[textSize]
+  const currentClasses = useMemo(() => textSizeClasses[textSize], [textSize, textSizeClasses])
+
+  // Memoize setTextSize to prevent unnecessary re-renders
+  const handleSetTextSize = useCallback((size: TextSize) => {
+    setTextSize(size)
+  }, [])
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    textSize,
+    setTextSize: handleSetTextSize,
+    textSizeClasses: currentClasses
+  }), [textSize, handleSetTextSize, currentClasses])
 
   if (!mounted) {
     return (
@@ -125,11 +148,7 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
   }
 
   return (
-    <TextSizeContext.Provider value={{
-      textSize,
-      setTextSize,
-      textSizeClasses: currentClasses
-    }}>
+    <TextSizeContext.Provider value={contextValue}>
       {children}
     </TextSizeContext.Provider>
   )

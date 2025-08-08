@@ -29,8 +29,13 @@ const Sidebar = () => {
         if (authData?.navTree) {
             const filteredNavTree = authData.navTree.filter(item => item.status !== 0);
             setNavTree(filteredNavTree); // Set navTree excluding items with status = 0
+            
+            // Re-run active route detection after nav tree is loaded
+            setTimeout(() => {
+                setActiveRoute();
+            }, 100);
         }
-    }, [authData]);
+    }, [authData, pathname]); // Added pathname dependency
 
     const toggleMenu = (value: string) => {
         setCurrentMenu((oldValue) => {
@@ -53,23 +58,86 @@ const Sidebar = () => {
                 }
             }
         }
-    }, []);
+    }, [pathname]); // Added pathname dependency
 
     useEffect(() => {
         setActiveRoute();
         if (window.innerWidth < 768 && themeConfig.sidebar) {
             dispatch(toggleSidebar());
         }
+        // Debug: Log current path and active elements
+        console.log('Current pathname:', pathname);
+        console.log('Active links:', document.querySelectorAll('.sidebar ul a.active'));
     }, [pathname]);
 
     const setActiveRoute = () => {
-        let allLinks = document.querySelectorAll('.sidebar ul a.active');
-        for (let i = 0; i < allLinks.length; i++) {
-            const element = allLinks[i];
-            element?.classList.remove('active');
-        }
-        const selector = document.querySelector('.sidebar ul a[href="' + window.location.pathname + '"]');
-        selector?.classList.add('active');
+        // Use setTimeout to ensure DOM is fully rendered
+        setTimeout(() => {
+            // Remove all existing active classes
+            let allLinks = document.querySelectorAll('.sidebar ul a.active');
+            console.log('Removing active from links:', allLinks);
+            for (let i = 0; i < allLinks.length; i++) {
+                const element = allLinks[i];
+                element?.classList.remove('active');
+            }
+            
+            // Remove active class from buttons too
+            let allButtons = document.querySelectorAll('.sidebar ul button.active');
+            console.log('Removing active from buttons:', allButtons);
+            for (let i = 0; i < allButtons.length; i++) {
+                const element = allButtons[i];
+                element?.classList.remove('active');
+            }
+            
+            // Find and activate the current route
+            const currentPath = window.location.pathname;
+            console.log('Looking for path:', currentPath);
+            
+            let selector = document.querySelector('.sidebar ul a[href="' + currentPath + '"]');
+            console.log('Exact match selector:', selector);
+            
+            // If exact match not found, try to find a partial match
+            if (!selector) {
+                const allLinks = document.querySelectorAll('.sidebar ul a[href]');
+                console.log('All sidebar links:', allLinks);
+                for (let i = 0; i < allLinks.length; i++) {
+                    const link = allLinks[i] as HTMLAnchorElement;
+                    const href = link.getAttribute('href');
+                    console.log('Checking link:', href, 'against:', currentPath);
+                    if (href && currentPath.startsWith(href) && href !== '/') {
+                        selector = link;
+                        console.log('Partial match found:', href);
+                        break;
+                    }
+                }
+            }
+            
+            if (selector) {
+                console.log('Activating selector:', selector);
+                selector.classList.add('active');
+                
+                // Check if this is in a submenu and expand parent menu
+                const ul = selector.closest('ul.sub-menu');
+                if (ul) {
+                    console.log('Found submenu:', ul);
+                    const parentLi = ul.closest('li.menu');
+                    if (parentLi) {
+                        const parentButton = parentLi.querySelector('button.nav-link');
+                        if (parentButton) {
+                            console.log('Activating parent button:', parentButton);
+                            parentButton.classList.add('active');
+                            const navId = parentButton.getAttribute('data-nav-id') || parentLi.getAttribute('data-nav-id');
+                            if (navId) {
+                                console.log('Setting current menu:', navId);
+                                setCurrentMenu(navId);
+                            }
+                        }
+                    }
+                }
+            } else {
+                console.log('No matching selector found for path:', currentPath);
+            }
+        }, 200); // Increased delay to ensure Perfect Scrollbar is ready
     };
 
     const renderMenuItems = (items: any) => {
@@ -91,13 +159,14 @@ const Sidebar = () => {
             }
 
             return (
-                <li key={item.navId} className="menu nav-item">
+                <li key={item.navId} className="menu nav-item" data-nav-id={item.navId}>
                     {item.children && item.children.length > 0 ? (
                         <>
                             <button
                                 type="button"
                                 className={`${currentMenu === item.navId ? 'active' : ''} nav-link group w-full`}
                                 onClick={() => toggleMenu(item.navId)}
+                                data-nav-id={item.navId}
                             >
                                 <div className="flex items-center">
                                     <span className="ltr:pl-5 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
@@ -185,11 +254,12 @@ const Sidebar = () => {
                             <IconCaretsDown className="m-auto rotate-90 text-orange-500" />
                         </button>
                     </div>
-                    <PerfectScrollbar className="relative h-[calc(100vh-80px)]">
+                    {/* Temporarily remove PerfectScrollbar for debugging */}
+                    <div className="relative h-[calc(100vh-80px)] overflow-y-auto">
                         <ul className="relative font-semibold space-y-0.5">
                             {renderMenuItems(navTree)}
                         </ul>
-                    </PerfectScrollbar>
+                    </div>
                 </div>
             </nav>
         </div>
