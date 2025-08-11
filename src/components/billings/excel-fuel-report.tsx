@@ -251,16 +251,21 @@ const FuelConsumptionReport = () => {
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Fuel Summary');
             
-            // Add title and filter information
-            worksheet.addRow(['Fuel Consumption Summary Report']);
+            // Get cost center name for title
+            const selectedCostCenterName = selectedCostCenter === 'all' 
+              ? 'All' 
+              : costCenters.find(cc => cc.id === selectedCostCenter)?.name || 'All';
+
+            // Add title row
+            const titleRow = worksheet.addRow([`Vehicle Fuel Summary: ${selectedCostCenterName}`]);
+            titleRow.getCell(1).font = { bold: true, size: 14 };
+            titleRow.getCell(1).alignment = { horizontal: 'center' };
+            
+            // Add empty row for spacing
             worksheet.addRow([]);
+            
+            // Add date range and filter information
             worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
-            if (selectedCostCenter && selectedCostCenter !== 'all') {
-              const ccName = costCenters.find(cc => cc.id === selectedCostCenter)?.name || selectedCostCenter;
-              worksheet.addRow([`Cost Center: ${ccName}`]);
-            } else {
-              worksheet.addRow(['Cost Center: All Cost Centers']);
-            }
             worksheet.addRow([]);
             
             // Create headers
@@ -278,6 +283,10 @@ const FuelConsumptionReport = () => {
             // Add total column
             header1.push('Sub Total');
             header2.push('');
+            
+            // Merge title across all columns
+            const totalColumns = header1.length;
+            worksheet.mergeCells(1, 1, 1, totalColumns);
             
             worksheet.addRow(header1);
             worksheet.addRow(header2);

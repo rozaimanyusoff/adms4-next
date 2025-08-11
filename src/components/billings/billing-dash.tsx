@@ -2,12 +2,13 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, Car, Phone, Zap } from 'lucide-react';
+import { BarChart3, Car, Phone, Zap, Wrench } from 'lucide-react';
 
 // Import dashboard components
 import FuelDash from './fuel-dash';
 import TelcoDash from './telco-dash';
 import UtilityDash from './utility-dash';
+import MaintenanceDash from './maintenance-dash';
 
 const BillingDashboard = () => {
   const [activeTab, setActiveTab] = useState('fuel');
@@ -43,6 +44,11 @@ const BillingDashboard = () => {
               <Zap className="h-4 w-4" />
               <span className="hidden sm:inline">Utility Dashboard</span>
               <span className="sm:hidden">Utility</span>
+            </TabsTrigger>
+            <TabsTrigger value="maintenance" className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 flex-shrink-0">
+              <Wrench className="h-4 w-4" />
+              <span className="hidden sm:inline">Maintenance Dashboard</span>
+              <span className="sm:hidden">Maintenance</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -97,6 +103,24 @@ const BillingDashboard = () => {
             </CardHeader>
             <CardContent>
               <UtilityDash />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Maintenance Dashboard Tab */}
+        <TabsContent value="maintenance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wrench className="h-5 w-5" />
+                Vehicle Maintenance Analytics
+              </CardTitle>
+              <CardDescription>
+                Track vehicle maintenance expenses, service schedules, and fleet performance
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MaintenanceDash />
             </CardContent>
           </Card>
         </TabsContent>
