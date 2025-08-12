@@ -73,7 +73,7 @@ const FuelDash: React.FC = () => {
     }, [selectedYear]);
 
     return (
-        <>
+        <div className="space-y-6">
         <Card className="mt-4 w-full">
             <CardHeader>
                 <CardTitle>Fuel Maintenance - Monthly Statement Total</CardTitle>
@@ -119,8 +119,9 @@ const FuelDash: React.FC = () => {
                 )}
             </CardContent>
         </Card>
+        {/* Excel Report Component */}
         <VehicleMtnReport />
-        </>
+        </div>
     );
 };
 

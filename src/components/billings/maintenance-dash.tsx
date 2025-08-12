@@ -43,19 +43,19 @@ const MaintenanceDash: React.FC = () => {
             try {
                 const res = await authenticatedApi.get<MaintenanceApiResponse>('/api/bills/mtn');
                 const bills: MaintenanceBill[] = Array.isArray(res.data.data) ? res.data.data : [];
-                
+
                 // Get all years from data
                 const years = Array.from(new Set(bills.map(bill => new Date(bill.inv_date).getFullYear().toString()))).sort();
                 const yearOptions = ['All', ...years];
                 setYearOptions(yearOptions);
-                
+
                 const currentYear = new Date().getFullYear().toString();
                 if (!selectedYear && yearOptions.includes(currentYear)) {
                     setSelectedYear(currentYear);
                 } else if (!selectedYear && yearOptions.length) {
                     setSelectedYear(yearOptions[1] || 'All');
                 }
-                
+
                 // Group by month for selected year or all
                 const monthlyTotals: { [month: string]: { total: number } } = {};
                 bills.forEach(bill => {
@@ -72,8 +72,8 @@ const MaintenanceDash: React.FC = () => {
                 const sortedKeys = Object.keys(monthlyTotals).sort((a, b) => {
                     const [monthA, yearA] = a.split('-');
                     const [monthB, yearB] = b.split('-');
-                    const dateA = new Date(parseInt(`20${yearA}`), new Date(Date.parse(monthA +" 1, 2012")).getMonth());
-                    const dateB = new Date(parseInt(`20${yearB}`), new Date(Date.parse(monthB +" 1, 2012")).getMonth());
+                    const dateA = new Date(parseInt(`20${yearA}`), new Date(Date.parse(monthA + " 1, 2012")).getMonth());
+                    const dateB = new Date(parseInt(`20${yearB}`), new Date(Date.parse(monthB + " 1, 2012")).getMonth());
                     return dateA.getTime() - dateB.getTime();
                 });
 
@@ -134,7 +134,7 @@ const MaintenanceDash: React.FC = () => {
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="month" />
                                 <YAxis />
-                                <RechartTooltip 
+                                <RechartTooltip
                                     formatter={(value: any, name: string) => {
                                         if (name === 'total') {
                                             return [`RM ${parseFloat(value).toFixed(2)}`, 'Total Amount'];
@@ -156,14 +156,7 @@ const MaintenanceDash: React.FC = () => {
             </Card>
 
             {/* Excel Report Component - Can be added separately */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Excel Maintenance Reports</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <MaintenanceReport />
-                </CardContent>
-            </Card>
+            <MaintenanceReport />
         </div>
     );
 };

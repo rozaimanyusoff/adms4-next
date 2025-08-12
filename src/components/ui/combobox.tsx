@@ -221,16 +221,20 @@ export function Combobox(props: ComboboxProps) {
                 return (
                   <CommandItem
                     key={`${option.value}-${index}`}
-                    value={option.value}
+                    value={option.label} // Use label for Command's built-in filtering
                     disabled={option.disabled}
                     onSelect={(currentValue) => {
+                      // Find the actual option value based on the selected label
+                      const selectedOption = filteredOptions.find(opt => opt.label === currentValue);
+                      const actualValue = selectedOption ? selectedOption.value : currentValue;
+                      
                       // Prevent default closing behavior
                       if (isMultiple) {
                         // For multi-select, handle selection but don't close
-                        handleSelect(currentValue)
+                        handleSelect(actualValue)
                       } else {
                         // For single select, handle selection and close
-                        handleSelect(currentValue)
+                        handleSelect(actualValue)
                         setOpen(false)
                       }
                     }}

@@ -222,7 +222,7 @@ const MaintenanceReport = () => {
 
                         // Add empty row for spacing
                         worksheet.addRow([]);
-                        
+
                         // Add date range information
                         worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
                         worksheet.addRow([]);
@@ -238,7 +238,7 @@ const MaintenanceReport = () => {
                                                 const date = new Date(maintenance.inv_date);
                                                 const year = date.getFullYear().toString();
                                                 const month = date.getMonth() + 1; // 1-12
-                                                
+
                                                 if (!yearMonthMap[year]) yearMonthMap[year] = new Set();
                                                 yearMonthMap[year].add(month);
                                             }
@@ -310,7 +310,7 @@ const MaintenanceReport = () => {
                             try {
                                 // Initialize amounts object for this vehicle
                                 const amounts: Record<string, number> = {};
-                                
+
                                 // Process maintenance details to get amounts by year-month
                                 if (vehicle.details && Array.isArray(vehicle.details)) {
                                     vehicle.details.forEach((yearDetail: YearDetail) => {
@@ -444,16 +444,19 @@ const MaintenanceReport = () => {
         <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
             <div className="flex items-center space-x-2">
                 <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                <h3 className="text-lg font-semibold">Vehicle Maintenance Excel Report</h3>
+                <h2 className="text-lg font-semibold">Vehicle Maintenance Excel Report</h2>
+            </div>
+            <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-2 mb-4 rounded">
+                <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                         Report Type
                     </label>
                     <Select value={reportType} onValueChange={setReportType}>
-                        <SelectTrigger>
+                        <SelectTrigger className='w-full'>
                             <SelectValue placeholder="Select report type" />
                         </SelectTrigger>
                         <SelectContent>
@@ -471,7 +474,7 @@ const MaintenanceReport = () => {
                         Cost Center
                     </label>
                     <Select value={selectedCostCenter} onValueChange={setSelectedCostCenter}>
-                        <SelectTrigger>
+                        <SelectTrigger className='w-full'>
                             <SelectValue placeholder="Select cost center" />
                         </SelectTrigger>
                         <SelectContent>
@@ -508,26 +511,23 @@ const MaintenanceReport = () => {
                         max={maxDate}
                     />
                 </div>
-            </div>
-
-            <div className="flex justify-center">
-                <Button
-                    onClick={handleDownload}
-                    disabled={!startDate || !endDate || loading}
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2"
-                >
-                    {loading ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Generating Report...
-                        </>
-                    ) : (
-                        <>
-                            <FileSpreadsheet className="mr-2 h-4 w-4" />
-                            Download Excel Report
-                        </>
-                    )}
-                </Button>
+                <div className="flex mt-6.5">
+                    <Button
+                        onClick={handleDownload}
+                        disabled={!startDate || !endDate || loading}
+                    >
+                        {loading ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Generating Report...
+                            </>
+                        ) : (
+                            <>
+                                <FileSpreadsheet className="h-4 w-4" />
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
 
             {(!startDate || !endDate) && (

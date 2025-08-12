@@ -13,6 +13,27 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { authenticatedApi } from "@/config/api";
 
+interface Model {
+  id: string;
+  name: string;
+}
+
+interface Brand {
+  id: string;
+  name: string;
+  categories: { id: string; name: string }[];
+}
+
+interface Category {
+  id: number;
+  type_id: number;
+  code: string;
+  name: string;
+  type_code: string;
+  image: string | null;
+  brands: Brand[];
+}
+
 interface Vehicle {
   vehicle_id: number;
   vehicle_regno: string;
@@ -29,8 +50,8 @@ interface Vehicle {
   age?: string; // Computed field for vehicle age
   costcenter?: { id: number; name: string };
   owner?: { ramco_id: string; full_name: string };
-  brand?: { id: number; name: string };
-  model?: { id: number; name: string };
+  brand?: { id: string; name: string };
+  model?: { id: string; name: string };
   category?: { id: number; name: string };
   department?: { id: number; name: string };
   fleetcard?: { id: number; card_no: string };
@@ -45,9 +66,9 @@ const TempVehicle: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
-  const [brands, setBrands] = useState<{ id: number; name: string }[]>([]);
-  const [models, setModels] = useState<{ id: number; name: string; brand_id?: number }[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [availableBrands, setAvailableBrands] = useState<Brand[]>([]); // Brands available for selected category
+  const [availableModels, setAvailableModels] = useState<Model[]>([]); // Models available for selected brand
   const [departments, setDepartments] = useState<{ id: number; code: string }[]>([]);
   const [costcenters, setCostcenters] = useState<{ id: number; name: string }[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -58,18 +79,15 @@ const TempVehicle: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
+    
+    // Fetch vehicles
     authenticatedApi.get<{ data: Vehicle[] }>('/api/bills/temp-vehicle')
       .then(res => {
         const data = res?.data?.data || [];
         setVehicles(data);
       });
-    // Fetch dropdown data
-    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/categories?type[]=2&type[]=10')
-      .then(res => setCategories(res.data?.data || []));
-    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/brands?type=2')
-      .then(res => setBrands(res.data?.data || []));
-    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/models?type=2')
-      .then(res => setModels(res.data?.data || []));
+    
+    // Fetch other dropdown data
     authenticatedApi.get<{ data: { id: number; code: string }[] }>('/api/assets/departments')
       .then(res => setDepartments(res.data?.data || []));
     authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/costcenters')
@@ -79,7 +97,84 @@ const TempVehicle: React.FC = () => {
         ramco_id: String(o.ramco_id),
         full_name: o.full_name
       }))));
+    
+    // Fetch categories and brands with models, then combine the data
+    Promise.all([
+      authenticatedApi.get<{ data: any[] }>('/api/assets/categories?type=2,10'), // Using any[] to handle simple brand objects
+      authenticatedApi.get<{ data: Brand[] }>('/api/assets/brands?type=2')
+    ]).then(([categoriesRes, brandsRes]) => {
+      const categoriesData = categoriesRes.data?.data || [];
+      const brands = brandsRes.data?.data || [];
+      
+      // Combine the data: replace category brands with full brand data including models
+      const updatedCategories = categoriesData.map((category: any) => ({
+        ...category,
+        brands: (category.brands || []).map((categoryBrand: any) => {
+          // Try to match by both ID (with type conversion) and name
+          const fullBrand = brands.find(b => 
+            String(b.id) === String(categoryBrand.id) || 
+            b.name === categoryBrand.name
+          );
+          return fullBrand || { 
+            id: String(categoryBrand.id) || '', 
+            name: categoryBrand.name || '', 
+            categories: []
+          };
+        }).filter((brand: Brand) => brand.id) // Filter out any invalid brands
+      }));
+      
+      setCategories(updatedCategories as Category[]);
+    }).catch(error => {
+      console.error('Error fetching categories and brands:', error);
+      // Fallback: just use categories endpoint with empty models
+      authenticatedApi.get<{ data: any[] }>('/api/assets/categories?type=2,10')
+        .then(res => {
+          const categoriesData = res.data?.data || [];
+          const fallbackCategories = categoriesData.map((category: any) => ({
+            ...category,
+            brands: (category.brands || []).map((brand: any) => ({
+              id: brand.id || '',
+              name: brand.name || '',
+              categories: []
+            }))
+          }));
+          setCategories(fallbackCategories as Category[]);
+        });
+    });
   }, []);
+
+  // Update available brands when category changes
+  useEffect(() => {
+    if (selectedVehicle?.category) {
+      const selectedCategory = categories.find(c => c.id === selectedVehicle.category?.id);
+      if (selectedCategory) {
+        setAvailableBrands(selectedCategory.brands || []);
+      }
+    } else {
+      setAvailableBrands([]);
+    }
+  }, [selectedVehicle?.category, categories]);
+
+  // Update available models when brand changes - fetch from API
+  useEffect(() => {
+    if (selectedVehicle?.brand) {
+      const selectedBrand = availableBrands.find(b => b.id === selectedVehicle.brand?.id);
+      if (selectedBrand) {
+        // Fetch models for the selected brand
+        authenticatedApi.get<{ data: Model[] }>(`/api/assets/models?brand=${selectedBrand.id}`)
+          .then(res => {
+            const models = res.data?.data || [];
+            setAvailableModels(models);
+          })
+          .catch(error => {
+            console.error('Error fetching models for brand:', selectedBrand.id, error);
+            setAvailableModels([]);
+          });
+      }
+    } else {
+      setAvailableModels([]);
+    }
+  }, [selectedVehicle?.brand, availableBrands]);
 
   const columns: ColumnDef<Vehicle>[] = ([
     { key: 'vehicle_id', header: 'ID' },
@@ -450,7 +545,12 @@ const TempVehicle: React.FC = () => {
                     value={selectedVehicle.category?.id ? String(selectedVehicle.category.id) : ''}
                     onValueChange={val => {
                       const category = categories.find(c => String(c.id) === val);
-                      setSelectedVehicle({ ...selectedVehicle, category });
+                      setSelectedVehicle({ 
+                        ...selectedVehicle, 
+                        category,
+                        brand: undefined, // Reset brand when category changes
+                        model: undefined // Reset model when category changes
+                      });
                       if (category) {
                         setValidationErrors(prev => ({ ...prev, category: '' }));
                       }
@@ -471,7 +571,7 @@ const TempVehicle: React.FC = () => {
                   <Select
                     value={selectedVehicle.brand?.id ? String(selectedVehicle.brand.id) : ''}
                     onValueChange={val => {
-                      const brand = brands.find(b => String(b.id) === val);
+                      const brand = availableBrands.find(b => String(b.id) === val);
                       setSelectedVehicle({
                         ...selectedVehicle,
                         brand,
@@ -481,12 +581,13 @@ const TempVehicle: React.FC = () => {
                         setValidationErrors(prev => ({ ...prev, brand: '' }));
                       }
                     }}
+                    disabled={!selectedVehicle.category} // Disable if no category selected
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Brand" />
+                      <SelectValue placeholder={selectedVehicle.category ? "Select Brand" : "Select Category First"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {brands.map(b => (
+                      {availableBrands.map(b => (
                         <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -494,24 +595,24 @@ const TempVehicle: React.FC = () => {
                 </div>
                 <div>
                   <Label>Model {validationErrors.model && <span className="text-red-500">{validationErrors.model}</span>}</Label>
-                  <Select value={selectedVehicle.model?.id ? String(selectedVehicle.model.id) : ''}
+                  <Select 
+                    value={selectedVehicle.model?.id ? String(selectedVehicle.model.id) : ''}
                     onValueChange={val => {
-                      const model = models.find(m => String(m.id) === val);
+                      const model = availableModels.find(m => String(m.id) === val);
                       setSelectedVehicle({ ...selectedVehicle, model });
                       if (model) {
                         setValidationErrors(prev => ({ ...prev, model: '' }));
                       }
                     }}
+                    disabled={!selectedVehicle.brand} // Disable if no brand selected
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Model" />
+                      <SelectValue placeholder={selectedVehicle.brand ? "Select Model" : "Select Brand First"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {models
-                        .filter(m => !selectedVehicle.brand?.id || m.brand_id === selectedVehicle.brand.id)
-                        .map(m => (
-                          <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
-                        ))}
+                      {availableModels.map(m => (
+                        <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

@@ -11,7 +11,7 @@ import UtilityDash from './utility-dash';
 import MaintenanceDash from './maintenance-dash';
 
 const BillingDashboard = () => {
-  const [activeTab, setActiveTab] = useState('fuel');
+  const [activeTab, setActiveTab] = useState('maintenance');
 
   return (
     <div className="space-y-6">
@@ -30,6 +30,12 @@ const BillingDashboard = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
           <TabsList className="inline-flex h-auto min-w-max w-full md:w-full">
+            <TabsTrigger value="maintenance" className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 flex-shrink-0">
+              <Wrench className="h-4 w-4" />
+              <span className="hidden sm:inline">Maintenance Dashboard</span>
+              <span className="sm:hidden">Maintenance</span>
+            </TabsTrigger>
+
             <TabsTrigger value="fuel" className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 flex-shrink-0">
               <Car className="h-4 w-4" />
               <span className="hidden sm:inline">Fuel Dashboard</span>
@@ -45,13 +51,26 @@ const BillingDashboard = () => {
               <span className="hidden sm:inline">Utility Dashboard</span>
               <span className="sm:hidden">Utility</span>
             </TabsTrigger>
-            <TabsTrigger value="maintenance" className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 flex-shrink-0">
-              <Wrench className="h-4 w-4" />
-              <span className="hidden sm:inline">Maintenance Dashboard</span>
-              <span className="sm:hidden">Maintenance</span>
-            </TabsTrigger>
           </TabsList>
         </div>
+
+        {/* Maintenance Dashboard Tab */}
+        <TabsContent value="maintenance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wrench className="h-5 w-5" />
+                Vehicle Maintenance Analytics
+              </CardTitle>
+              <CardDescription>
+                Track vehicle maintenance expenses, service schedules, and fleet performance
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MaintenanceDash />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Fuel Dashboard Tab */}
         <TabsContent value="fuel" className="space-y-4">
@@ -103,24 +122,6 @@ const BillingDashboard = () => {
             </CardHeader>
             <CardContent>
               <UtilityDash />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Maintenance Dashboard Tab */}
-        <TabsContent value="maintenance" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wrench className="h-5 w-5" />
-                Vehicle Maintenance Analytics
-              </CardTitle>
-              <CardDescription>
-                Track vehicle maintenance expenses, service schedules, and fleet performance
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <MaintenanceDash />
             </CardContent>
           </Card>
         </TabsContent>

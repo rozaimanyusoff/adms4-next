@@ -50,15 +50,15 @@ const UtilityReport = () => {
           type YearDetail = { year: number; expenses: string; months: Month[] };
           type CostCenterItem = { costcenter: string; details: YearDetail[] };
           type ApiResponse = { status: string; message: string; data: CostCenterItem[] };
-          
+
           let url = `/api/bills/util/summary/costcenter?from=${startDate}&to=${endDate}`;
           if (selectedService && selectedService !== 'all') {
             url += `&service=${selectedService}`;
           }
-          
+
           const res = await authenticatedApi.get(url);
           const json = res.data as ApiResponse;
-          
+
           if (json.status === 'success' && Array.isArray(json.data)) {
             // 1. Collect all years and months from the data
             const yearMonthMap: Record<string, Set<number>> = {};
@@ -73,12 +73,12 @@ const UtilityReport = () => {
                 }
               });
             });
-            
+
             const years = Object.keys(yearMonthMap).sort();
             years.forEach(y => {
               yearMonthMap[y] = new Set(Array.from(yearMonthMap[y]).sort((a, b) => a - b));
             });
-            
+
             const columns: { year: string, month: number }[] = [];
             years.forEach(y => {
               Array.from(yearMonthMap[y]).forEach(m => {
@@ -89,7 +89,7 @@ const UtilityReport = () => {
             // 2. Prepare Excel worksheet
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Utility Costcenter Summary');
-            
+
             // Add title with filter information
             const selectedServiceLabel = serviceTypes.find(s => s.value === selectedService)?.label || 'All Services';
             worksheet.addRow([`Utility Cost Center Summary Report - Service: ${selectedServiceLabel}`]);
@@ -153,7 +153,7 @@ const UtilityReport = () => {
             const amountEndCol = amountStartCol + columns.length;
             const totalCol = amountEndCol + 1;
             const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
-            
+
             for (let rowNum = tableStartRow; rowNum <= lastRowNum; rowNum++) {
               for (let colIdx = amountStartCol; colIdx <= totalCol; colIdx++) {
                 const cell = worksheet.getRow(rowNum).getCell(colIdx);
@@ -222,15 +222,15 @@ const UtilityReport = () => {
           type YearDetail = { year: number; expenses: string; months: Month[] };
           type ServiceItem = { service: string; details: YearDetail[] };
           type ServiceApiResponse = { status: string; message: string; data: ServiceItem[] };
-          
+
           let url = `/api/bills/util/summary/service?from=${startDate}&to=${endDate}`;
           if (selectedCostCenter && selectedCostCenter !== 'all') {
             url += `&costcenter=${selectedCostCenter}`;
           }
-          
+
           const res = await authenticatedApi.get(url);
           const json = res.data as ServiceApiResponse;
-          
+
           if (json.status === 'success' && Array.isArray(json.data)) {
             // 1. Collect all years and months from the service data
             const yearMonthMap: Record<string, Set<number>> = {};
@@ -261,10 +261,10 @@ const UtilityReport = () => {
             // 2. Prepare Excel worksheet
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Utility Service Summary');
-            
+
             // Add title with filter information
-            const selectedCostCenterLabel = selectedCostCenter === 'all' 
-              ? 'All Cost Centers' 
+            const selectedCostCenterLabel = selectedCostCenter === 'all'
+              ? 'All Cost Centers'
               : costCenters.find(cc => cc.id === selectedCostCenter)?.name || 'Unknown Cost Center';
             worksheet.addRow([`Utility Service Summary Report - Cost Center: ${selectedCostCenterLabel}`]);
             worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
@@ -366,8 +366,8 @@ const UtilityReport = () => {
             // Download the file
             const now = new Date();
             const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-            const serviceCostCenterLabel = selectedCostCenter === 'all' 
-              ? 'All-Cost-Centers' 
+            const serviceCostCenterLabel = selectedCostCenter === 'all'
+              ? 'All-Cost-Centers'
               : costCenters.find(cc => cc.id === selectedCostCenter)?.name?.replace(/\s+/g, '-') || 'Unknown-Cost-Center';
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -397,9 +397,15 @@ const UtilityReport = () => {
   };
 
   return (
-    <div className="mt-6">
-      <h2 className="text-2xl font-bold">Utilities Billing Report</h2>
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+    <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+      <div className="flex items-center space-x-2">
+        <FileSpreadsheet className="h-5 w-5 text-green-600" />
+        <h2 className="text-2xl font-bold">Utilities Billing Report</h2>
+      </div>
+      <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-2 mb-4 rounded">
+        <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <div>
           <label className="block text-sm font-medium">Report Type</label>
           <Select value={reportType} onValueChange={setReportType}>
@@ -473,22 +479,20 @@ const UtilityReport = () => {
           />
         </div>
         <div className="block mt-6.5">
-        <Button
-          onClick={handleDownload}
-          disabled={loading || !startDate || !endDate}
-          className="flex items-center gap-2"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FileSpreadsheet className="h-4 w-4" />
-          )}
-          {/* {loading ? 'Generating...' : 'Download Excel Report'} */}
-        </Button>
+          <Button
+            onClick={handleDownload}
+            disabled={loading || !startDate || !endDate}
+            className="flex items-center gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )}
+            {/* {loading ? 'Generating...' : 'Download Excel Report'} */}
+          </Button>
+        </div>
       </div>
-      </div>
-
-      
     </div>
   );
 };

@@ -209,7 +209,7 @@ const UtilityDash: React.FC = () => {
     }, [selectedYear, selectedService, selectedCostCenter]);
 
     return (
-        <>
+        <div className="space-y-6">
             <Card className="mt-4 w-full">
                 <CardHeader>
                     <CardTitle>Utility Bills - Monthly Total</CardTitle>
@@ -301,7 +301,7 @@ const UtilityDash: React.FC = () => {
                 </CardContent>
             </Card>
             <ExcelUtilityReport />
-        </>
+        </div>
     );
 };
 

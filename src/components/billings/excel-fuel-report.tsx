@@ -250,28 +250,28 @@ const FuelConsumptionReport = () => {
             });
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Fuel Summary');
-            
+
             // Get cost center name for title
-            const selectedCostCenterName = selectedCostCenter === 'all' 
-              ? 'All' 
+            const selectedCostCenterName = selectedCostCenter === 'all'
+              ? 'All'
               : costCenters.find(cc => cc.id === selectedCostCenter)?.name || 'All';
 
             // Add title row
             const titleRow = worksheet.addRow([`Vehicle Fuel Summary: ${selectedCostCenterName}`]);
             titleRow.getCell(1).font = { bold: true, size: 14 };
             titleRow.getCell(1).alignment = { horizontal: 'center' };
-            
+
             // Add empty row for spacing
             worksheet.addRow([]);
-            
+
             // Add date range and filter information
             worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
             worksheet.addRow([]);
-            
+
             // Create headers
             const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'District', 'Owner', 'Classification', 'Record Status'];
             const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
-            
+
             // Add year-month columns for amounts
             years.forEach(y => {
               const months = Array.from(yearMonthMap[y]);
@@ -279,15 +279,15 @@ const FuelConsumptionReport = () => {
               for (let i = 1; i < months.length; i++) header1.push('');
               months.forEach(m => header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' })));
             });
-            
+
             // Add total column
             header1.push('Sub Total');
             header2.push('');
-            
+
             // Merge title across all columns
             const totalColumns = header1.length;
             worksheet.mergeCells(1, 1, 1, totalColumns);
-            
+
             worksheet.addRow(header1);
             worksheet.addRow(header2);
             // Merge year cells for amounts
@@ -299,10 +299,10 @@ const FuelConsumptionReport = () => {
               }
               col += months.length;
             });
-            
+
             // Merge Sub Total cell
             worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number, col);
-            
+
             // Merge basic column headers (span 2 rows)
             for (let i = 1; i <= 13; i++) {
               worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
@@ -315,10 +315,10 @@ const FuelConsumptionReport = () => {
                 const val = row.amounts[`${c.year}-${c.month}`];
                 return val !== undefined && val !== '' ? Number(val) : 0;
               });
-              
+
               // Calculate sub total
               const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
-              
+
               worksheet.addRow([
                 no++,
                 row.vehicle,
@@ -343,7 +343,7 @@ const FuelConsumptionReport = () => {
             const amountEndCol = amountStartCol + columns.length - 1;
             const subTotalCol = amountEndCol + 1;
             const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
-            
+
             // Format amount and total columns
             for (let rowNum = tableStartRow; rowNum <= lastRowNum; rowNum++) {
               // Format monthly amount columns
@@ -351,12 +351,12 @@ const FuelConsumptionReport = () => {
                 const cell = worksheet.getRow(rowNum).getCell(colIdx);
                 cell.numFmt = '#,##0.00';
               }
-              
+
               // Format Sub Total column
               const subTotalCell = worksheet.getRow(rowNum).getCell(subTotalCol);
               subTotalCell.numFmt = '#,##0.00';
             }
-            
+
             // Add borders to all cells
             const tableEndRow = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
             const headerStartRow = tableStartRow - 2; // Account for the two-row header
@@ -371,14 +371,14 @@ const FuelConsumptionReport = () => {
                 };
               });
             }
-            
+
             // Style the headers and title
             worksheet.getRow(1).font = { bold: true, size: 14 };
             worksheet.getRow(3).font = { bold: true };
             worksheet.getRow(4).font = { bold: true };
             worksheet.getRow(headerStartRow).font = { bold: true };
             worksheet.getRow(headerStartRow + 1).font = { bold: true };
-            
+
             // Auto-fit columns
             worksheet.columns.forEach(col => {
               let maxLength = 10;
@@ -418,12 +418,15 @@ const FuelConsumptionReport = () => {
   };
 
   return (
-    <div className="mt-8">
+    <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+      <div className="flex items-center space-x-2">
+        <FileSpreadsheet className="h-5 w-5 text-green-600" />
       <h2 className="text-2xl font-bold">Fuel Billing Report</h2>
+      </div>
       <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-3 my-2 rounded">
         <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-5 items-center gap-2 my-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 items-center gap-4">
         <div className="flex-1 min-w-[160px]">
           <label className="block mb-1 font-medium">Report Type</label>
           <Select value={reportType} onValueChange={setReportType}>
