@@ -1,8 +1,8 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, Download, Loader2 } from 'lucide-react';
+import { Plus, Download, Loader2, ChevronRight, Search, X } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -12,9 +12,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+// Helper function to construct logo URL
+const getLogoUrl = (logoPath: string | null): string => {
+  if (!logoPath) {
+    return '/assets/images/Logo-RTech.jpeg'; // Use existing RTech logo as fallback
+  }
+  
+  // If it's already a full URL, return as is
+  if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+    return logoPath;
+  }
+  
+  // If it's a relative path, construct full URL using NEXT_PUBLIC_APP_URL from env
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_API_URL || '';
+  if (appUrl && logoPath.startsWith('/')) {
+    return `${appUrl}${logoPath}`;
+  }
+  
+  // Default fallback - try as relative path first
+  return logoPath || '/assets/images/Logo-RTech.jpeg';
+};
+
 interface UtilityBill {
   bill_id: number;
-  loc_id: number;
+  loc_id?: number;
   cc_id: number;
   ubill_date: string;
   ubill_no: string;
@@ -43,9 +64,37 @@ interface UtilityBill {
   provider?: string; // Added for DataGrid column compatibility
 }
 
+interface BillingAccount {
+  bill_id: number;
+  bill_ac: string | null;
+  provider: string | null;
+  logo: string | null;
+  service: string | null;
+  bfcy_id: number;
+  cat_id: number;
+  bill_product: string | null;
+  bill_desc: string | null;
+  cc_id: number;
+  bill_loc: string | null;
+  loc_id: number;
+  bill_depo: string;
+  bill_mth: string;
+  bill_stat: string;
+  bill_consumable: string;
+  bill_cont_start: string;
+  bill_cont_end: string;
+  bill_total: string;
+  bill_count: number;
+  bill_dt: string;
+  bill_bfcy: string;
+  bfcy_cat: string;
+  billowner: string;
+}
+
 interface UtilityBillForm {
   bill_id?: number;
-  loc_id: string;
+  utility_id?: number;
+  loc_id?: string;
   cc_id: string;
   ubill_date: string;
   ubill_no: string;
@@ -72,15 +121,51 @@ const UtilityBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Default open
   const [saving, setSaving] = useState(false);
   const [editingBill, setEditingBill] = useState<UtilityBill | null>(null);
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState<BillingAccount | null>(null);
+  const [sidebarSize, setSidebarSize] = useState<'sm' | 'lg'>('sm');
   const router = useRouter();
 
+  // Memoized accounts with processed logo URLs to prevent repetitive fetching
+  const accountsWithLogos = useMemo(() => {
+    console.log('Processing logo URLs for', billingAccounts.length, 'accounts');
+    return billingAccounts.map(account => ({
+      ...account,
+      logoUrl: getLogoUrl(account.logo)
+    }));
+  }, [billingAccounts]);
+
+  // Filter memoized accounts with provider prioritization
+  const filteredAccountsWithLogos = useMemo(() => {
+    if (searchTerm.trim() === '') {
+      return accountsWithLogos;
+    } else {
+      const searchLower = searchTerm.toLowerCase();
+      const filtered = accountsWithLogos.filter((account) => 
+        (account.service?.toLowerCase() || '').includes(searchLower) ||
+        (account.provider?.toLowerCase() || '').includes(searchLower) ||
+        (account.bill_ac?.toLowerCase() || '').includes(searchLower) ||
+        (account.bill_product?.toLowerCase() || '').includes(searchLower)
+      );
+      
+      // Sort with provider matches first
+      return filtered.sort((a, b) => {
+        const aProviderMatch = (a.provider?.toLowerCase() || '').includes(searchLower);
+        const bProviderMatch = (b.provider?.toLowerCase() || '').includes(searchLower);
+        
+        if (aProviderMatch && !bProviderMatch) return -1;
+        if (!aProviderMatch && bProviderMatch) return 1;
+        return 0;
+      });
+    }
+  }, [accountsWithLogos, searchTerm]);
+
   const [formData, setFormData] = useState<UtilityBillForm>({
-    loc_id: 'none',
     cc_id: 'none',
     ubill_date: '',
     ubill_no: '',
@@ -111,17 +196,17 @@ const UtilityBill = () => {
     }
   };
 
-  const fetchLocations = async () => {
+  const fetchBillingAccounts = async () => {
     try {
-      const response = await authenticatedApi.get('/api/assets/locations');
+      const response = await authenticatedApi.get('/api/bills/util/accounts');
       if ((response.data as any)?.data) {
-        setLocations((response.data as any).data.map((loc: any) => ({
-          id: loc.id?.toString() || '',
-          name: loc.name || ''
-        })));
+        setBillingAccounts((response.data as any).data);
+        setBillingAccounts((response.data as any).data);
       }
     } catch (error) {
-      console.error('Error fetching locations:', error);
+      console.error('Error fetching billing accounts:', error);
+      setBillingAccounts([]);
+      setBillingAccounts([]);
     }
   };
 
@@ -154,9 +239,37 @@ const UtilityBill = () => {
     }));
   };
 
+    // Search functionality - now handled by useMemo
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+  };
+
+  // Account selection handler
+  const handleAccountSelect = (account: BillingAccount) => {
+    setSelectedAccount(account);
+    setSidebarSize('lg');
+    // Pre-fill form with account data and reset financial fields
+    setFormData(prev => ({
+      ...prev,
+      utility_id: account.bill_id,
+      // Reset financial fields for new bill
+      ubill_date: '',
+      ubill_no: '',
+      ubill_stotal: '0.00',
+      ubill_tax: '0.00',
+      ubill_disc: '0.00',
+      ubill_round: '0.00',
+      ubill_rent: '0.00',
+      ubill_bw: '0.00',
+      ubill_color: '0.00',
+      ubill_gtotal: '0.00',
+      ubill_paystat: 'Pending',
+      ubill_payref: '',
+    }));
+  };
+
   const resetForm = () => {
     setFormData({
-      loc_id: 'none',
       cc_id: 'none',
       ubill_date: '',
       ubill_no: '',
@@ -172,17 +285,24 @@ const UtilityBill = () => {
       ubill_payref: '',
     });
     setEditingBill(null);
+    setSelectedAccount(null);
+    setSearchTerm('');
+    setSidebarSize('sm');
   };
 
   const handleAdd = () => {
     resetForm();
-    setSidebarOpen(true);
+    setSelectedAccount(null);
+    setSidebarSize('sm');
+    if (!sidebarOpen) {
+      setSidebarOpen(true);
+    }
   };
 
   const handleRowDoubleClick = (bill: UtilityBill & { rowNumber: number }) => {
     setFormData({
       bill_id: bill.bill_id,
-      loc_id: bill.loc_id ? bill.loc_id.toString() : 'none',
+      utility_id: bill.account?.utility_id ? parseInt(bill.account.utility_id) : undefined,
       cc_id: bill.cc_id ? bill.cc_id.toString() : 'none',
       ubill_date: bill.ubill_date ? new Date(bill.ubill_date).toISOString().split('T')[0] : '',
       ubill_no: bill.ubill_no || '',
@@ -198,6 +318,8 @@ const UtilityBill = () => {
       ubill_payref: bill.ubill_payref || '',
     });
     setEditingBill(bill);
+    setSelectedAccount(null); // Clear selected account when editing
+    setSidebarSize('lg'); // Go directly to form for editing
     setSidebarOpen(true);
   };
 
@@ -211,7 +333,6 @@ const UtilityBill = () => {
     try {
       const payload = {
         ...formData,
-        loc_id: (formData.loc_id && formData.loc_id !== 'none') ? parseInt(formData.loc_id) : null,
         cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
         ubill_date: formData.ubill_date ? new Date(formData.ubill_date).toISOString() : null,
       };
@@ -260,7 +381,7 @@ const UtilityBill = () => {
   useEffect(() => {
     fetchUtilityBills();
     fetchCostCenters();
-    fetchLocations();
+    fetchBillingAccounts();
   }, []);
 
   useEffect(() => {
@@ -316,13 +437,24 @@ const UtilityBill = () => {
             </Button>
           )}
         </div>
-        <Button
-          variant={'default'}
-          onClick={handleAdd}
-          disabled={loading}
-        >
-          {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={sidebarOpen ? 'bg-blue-50 border-blue-200 text-blue-700' : ''}
+          >
+            {sidebarOpen ? <X size={16} /> : <Search size={16} />}
+            {sidebarOpen ? 'Close Accounts' : 'Show Accounts'}
+          </Button>
+          <Button
+            variant={'default'}
+            onClick={handleAdd}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+          </Button>
+        </div>
       </div>
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
@@ -343,36 +475,110 @@ const UtilityBill = () => {
 
       <ActionSidebar
         isOpen={sidebarOpen}
-        title={editingBill ? 'Edit Utility Bill' : 'Add New Utility Bill'}
+        title={
+          editingBill 
+            ? `Edit Bill - ${editingBill.account?.service || 'Utility Bill'}` 
+            : selectedAccount 
+            ? `New Bill - ${selectedAccount.service} (${selectedAccount.provider})` 
+            : 'Utility Billing Accounts'
+        }
         onClose={() => {
           setSidebarOpen(false);
+          setSelectedAccount(null);
+          setSidebarSize('sm');
           resetForm();
         }}
-        size="lg"
+        size={sidebarSize}
         content={
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Location and Cost Center */}
-                <div className="space-y-2">
-                  <Label htmlFor="loc_id">Location</Label>
-                  <Select 
-                    value={formData.loc_id} 
-                    onValueChange={(value) => handleInputChange('loc_id', value)}
-                  >
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder="Select Location" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Select Location</SelectItem>
-                      {locations.map((location) => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+          <div className={`flex ${sidebarSize === 'lg' ? 'space-x-6' : ''} h-full`}>
+            {/* Left Column - Billing Accounts List */}
+            <div className={`${sidebarSize === 'lg' ? 'w-1/3' : 'w-full'} space-y-4`}>
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search by provider, service, account..."
+                    value={searchTerm}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
+                
+                {/* Search results indicator */}
+                {searchTerm && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
+                    {filteredAccountsWithLogos.length} result{filteredAccountsWithLogos.length !== 1 ? 's' : ''} for "{searchTerm}"
+                  </div>
+                )}
+                
+                <div className="max-h-[600px] overflow-y-auto space-y-2">
+                  {filteredAccountsWithLogos.map((account) => (
+                    <div
+                      key={account.bill_id}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                        selectedAccount?.bill_id === account.bill_id 
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                          : 'border-gray-200 dark:border-gray-700'
+                      }`}
+                      onClick={() => handleAccountSelect(account)}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {/* Logo on the left */}
+                        <div className="flex-shrink-0">
+                          <img
+                            src={account.logoUrl}
+                            alt={account.provider || 'Provider'}
+                            className="w-10 h-10 rounded-full object-cover bg-gray-100 dark:bg-gray-800"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement;
+                              // Only set fallback once to prevent infinite loops
+                              if (!img.src.includes('Logo-RTech.jpeg')) {
+                                img.src = '/assets/images/Logo-RTech.jpeg';
+                              }
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Provider details stacked on the right */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                            {account.provider || 'Unknown Provider'}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                            Account: {account.bill_ac || 'N/A'}
+                          </p>
+                          <p className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                            {account.service || 'Unknown Service'}
+                          </p>
+                        </div>
+                        
+                        {sidebarSize === 'sm' && (
+                          <ChevronRight className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {filteredAccountsWithLogos.length === 0 && (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      {searchTerm ? (
+                        <div>
+                          <p>No accounts found for "{searchTerm}"</p>
+                          <p className="text-xs mt-1">Try searching by provider, service, or account number</p>
+                        </div>
+                      ) : (
+                        <p>No billing accounts found</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
+            {/* Right Column - Form (only shown when lg size) */}
+            {sidebarSize === 'lg' && (selectedAccount || editingBill) && (
+              <div className="w-2/3 border-l pl-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Cost Center */}
                 <div className="space-y-2">
                   <Label htmlFor="cc_id">Cost Center</Label>
                   <Select 
@@ -564,9 +770,11 @@ const UtilityBill = () => {
                   Cancel
                 </Button>
               </div>
-            </div>
-          }
-        />
+              </div>
+            )}
+          </div>
+        }
+      />
     </div>
   );
 };
