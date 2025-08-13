@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UtilityBill from "./utility-bill";
 import UtilityDash from "./utility-dash";
-import BillingAccount from "./billing-account";
+import BillingAccount from "./utility-bill-account";
+import UtilityBillProvider from "./utility-bill-provider";
 import Link from "next/link";
 
 const UtilityBilling: React.FC = () => {
@@ -12,12 +13,14 @@ const UtilityBilling: React.FC = () => {
         { value: "utility-dash", label: "Dashboard" },
         { value: "utility-bill", label: "Utility Bills" },
         { value: "billing-account", label: "Accounts" },
+        { value: "utility-bill-provider", label: "Providers" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         "utility-dash": <UtilityDash />,
         "utility-bill": <UtilityBill />,
         "billing-account": <BillingAccount />,
+        "utility-bill-provider": <UtilityBillProvider />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {

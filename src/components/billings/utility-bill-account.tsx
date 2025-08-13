@@ -61,6 +61,15 @@ const BillingAccount = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BillingAccount | null>(null);
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+
+  // Service to provider mapping
+  const serviceProviders: Record<string, string[]> = {
+    utilities: ['TNB', 'RSAJ', 'IWK', 'Syabas', 'Air Selangor'],
+    rental: ['Property Management Co', 'Real Estate Agency', 'Building Owner'],
+    services: ['Cleaning Service Co', 'Security Services Ltd', 'Maintenance Services'],
+    printing: ['Printing House', 'Copy Center', 'Digital Print Services']
+  };
   
   const [formData, setFormData] = useState<BillingAccountForm>({
     bill_ac: '',
@@ -113,7 +122,21 @@ const BillingAccount = () => {
   useEffect(() => {
     fetchAccounts();
     fetchCostCenters();
+    // Set initial providers for default service
+    const initialProviders = serviceProviders['utilities'] || [];
+    setAvailableProviders(initialProviders);
   }, []);
+
+  // Update available providers when service changes
+  useEffect(() => {
+    const providers = serviceProviders[formData.service] || [];
+    setAvailableProviders(providers);
+    
+    // Reset provider if current provider is not available for the selected service
+    if (formData.provider && !providers.includes(formData.provider)) {
+      setFormData(prev => ({ ...prev, provider: '' }));
+    }
+  }, [formData.service]);
 
   const handleInputChange = (field: keyof BillingAccountForm, value: string) => {
     setFormData(prev => ({
@@ -257,29 +280,10 @@ const BillingAccount = () => {
             setSidebarOpen(false);
             resetForm();
           }}
+          size={'lg'}
           content={
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="bill_ac">Account Number *</Label>
-                  <Input
-                    id="bill_ac"
-                    value={formData.bill_ac}
-                    onChange={(e) => handleInputChange('bill_ac', e.target.value)}
-                    placeholder="Enter account number"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="provider">Provider *</Label>
-                  <Input
-                    id="provider"
-                    value={formData.provider}
-                    onChange={(e) => handleInputChange('provider', e.target.value)}
-                    placeholder="Enter provider name"
-                  />
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="service">Service *</Label>
                   <Select value={formData.service} onValueChange={(value) => handleInputChange('service', value)}>
@@ -294,7 +298,31 @@ const BillingAccount = () => {
                     </SelectContent>
                   </Select>
                 </div>
-
+                <div className="space-y-2">
+                  <Label htmlFor="provider">Provider *</Label>
+                  <Select 
+                    value={formData.provider} 
+                    onValueChange={(value) => handleInputChange('provider', value)}
+                    disabled={!formData.service || availableProviders.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={
+                        !formData.service 
+                          ? "Select service first" 
+                          : availableProviders.length === 0 
+                            ? "No providers available" 
+                            : "Select provider"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableProviders.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="bill_product">Product</Label>
                   <Input
@@ -302,6 +330,15 @@ const BillingAccount = () => {
                     value={formData.bill_product}
                     onChange={(e) => handleInputChange('bill_product', e.target.value)}
                     placeholder="Enter product name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bill_ac">Account Number *</Label>
+                  <Input
+                    id="bill_ac"
+                    value={formData.bill_ac}
+                    onChange={(e) => handleInputChange('bill_ac', e.target.value)}
+                    placeholder="Enter account number"
                   />
                 </div>
 
