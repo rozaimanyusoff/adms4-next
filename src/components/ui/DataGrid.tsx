@@ -20,7 +20,7 @@ const exportButton = "placeholder:text-base text-white p-2 border border-border 
 const exportMenuItem = "block w-full text-left text-sm px-2 py-1 hover:bg-accent hover:text-accent-foreground";
 
 /* Table Structure */
-const tableWrapper = "w-full border-collapse min-w-full whitespace-nowrap table-auto";
+const tableWrapper = "w-full border-collapse min-w-full table-auto";
 const theadWrapper = "bg-card sticky top-0 z-10";
 const theadTh = "relative text-left px-4 py-2 border-b-0 border-border cursor-pointer select-none text-card-foreground";
 const columnResizer = "column-resizer absolute right-0 top-0 h-3/4 w-[4px] my-1 rounded-t-full rounded-b-full cursor-col-resize bg-muted hover:bg-muted-foreground transition";
@@ -427,19 +427,10 @@ const CustomDataGridInner = <T,>({
                 } else if (column?.filter === 'singleSelect') {
                     // Single select filter - exact match
                     const filterVal = String(value);
-                    let compareValue: string;
-                    
-                    // Use render function if available, otherwise use raw value
-                    if (column.render) {
-                        const rendered = column.render(row);
-                        compareValue = typeof rendered === 'string' || typeof rendered === 'number' 
-                            ? String(rendered) 
-                            : '';
-                    } else {
-                        compareValue = typeof cellValue === 'string' || typeof cellValue === 'number'
-                            ? String(cellValue)
-                            : '';
-                    }
+                    // Always use raw data for filtering comparison
+                    const compareValue = typeof cellValue === 'string' || typeof cellValue === 'number'
+                        ? String(cellValue)
+                        : '';
                     
                     return compareValue === filterVal;
                 } else {
@@ -1200,7 +1191,8 @@ const CustomDataGridInner = <T,>({
                                                                         const filterVal = columnFilters[upstreamKey];
                                                                         if (filterVal) {
                                                                             scoped = scoped.filter(row => {
-                                                                                const val = columns.find(c => String(c.key) === upstreamKey)?.render?.(row) ?? row[upstreamKey as keyof T];
+                                                                                // Always use raw data for filtering comparison
+                                                                                const val = row[upstreamKey as keyof T];
                                                                                 return typeof val === 'string' || typeof val === 'number'
                                                                                     ? String(val) === String(filterVal)
                                                                                     : false;
@@ -1209,7 +1201,8 @@ const CustomDataGridInner = <T,>({
                                                                     }
                                                                 }
                                                                 return Array.from(new Set(scoped.map(row => {
-                                                                    const raw = col.render ? col.render(row) : row[col.key as keyof T];
+                                                                    // Always use raw data for filter options, never the rendered JSX
+                                                                    const raw = row[col.key as keyof T];
                                                                     return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '';
                                                                 }).filter(Boolean)));
                                                             })();
@@ -1449,7 +1442,7 @@ const CustomDataGridInner = <T,>({
                                                     return (
                                                         <td
                                                             key={String(col.key)}
-                                                            className={`px-4 border-b ${expandedRows.has(key as number) ? expandedCellBorder : defaultCellBorder} truncate px-3 py-2 ${col.colClass ?? ''} ${col.colClassParams?.(row) ?? ''} ${highlightClass}`}
+                                                            className={`px-4 border-b ${expandedRows.has(key as number) ? expandedCellBorder : defaultCellBorder} break-words px-3 py-2 ${col.colClass ?? ''} ${col.colClassParams?.(row) ?? ''} ${highlightClass}`}
                                                             onMouseEnter={() => {
                                                                 if (rowColHighlight) {
                                                                     setHoveredRowIndex(i);
