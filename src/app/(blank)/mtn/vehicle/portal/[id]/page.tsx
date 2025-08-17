@@ -1,12 +1,8 @@
 import React from 'react';
 import VehicleServicePortal from '@/components/maintenance/vehicle-service-portal';
 
-interface MaintenancePortalPageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default function MaintenancePortalPage({ params }: MaintenancePortalPageProps) {
-  return <VehicleServicePortal requestId={params.id} />;
+export default function MaintenancePortalPage(props: any) {
+  const params = props?.params || {};
+  const id = params.id || '';
+  return <VehicleServicePortal requestId={id} />;
 }

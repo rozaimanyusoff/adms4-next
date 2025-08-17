@@ -1,12 +1,8 @@
 import React from 'react';
 import VehicleMaintenanceDetail from '@/components/maintenance/vehicle-mtn-detail';
 
-interface MaintenanceDetailPageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default function MaintenanceDetailPage({ params }: MaintenanceDetailPageProps) {
-  return <VehicleMaintenanceDetail requestId={params.id} />;
+export default function MaintenanceDetailPage(props: any) {
+  const params = props?.params || {};
+  const id = params.id || '';
+  return <VehicleMaintenanceDetail requestId={id} />;
 }
