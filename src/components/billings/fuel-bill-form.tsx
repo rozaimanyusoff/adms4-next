@@ -10,9 +10,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import ActionSidebar from '@/components/ui/action-aside';
 
 interface Asset {
-    vehicle_id: number;
-    vehicle_regno: string;
-    vfuel_type: string;
+    asset_id: number;
+    register_number: string;
+    fuel_type: string;
     costcenter?: CostCenter | null;
     purpose?: string;
 }
@@ -77,24 +77,96 @@ interface FuelBillDetail {
     stmt_total: string;
     stmt_entry: string;
     details: FuelDetail[];
-    fuel_issuer?: { fuel_id: number; issuer: string };
-    issuer?: string;
+    fuel_issuer?: { fuel_id: number; vendor: string };
+    vendor?: string;
+    // new API field for vendor info
+    fuel_vendor?: { id: number | string; vendor?: string; logo?: string };
 }
 
 interface FuelMtnDetailProps {
     stmtId: number;
 }
 
+
+
+
+
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) => {
     // Add state for current statement ID (can change after creation)
     const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
+
+    const [data, setData] = useState<FuelBillDetail | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [editableDetails, setEditableDetails] = useState<FuelDetail[]>([]);
+    const [search, setSearch] = useState('');
+    const [showEmptyRowsOnly, setShowEmptyRowsOnly] = useState(false);
+
+    // ActionSidebar state
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
+    const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
+    const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
+
+    // Add Fleet Card sidebar state
+    const [addFleetCardSidebarOpen, setAddFleetCardSidebarOpen] = useState(false);
+    const [availableFleetCardsToAdd, setAvailableFleetCardsToAdd] = useState<FleetCardWithAsset[]>([]);
+    const [fleetCardSearch, setFleetCardSearch] = useState('');
+
+    // Edit form state
+    const [editFormData, setEditFormData] = useState({
+        card_no: '',
+        costcenter_id: '',
+        purpose: 'project'
+    });
+
+
+    // Add state for summary fields with default values for RON95, RON97, Diesel
+    const [summary, setSummary] = useState({
+        stmt_stotal: '',
+        stmt_disc: '',
+        stmt_tax: '',
+        stmt_rounding: '',
+        stmt_total: '',
+        stmt_ron95: '2.05',
+        stmt_ron97: '3.18',
+        stmt_diesel: '2.88',
+    });
+
+
+    // State for vendor select
+    const [vendors, setVendors] = useState<{ fuel_id: number; vendor: string; logo: string; image2: string }[]>([]);
+    const [selectedVendor, setSelectedVendor] = useState<string>('');
+
+    // Helper to get vendor by id and logo path for rendering
+    const getVendorById = (id?: string) => vendors.find(v => String(v.fuel_id) === String(id));
+    const getVendorLogo = (id?: string) => getVendorById(id)?.logo || '';
+
+    // State for header fields
+    const [header, setHeader] = useState({
+        stmt_no: '',
+        stmt_date: '',
+        stmt_litre: '',
+    });
+
+    // Add state for loadingDetails
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [updatingDetail, setUpdatingDetail] = useState(false);
+
+    // Validation state
+    const [errors, setErrors] = useState({
+        vendor: false,
+        stmt_no: false,
+        stmt_date: false,
+    });
 
     // Save handler for form submission
     const handleSave = async () => {
         if (!validateForm()) {
             return;
         }
-        
+
         setSaving(true);
         const payload = buildFormPayload();
         try {
@@ -137,30 +209,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     // ...existing state declarations...
     // Summarize amount by cost center
 
-    const [data, setData] = useState<FuelBillDetail | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [editableDetails, setEditableDetails] = useState<FuelDetail[]>([]);
-    const [search, setSearch] = useState('');
-    const [showEmptyRowsOnly, setShowEmptyRowsOnly] = useState(false);
-
-    // ActionSidebar state
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
-    const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
-    const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
-
-    // Add Fleet Card sidebar state
-    const [addFleetCardSidebarOpen, setAddFleetCardSidebarOpen] = useState(false);
-    const [availableFleetCardsToAdd, setAvailableFleetCardsToAdd] = useState<FleetCardWithAsset[]>([]);
-    const [fleetCardSearch, setFleetCardSearch] = useState('');
-
-    // Edit form state
-    const [editFormData, setEditFormData] = useState({
-        card_no: '',
-        costcenter_id: '',
-        purpose: 'project'
-    });
 
     // Split cost center summary by category (project, staffcost)
     const costCenterSummary = React.useMemo(() => {
@@ -179,10 +227,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     // Helper to build form payload for API submission
     const buildFormPayload = () => {
         const petrolAmount = editableDetails
-            .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'petrol')
+            .filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
             .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
         const dieselAmount = editableDetails
-            .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'diesel')
+            .filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
             .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
         const totalKM = editableDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0);
         const totalLitre = editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0);
@@ -204,7 +252,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             stmt_stotal: fmtAmount(summary.stmt_stotal),
             stmt_disc: fmtAmount(summary.stmt_disc),
             stmt_total: fmtAmount(summary.stmt_total),
-            stmt_issuer: selectedIssuer,
+            stmt_issuer: selectedVendor,
             petrol_amount: fmtAmount(petrolAmount),
             diesel_amount: fmtAmount(dieselAmount),
             stmt_ron95: fmtAmount(summary.stmt_ron95),
@@ -218,7 +266,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 const totalKM = fmtNum(detail.total_km);
                 const litre = fmtNum(detail.total_litre);
                 return {
-                    vehicle_id: asset.vehicle_id,
+                    asset_id: asset.asset_id,
                     stmt_date: header.stmt_date,
                     card_id: detail.fleetcard?.id || '',
                     costcenter_id: costcenter ? costcenter.id : null,
@@ -234,17 +282,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         };
     };
 
-    // Add state for summary fields with default values for RON95, RON97, Diesel
-    const [summary, setSummary] = useState({
-        stmt_stotal: '',
-        stmt_disc: '',
-        stmt_tax: '',
-        stmt_rounding: '',
-        stmt_total: '',
-        stmt_ron95: '2.05',
-        stmt_ron97: '3.18',
-        stmt_diesel: '2.88',
-    });
 
     // Auto-calculate subtotal and total from details and discount
     useEffect(() => {
@@ -257,36 +294,18 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         }));
     }, [editableDetails, summary.stmt_disc]);
 
-    // State for issuer select
-    const [issuers, setIssuers] = useState<{ fuel_id: number; f_issuer: string; f_imgpath: string; image2: string }[]>([]);
-    const [selectedIssuer, setSelectedIssuer] = useState<string>('');
-
-    // State for header fields
-    const [header, setHeader] = useState({
-        stmt_no: '',
-        stmt_date: '',
-        stmt_litre: '',
-    });
-
-    // Add state for loadingDetails
-    const [loadingDetails, setLoadingDetails] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [updatingDetail, setUpdatingDetail] = useState(false);
-
-    // Validation state
-    const [errors, setErrors] = useState({
-        issuer: false,
-        stmt_no: false,
-        stmt_date: false,
-    });
 
     useEffect(() => {
         setLoading(true);
         setError(null);
-        // Fetch issuers
-        authenticatedApi.get<{ data: { fuel_id: number; f_issuer: string; f_imgpath: string; image2: string }[] }>(`/api/bills/fuel/issuer`)
+        // Fetch vendors (new backend shape: { data: [{ id, name, logo, image2 }] })
+        authenticatedApi.get<{ status: string; message: string; data: { id: number; name: string; logo?: string; image2?: string }[] }>(`/api/bills/fuel/vendor`)
             .then(res => {
-                setIssuers(res.data.data);
+                const list = (res.data && Array.isArray(res.data.data)) ? res.data.data : [];
+                // normalize to existing `vendors` state shape
+                setVendors(list.map(v => ({ fuel_id: v.id, vendor: v.name, logo: v.logo || '', image2: v.image2 || '' })));
+            }).catch(err => {
+                console.error('Error fetching vendors:', err);
             });
 
         // Fetch fleet cards and cost centers for editing
@@ -304,12 +323,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         if (currentStmtId && currentStmtId > 0) {
             authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${currentStmtId}`)
                 .then(res => {
-                    setData(res.data.data);
-                    setEditableDetails(res.data.data.details.map(d => ({
-                        ...d,
-                        card_id: d.fleetcard ? String(d.fleetcard.id) : '',
-                        card_no: d.fleetcard?.card_no ?? '',
-                    })));
+                        setData(res.data.data);
+                        // normalize update response details into the UI shape
+                        const normalized = (res.data.data.details || []).map((d: any) => normalizeIncomingDetail(d));
+                        setEditableDetails(normalized);
                     setSummary({
                         stmt_stotal: res.data.data.stmt_stotal || '',
                         stmt_disc: res.data.data.stmt_disc || '',
@@ -325,7 +342,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         stmt_date: res.data.data.stmt_date ? res.data.data.stmt_date.slice(0, 10) : '',
                         stmt_litre: res.data.data.stmt_litre || '',
                     });
-                    setSelectedIssuer(res.data.data.fuel_issuer?.fuel_id ? String(res.data.data.fuel_issuer.fuel_id) : '');
+                    // Prefer new `fuel_vendor` field from API; fall back to legacy `fuel_issuer` if present
+                    setSelectedVendor(
+                        res.data.data.fuel_vendor?.id ? String(res.data.data.fuel_vendor.id) : (
+                            res.data.data.fuel_issuer?.fuel_id ? String(res.data.data.fuel_issuer.fuel_id) : ''
+                        )
+                    );
                     setLoading(false);
                 })
                 .catch(() => {
@@ -351,10 +373,46 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 stmt_date: '',
                 stmt_litre: '',
             });
-            setSelectedIssuer('');
+            setSelectedVendor('');
             setLoading(false);
         }
     }, [currentStmtId]);
+
+    // Normalize incoming items from either endpoint so table columns can use a single shape
+    const normalizeIncomingDetail = (item: any) => {
+        const fleetcardId = item.fleetcard?.id ?? item.id ?? item.card_id ?? 0;
+        const cardNo = item.fleetcard?.card_no ?? item.card_no ?? '';
+        const assetObj = item.asset || {};
+        const assetId = assetObj.id ?? assetObj.asset_id ?? item.asset_id ?? 0;
+        const registerNumber = assetObj.register_number ?? assetObj.vehicle_regno ?? item.register_number ?? '';
+    const fuelType = assetObj.fuel_type ?? assetObj.vfuelType ?? item.vfuel_type ?? '';
+        const purpose = assetObj.purpose ?? item.purpose ?? '';
+        const costcenter = assetObj.costcenter ?? null;
+
+        return {
+            s_id: item.s_id ?? item.id ?? Date.now(),
+            stmt_id: item.stmt_id ?? 0,
+            fleetcard: {
+                id: fleetcardId,
+                card_no: cardNo,
+            },
+            asset: {
+                id: assetId,
+                asset_id: assetId,
+                register_number: registerNumber,
+                // normalized fuel_type
+                fuel_type: fuelType,
+                costcenter: costcenter,
+                purpose: purpose,
+            },
+            stmt_date: item.stmt_date ?? (item.reg_date ? String(item.reg_date).slice(0, 10) : ''),
+            start_odo: item.start_odo ?? 0,
+            end_odo: item.end_odo ?? 0,
+            total_km: item.total_km ?? 0,
+            total_litre: item.total_litre ?? '',
+            amount: item.amount ?? '',
+        } as any;
+    };
 
     const handleDetailChange = (idx: number, field: keyof FuelDetail, value: string | number) => {
         setEditableDetails(prev => prev.map((detail, i) => {
@@ -427,7 +485,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
 
     // Filtered details based on asset search and empty row filter
     const filteredDetails = editableDetails.filter(detail => {
-        const matchesSearch = detail.asset?.vehicle_regno?.toLowerCase().includes(search.toLowerCase());
+        const matchesSearch = detail.asset?.register_number?.toLowerCase().includes(search.toLowerCase());
         if (showEmptyRowsOnly) {
             return matchesSearch && !isRowFilled(detail);
         }
@@ -438,14 +496,15 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const filledRowsCount = editableDetails.filter(isRowFilled).length;
     const totalRowsCount = editableDetails.length;
 
-    const handleIssuerChange = async (fuelId: string) => {
-        setSelectedIssuer(fuelId);
+    const handleVendorChange = async (fuelId: string) => {
+        setSelectedVendor(fuelId);
         // Only in create mode (currentStmtId falsy or 0)
         if (!currentStmtId || currentStmtId === 0) {
             setLoadingDetails(true);
             try {
-                const res = await authenticatedApi.get(`/api/bills/fleet/${fuelId}/issuer`);
-                console.log('API Response:', res.data); // Debug log
+                // New backend: query fleet cards by vendor id
+                const res = await authenticatedApi.get('/api/bills/fleet', { params: { vendor: fuelId } });
+                console.log('API Response (fleet by vendor):', res.data); // Debug log
                 let items = [];
                 if (res.data && typeof res.data === 'object' && 'data' in res.data && Array.isArray((res.data as any).data)) {
                     items = (res.data as any).data;
@@ -453,28 +512,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     items = res.data;
                 }
                 console.log('Items to map:', items); // Debug log
-                const details = items.map((item: any) => ({
-                    s_id: item.id || 0,
-                    stmt_id: 0,
-                    fleetcard: {
-                        id: item.id || 0,
-                        card_no: item.card_no || '',
-                    },
-                    asset: {
-                        vehicle_id: item.asset?.vehicle_id || 0,
-                        vehicle_regno: item.asset?.vehicle_regno || '',
-                        vfuel_type: item.asset?.fuel_type || item.asset?.vfuel_type || '',
-                        costcenter: item.asset?.costcenter || null,
-                        purpose: item.asset?.purpose || '',
-                    },
-                    stmt_date: item.reg_date ? item.reg_date.slice(0, 10) : '',
-                    start_odo: item.start_odo || 0,
-                    end_odo: item.end_odo || 0,
-                    total_km: item.total_km || 0,
-                    total_litre: item.total_litre || '',
-                    amount: item.amount || '',
-                }));
-                console.log('Mapped details:', details); // Debug log
+                const details = items.map((item: any) => normalizeIncomingDetail(item));
+                console.log('Mapped details (normalized):', details); // Debug log
                 setEditableDetails(details);
             } catch (err) {
                 console.error('Error fetching issuer details:', err); // Debug log
@@ -489,7 +528,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     // Form validation
     const validateForm = () => {
         const newErrors = {
-            issuer: !selectedIssuer,
+            vendor: !selectedVendor,
             stmt_no: !header.stmt_no.trim(),
             stmt_date: !header.stmt_date.trim(),
         };
@@ -499,13 +538,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
 
     // Check if all required fields are filled (for visual feedback)
     const isRequiredFieldsFilled = () => {
-        return selectedIssuer && header.stmt_no.trim() && header.stmt_date.trim();
+        return selectedVendor && header.stmt_no.trim() && header.stmt_date.trim();
     };
 
     // Get progress status for each required field
     const getFieldProgress = () => {
         const fields = [
-            { name: 'Issuer', completed: !!selectedIssuer },
+            { name: 'Issuer', completed: !!selectedVendor },
             { name: 'Statement No', completed: !!header.stmt_no.trim() },
             { name: 'Statement Date', completed: !!header.stmt_date.trim() }
         ];
@@ -540,7 +579,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             const payload = {
                 card_id: detail.fleetcard?.id,
                 card_no: editFormData.card_no.trim(),
-                vehicle_id: detail.asset?.vehicle_id,
+                asset_id: detail.asset?.asset_id,
                 costcenter_id: editFormData.costcenter_id ? parseInt(editFormData.costcenter_id) : null,
                 purpose: editFormData.purpose
             };
@@ -633,9 +672,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 card_no: fleetCard.card_no || '',
             },
             asset: {
-                vehicle_id: fleetCard.asset?.vehicle_id || 0,
-                vehicle_regno: fleetCard.asset?.vehicle_regno || '',
-                vfuel_type: (fleetCard.asset as any)?.fuel_type || fleetCard.asset?.vfuel_type || '',
+                asset_id: fleetCard.asset?.asset_id || 0,
+                register_number: fleetCard.asset?.register_number || '',
+                fuel_type: (fleetCard.asset as any)?.fuel_type || '',
                 costcenter: fleetCard.asset?.costcenter || null,
                 purpose: fleetCard.asset?.purpose || 'project',
             },
@@ -680,7 +719,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             <div className="flex gap-6 px-6 mx-auto">
                 <div className="pt-4 w-full space-y-6">
                     <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
-                        <h3 className="text-lg font-semibold mb-2">Statement Info</h3>
+                        <div className="flex items-center justify-between mb-2">
+                            <h1 className="text-2xl font-semibold">Statement Info</h1>
+                            {selectedVendor && getVendorLogo(selectedVendor) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={getVendorLogo(selectedVendor)} alt="vendor logo" className="w-12 h-12 object-contain rounded" />
+                            ) : null}
+                        </div>
                         {(!currentStmtId || currentStmtId === 0) && (
                             <div className={`mb-4 p-3 border rounded-lg ${isRequiredFieldsFilled()
                                 ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
@@ -713,34 +758,44 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             <div className="flex flex-col">
                                 <TooltipProvider>
-                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !selectedIssuer}>
+                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !selectedVendor}>
                                         <TooltipTrigger asChild>
-                                            <label className={`font-medium mb-1 cursor-help ${errors.issuer ? 'text-red-500' : 'text-gray-800'}`}>
+                                            <label className={`font-medium mb-1 cursor-help ${errors.vendor ? 'text-red-500' : 'text-gray-800'}`}>
                                                 Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
                                             </label>
                                         </TooltipTrigger>
                                         {(!currentStmtId || currentStmtId === 0) && (
                                             <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={-7}>
-                                                <p>Select the fuel issuer/provider (e.g., Petronas, Shell, BHP). This field is required.</p>
+                                                <p>Select the fuel vendor (e.g., Petronas, Shell, BHP). This field is required.</p>
                                             </TooltipContent>
                                         )}
                                     </Tooltip>
                                 </TooltipProvider>
-                                <Select value={selectedIssuer} onValueChange={handleIssuerChange}>
-                                    <SelectTrigger className={`w-full bg-gray-100 border-0 rounded-none ${(!currentStmtId || currentStmtId === 0) && !selectedIssuer ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
-                                        <SelectValue placeholder="Select Issuer" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectGroup>
-                                            <SelectLabel>Issuer</SelectLabel>
-                                            {issuers.map(issuer => (
-                                                <SelectItem key={issuer.fuel_id} value={String(issuer.fuel_id)}>
-                                                    {issuer.f_issuer}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectGroup>
-                                    </SelectContent>
-                                </Select>
+                                <div className="flex items-center gap-3">
+                                    <Select value={selectedVendor} onValueChange={handleVendorChange}>
+                                        <SelectTrigger className={`w-full bg-gray-100 border-0 rounded-none ${(!currentStmtId || currentStmtId === 0) && !selectedVendor ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
+                                            <SelectValue placeholder="Select Issuer" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectLabel>Fuel Vendor</SelectLabel>
+                                                {vendors.map(v => (
+                                                    <SelectItem key={v.fuel_id} value={String(v.fuel_id)}>
+                                                        <div className="flex items-center gap-2">
+                                                            {v.logo ? (
+                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                <img src={v.logo} alt={v.vendor} className="w-6 h-6 object-contain rounded" />
+                                                            ) : null}
+                                                            <span>{v.vendor}</span>
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+
+                                    {/* selected vendor inline preview removed per request */}
+                                </div>
                             </div>
                             <div className="flex flex-col">
                                 <TooltipProvider>
@@ -840,7 +895,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             type="text"
                                             value={(() => {
                                                 return editableDetails
-                                                    .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'petrol')
+                                                    .filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
                                                     .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
                                                     .toFixed(2);
                                             })()}
@@ -854,7 +909,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             type="text"
                                             value={(() => {
                                                 return editableDetails
-                                                    .filter(d => d.asset?.vfuel_type?.toLowerCase() === 'diesel')
+                                                    .filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
                                                     .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
                                                     .toFixed(2);
                                             })()}
@@ -918,8 +973,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                 className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
                                             >
                                                 {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
-                                                {saving 
-                                                    ? "Submitting..." 
+                                                {saving
+                                                    ? "Submitting..."
                                                     : (isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application")
                                                 }
                                             </Button>
@@ -963,7 +1018,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         <div className="flex items-center justify-between mb-2 gap-2">
                             <div className="flex items-center gap-4">
                                 <h3 className="text-xl font-semibold flex items-center gap-2">
-                                    Details
+                                    Consumer Details
                                     {loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
                                 </h3>
                                 <div className="flex items-center gap-2">
@@ -1075,9 +1130,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     </div>
                                                 </td>
                                                 <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
-                                                <td className="border px-2">{detail.asset?.vehicle_regno || ''}</td>
+                                                <td className="border px-2">{detail.asset?.register_number || ''}</td>
                                                 <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
-                                                <td className="border px-2">{detail.asset?.vfuel_type || ''}</td>
+                                                <td className="border px-2">{detail.asset?.fuel_type || ''}</td>
                                                 <td className="border px-2">{detail.asset?.purpose || ''}</td>
                                                 <td className="border text-right">
                                                     <Input
@@ -1301,7 +1356,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             const searchLower = fleetCardSearch.toLowerCase();
                                             return (
                                                 card.card_no?.toLowerCase().includes(searchLower) ||
-                                                card.asset?.vehicle_regno?.toLowerCase().includes(searchLower)
+                                                card.asset?.register_number?.toLowerCase().includes(searchLower)
                                             );
                                         })
                                         .map((card) => (
@@ -1325,8 +1380,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                             </div>
                                                             {card.asset && (
                                                                 <div className="text-sm text-gray-600 mt-1">
-                                                                    <div>Vehicle: {card.asset.vehicle_regno}</div>
-                                                                    <div>Fuel Type: {(card.asset as any).fuel_type || card.asset.vfuel_type}</div>
+                                                                    <div>Vehicle: {card.asset.register_number}</div>
+                                                                    <div>Fuel Type: {(card.asset as any).fuel_type}</div>
                                                                     {card.asset.costcenter && (
                                                                         <div>Cost Center: {card.asset.costcenter.name}</div>
                                                                     )}
@@ -1343,7 +1398,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         const searchLower = fleetCardSearch.toLowerCase();
                                         return (
                                             card.card_no?.toLowerCase().includes(searchLower) ||
-                                            card.asset?.vehicle_regno?.toLowerCase().includes(searchLower)
+                                            card.asset?.register_number?.toLowerCase().includes(searchLower)
                                         );
                                     }).length === 0 && fleetCardSearch && (
                                             <div className="text-center py-8 text-gray-500">

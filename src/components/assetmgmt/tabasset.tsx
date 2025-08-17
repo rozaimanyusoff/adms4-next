@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashAsset from "./dash-asset";
-import CoreAsset from "./core-asset";
+import CoreAsset from "./record-asset";
 
 const AssetMgmtMain = () => {
     const tabTitles = [

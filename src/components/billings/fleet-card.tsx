@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { authenticatedApi } from "@/config/api";
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from "@components/ui/action-aside";
-import { Plus, Replace, ArrowBigLeft, ArrowBigRight, Loader2 } from "lucide-react";
+import { Plus, ArrowBigLeft, ArrowBigRight, Loader2 } from "lucide-react";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,22 +13,24 @@ import { toast } from "sonner";
 
 interface FleetCard {
     id: number;
-    fuel: {
-        fuel_id: number;
-        fuel_issuer: string;
-    };
-    asset: {
-        vehicle_id: number;
-        vehicle_regno: string;
-        fuel_type: string;
-        purpose: string;
-    };
     card_no: string;
-    reg_date: string | null;
-    remarks: string | null;
-    pin_no: string | null;
-    status: string;
-    expiry: string | null;
+    vendor?: {
+        fuel_id?: number;
+        fuel_issuer?: string;
+    };
+    asset?: {
+        id: number;
+        register_number?: string;
+        costcenter?: { id: number; name: string };
+        fuel_type?: string;
+        purpose?: string;
+    };
+    vehicle_id?: number;
+    reg_date?: string | null;
+    remarks?: string | null;
+    pin_no?: string | null;
+    status?: string;
+    expiry?: string | null;
 }
 
 interface IssuerOption {
@@ -36,139 +38,211 @@ interface IssuerOption {
     f_issuer: string;
 }
 
-interface AssetOption {
-    vehicle_id: number;
-    vehicle_regno: string;
-    vtrans_type: string;
-    vfuel_type: string;
-    v_dop: string;
-    classification: string;
-    record_status: string;
-    purpose: string;
-    condition_status: string;
-    costcenter: {
-        id: number;
-        name: string;
-    };
-    owner: {
-        ramco_id: string;
-        full_name: string;
-    };
-    brand: {
-        id: number;
-        name: string;
-    };
-    model: {
-        id: number;
-        name: string;
-    };
-    category: string | null;
-    department: {
-        id: number;
-        name: string;
-    };
-    fleetcard: {
-        id: number;
-        card_no: string;
-    };
-}
-
 const FleetCardList: React.FC = () => {
-    const [fleetCards, setFleetCards] = useState<FleetCard[]>([]);
+    const [cards, setCards] = useState<FleetCard[]>([]);
     const [issuers, setIssuers] = useState<IssuerOption[]>([]);
-    const [assets, setAssets] = useState<AssetOption[]>([]);
+    const [assets, setAssets] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string } }[]>([]);
     const [loading, setLoading] = useState(true);
-    const [open, setOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+    const [assetOptions, setAssetOptions] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string } }[]>([]);
+    const [assetSearch, setAssetSearch] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [replaceField, setReplaceField] = useState<null | 'issuer' | 'asset'>(null);
-    const [optionSearch, setOptionSearch] = useState("");
-    const [form, setForm] = useState({
+    const [editingCard, setEditingCard] = useState<FleetCard | null>(null);
+    const [formLoading, setFormLoading] = useState(false);
+    const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+    const [showDuplicateCardsOnly, setShowDuplicateCardsOnly] = useState(false);
+
+    interface FleetForm {
+        card_no: string;
+        asset_id: string;
+        fuel_id: string;
+        pin: string;
+        status: string;
+        reg_date: string;
+        expiry_date: string;
+        remarks: string;
+    }
+
+    const [form, setForm] = useState<FleetForm>({
         card_no: '',
-        vehicle_id: '',
+        asset_id: '',
         fuel_id: '',
         pin: '',
-        status: 'Active',
+        status: 'active',
         reg_date: '',
         expiry_date: '',
         remarks: '',
     });
-    const [editingId, setEditingId] = useState<string | number | null>(null);
-    const [formLoading, setFormLoading] = useState(false);
 
     useEffect(() => {
         setLoading(true);
         setError(null);
-
-        authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet")
-            .then(res => {
-                setFleetCards(res.data?.data || []);
-                setLoading(false);
-            })
-            .catch(() => {
-                setError("Failed to load fleet cards.");
-                setLoading(false);
+        Promise.all([
+            authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet"),
+            authenticatedApi.get<{ data: IssuerOption[] }>("/api/bills/fuel/issuer")
+        ])
+        .then(([cardsRes, issuersRes]) => {
+            const fetched = cardsRes.data?.data || [];
+            setCards(fetched);
+            setIssuers(issuersRes.data?.data || []);
+            // derive unique assets from cards so form can show register_number
+            const uniqueAssetsMap = new Map<number, { id: number; register_number?: string; costcenter?: { id: number; name: string } }>();
+            fetched.forEach(c => {
+                if (c.asset && c.asset.id != null && !uniqueAssetsMap.has(c.asset.id)) {
+                    uniqueAssetsMap.set(c.asset.id, { id: c.asset.id, register_number: c.asset.register_number, costcenter: c.asset.costcenter });
+                }
             });
-
-        authenticatedApi.get<{ data: IssuerOption[] }>("/api/bills/fuel/issuer")
-            .then(res => setIssuers(res.data.data || []));
-
-        authenticatedApi.get<{ data: AssetOption[] }>("/api/bills/temp-vehicle")
-            .then(res => setAssets(res.data.data || []))
-            .catch(() => toast.error("Failed to load assets."));
+            setAssets(Array.from(uniqueAssetsMap.values()));
+            setLoading(false);
+        })
+        .catch(() => {
+            setError("Failed to load fleet cards.");
+            setLoading(false);
+        });
     }, []);
+
+    // compute duplicated asset ids
+    const duplicatedAssetIds = React.useMemo(() => {
+        const counts = new Map<number, number>();
+        cards.forEach(c => {
+            const id = c.asset?.id;
+            if (typeof id === 'number') counts.set(id, (counts.get(id) || 0) + 1);
+        });
+        const dup = new Set<number>();
+        counts.forEach((v, k) => { if (v > 1) dup.add(k); });
+        return dup;
+    }, [cards]);
+
+    const duplicatedCount = duplicatedAssetIds.size;
+
+    // compute duplicated card numbers
+    const duplicatedCardNumbers = React.useMemo(() => {
+        const counts = new Map<string, number>();
+        cards.forEach(c => {
+            const v = c.card_no;
+            if (v) counts.set(v, (counts.get(v) || 0) + 1);
+        });
+        const dup = new Set<string>();
+        counts.forEach((v, k) => { if (v > 1) dup.add(k); });
+        return dup;
+    }, [cards]);
+
+    const duplicatedCardsCount = duplicatedCardNumbers.size;
+
+    // data to show in grid based on filter
+    const displayedCards = React.useMemo(() => {
+        return cards.filter(c => {
+            if (showDuplicateCardsOnly && !duplicatedCardNumbers.has(c.card_no || '')) return false;
+            if (showDuplicatesOnly && !(c.asset && duplicatedAssetIds.has(c.asset.id!))) return false;
+            return true;
+        });
+    }, [cards, showDuplicatesOnly, duplicatedAssetIds, showDuplicateCardsOnly, duplicatedCardNumbers]);
+
+    // derive singleSelect options from data
+    const costcenterOptions = React.useMemo(() => {
+        const set = new Set<string>();
+        cards.forEach(c => {
+            const name = c.asset?.costcenter?.name;
+            if (name) set.add(name);
+        });
+        return Array.from(set);
+    }, [cards]);
+
+    const fuelTypeOptions = React.useMemo(() => {
+        const set = new Set<string>();
+        cards.forEach(c => {
+            const v = c.asset?.fuel_type;
+            if (v) set.add(v);
+        });
+        return Array.from(set);
+    }, [cards]);
+
+    const purposeOptions = React.useMemo(() => {
+        const set = new Set<string>();
+        cards.forEach(c => {
+            const v = c.asset?.purpose;
+            if (v) set.add(v);
+        });
+        return Array.from(set);
+    }, [cards]);
+
+    const statusOptions = React.useMemo(() => {
+        const set = new Set<string>();
+        cards.forEach(c => {
+            const v = c.status;
+            if (v) set.add(v);
+        });
+        return Array.from(set);
+    }, [cards]);
 
     const columns: ColumnDef<FleetCard>[] = [
         {
             key: "__row" as any,
             header: '#',
-            render: (row: FleetCard) => fleetCards.findIndex(fc => fc.id === row.id) + 1,
+            render: (row: FleetCard) => {
+                const idx = displayedCards.findIndex(r => r.id === row.id);
+                return idx >= 0 ? String(idx + 1) : '';
+            },
             sortable: false,
             filter: undefined,
-            width: 50
+            width: 50,
         },
         {
             key: 'card_no',
             header: 'Card No',
-            render: (row: FleetCard) => row.card_no,
+            render: (row: FleetCard) => row.card_no || '',
+            sortable: true,
+            filter: 'input',
+        },
+        {
+            key: 'vendor',
+            header: 'Vendor',
+            render: (row: FleetCard) => row.vendor?.fuel_issuer || '',
+            filter: 'input',
+        },
+        {
+            key: 'register_number',
+            header: 'Register Number',
+            render: (row: FleetCard) => row.asset?.register_number || '',
+            sortable: true,
             filter: 'input',
         },
         {
             key: 'pin_no',
             header: 'PIN',
-            render: (row: FleetCard) => row.pin_no,
-        },
-        {
-            key: 'fuel',
-            header: 'Issuer',
-            render: (row: FleetCard) => row.fuel.fuel_issuer,
-            filter: 'singleSelect',
+            render: (row: FleetCard) => row.pin_no || '',
+            filter: 'input',
         },
         {
             key: 'fuel_type',
             header: 'Fuel Type',
-            render: (row: FleetCard) => row.asset?.fuel_type,
+            render: (row: FleetCard) => row.asset?.fuel_type || '',
             filter: 'singleSelect',
+            filterParams: { options: fuelTypeOptions },
             colClass: 'capitalize',
         },
         {
-            key: 'asset',
-            header: 'Vehicle Reg No',
-            render: (row: FleetCard) => row.asset?.vehicle_regno,
-            filter: 'input',
+            key: 'costcenter',
+            header: 'Cost Center',
+            render: (row: FleetCard) => row.asset?.costcenter?.name || '',
+            filter: 'singleSelect',
+            filterParams: { options: costcenterOptions },
         },
         {
             key: 'purpose',
             header: 'Purpose',
-            render: (row: FleetCard) => row.asset?.purpose,
+            render: (row: FleetCard) => row.asset?.purpose || '',
             filter: 'singleSelect',
+            filterParams: { options: purposeOptions },
             colClass: 'capitalize',
         },
         {
             key: 'status',
             header: 'Status',
-            render: (row: FleetCard) => row.status,
+            render: (row: FleetCard) => row.status || '',
             filter: 'singleSelect',
+            filterParams: { options: statusOptions },
             colClass: 'capitalize',
         },
         {
@@ -191,68 +265,69 @@ const FleetCardList: React.FC = () => {
         },
     ] as any;
 
-    const handleOpenSidebar = (row?: FleetCard) => {
-        setSidebarOpen(true);
-        setReplaceField(null);
-        setOptionSearch("");
-        if (row) {
-            setEditingId(row.id);
-            setFormLoading(true); // Start loading
+    const openEditor = (card?: FleetCard) => {
+        if (card) {
+            setEditingCard(card);
             setForm({
-                card_no: row.card_no || '',
-                vehicle_id: row.asset?.vehicle_id ? String(row.asset.vehicle_id) : '',
-                fuel_id: row.fuel?.fuel_id ? String(row.fuel.fuel_id) : '',
-                pin: row.pin_no || '',
-                status: row.status || 'Active',
-                reg_date: row.reg_date ? row.reg_date.slice(0, 10) : '',
-                expiry_date: row.expiry ? row.expiry.slice(0, 10) : '',
-                remarks: row.remarks || '',
+                card_no: card.card_no || '',
+                asset_id: card.asset?.id ? String(card.asset.id) : '',
+                fuel_id: card.vendor?.fuel_id ? String(card.vendor.fuel_id) : '',
+                pin: card.pin_no || '',
+                status: (card.status || 'active').toLowerCase(),
+                reg_date: card.reg_date ? card.reg_date.slice(0, 10) : '',
+                expiry_date: card.expiry ? card.expiry.slice(0, 10) : '',
+                remarks: card.remarks || '',
             });
-            setFormLoading(false); // Done loading
         } else {
-            setEditingId(null);
-            setForm({
-                card_no: '',
-                vehicle_id: '',
-                fuel_id: '',
-                pin: '',
-                status: 'Active',
-                reg_date: '',
-                expiry_date: '',
-                remarks: '',
-            });
-            setFormLoading(false); // Not loading for create
+            setEditingCard(null);
+            setForm({ card_no: '', asset_id: '', fuel_id: '', pin: '', status: 'active', reg_date: '', expiry_date: '', remarks: '' });
         }
+        setSidebarOpen(true);
     };
 
-    // Update handleSubmit to replace undefined reg_date and expiry_date with null
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // fetch active assets for picker when opened
+    useEffect(() => {
+        if (!assetPickerOpen) return;
+        // if we already have options, use cached list to avoid duplicate requests
+        if (assetOptions.length > 0) return;
+        authenticatedApi.get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } }[] }>("/api/assets", { params: { type: 2, status: 'active' } })
+            .then(res => setAssetOptions(res.data?.data || []))
+            .catch(() => {
+                toast.error('Failed to load assets');
+                setAssetOptions([]);
+            });
+    }, [assetPickerOpen, assetOptions.length]);
+
+    const handleSubmit = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         const payload = {
             card_no: form.card_no,
             pin: form.pin,
             fuel_id: form.fuel_id,
-            vehicle_id: form.vehicle_id,
+            asset_id: form.asset_id,
             status: form.status,
             reg_date: form.reg_date || null,
             expiry_date: form.expiry_date || null,
             remarks: form.remarks,
         };
         try {
-            if (editingId) {
-                await authenticatedApi.put(`/api/bills/fleet/${editingId}`, payload);
+            setFormLoading(true);
+            if (editingCard) {
+                await authenticatedApi.put(`/api/bills/fleet/${editingCard.id}`, payload);
                 toast.success("Fleet card updated successfully");
             } else {
                 await authenticatedApi.post('/api/bills/fleet', payload);
                 toast.success("Fleet card created successfully");
             }
-            // Refresh list and close sidebar
+            // refresh
             const res = await authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet");
-            setFleetCards(res.data?.data || []);
+            setCards(res.data?.data || []);
             setSidebarOpen(false);
-            setEditingId(null);
+            setEditingCard(null);
         } catch (err: any) {
             toast.error(err?.response?.data?.message || 'Failed to save fleet card.');
+        } finally {
+            setFormLoading(false);
         }
     };
 
@@ -261,171 +336,185 @@ const FleetCardList: React.FC = () => {
 
     return (
         <div className="mt-4">
+            {/* Summary cards: duplicates info and toggles */}
+            <div className="mb-4 flex items-center gap-4">
+                <div className="p-3 border rounded bg-sky-100 shadow-sm">
+                    <div className="text-sm text-muted-foreground">Total Cards</div>
+                    <div className="text-lg font-semibold">{cards.length}</div>
+                </div>
+                <div
+                    className={`p-3 border rounded bg-yellow-100 shadow-sm cursor-pointer ${showDuplicatesOnly ? 'ring-2 ring-amber-300' : ''}`}
+                    onClick={() => setShowDuplicatesOnly(s => !s)}
+                    role="button"
+                    aria-pressed={showDuplicatesOnly}
+                >
+                    <div className="text-sm text-muted-foreground">Assets with many cards</div>
+                    <div className="text-lg font-semibold">{duplicatedCount}</div>
+                </div>
+                <div
+                    className={`p-3 border rounded bg-rose-100 shadow-sm cursor-pointer ${showDuplicateCardsOnly ? 'ring-2 ring-rose-300' : ''}`}
+                    onClick={() => setShowDuplicateCardsOnly(s => !s)}
+                    role="button"
+                    aria-pressed={showDuplicateCardsOnly}
+                >
+                    <div className="text-sm text-muted-foreground">Duplicated Card Numbers</div>
+                    <div className="text-lg font-semibold">{duplicatedCardsCount}</div>
+                </div>
+            </div>
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Fleet Cards Management</h2>
                 <Button
                     variant={'default'}
-                    onClick={() => handleOpenSidebar()}
+                    onClick={() => openEditor()}
                 >
                     <Plus size={20} />
                 </Button>
             </div>
             <CustomDataGrid
                 columns={columns}
-                data={fleetCards}
+                data={displayedCards}
                 pagination={false}
                 pageSize={10}
                 dataExport={true}
                 inputFilter={false}
-                onRowDoubleClick={handleOpenSidebar}
+                onRowDoubleClick={(row: FleetCard) => openEditor(row)}
+                rowClass={(row: FleetCard) => {
+                    if (duplicatedCardNumbers.has(row.card_no || '')) return 'bg-rose-100';
+                    if (row.asset && duplicatedAssetIds.has(row.asset.id!)) return 'bg-amber-100';
+                    return '';
+                }}
             />
+
             {sidebarOpen && (
                 <ActionSidebar
-                    onClose={() => { setReplaceField(null); setSidebarOpen(false); }}
-                    title="Add/Edit Fleet Card"
-                    size={replaceField ? 'md' : 'sm'}
+                    onClose={() => setSidebarOpen(false)}
+                    title={editingCard ? 'Edit Fleet Card' : 'Add Fleet Card'}
+                    size={assetPickerOpen ? 'md' : 'sm'}
                     content={
-                        <div className={replaceField ? 'flex flex-row gap-6' : undefined}>
-                            {/* Inline Fleet Card Form */}
+                        <div className={assetPickerOpen ? 'flex gap-4' : undefined}>
                             <form className="space-y-4 flex-1" onSubmit={handleSubmit}>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Card No</label>
-                                    <Input value={form.card_no} onChange={e => setForm(f => ({ ...f, card_no: e.target.value }))} required />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">PIN</label>
-                                    <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Issuer</label>
-                                    <div className="flex gap-2">
-                                        <Select value={form.fuel_id} onValueChange={v => setForm(f => ({ ...f, fuel_id: v }))} required>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Card No</label>
+                                <Input value={form.card_no} onChange={e => setForm(f => ({ ...f, card_no: e.target.value }))} required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">PIN</label>
+                                <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Issuer</label>
+                                <Select value={form.fuel_id} onValueChange={v => setForm(f => ({ ...f, fuel_id: v }))} required>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select Issuer" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {issuers.map(i => (
+                                            <SelectItem key={i.fuel_id} value={String(i.fuel_id)}>{i.f_issuer}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="relative">
+                                <label className="block text-sm font-medium mb-1">Asset</label>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                        <Select value={form.asset_id} onValueChange={v => setForm(f => ({ ...f, asset_id: v }))} required>
                                             <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select Issuer" />
+                                                <SelectValue placeholder="Select Asset" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {issuers.map(i => (
-                                                    <SelectItem key={i.fuel_id} value={String(i.fuel_id)}>{i.f_issuer}</SelectItem>
+                                                {assets.map(a => (
+                                                    <SelectItem key={a.id} value={String(a.id)}>{a.register_number || `#${a.id}`}</SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    <span className="text-amber-500 cursor-pointer" title="Choose from assets" onClick={() => setAssetPickerOpen(true)}>
+                                        <ArrowBigRight />
+                                    </span>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Asset</label>
-                                    <div className="flex gap-2 items-center relative">
-                                        <Input
-                                            value={
-                                                form.vehicle_id
-                                                    ? (
-                                                        assets.find(a => String(a.vehicle_id) === String(form.vehicle_id))?.vehicle_regno
-                                                        || ""
-                                                    )
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                            className="w-full pr-8"
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => { setReplaceField('asset'); }}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace asset</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Status</label>
+                                <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))} required>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Remarks</label>
+                                <textarea
+                                    className="w-full border rounded px-3 py-2 text-sm"
+                                    rows={2}
+                                    value={form.remarks}
+                                    onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+                                    placeholder="Enter remarks (optional)"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium mb-1">Registration Date</label>
+                                    <Input type="date" value={form.reg_date} onChange={e => setForm(f => ({ ...f, reg_date: e.target.value }))} />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Status</label>
-                                    <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))} required>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="active">Active</SelectItem>
-                                            <SelectItem value="inactive">Inactive</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium mb-1">Expiry Date</label>
+                                    <Input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Remarks</label>
-                                    <textarea
-                                        className="w-full border rounded px-3 py-2 text-sm"
-                                        rows={2}
-                                        value={form.remarks}
-                                        onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
-                                        placeholder="Enter remarks (optional)"
-                                    />
-                                </div>
-                                <div className="flex gap-2">
-                                    <div className="flex-1">
-                                        <label className="block text-sm font-medium mb-1">Registration Date</label>
-                                        <Input type="date" value={form.reg_date} onChange={e => setForm(f => ({ ...f, reg_date: e.target.value }))} />
-                                    </div>
-                                    <div className="flex-1">
-                                        <label className="block text-sm font-medium mb-1">Expiry Date</label>
-                                        <Input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} />
-                                    </div>
-                                </div>
-                                <div className="pt-2 flex justify-start">
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button disabled={formLoading}>
-                                                {formLoading ? <Loader2 className="animate-spin mr-2" /> : null}
-                                                {editingId ? 'Update' : 'Save'}
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    Are you sure you want to submit this fleet card information?
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={handleSubmit}>Confirm</AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
+                            </div>
+                            <div className="pt-2 flex justify-start">
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button disabled={formLoading}>
+                                            {formLoading ? <Loader2 className="animate-spin mr-2" /> : null}
+                                            {editingCard ? 'Update' : 'Save'}
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Are you sure you want to submit this fleet card information?
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={handleSubmit}>Confirm</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </div>
                             </form>
-                            {/* End Inline Fleet Card Form */}
-                            {replaceField && (
-                                <div className="border-l px-4 mt-4 flex-1 min-w-[260px] max-w-md">
-                                    <h3 className="font-semibold mb-2">Select a {replaceField === 'issuer' ? 'issuer' : 'cost center'}</h3>
-                                    <Input
-                                        placeholder={`Search ${replaceField === 'issuer' ? 'issuer' : 'cost center'}...`}
-                                        className="mb-3"
-                                        value={optionSearch}
-                                        onChange={e => setOptionSearch(e.target.value)}
-                                    />
-                                    <div className="max-h-[500px] overflow-y-auto space-y-2">
-                                        {replaceField === 'issuer' && issuers.filter(i => i.f_issuer.toLowerCase().includes(optionSearch.toLowerCase())).map(i => (
-                                            <div key={i.fuel_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm(f => ({ ...f, fuel_id: String(i.fuel_id) })); setReplaceField(null); setOptionSearch(""); }} />
-                                                <span className="flex-1 cursor-pointer">{i.f_issuer}</span>
-                                            </div>
-                                        ))}
-                                        {replaceField === 'asset' && assets.filter(a => a.vehicle_regno.toLowerCase().includes(optionSearch.toLowerCase())).map(a => (
-                                            <div key={a.vehicle_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => {
-                                                    setForm(f => ({ ...f, vehicle_id: String(a.vehicle_id) }));
-                                                    setReplaceField(null);
-                                                    setOptionSearch("");
-                                                }} />
-                                                <div className="flex flex-col">
-                                                    <span className="cursor-pointer">{a.vehicle_regno}</span>
-                                                    {/* costcenter */}
-                                                    <span className="text-xs">Cost Ctr:<span className="text-blue-600"> {a.costcenter?.name}</span></span> {/* costcenter name */}
-                                                    <span className="text-xs">Assigned Card:<span className="text-red-600"> {a.fleetcard?.card_no}</span></span> {/* card_no */}
+                            {assetPickerOpen && (
+                                <div className="w-96 border-l pl-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="font-semibold">Select Asset</h3>
+                                        <Button size="sm" variant="default" onClick={() => setAssetPickerOpen(false)}>Hide List</Button>
+                                    </div>
+                                    <Input placeholder="Search..." value={assetSearch} onChange={e => setAssetSearch(e.target.value)} className="mb-3" />
+                                    <div className="max-h-[600px] overflow-y-auto space-y-2">
+                                        {assetOptions.filter(a => (a.register_number || '').toLowerCase().includes(assetSearch.toLowerCase())).map(a => {
+                                            const assigned = cards.find(c => c.asset && c.asset.id === a.id)?.card_no;
+                                            return (
+                                                <div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
+                                                    <div>
+                                                        <div className="font-medium">{a.register_number || `#${a.id}`}</div>
+                                                        <div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                                        <div className="text-xs text-gray-500">Current Card: <span className="text-red-600 font-bold">{assigned || '-'}</span></div>
+                                                    </div>
+                                                    <span className="text-green-500 cursor-pointer" onClick={() => {
+                                                        setForm(f => ({ ...f, asset_id: String(a.id) }));
+                                                        setAssetPickerOpen(false);
+                                                    }} title="Select this asset">
+                                                        <ArrowBigLeft />
+                                                    </span>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}

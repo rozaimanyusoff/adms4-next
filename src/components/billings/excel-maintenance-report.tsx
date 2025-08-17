@@ -24,8 +24,8 @@ interface YearDetail {
 }
 
 interface VehicleData {
-    vehicle_id: number;
-    vehicle: string;
+    asset_id: number;
+    register_number: string;
     category: { id: number; name: string };
     brand: { id: number; name: string };
     model: { id: number; name: string };
@@ -339,7 +339,7 @@ const MaintenanceReport = () => {
 
                                 worksheet.addRow([
                                     no++,
-                                    vehicle.vehicle || '',
+                                    vehicle.register_number || '',
                                     vehicle.category?.name || '',
                                     vehicle.brand?.name || '',
                                     vehicle.model?.name || '',
@@ -356,7 +356,7 @@ const MaintenanceReport = () => {
                                 ]);
 
                             } catch (vehicleError) {
-                                console.error(`Error processing vehicle ${vehicle.vehicle}:`, vehicleError);
+                                console.error(`Error processing vehicle ${vehicle.register_number}:`, vehicleError);
                             }
                         });
 

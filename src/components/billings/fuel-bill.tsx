@@ -28,11 +28,15 @@ interface FuelBill {
   stmt_disc: string;
   stmt_total: string;
   stmt_entry: string;
-  fuel_issuer: {
-    fuel_id: string;
-    issuer: string;
+  // new vendor shape from API
+  vendor?: {
+    id: string | number;
+    name: string;
+    logo?: string;
   };
-  issuer: string; // Added to fix DataGrid column type error
+  // convenience fields used by grid
+  issuer?: string; // vendor name
+  vendor_logo?: string;
 }
 
 // Add global type for window.reloadFuelBillGrid
@@ -59,7 +63,9 @@ const FuelBill = () => {
         setRows(data.map((item, idx) => ({
           ...item,
           rowNumber: idx + 1,
-          issuer: item.fuel_issuer?.issuer || '',
+          // new vendor shape: vendor: { id, name, logo }
+          issuer: item.vendor?.name || (item as any).fuel_issuer?.issuer || '',
+          vendor_logo: item.vendor?.logo || undefined,
           stmt_date: item.stmt_date ? new Date(item.stmt_date).toLocaleDateString() : '',
           stmt_entry: item.stmt_entry ? new Date(item.stmt_entry).toLocaleDateString() : '',
         })));
@@ -126,6 +132,16 @@ const FuelBill = () => {
     },
     { key: 'stmt_no', header: 'Statement No', filter: 'input' },
     { key: 'stmt_date', header: 'Date', },
+    {
+      key: 'vendor_logo',
+      header: 'Logo',
+      render: (row) => (
+        row.vendor_logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={row.vendor_logo} alt={row.issuer || 'logo'} className="w-8 h-8 object-contain rounded" />
+        ) : null
+      ),
+    },
     { key: 'issuer', header: 'Issuer', filter: 'singleSelect' },
     { key: 'petrol', header: 'Petrol', colClass: 'text-right' },
     { key: 'diesel', header: 'Diesel', colClass: 'text-right' },
