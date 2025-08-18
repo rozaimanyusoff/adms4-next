@@ -15,8 +15,10 @@ interface FleetCard {
     id: number;
     card_no: string;
     vendor?: {
-        fuel_id?: number;
-        fuel_issuer?: string;
+        id?: number;
+        name?: string;
+        logo?: string;
+        image2?: string;
     };
     asset?: {
         id: number;
@@ -33,14 +35,16 @@ interface FleetCard {
     expiry?: string | null;
 }
 
-interface IssuerOption {
-    fuel_id: number;
-    f_issuer: string;
+interface VendorOption {
+    id: number;
+    name: string;
+    logo?: string;
+    image2?: string;
 }
 
 const FleetCardList: React.FC = () => {
     const [cards, setCards] = useState<FleetCard[]>([]);
-    const [issuers, setIssuers] = useState<IssuerOption[]>([]);
+    const [vendors, setVendors] = useState<VendorOption[]>([]);
     const [assets, setAssets] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string } }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -80,12 +84,12 @@ const FleetCardList: React.FC = () => {
         setError(null);
         Promise.all([
             authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet"),
-            authenticatedApi.get<{ data: IssuerOption[] }>("/api/bills/fuel/issuer")
+            authenticatedApi.get<{ data: VendorOption[] }>("/api/bills/fuel/vendor")
         ])
-        .then(([cardsRes, issuersRes]) => {
+        .then(([cardsRes, vendorsRes]) => {
             const fetched = cardsRes.data?.data || [];
             setCards(fetched);
-            setIssuers(issuersRes.data?.data || []);
+            setVendors(vendorsRes.data?.data || []);
             // derive unique assets from cards so form can show register_number
             const uniqueAssetsMap = new Map<number, { id: number; register_number?: string; costcenter?: { id: number; name: string } }>();
             fetched.forEach(c => {
@@ -198,7 +202,16 @@ const FleetCardList: React.FC = () => {
         {
             key: 'vendor',
             header: 'Vendor',
-            render: (row: FleetCard) => row.vendor?.fuel_issuer || '',
+            render: (row: FleetCard) => {
+                if (!row.vendor) return '';
+                const src = row.vendor.logo || row.vendor.image2 || '';
+                return (
+                    <div className="flex items-center gap-2">
+                        {src ? <img src={src} alt={row.vendor.name || 'vendor'} className="w-8 h-8 object-contain rounded" /> : null}
+                        <span>{row.vendor.name}</span>
+                    </div>
+                );
+            },
             filter: 'input',
         },
         {
@@ -268,10 +281,12 @@ const FleetCardList: React.FC = () => {
     const openEditor = (card?: FleetCard) => {
         if (card) {
             setEditingCard(card);
-            setForm({
+                // support both new vendor.id and legacy vendor.fuel_id
+                const vendorId = card.vendor?.id ?? (card.vendor as any)?.fuel_id ?? null;
+                setForm({
                 card_no: card.card_no || '',
                 asset_id: card.asset?.id ? String(card.asset.id) : '',
-                fuel_id: card.vendor?.fuel_id ? String(card.vendor.fuel_id) : '',
+                fuel_id: vendorId != null ? String(vendorId) : '',
                 pin: card.pin_no || '',
                 status: (card.status || 'active').toLowerCase(),
                 reg_date: card.reg_date ? card.reg_date.slice(0, 10) : '',
@@ -402,14 +417,17 @@ const FleetCardList: React.FC = () => {
                                 <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium mb-1">Issuer</label>
+                                <label className="block text-sm font-medium mb-1">Vendor</label>
                                 <Select value={form.fuel_id} onValueChange={v => setForm(f => ({ ...f, fuel_id: v }))} required>
                                     <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select Issuer" />
+                                        <SelectValue placeholder="Select Vendor" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {issuers.map(i => (
-                                            <SelectItem key={i.fuel_id} value={String(i.fuel_id)}>{i.f_issuer}</SelectItem>
+                                        {vendors.map(i => (
+                                            <SelectItem key={i.id} value={String(i.id)} className="flex items-center gap-2">
+                                                {i.logo ? <img src={i.logo} alt={i.name} className="w-6 h-6 object-contain rounded" /> : null}
+                                                <span>{i.name}</span>
+                                            </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>

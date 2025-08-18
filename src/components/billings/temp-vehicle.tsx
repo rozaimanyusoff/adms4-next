@@ -35,29 +35,35 @@ interface Category {
 }
 
 interface Vehicle {
-  vehicle_id: number;
-  vehicle_regno: string;
-  vtrans_type: string;
-  vfuel_type: string;
-  v_dop?: string; // Date of Purchase
-  cc_id: string;
-  dept_id: number;
-  loc_id: number;
-  classification: string;
-  record_status: string;
-  purpose: string;
-  condition_status: string;
-  age?: string; // Computed field for vehicle age
-  costcenter?: { id: number; name: string };
-  owner?: { ramco_id: string; full_name: string };
-  brand?: { id: string; name: string };
-  model?: { id: string; name: string };
-  category?: { id: number; name: string };
-  department?: { id: number; name: string };
-  fleetcard?: { id: number; card_no: string };
+  // new backend asset fields
+  id?: number; // asset id
+  register_number?: string; // vehicle registration in new API
+  transmission?: string;
+  fuel_type?: string;
+  purchase_date?: string | null;
+  purchase_year?: number;
+  disposed_date?: string | null;
+  costcenter?: { id: number; name: string } | null;
+  department?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
+  types?: { id: number; name: string } | null; // asset type (e.g., Motor Vehicles)
+  categories?: { id: number; name: string } | null; // backend category object
+  brands?: { id: number; name: string } | null; // backend brand object
+  owner?: { ramco_id: string; full_name: string } | null;
+  model?: { id: string; name: string } | null;
+  fleetcard?: { id: number; card_no: string } | null;
+
+  // UI/state helpers and legacy compatibility ids
   brand_id?: string;
   model_id?: string;
   category_id?: string;
+
+  // other metadata fields
+  classification?: string;
+  record_status?: string;
+  purpose?: string;
+  condition_status?: string;
+  age?: string;
 }
 
 const TempVehicle: React.FC = () => {
@@ -79,14 +85,44 @@ const TempVehicle: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    
-    // Fetch vehicles
-    authenticatedApi.get<{ data: Vehicle[] }>('/api/bills/temp-vehicle')
+
+    // Fetch vehicles (map backend asset shape to local Vehicle shape)
+    authenticatedApi.get<{ data: any[] }>('/api/assets?type=2,10') // Assuming type 2,10 for vehicles
       .then(res => {
         const data = res?.data?.data || [];
-        setVehicles(data);
+        const mapped: Vehicle[] = data.map((item: any) => {
+          // map backend asset -> UI Vehicle using new fields
+          const vehicle: Vehicle = {
+            id: item.id ?? undefined,
+            register_number: item.register_number ?? item.reg_no ?? undefined,
+            transmission: item.transmission ?? undefined,
+            fuel_type: item.fuel_type ?? undefined,
+            purchase_date: item.purchase_date ?? null,
+            purchase_year: item.purchase_year ?? undefined,
+            disposed_date: item.disposed_date ?? null,
+            costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : undefined,
+            department: item.department ? { id: item.department.id, name: item.department.name } : undefined,
+            location: item.location ? { id: item.location.id, name: item.location.name } : undefined,
+            types: item.types ? { id: item.types.id, name: item.types.name } : undefined,
+            categories: item.categories ? { id: item.categories.id, name: item.categories.name } : undefined,
+            brands: item.brands ? { id: Number(item.brands.id), name: item.brands.name } : undefined,
+            owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
+            model: item.model ? { id: String(item.model.id), name: item.model.name } : undefined,
+            fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
+            brand_id: item.brands ? String(item.brands.id) : undefined,
+            model_id: item.model ? String(item.model.id) : undefined,
+            category_id: item.categories ? String(item.categories.id) : undefined,
+            classification: item.classification ?? (item.types?.name ?? undefined),
+            record_status: item.record_status ?? item.status ?? undefined,
+            purpose: item.purpose ?? undefined,
+            condition_status: item.condition_status ?? undefined,
+            age: item.age ?? undefined,
+          };
+          return vehicle;
+        });
+        setVehicles(mapped);
       });
-    
+
     // Fetch other dropdown data
     authenticatedApi.get<{ data: { id: number; code: string }[] }>('/api/assets/departments')
       .then(res => setDepartments(res.data?.data || []));
@@ -97,7 +133,7 @@ const TempVehicle: React.FC = () => {
         ramco_id: String(o.ramco_id),
         full_name: o.full_name
       }))));
-    
+
     // Fetch categories and brands with models, then combine the data
     Promise.all([
       authenticatedApi.get<{ data: any[] }>('/api/assets/categories?type=2,10'), // Using any[] to handle simple brand objects
@@ -105,24 +141,24 @@ const TempVehicle: React.FC = () => {
     ]).then(([categoriesRes, brandsRes]) => {
       const categoriesData = categoriesRes.data?.data || [];
       const brands = brandsRes.data?.data || [];
-      
+
       // Combine the data: replace category brands with full brand data including models
       const updatedCategories = categoriesData.map((category: any) => ({
         ...category,
         brands: (category.brands || []).map((categoryBrand: any) => {
           // Try to match by both ID (with type conversion) and name
-          const fullBrand = brands.find(b => 
-            String(b.id) === String(categoryBrand.id) || 
+          const fullBrand = brands.find(b =>
+            String(b.id) === String(categoryBrand.id) ||
             b.name === categoryBrand.name
           );
-          return fullBrand || { 
-            id: String(categoryBrand.id) || '', 
-            name: categoryBrand.name || '', 
+          return fullBrand || {
+            id: String(categoryBrand.id) || '',
+            name: categoryBrand.name || '',
             categories: []
           };
         }).filter((brand: Brand) => brand.id) // Filter out any invalid brands
       }));
-      
+
       setCategories(updatedCategories as Category[]);
     }).catch(error => {
       console.error('Error fetching categories and brands:', error);
@@ -145,20 +181,20 @@ const TempVehicle: React.FC = () => {
 
   // Update available brands when category changes
   useEffect(() => {
-    if (selectedVehicle?.category) {
-      const selectedCategory = categories.find(c => c.id === selectedVehicle.category?.id);
+    if (selectedVehicle?.categories) {
+      const selectedCategory = categories.find(c => c.id === selectedVehicle.categories?.id);
       if (selectedCategory) {
         setAvailableBrands(selectedCategory.brands || []);
       }
     } else {
       setAvailableBrands([]);
     }
-  }, [selectedVehicle?.category, categories]);
+  }, [selectedVehicle?.categories, categories]);
 
   // Update available models when brand changes - fetch from API
   useEffect(() => {
-    if (selectedVehicle?.brand) {
-      const selectedBrand = availableBrands.find(b => b.id === selectedVehicle.brand?.id);
+    if (selectedVehicle?.brands) {
+  const selectedBrand = availableBrands.find(b => String(b.id) === String(selectedVehicle.brands?.id));
       if (selectedBrand) {
         // Fetch models for the selected brand
         authenticatedApi.get<{ data: Model[] }>(`/api/assets/models?brand=${selectedBrand.id}`)
@@ -174,20 +210,20 @@ const TempVehicle: React.FC = () => {
     } else {
       setAvailableModels([]);
     }
-  }, [selectedVehicle?.brand, availableBrands]);
+  }, [selectedVehicle?.brands, availableBrands]);
 
   const columns: ColumnDef<Vehicle>[] = ([
-    { key: 'vehicle_id', header: 'ID' },
-    { key: 'vehicle_regno', header: 'Reg No', filter: 'input' },
-    { key: 'category', header: 'Category', render: (row: Vehicle) => row.category?.name || '', filter: 'singleSelect' },
-    { key: 'brand', header: 'Brand', render: (row: Vehicle) => row.brand?.name || '', filter: 'singleSelect' },
+    { key: 'id', header: 'ID' },
+    { key: 'register_number', header: 'Reg No', filter: 'input' },
+    { key: 'categories', header: 'Category', render: (row: Vehicle) => row.categories?.name || '', filter: 'singleSelect' },
+    { key: 'brands', header: 'Brand', render: (row: Vehicle) => row.brands?.name || '', filter: 'singleSelect' },
     { key: 'model', header: 'Model', render: (row: Vehicle) => row.model?.name || '', filter: 'singleSelect' },
-    { 
-      key: 'v_dop', 
+    {
+      key: 'purchase_date',
       header: 'Date Purchased',
       render: (row: Vehicle) => {
-        if (!row.v_dop) return '';
-        const date = new Date(row.v_dop);
+        if (!row.purchase_date) return '';
+        const date = new Date(row.purchase_date as string);
         if (date.getFullYear() < 2005) return '';
         return date.toLocaleDateString('en-GB', {
           day: '2-digit',
@@ -196,23 +232,23 @@ const TempVehicle: React.FC = () => {
         });
       }
     },
-    { 
-      key: 'age', 
+    {
+      key: 'age',
       header: 'Age',
       render: (row: Vehicle) => {
-        if (!row.v_dop) return '';
-        const purchaseDate = new Date(row.v_dop);
+        if (!row.purchase_date) return '';
+        const purchaseDate = new Date(row.purchase_date as string);
         if (purchaseDate.getFullYear() < 2005) return '';
         const today = new Date();
         const diffTime = Math.abs(today.getTime() - purchaseDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         const years = Math.floor(diffDays / 365);
-        
+
         return String(years);
       }
     },
-    { key: 'vtrans_type', header: 'Transmission', filter: 'singleSelect',colClass: 'capitalize' },
-    { key: 'vfuel_type', header: 'Fuel Type', filter: 'singleSelect',colClass: 'capitalize' },
+    { key: 'transmission', header: 'Transmission', filter: 'singleSelect', colClass: 'capitalize' },
+    { key: 'fuel_type', header: 'Fuel Type', filter: 'singleSelect', colClass: 'capitalize' },
     /* { key: 'fleetcard', header: 'Fleet Card ID', render: (row: Vehicle) => row.fleetcard?.id || '', filter: 'input' }, */
     { key: 'fleetcard', header: 'Fleet Card', render: (row: Vehicle) => row.fleetcard?.card_no || '', filter: 'input' },
     { key: 'costcenter', header: 'Cost Center', render: (row: Vehicle) => row.costcenter?.name || '', filter: 'singleSelect' },
@@ -230,11 +266,11 @@ const TempVehicle: React.FC = () => {
     let result = hideDisposed
       ? vehicles.filter(v => v.record_status !== 'disposed' && v.record_status !== 'archived')
       : vehicles;
-    
+
     if (classificationFilter) {
       result = result.filter(v => v.classification === classificationFilter);
     }
-    
+
     return result;
   }, [vehicles, hideDisposed, classificationFilter]);
 
@@ -250,7 +286,7 @@ const TempVehicle: React.FC = () => {
     vehicles.forEach(vehicle => {
       const classification = vehicle.classification as keyof typeof stats;
       const status = vehicle.record_status;
-      
+
       if (stats[classification]) {
         stats[classification].total++;
         if (status === 'active') stats[classification].active++;
@@ -276,23 +312,23 @@ const TempVehicle: React.FC = () => {
   const validateFields = () => {
     const errors: Record<string, string> = {};
 
-    if (!selectedVehicle?.vehicle_regno) {
-      errors.vehicle_regno = 'Registration number is required';
+    if (!selectedVehicle?.register_number) {
+      errors.register_number = 'Registration number is required';
     }
-    if (!selectedVehicle?.category) {
+    if (!selectedVehicle?.categories) {
       errors.category = 'Category is required';
     }
-    if (!selectedVehicle?.brand) {
+    if (!selectedVehicle?.brands) {
       errors.brand = 'Brand is required';
     }
     if (!selectedVehicle?.model) {
       errors.model = 'Model is required';
     }
-    if (!selectedVehicle?.vfuel_type) {
-      errors.vfuel_type = 'Fuel type is required';
+    if (!selectedVehicle?.fuel_type) {
+      errors.fuel_type = 'Fuel type is required';
     }
-    if (!selectedVehicle?.vtrans_type) {
-      errors.vtrans_type = 'Transmission type is required';
+    if (!selectedVehicle?.transmission) {
+      errors.transmission = 'Transmission type is required';
     }
     if (!selectedVehicle?.costcenter) {
       errors.costcenter = 'Cost center is required';
@@ -323,30 +359,30 @@ const TempVehicle: React.FC = () => {
     }
 
     try {
-      const payload = { ...selectedVehicle };
+      const payload = { ...selectedVehicle } as any;
       // Map nested objects to their IDs for API
       if (payload.costcenter) {
-        (payload as any).cc_id = String(payload.costcenter.id);
+        payload.cc_id = String(payload.costcenter.id);
         delete payload.costcenter;
       }
-      if (payload.brand) payload.brand_id = String(payload.brand.id);
+      if (payload.brands) payload.brand_id = String(payload.brands.id);
       if (payload.model) payload.model_id = String(payload.model.id);
-      if (payload.category) payload.category_id = String(payload.category.id);
-      if (payload.department) payload.dept_id = payload.department.id;
+      if (payload.categories) payload.category_id = String(payload.categories.id);
+      if (payload.department) payload.dept_id = payload.department?.id;
       if (payload.owner) {
-        (payload as any).ramco_id = payload.owner.ramco_id;
+        payload.ramco_id = payload.owner.ramco_id;
         delete payload.owner;
       }
 
       // Remove nested objects
-      delete payload.brand;
+      delete payload.brands;
       delete payload.model;
-      delete payload.category;
+      delete payload.categories;
       delete payload.department;
 
-      if (payload.vehicle_id && payload.vehicle_id !== 0) {
+      if (payload.id && payload.id !== 0) {
         // Update existing vehicle
-        await authenticatedApi.put(`/api/bills/temp-vehicle/${payload.vehicle_id}`, payload);
+        await authenticatedApi.put(`/api/bills/temp-vehicle/${payload.id}`, payload);
         toast.success('Vehicle updated successfully');
       } else {
         // Create new vehicle
@@ -384,7 +420,7 @@ const TempVehicle: React.FC = () => {
         {(['asset', 'consumable', 'personal', 'rental'] as const).map((classification, index) => {
           const stats = summaryStats[classification];
           const isActive = classificationFilter === classification;
-          
+
           // Modern gradient backgrounds for each card
           const cardBackgrounds = [
             'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900', // Asset
@@ -420,15 +456,15 @@ const TempVehicle: React.FC = () => {
             'text-purple-700 dark:text-purple-300', // Personal
             'text-orange-700 dark:text-orange-300', // Rental
           ];
-          
+
           return (
             <div
               key={classification}
               onClick={() => handleClassificationFilter(classification)}
               className={`
                 p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105
-                ${isActive 
-                  ? `${activeBackgrounds[index]} ${activeBorders[index]} shadow-lg` 
+                ${isActive
+                  ? `${activeBackgrounds[index]} ${activeBorders[index]} shadow-lg`
                   : `${cardBackgrounds[index]} ${cardBorders[index]} hover:${activeBorders[index]}`
                 }
               `}
@@ -478,18 +514,15 @@ const TempVehicle: React.FC = () => {
             title="Register New Vehicle"
             onClick={() => {
               setSelectedVehicle({
-                vehicle_id: 0,
-                vehicle_regno: '',
-                vtrans_type: '',
-                vfuel_type: '',
-                cc_id: '',
-                dept_id: 0,
-                loc_id: 0,
+                id: 0,
+                register_number: '',
+                transmission: '',
+                fuel_type: '',
                 classification: '',
                 record_status: '',
                 purpose: '',
                 condition_status: '',
-                category: undefined,
+                categories: undefined,
                 costcenter: undefined,
                 department: undefined,
               });
@@ -506,7 +539,13 @@ const TempVehicle: React.FC = () => {
         pagination={false}
         inputFilter={false}
         onRowDoubleClick={row => {
-          setSelectedVehicle(row);
+          // convert backend object shapes for selection if needed
+          const sel = {
+            ...row,
+            register_number: row.register_number,
+            id: row.id
+          } as Vehicle;
+          setSelectedVehicle(sel);
           setSidebarOpen(true);
         }}
         dataExport={true}
@@ -520,35 +559,35 @@ const TempVehicle: React.FC = () => {
             selectedVehicle && (
               <div className="space-y-4 p-4">
                 <div>
-                  <Label>Reg No {validationErrors.vehicle_regno && <span className="text-red-500">{validationErrors.vehicle_regno}</span>}</Label>
+                  <Label>Reg No {validationErrors.register_number && <span className="text-red-500">{validationErrors.register_number}</span>}</Label>
                   <Input
-                    value={selectedVehicle.vehicle_regno}
+                    value={selectedVehicle.register_number}
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value.includes(' ')) {
-                          toast.error('Registration number cannot contain spaces');
-                          return;
+                        toast.error('Registration number cannot contain spaces');
+                        return;
                       }
-                      setSelectedVehicle({ ...selectedVehicle, vehicle_regno: value });
+                      setSelectedVehicle({ ...selectedVehicle, register_number: value });
                       if (value) {
-                        setValidationErrors(prev => ({ ...prev, vehicle_regno: '' }));
+                        setValidationErrors(prev => ({ ...prev, register_number: '' }));
                       }
                     }}
                     className='uppercase placeholder:normal-case'
                     placeholder="Enter Registration Number (without spaces)"
-                    disabled={selectedVehicle.vehicle_id !== 0}
+                    disabled={selectedVehicle.id !== 0}
                   />
                 </div>
                 <div>
                   <Label>Category {validationErrors.category && <span className="text-red-500">{validationErrors.category}</span>}</Label>
-                  <Select 
-                    value={selectedVehicle.category?.id ? String(selectedVehicle.category.id) : ''}
+                  <Select
+                    value={selectedVehicle.categories?.id ? String(selectedVehicle.categories.id) : ''}
                     onValueChange={val => {
                       const category = categories.find(c => String(c.id) === val);
-                      setSelectedVehicle({ 
-                        ...selectedVehicle, 
-                        category,
-                        brand: undefined, // Reset brand when category changes
+                      setSelectedVehicle({
+                        ...selectedVehicle,
+                        categories: category ? { id: Number(category.id), name: category.name } : undefined,
+                        brands: undefined, // Reset brand when category changes
                         model: undefined // Reset model when category changes
                       });
                       if (category) {
@@ -569,22 +608,22 @@ const TempVehicle: React.FC = () => {
                 <div>
                   <Label>Brand {validationErrors.brand && <span className="text-red-500">{validationErrors.brand}</span>}</Label>
                   <Select
-                    value={selectedVehicle.brand?.id ? String(selectedVehicle.brand.id) : ''}
+                    value={selectedVehicle.brands?.id ? String(selectedVehicle.brands.id) : ''}
                     onValueChange={val => {
                       const brand = availableBrands.find(b => String(b.id) === val);
                       setSelectedVehicle({
                         ...selectedVehicle,
-                        brand,
+                        brands: brand ? { id: Number(brand.id), name: brand.name } : undefined,
                         model: undefined // Reset model when brand changes
                       });
                       if (brand) {
                         setValidationErrors(prev => ({ ...prev, brand: '' }));
                       }
                     }}
-                    disabled={!selectedVehicle.category} // Disable if no category selected
+                    disabled={!selectedVehicle.categories} // Disable if no category selected
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedVehicle.category ? "Select Brand" : "Select Category First"} />
+                      <SelectValue placeholder={selectedVehicle.categories ? "Select Brand" : "Select Category First"} />
                     </SelectTrigger>
                     <SelectContent>
                       {availableBrands.map(b => (
@@ -595,7 +634,7 @@ const TempVehicle: React.FC = () => {
                 </div>
                 <div>
                   <Label>Model {validationErrors.model && <span className="text-red-500">{validationErrors.model}</span>}</Label>
-                  <Select 
+                  <Select
                     value={selectedVehicle.model?.id ? String(selectedVehicle.model.id) : ''}
                     onValueChange={val => {
                       const model = availableModels.find(m => String(m.id) === val);
@@ -604,10 +643,10 @@ const TempVehicle: React.FC = () => {
                         setValidationErrors(prev => ({ ...prev, model: '' }));
                       }
                     }}
-                    disabled={!selectedVehicle.brand} // Disable if no brand selected
+                    disabled={!selectedVehicle.brands} // Disable if no brand selected
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedVehicle.brand ? "Select Model" : "Select Brand First"} />
+                      <SelectValue placeholder={selectedVehicle.brands ? "Select Model" : "Select Brand First"} />
                     </SelectTrigger>
                     <SelectContent>
                       {availableModels.map(m => (
@@ -617,36 +656,36 @@ const TempVehicle: React.FC = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>Fuel Type {validationErrors.vfuel_type && <span className="text-red-500">{validationErrors.vfuel_type}</span>}</Label>
-                  <Select value={selectedVehicle.vfuel_type || ''} onValueChange={val => {
-                    setSelectedVehicle({ ...selectedVehicle, vfuel_type: val });
+                  <Label>Fuel Type {validationErrors.fuel_type && <span className="text-red-500">{validationErrors.fuel_type}</span>}</Label>
+                  <Select value={selectedVehicle.fuel_type || ''} onValueChange={val => {
+                    setSelectedVehicle({ ...selectedVehicle, fuel_type: val });
                     if (val) {
-                      setValidationErrors(prev => ({ ...prev, vfuel_type: '' }));
+                      setValidationErrors(prev => ({ ...prev, fuel_type: '' }));
                     }
                   }}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select Fuel Type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['petrol','diesel'].map(type => (
+                      {['petrol', 'diesel'].map(type => (
                         <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Transmission {validationErrors.vtrans_type && <span className="text-red-500">{validationErrors.vtrans_type}</span>}</Label>
-                  <Select value={selectedVehicle.vtrans_type || ''} onValueChange={val => {
-                    setSelectedVehicle({ ...selectedVehicle, vtrans_type: val });
+                  <Label>Transmission {validationErrors.transmission && <span className="text-red-500">{validationErrors.transmission}</span>}</Label>
+                  <Select value={selectedVehicle.transmission || ''} onValueChange={val => {
+                    setSelectedVehicle({ ...selectedVehicle, transmission: val });
                     if (val) {
-                      setValidationErrors(prev => ({ ...prev, vtrans_type: '' }));
+                      setValidationErrors(prev => ({ ...prev, transmission: '' }));
                     }
                   }}>
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select Transmission" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['auto','manual'].map(type => (
+                      {['auto', 'manual'].map(type => (
                         <SelectItem key={type} value={type}>{type.toUpperCase()}</SelectItem>
                       ))}
                     </SelectContent>
@@ -654,7 +693,7 @@ const TempVehicle: React.FC = () => {
                 </div>
                 <div>
                   <Label>Cost Center {validationErrors.costcenter && <span className="text-red-500">{validationErrors.costcenter}</span>}</Label>
-                  <Select 
+                  <Select
                     value={selectedVehicle.costcenter?.id ? String(selectedVehicle.costcenter.id) : ''}
                     onValueChange={val => {
                       const costcenter = costcenters.find(cc => String(cc.id) === val);
@@ -676,13 +715,13 @@ const TempVehicle: React.FC = () => {
                 </div>
                 <div>
                   <Label>Department {validationErrors.department && <span className="text-red-500">{validationErrors.department}</span>}</Label>
-                  <Select 
+                  <Select
                     value={selectedVehicle.department?.id ? String(selectedVehicle.department.id) : ''}
                     onValueChange={val => {
                       const department = departments.find(d => String(d.id) === val);
-                      setSelectedVehicle({ 
-                        ...selectedVehicle, 
-                        department: department ? { id: department.id, name: department.code } : undefined 
+                      setSelectedVehicle({
+                        ...selectedVehicle,
+                        department: department ? { id: department.id, name: department.code } : undefined
                       });
                       if (department) {
                         setValidationErrors(prev => ({ ...prev, department: '' }));
@@ -712,7 +751,7 @@ const TempVehicle: React.FC = () => {
                       <SelectValue placeholder="Select Classification" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['asset','consumable','personal','rental'].map(type => (
+                      {['asset', 'consumable', 'personal', 'rental'].map(type => (
                         <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
                       ))}
                     </SelectContent>
@@ -754,7 +793,7 @@ const TempVehicle: React.FC = () => {
                 {/* purpose: [pool, project, staff cost] */}
                 <div>
                   <Label>Purpose {validationErrors.purpose && <span className="text-red-500">{validationErrors.purpose}</span>}</Label>
-                  <Select 
+                  <Select
                     value={selectedVehicle.purpose || ''}
                     onValueChange={val => {
                       setSelectedVehicle({ ...selectedVehicle, purpose: val });
@@ -767,7 +806,7 @@ const TempVehicle: React.FC = () => {
                       <SelectValue placeholder="Select Purpose" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['pool','project','staff cost'].map(purpose => (
+                      {['pool', 'project', 'staff cost'].map(purpose => (
                         <SelectItem key={purpose} value={purpose}>{purpose.charAt(0).toUpperCase() + purpose.slice(1)}</SelectItem>
                       ))}
                     </SelectContent>
@@ -785,7 +824,7 @@ const TempVehicle: React.FC = () => {
                       <SelectValue placeholder="Select Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['active','disposed','archived','maintenance'].map(status => (
+                      {['active', 'disposed', 'archived', 'maintenance'].map(status => (
                         <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>
                       ))}
                     </SelectContent>
