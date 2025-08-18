@@ -14,24 +14,19 @@ import { Label } from '@/components/ui/label';
 import { authenticatedApi } from "@/config/api";
 
 interface Model {
-  id: string;
+  id: number;
   name: string;
 }
 
 interface Brand {
-  id: string;
+  id: number;
   name: string;
-  categories: { id: string; name: string }[];
 }
 
 interface Category {
   id: number;
-  type_id: number;
-  code: string;
   name: string;
-  type_code: string;
-  image: string | null;
-  brands: Brand[];
+  brands?: Brand[];
 }
 
 interface Vehicle {
@@ -50,7 +45,7 @@ interface Vehicle {
   categories?: { id: number; name: string } | null; // backend category object
   brands?: { id: number; name: string } | null; // backend brand object
   owner?: { ramco_id: string; full_name: string } | null;
-  model?: { id: string; name: string } | null;
+  models?: { id: number; name: string } | null;
   fleetcard?: { id: number; card_no: string } | null;
 
   // UI/state helpers and legacy compatibility ids
@@ -107,10 +102,10 @@ const TempVehicle: React.FC = () => {
             categories: item.categories ? { id: item.categories.id, name: item.categories.name } : undefined,
             brands: item.brands ? { id: Number(item.brands.id), name: item.brands.name } : undefined,
             owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
-            model: item.model ? { id: String(item.model.id), name: item.model.name } : undefined,
+            models: item.models ? { id: Number(item.models.id), name: item.models.name } : undefined,
             fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
             brand_id: item.brands ? String(item.brands.id) : undefined,
-            model_id: item.model ? String(item.model.id) : undefined,
+            model_id: item.models ? String(item.models.id) : undefined,
             category_id: item.categories ? String(item.categories.id) : undefined,
             classification: item.classification ?? (item.types?.name ?? undefined),
             record_status: item.record_status ?? item.status ?? undefined,
@@ -217,7 +212,7 @@ const TempVehicle: React.FC = () => {
     { key: 'register_number', header: 'Reg No', filter: 'input' },
     { key: 'categories', header: 'Category', render: (row: Vehicle) => row.categories?.name || '', filter: 'singleSelect' },
     { key: 'brands', header: 'Brand', render: (row: Vehicle) => row.brands?.name || '', filter: 'singleSelect' },
-    { key: 'model', header: 'Model', render: (row: Vehicle) => row.model?.name || '', filter: 'singleSelect' },
+    { key: 'models', header: 'Model', render: (row: Vehicle) => row.models?.name || '', filter: 'singleSelect' },
     {
       key: 'purchase_date',
       header: 'Date Purchased',
@@ -321,7 +316,7 @@ const TempVehicle: React.FC = () => {
     if (!selectedVehicle?.brands) {
       errors.brand = 'Brand is required';
     }
-    if (!selectedVehicle?.model) {
+    if (!selectedVehicle?.models) {
       errors.model = 'Model is required';
     }
     if (!selectedVehicle?.fuel_type) {
@@ -365,20 +360,20 @@ const TempVehicle: React.FC = () => {
         payload.cc_id = String(payload.costcenter.id);
         delete payload.costcenter;
       }
-      if (payload.brands) payload.brand_id = String(payload.brands.id);
-      if (payload.model) payload.model_id = String(payload.model.id);
-      if (payload.categories) payload.category_id = String(payload.categories.id);
+  if (payload.brands) payload.brand_id = String(payload.brands.id);
+  if (payload.models) payload.model_id = String(payload.models.id);
+  if (payload.categories) payload.category_id = String(payload.categories.id);
       if (payload.department) payload.dept_id = payload.department?.id;
       if (payload.owner) {
         payload.ramco_id = payload.owner.ramco_id;
         delete payload.owner;
       }
 
-      // Remove nested objects
-      delete payload.brands;
-      delete payload.model;
-      delete payload.categories;
-      delete payload.department;
+  // Remove nested objects
+  delete payload.brands;
+  delete payload.models;
+  delete payload.categories;
+  delete payload.department;
 
       if (payload.id && payload.id !== 0) {
         // Update existing vehicle
@@ -510,7 +505,7 @@ const TempVehicle: React.FC = () => {
         <div className="flex items-center gap-2">
           <Switch checked={hideDisposed} onCheckedChange={setHideDisposed} id="hide-disposed-switch" />
           <Label htmlFor="hide-disposed-switch" className="text-xs">Hide Disposed/Archived</Label>
-          <Button size="icon" variant="default"
+          {/* <Button size="icon" variant="default"
             title="Register New Vehicle"
             onClick={() => {
               setSelectedVehicle({
@@ -530,7 +525,7 @@ const TempVehicle: React.FC = () => {
             }}
           >
             <Plus className="w-4 h-4" />
-          </Button>
+          </Button> */}
         </div>
       </div>
       <CustomDataGrid
@@ -588,7 +583,7 @@ const TempVehicle: React.FC = () => {
                         ...selectedVehicle,
                         categories: category ? { id: Number(category.id), name: category.name } : undefined,
                         brands: undefined, // Reset brand when category changes
-                        model: undefined // Reset model when category changes
+                        models: undefined // Reset model when category changes
                       });
                       if (category) {
                         setValidationErrors(prev => ({ ...prev, category: '' }));
@@ -614,7 +609,7 @@ const TempVehicle: React.FC = () => {
                       setSelectedVehicle({
                         ...selectedVehicle,
                         brands: brand ? { id: Number(brand.id), name: brand.name } : undefined,
-                        model: undefined // Reset model when brand changes
+                        models: undefined // Reset model when brand changes
                       });
                       if (brand) {
                         setValidationErrors(prev => ({ ...prev, brand: '' }));
@@ -633,14 +628,14 @@ const TempVehicle: React.FC = () => {
                   </Select>
                 </div>
                 <div>
-                  <Label>Model {validationErrors.model && <span className="text-red-500">{validationErrors.model}</span>}</Label>
+                  <Label>Model {validationErrors.models && <span className="text-red-500">{validationErrors.models}</span>}</Label>
                   <Select
-                    value={selectedVehicle.model?.id ? String(selectedVehicle.model.id) : ''}
+                    value={selectedVehicle.models?.id ? String(selectedVehicle.models.id) : ''}
                     onValueChange={val => {
                       const model = availableModels.find(m => String(m.id) === val);
-                      setSelectedVehicle({ ...selectedVehicle, model });
+                      setSelectedVehicle({ ...selectedVehicle, models: model ? { id: Number(model.id), name: model.name } : undefined });
                       if (model) {
-                        setValidationErrors(prev => ({ ...prev, model: '' }));
+                        setValidationErrors(prev => ({ ...prev, models: '' }));
                       }
                     }}
                     disabled={!selectedVehicle.brands} // Disable if no brand selected
@@ -830,11 +825,11 @@ const TempVehicle: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex justify-end mt-4">
+                {/* <div className="flex justify-end mt-4">
                   <Button variant="default" onClick={handleSubmit}>
                     Submit
                   </Button>
-                </div>
+                </div> */}
               </div>
             )
           }
