@@ -7,18 +7,18 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
 interface BillingAccount {
   bill_id: number;
   bill_ac: string;
-  provider: string;
   service: string;
   bfcy_id: number;
   cat_id: number;
-  bill_product: string;
+  // bill_product removed
   bill_desc: string;
   cc_id: number;
   bill_loc: string;
@@ -35,15 +35,21 @@ interface BillingAccount {
   bill_bfcy: string;
   bfcy_cat: string;
   billowner: string;
+  // new nested shapes from backend
+  beneficiary?: { bfcy_id: number; bfcy_name: string; logo?: string } | null;
+  costcenter?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
+  prepared_by?: string | null;
 }
 
 interface BillingAccountForm {
   bill_ac: string;
-  provider: string;
   service: string;
-  bill_product: string;
+  // bill_product removed
   bill_desc: string;
   cc_id: string;
+  bfcy_id?: string;
+  location_id?: string;
   bill_loc: string;
   bill_depo: string;
   bill_mth: string;
@@ -61,28 +67,23 @@ const BillingAccount = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<BillingAccount | null>(null);
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
-  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  // provider removed; beneficiaries are used instead
+  const [beneficiariesList, setBeneficiariesList] = useState<{ bfcy_id: number; bfcy_name: string }[]>([]);
+  const [locationsList, setLocationsList] = useState<{ id: number; name: string }[]>([]);
 
   // Service to provider mapping
-  const serviceProviders: Record<string, string[]> = {
-    utilities: ['TNB', 'RSAJ', 'IWK', 'Syabas', 'Air Selangor'],
-    rental: ['Property Management Co', 'Real Estate Agency', 'Building Owner'],
-    services: ['Cleaning Service Co', 'Security Services Ltd', 'Maintenance Services'],
-    printing: ['Printing House', 'Copy Center', 'Digital Print Services']
-  };
-  
   const [formData, setFormData] = useState<BillingAccountForm>({
     bill_ac: '',
-    provider: '',
     service: 'utilities',
-    bill_product: '',
     bill_desc: '',
     cc_id: 'none',
+    bfcy_id: undefined,
+    location_id: '',
     bill_loc: '',
     bill_depo: '0.00',
     bill_mth: '0.00',
     bill_stat: 'Active',
-    bill_consumable: 'nc',
+    bill_consumable: 'yes',
     bill_cont_start: '',
     bill_cont_end: '',
     billowner: '',
@@ -122,21 +123,47 @@ const BillingAccount = () => {
   useEffect(() => {
     fetchAccounts();
     fetchCostCenters();
-    // Set initial providers for default service
-    const initialProviders = serviceProviders['utilities'] || [];
-    setAvailableProviders(initialProviders);
+    // Fetch beneficiaries filtered by default service
+    fetchBeneficiaries(formData.service);
+    fetchLocations();
+    // no provider list — beneficiaries represent providers
   }, []);
 
-  // Update available providers when service changes
-  useEffect(() => {
-    const providers = serviceProviders[formData.service] || [];
-    setAvailableProviders(providers);
-    
-    // Reset provider if current provider is not available for the selected service
-    if (formData.provider && !providers.includes(formData.provider)) {
-      setFormData(prev => ({ ...prev, provider: '' }));
+  const fetchBeneficiaries = async (service?: string) => {
+    try {
+      const url = service ? `/api/bills/util/beneficiaries?services=${encodeURIComponent(service)}` : '/api/bills/util/beneficiaries';
+      const res: any = await authenticatedApi.get(url);
+      const list = res.data?.data || res.data || [];
+      const normalized = Array.isArray(list) ? list.map((b: any) => ({ bfcy_id: b.bfcy_id, bfcy_name: b.bfcy_name })) : [];
+      setBeneficiariesList(normalized);
+      // Clear selected beneficiary if it's not in the new list
+      setFormData(prev => {
+        if (prev.bfcy_id && !normalized.find(nb => String(nb.bfcy_id) === String(prev.bfcy_id))) {
+          return { ...prev, bfcy_id: undefined };
+        }
+        return prev;
+      });
+    } catch (err) {
+      console.error('fetch beneficiaries', err);
     }
+  };
+
+  // Refetch beneficiaries when service selection changes
+  useEffect(() => {
+    fetchBeneficiaries(formData.service);
   }, [formData.service]);
+
+  const fetchLocations = async () => {
+    try {
+      const res: any = await authenticatedApi.get('/api/assets/locations');
+      const list = res.data?.data || res.data || [];
+      setLocationsList(Array.isArray(list) ? list.map((l: any) => ({ id: l.id?.toString() ?? String(l.id ?? ''), name: l.name || l.location || l.label || '' })) : []);
+    } catch (err) {
+      console.error('fetch locations', err);
+    }
+  };
+
+  // no provider handling — beneficiaries replace provider
 
   const handleInputChange = (field: keyof BillingAccountForm, value: string) => {
     setFormData(prev => ({
@@ -148,16 +175,16 @@ const BillingAccount = () => {
   const resetForm = () => {
     setFormData({
       bill_ac: '',
-      provider: '',
       service: 'utilities',
-      bill_product: '',
       bill_desc: '',
       cc_id: 'none',
+      bfcy_id: undefined,
+      location_id: '',
       bill_loc: '',
       bill_depo: '0.00',
       bill_mth: '0.00',
       bill_stat: 'Active',
-      bill_consumable: 'nc',
+      bill_consumable: 'yes',
       bill_cont_start: '',
       bill_cont_end: '',
       billowner: '',
@@ -173,16 +200,18 @@ const BillingAccount = () => {
   const handleRowDoubleClick = (account: BillingAccount) => {
     setFormData({
       bill_ac: account.bill_ac || '',
-      provider: account.provider || '',
       service: account.service || '',
-      bill_product: account.bill_product || '',
+      // bill_product removed
       bill_desc: account.bill_desc || '',
       cc_id: account.cc_id ? account.cc_id.toString() : 'none',
+      bfcy_id: account.beneficiary ? String(account.beneficiary.bfcy_id) : undefined,
+      location_id: account.location ? String(account.location.id) : '',
       bill_loc: account.bill_loc || '',
       bill_depo: account.bill_depo || '0.00',
       bill_mth: account.bill_mth || '0.00',
       bill_stat: account.bill_stat || 'Active',
-      bill_consumable: account.bill_consumable || 'nc',
+      // convert backend 'c'/'nc' to form 'yes'/'no'
+      bill_consumable: account.bill_consumable === 'c' ? 'yes' : 'no',
       bill_cont_start: account.bill_cont_start ? new Date(account.bill_cont_start).toISOString().split('T')[0] : '',
       bill_cont_end: account.bill_cont_end ? new Date(account.bill_cont_end).toISOString().split('T')[0] : '',
       billowner: account.billowner || '',
@@ -192,8 +221,8 @@ const BillingAccount = () => {
   };
 
   const handleSave = async () => {
-    if (!formData.bill_ac || !formData.provider || !formData.service) {
-      toast.error('Please fill in required fields: Account Number, Provider, and Service');
+    if (!formData.bill_ac || !formData.bfcy_id || !formData.service) {
+      toast.error('Please fill in required fields: Account Number, Beneficiary, and Service');
       return;
     }
 
@@ -202,6 +231,10 @@ const BillingAccount = () => {
       const payload = {
         ...formData,
         cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
+        bfcy_id: formData.bfcy_id ? parseInt(formData.bfcy_id) : null,
+        location_id: formData.location_id ? parseInt(formData.location_id) : null,
+        // convert form 'yes'/'no' back to backend 'c'/'nc'
+        bill_consumable: formData.bill_consumable === 'yes' ? 'c' : 'nc',
         bill_cont_start: formData.bill_cont_start ? new Date(formData.bill_cont_start).toISOString() : null,
         bill_cont_end: formData.bill_cont_end ? new Date(formData.bill_cont_end).toISOString() : null,
       };
@@ -227,20 +260,24 @@ const BillingAccount = () => {
     }
   };
 
-  const columns: ColumnDef<BillingAccount>[] = [
+  const columns: ColumnDef<any>[] = [
+    { key: 'rowNumber', header: '#', render: (r: any) => r.rowNumber },
+    { key: 'logo', header: 'Logo', render: (r: any) => r?.beneficiary?.logo ? (<span>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={r.beneficiary.logo} alt={r.beneficiary.bfcy_name || 'logo'} className="w-8 h-8 object-contain rounded" /></span>) : null },
     { key: 'bill_ac', header: 'Account No', filter: 'input' },
-    { key: 'provider', header: 'Provider', filter: 'singleSelect' },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
-    { key: 'bill_product', header: 'Product', filter: 'input' },
+    // product column removed
     { key: 'bill_desc', header: 'Description' },
+    { key: 'beneficiary', header: 'Beneficiary', render: (r: any) => r?.beneficiary?.bfcy_name || r?.bill_bfcy || '' },
+    { key: 'costcenter', header: 'Cost Center', render: (r: any) => r?.costcenter?.name || '-' },
+    { key: 'location', header: 'Location', render: (r: any) => r?.location?.name || (r?.bill_loc || '-') },
     { key: 'bill_stat', header: 'Status', filter: 'singleSelect' },
-    { 
-      key: 'bill_cont_start', 
+    {
+      key: 'bill_cont_start',
       header: 'Contract Start',
       render: (row) => row.bill_cont_start ? new Date(row.bill_cont_start).toLocaleDateString() : '-'
     },
-    { 
-      key: 'bill_cont_end', 
+    {
+      key: 'bill_cont_end',
       header: 'Contract End',
       render: (row) => row.bill_cont_end ? new Date(row.bill_cont_end).toLocaleDateString() : '-'
     },
@@ -266,7 +303,7 @@ const BillingAccount = () => {
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
         data={rows}
-        pagination={true}
+        pagination={false}
         inputFilter={false}
         theme="sm"
         dataExport={true}
@@ -299,49 +336,17 @@ const BillingAccount = () => {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="provider">Provider *</Label>
-                  <Select 
-                    value={formData.provider} 
-                    onValueChange={(value) => handleInputChange('provider', value)}
-                    disabled={!formData.service || availableProviders.length === 0}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={
-                        !formData.service 
-                          ? "Select service first" 
-                          : availableProviders.length === 0 
-                            ? "No providers available" 
-                            : "Select provider"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableProviders.map((provider) => (
-                        <SelectItem key={provider} value={provider}>
-                          {provider}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bill_product">Product</Label>
-                  <Input
-                    id="bill_product"
-                    value={formData.bill_product}
-                    onChange={(e) => handleInputChange('bill_product', e.target.value)}
-                    placeholder="Enter product name"
+                  <Label htmlFor="bfcy_id">Beneficiary</Label>
+                  <SearchableSelect
+                    options={beneficiariesList.map(b => ({ value: String(b.bfcy_id), label: b.bfcy_name }))}
+                    value={formData.bfcy_id ? String(formData.bfcy_id) : ''}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, bfcy_id: val }))}
+                    placeholder="Search beneficiary..."
+                    searchPlaceholder="Type to search beneficiary"
+                    emptyMessage="No beneficiaries found for selected service"
+                    className="w-full"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="bill_ac">Account Number *</Label>
-                  <Input
-                    id="bill_ac"
-                    value={formData.bill_ac}
-                    onChange={(e) => handleInputChange('bill_ac', e.target.value)}
-                    placeholder="Enter account number"
-                  />
-                </div>
-
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="bill_desc">Description</Label>
                   <Textarea
@@ -352,115 +357,123 @@ const BillingAccount = () => {
                     rows={2}
                   />
                 </div>
+                {/* Product field removed */}
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_ac">Account Number *</Label>
+                      <Input
+                        id="bill_ac"
+                        value={formData.bill_ac}
+                        onChange={(e) => handleInputChange('bill_ac', e.target.value)}
+                        placeholder="Enter account number"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="cc_id">Cost Center</Label>
-                  <Select value={formData.cc_id} onValueChange={(value) => handleInputChange('cc_id', value)}>
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder="Select cost center" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {costCenters.map(cc => (
-                        <SelectItem key={cc.id} value={cc.id}>
-                          {cc.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_depo">Deposit</Label>
+                      <Input
+                        id="bill_depo"
+                        type="number"
+                        step="0.01"
+                        value={formData.bill_depo}
+                        onChange={(e) => handleInputChange('bill_depo', e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_mth">Monthly Amount</Label>
+                      <Input
+                        id="bill_mth"
+                        type="number"
+                        step="0.01"
+                        value={formData.bill_mth}
+                        onChange={(e) => handleInputChange('bill_mth', e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bill_loc">Location</Label>
-                  <Input
-                    id="bill_loc"
-                    value={formData.bill_loc}
-                    onChange={(e) => handleInputChange('bill_loc', e.target.value)}
-                    placeholder="Enter location"
-                  />
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="cc_id">Cost Center</Label>
+                      <SearchableSelect
+                        options={[{ value: 'none', label: 'None' }, ...costCenters.map(cc => ({ value: cc.id, label: cc.name }))]}
+                        value={formData.cc_id || 'none'}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, cc_id: val }))}
+                        placeholder="Search or select cost center"
+                        searchPlaceholder="Type to search cost center"
+                        emptyMessage="No cost centers found"
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2 flex items-center justify-center">
+                      <div className="flex flex-col items-center">
+                        <Label htmlFor="bill_consumable">Consumable?</Label>
+                        <Checkbox
+                        className='w-6 h-6'
+                          checked={formData.bill_consumable === 'yes'}
+                          onCheckedChange={(checked: any) => handleInputChange('bill_consumable', checked ? 'yes' : 'no')}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="location_id">Location</Label>
+                      <SearchableSelect
+                        options={locationsList.map(l => ({ value: String(l.id), label: l.name }))}
+                        value={formData.location_id ? String(formData.location_id) : ''}
+                        onValueChange={(val) => setFormData(prev => ({ ...prev, location_id: val }))}
+                        placeholder="Search or select location"
+                        searchPlaceholder="Type to search location"
+                        emptyMessage="No locations found"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bill_depo">Deposit</Label>
-                  <Input
-                    id="bill_depo"
-                    type="number"
-                    step="0.01"
-                    value={formData.bill_depo}
-                    onChange={(e) => handleInputChange('bill_depo', e.target.value)}
-                    placeholder="0.00"
-                  />
+                <div className="md:col-span-2">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_cont_start">Contract Start</Label>
+                      <Input
+                        id="bill_cont_start"
+                        type="date"
+                        value={formData.bill_cont_start}
+                        onChange={(e) => handleInputChange('bill_cont_start', e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_cont_end">Contract End</Label>
+                      <Input
+                        id="bill_cont_end"
+                        type="date"
+                        value={formData.bill_cont_end}
+                        onChange={(e) => handleInputChange('bill_cont_end', e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bill_stat">Status</Label>
+                      <Select value={formData.bill_stat} onValueChange={(value) => handleInputChange('bill_stat', value)}>
+                        <SelectTrigger className='w-full'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Active">Active</SelectItem>
+                          <SelectItem value="Inactive">Inactive</SelectItem>
+                          <SelectItem value="Suspended">Suspended</SelectItem>
+                          <SelectItem value="Terminated">Terminated</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bill_mth">Monthly Amount</Label>
-                  <Input
-                    id="bill_mth"
-                    type="number"
-                    step="0.01"
-                    value={formData.bill_mth}
-                    onChange={(e) => handleInputChange('bill_mth', e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bill_stat">Status</Label>
-                  <Select value={formData.bill_stat} onValueChange={(value) => handleInputChange('bill_stat', value)}>
-                    <SelectTrigger className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Active">Active</SelectItem>
-                      <SelectItem value="Inactive">Inactive</SelectItem>
-                      <SelectItem value="Suspended">Suspended</SelectItem>
-                      <SelectItem value="Terminated">Terminated</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bill_consumable">Consumable</Label>
-                  <Select value={formData.bill_consumable} onValueChange={(value) => handleInputChange('bill_consumable', value)}>
-                    <SelectTrigger className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nc">No</SelectItem>
-                      <SelectItem value="c">Yes</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bill_cont_start">Contract Start</Label>
-                  <Input
-                    id="bill_cont_start"
-                    type="date"
-                    value={formData.bill_cont_start}
-                    onChange={(e) => handleInputChange('bill_cont_start', e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bill_cont_end">Contract End</Label>
-                  <Input
-                    id="bill_cont_end"
-                    type="date"
-                    value={formData.bill_cont_end}
-                    onChange={(e) => handleInputChange('bill_cont_end', e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="billowner">Bill Owner</Label>
-                  <Input
-                    id="billowner"
-                    value={formData.billowner}
-                    onChange={(e) => handleInputChange('billowner', e.target.value)}
-                    placeholder="Enter bill owner"
-                  />
-                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4">
