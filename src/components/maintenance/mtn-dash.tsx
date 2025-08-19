@@ -64,7 +64,7 @@ const MaintenanceDash = () => {
     setLoading(true);
     try {
       // Fetch all maintenance requests to calculate statistics
-      const response = await authenticatedApi.get('/api/mtn/vehicle');
+      const response = await authenticatedApi.get('/api/mtn/request');
       const data = (response.data as { data?: any[] })?.data || [];
 
       // Calculate stats

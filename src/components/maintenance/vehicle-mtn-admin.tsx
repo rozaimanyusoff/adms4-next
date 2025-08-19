@@ -84,7 +84,7 @@ const VehicleMaintenanceAdmin = () => {
   const fetchMaintenanceRequests = async () => {
     setLoading(true);
     try {
-      const response = await authenticatedApi.get('/api/mtn/vehicle');
+      const response = await authenticatedApi.get('/api/mtn/request');
       const data = (response.data as { data?: MaintenanceRequest[] })?.data || [];
       
       // Store all data
