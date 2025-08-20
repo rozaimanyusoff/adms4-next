@@ -244,7 +244,11 @@ const BeneficiaryManager: React.FC = () => {
   { key: 'prepared_by', header: 'Bill Manager', filter: 'input', render: (r: any) => (r.prepared_by && typeof r.prepared_by === 'object') ? r.prepared_by.full_name : (r.prepared_by || '') },
     { key: 'bfcy_fileno', header: 'File Reference', filter: 'input' },
     { key: 'bfcy_ctc', header: 'Contact', filter: 'input' },
-    { key: 'bfcy_logo', header: 'Logo', render: (r: any) => r.bfcy_logo ? (<img src={r.bfcy_logo} alt={r.bfcy_name} className="w-8 h-8 object-contain" />) : null },
+    { key: 'bfcy_logo', header: 'Logo', render: (r: any) => {
+      const src = r?.bfcy_logo || r?.logo || r?.bfcy_pic || r?.bfcy_pic_url;
+      const alt = r?.bfcy_name || r?.acc_no || 'logo';
+      return src ? (<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" />) : null;
+    } },
   // actions are handled via row double-click
   ];
 

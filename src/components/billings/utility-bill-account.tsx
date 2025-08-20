@@ -272,7 +272,12 @@ const BillingAccount = () => {
 
   const columns: ColumnDef<any>[] = [
     { key: 'rowNumber', header: '#', render: (r: any) => r.rowNumber },
-    { key: 'logo', header: 'Logo', render: (r: any) => r?.beneficiary?.logo ? (<span>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={r.beneficiary.logo} alt={r.beneficiary.bfcy_name || 'logo'} className="w-8 h-8 object-contain rounded" /></span>) : null },
+    { key: 'logo', header: 'Logo', render: (r: any) => {
+      // support multiple possible backend shapes
+      const src = r?.beneficiary?.logo || r?.beneficiary?.bfcy_logo || r?.beneficiary?.bfcy_pic || r?.bfcy_logo || r?.logo || r?.bfcy_pic;
+      const alt = r?.beneficiary?.bfcy_name || r?.bfcy_name || r?.bill_bfcy || 'logo';
+      return src ? (<span>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" /></span>) : null;
+    } },
     { key: 'bill_ac', header: 'Account No', filter: 'input' },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
     // product column removed
