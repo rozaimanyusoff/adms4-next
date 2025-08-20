@@ -228,15 +228,25 @@ const BillingAccount = () => {
 
     setSaving(true);
     try {
+      // Build explicit payload to match backend expected field names
       const payload = {
-        ...formData,
+        bill_ac: formData.bill_ac,
+        service: formData.service,
+        bill_desc: formData.bill_desc,
+        // cost center -> numeric id or null
         cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
+        // beneficiary id
         bfcy_id: formData.bfcy_id ? parseInt(formData.bfcy_id) : null,
-        location_id: formData.location_id ? parseInt(formData.location_id) : null,
+        // backend expects loc_id for location reference
+        loc_id: formData.location_id ? parseInt(formData.location_id) : null,
+        bill_depo: formData.bill_depo || '0.00',
+        bill_mth: formData.bill_mth || '0.00',
+        bill_stat: formData.bill_stat,
         // convert form 'yes'/'no' back to backend 'c'/'nc'
         bill_consumable: formData.bill_consumable === 'yes' ? 'c' : 'nc',
-        bill_cont_start: formData.bill_cont_start ? new Date(formData.bill_cont_start).toISOString() : null,
-        bill_cont_end: formData.bill_cont_end ? new Date(formData.bill_cont_end).toISOString() : null,
+  // send date-only string (YYYY-MM-DD) to match DB DATE column expectations
+  bill_cont_start: formData.bill_cont_start ? formData.bill_cont_start : null,
+  bill_cont_end: formData.bill_cont_end ? formData.bill_cont_end : null,
       };
 
       if (editingAccount) {

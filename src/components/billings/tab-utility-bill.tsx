@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import UtilityBill from "./utility-bill";
 import UtilityDash from "./utility-dash";
 import BillingAccount from "./utility-bill-account";
-import BeneficiaryManager from "./beneficiary";
+import BeneficiaryManager from "./utility-bill-beneficiary";
 import Link from "next/link";
 
 const UtilityBilling: React.FC = () => {
