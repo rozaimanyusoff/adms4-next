@@ -34,34 +34,34 @@ const getLogoUrl = (logoPath: string | null): string => {
 };
 
 interface UtilityBill {
-  bill_id: number;
-  loc_id?: number;
-  cc_id: number;
+  util_id: number;
+  // nested account object from backend
+  account: {
+    bill_id: number;
+    bill_ac?: string | null;
+    beneficiary?: { id?: number; name?: string; logo?: string; prepared_by?: any } | null;
+    service?: string | null;
+    desc?: string | null;
+    costcenter?: { id?: number; name?: string } | null;
+    location?: { id?: number; name?: string } | null;
+  };
+  // billing fields
   ubill_date: string;
   ubill_no: string;
-  ubill_stotal: string;
-  ubill_tax: string;
-  ubill_disc: string;
-  ubill_round: string;
-  ubill_rent: string;
-  ubill_bw: string;
-  ubill_color: string;
-  ubill_gtotal: string;
-  ubill_paystat: string;
-  ubill_payref: string;
-  // Additional fields for display compatibility
-  account?: {
-    utility_id: string;
-    service: string;
-    provider?: string;
-  };
-  costcenter?: {
-    costcenter_id: string;
-    name: string;
-  };
-  service?: string; // Added for DataGrid column compatibility
-  costcenter_name?: string; // Added for DataGrid column compatibility
-  provider?: string; // Added for DataGrid column compatibility
+  ubill_stotal: string | null;
+  ubill_tax: string | null;
+  ubill_disc: string | null;
+  ubill_round: string | null;
+  ubill_rent: string | null;
+  ubill_bw: string | null;
+  ubill_color: string | null;
+  ubill_gtotal: string | null;
+  ubill_paystat: string | null;
+  ubill_payref: string | null;
+  // legacy helpers for grid display (filled at fetch time)
+  service?: string;
+  provider?: string;
+  costcenter_name?: string;
 }
 
 interface BillingAccount {
@@ -301,9 +301,9 @@ const UtilityBill = () => {
 
   const handleRowDoubleClick = (bill: UtilityBill & { rowNumber: number }) => {
     setFormData({
-      bill_id: bill.bill_id,
-      utility_id: bill.account?.utility_id ? parseInt(bill.account.utility_id) : undefined,
-      cc_id: bill.cc_id ? bill.cc_id.toString() : 'none',
+      bill_id: bill.account?.bill_id,
+      utility_id: bill.account?.bill_id,
+      cc_id: bill.account?.costcenter ? String(bill.account.costcenter.id) : 'none',
       ubill_date: bill.ubill_date ? new Date(bill.ubill_date).toISOString().split('T')[0] : '',
       ubill_no: bill.ubill_no || '',
       ubill_stotal: bill.ubill_stotal || '0.00',
@@ -338,8 +338,8 @@ const UtilityBill = () => {
       };
 
       if (editingBill) {
-        // Update existing bill
-        await authenticatedApi.put(`/api/bills/util/${editingBill.bill_id}`, payload);
+        // Update existing bill (use util_id)
+        await authenticatedApi.put(`/api/bills/util/${editingBill.util_id}`, payload);
         toast.success('Utility bill updated successfully');
       } else {
         // Create new bill
@@ -362,12 +362,12 @@ const UtilityBill = () => {
     authenticatedApi.get('/api/bills/util')
       .then(res => {
         const data = (res.data as { data?: UtilityBill[] })?.data || [];
-        setRows(data.map((item, idx) => ({
+        setRows((data as any[]).map((item: any, idx: number) => ({
           ...item,
           rowNumber: idx + 1,
           service: item.account?.service || '',
-          provider: item.account?.provider || '',
-          costcenter_name: item.costcenter?.name || '',
+          provider: item.account?.beneficiary?.name || item.account?.provider || '',
+          costcenter_name: item.account?.costcenter?.name || '',
           ubill_date: item.ubill_date ? new Date(item.ubill_date).toLocaleDateString() : '',
         })));
         setLoading(false);
@@ -466,7 +466,7 @@ const UtilityBill = () => {
         onRowDoubleClick={handleRowDoubleClick}
         rowSelection={{
           enabled: true,
-          getRowId: (row: any) => row.bill_id,
+          getRowId: (row: any) => row.util_id || row.account?.bill_id,
           onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
             setSelectedRowIds(selectedKeys.map(Number));
           },
@@ -526,8 +526,10 @@ const UtilityBill = () => {
                         {/* Logo on the left */}
                         <div className="flex-shrink-0">
                           <img
-                            src={account.logoUrl}
-                            alt={account.provider || 'Provider'}
+                            src={
+                              ((account as any).account?.beneficiary?.logo) ? getLogoUrl((account as any).account.beneficiary.logo) : (account.logoUrl || getLogoUrl(account.logo || null))
+                            }
+                            alt={account.provider || (account as any).account?.beneficiary?.name || 'Provider'}
                             className="w-10 h-10 rounded-full object-cover bg-gray-100 dark:bg-gray-800"
                             onError={(e) => {
                               const img = e.target as HTMLImageElement;

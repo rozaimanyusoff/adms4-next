@@ -16,9 +16,11 @@ interface BillingAccount {
   bill_id: number;
   bill_ac: string;
   service: string;
+  provider?: string | null;
   bfcy_id: number;
   cat_id: number;
   // bill_product removed
+  bill_product?: string | null;
   bill_desc: string;
   cc_id: number;
   bill_loc: string;
@@ -203,15 +205,15 @@ const BillingAccount = () => {
       service: account.service || '',
       // bill_product removed
       bill_desc: account.bill_desc || '',
-      cc_id: account.cc_id ? account.cc_id.toString() : 'none',
-      bfcy_id: account.beneficiary ? String(account.beneficiary.bfcy_id) : undefined,
-      location_id: account.location ? String(account.location.id) : '',
+  cc_id: (account.cc_id ? account.cc_id.toString() : (account.costcenter ? String(account.costcenter.id) : 'none')),
+  bfcy_id: account.bfcy_id ? String(account.bfcy_id) : (account.beneficiary ? String(account.beneficiary.bfcy_id) : undefined),
+  location_id: (account.loc_id ? String(account.loc_id) : (account.location ? String(account.location.id) : '')),
       bill_loc: account.bill_loc || '',
       bill_depo: account.bill_depo || '0.00',
       bill_mth: account.bill_mth || '0.00',
       bill_stat: account.bill_stat || 'Active',
       // convert backend 'c'/'nc' to form 'yes'/'no'
-      bill_consumable: account.bill_consumable === 'c' ? 'yes' : 'no',
+  bill_consumable: account.bill_consumable === 'c' ? 'yes' : 'no',
       bill_cont_start: account.bill_cont_start ? new Date(account.bill_cont_start).toISOString().split('T')[0] : '',
       bill_cont_end: account.bill_cont_end ? new Date(account.bill_cont_end).toISOString().split('T')[0] : '',
       billowner: account.billowner || '',
@@ -234,11 +236,11 @@ const BillingAccount = () => {
         service: formData.service,
         bill_desc: formData.bill_desc,
         // cost center -> numeric id or null
-        cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
+  cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
         // beneficiary id
-        bfcy_id: formData.bfcy_id ? parseInt(formData.bfcy_id) : null,
+  bfcy_id: formData.bfcy_id ? parseInt(formData.bfcy_id) : null,
         // backend expects loc_id for location reference
-        loc_id: formData.location_id ? parseInt(formData.location_id) : null,
+  loc_id: formData.location_id ? parseInt(formData.location_id) : null,
         bill_depo: formData.bill_depo || '0.00',
         bill_mth: formData.bill_mth || '0.00',
         bill_stat: formData.bill_stat,
@@ -280,6 +282,7 @@ const BillingAccount = () => {
     } },
     { key: 'bill_ac', header: 'Account No', filter: 'input' },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
+  { key: 'provider', header: 'Provider', render: (r: any) => r.provider || r?.beneficiary?.bfcy_name || '' },
     // product column removed
     { key: 'bill_desc', header: 'Description' },
     { key: 'beneficiary', header: 'Beneficiary', render: (r: any) => r?.beneficiary?.bfcy_name || r?.bill_bfcy || '' },
