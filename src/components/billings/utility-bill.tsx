@@ -127,6 +127,7 @@ const UtilityBill = () => {
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
   const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [yearFilter, setYearFilter] = useState<string>(String(new Date().getFullYear()));
   const [selectedAccount, setSelectedAccount] = useState<BillingAccount | null>(null);
   const [sidebarSize, setSidebarSize] = useState<'sm' | 'lg'>('sm');
   const router = useRouter();
@@ -362,7 +363,13 @@ const UtilityBill = () => {
     authenticatedApi.get('/api/bills/util')
       .then(res => {
         const data = (res.data as { data?: UtilityBill[] })?.data || [];
-        setRows((data as any[]).map((item: any, idx: number) => ({
+        const filtered = (data as any[]).filter((item: any) => {
+          if (!yearFilter || yearFilter === 'all') return true;
+          if (!item.ubill_date) return false;
+          try { return new Date(item.ubill_date).getFullYear() === Number(yearFilter); } catch { return false; }
+        });
+
+        setRows(filtered.map((item: any, idx: number) => ({
           ...item,
           rowNumber: idx + 1,
           service: item.account?.service || '',
@@ -383,6 +390,10 @@ const UtilityBill = () => {
     fetchCostCenters();
     fetchBillingAccounts();
   }, []);
+
+  useEffect(() => {
+    fetchUtilityBills();
+  }, [yearFilter]);
 
   useEffect(() => {
     window.reloadUtilityBillGrid = () => {
@@ -423,6 +434,7 @@ const UtilityBill = () => {
     <div className="mt-4">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
+          
           <h2 className="text-lg font-bold">Utility Bills Summary</h2>
           {selectedRowIds.length > 0 && (
             <Button
@@ -438,15 +450,20 @@ const UtilityBill = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={sidebarOpen ? 'bg-blue-50 border-blue-200 text-blue-700' : ''}
-          >
-            {sidebarOpen ? <X size={16} /> : <Search size={16} />}
-            {sidebarOpen ? 'Close Accounts' : 'Show Accounts'}
-          </Button>
+          <div className="flex items-center">
+            <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
+              <SelectTrigger className="w-28 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const y = String(new Date().getFullYear() - i);
+                  return (<SelectItem key={y} value={y}>{y}</SelectItem>);
+                })}
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             variant={'default'}
             onClick={handleAdd}
@@ -459,7 +476,7 @@ const UtilityBill = () => {
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
         data={rows}
-        pagination={true}
+        pagination={false}
         inputFilter={false}
         theme="sm"
         dataExport={true}
@@ -530,7 +547,7 @@ const UtilityBill = () => {
                               ((account as any).account?.beneficiary?.logo) ? getLogoUrl((account as any).account.beneficiary.logo) : (account.logoUrl || getLogoUrl(account.logo || null))
                             }
                             alt={account.provider || (account as any).account?.beneficiary?.name || 'Provider'}
-                            className="w-10 h-10 rounded-full object-cover bg-gray-100 dark:bg-gray-800"
+                            className="w-12 h-12 rounded-0 object-cover bg-gray-100 dark:bg-gray-800"
                             onError={(e) => {
                               const img = e.target as HTMLImageElement;
                               // Only set fallback once to prevent infinite loops
