@@ -2,9 +2,10 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { BarChart3, List, Activity } from 'lucide-react';
-import MaintenanceDash from '@components/maintenance/mtn-dash';
-import VehicleMaintenanceAdmin from '@components/maintenance/vehicle-mtn-admin';
+import { BarChart3, List, Activity, Wrench } from 'lucide-react';
+import MaintenanceDash from './mtn-dash';
+import VehicleMaintenanceAdmin from './vehicle-mtn-admin';
+import ServiceTypes from './service-types';
 import Link from "next/link";
 
 const TabMaintenance = () => {
@@ -12,6 +13,7 @@ const TabMaintenance = () => {
     const tabTitles = [
         { value: 'dashboard', label: 'Dashboard' },
         { value: 'records', label: 'Records' },
+        { value: 'service-types', label: 'Service Types' },
     ];
 
 
@@ -34,7 +36,7 @@ const TabMaintenance = () => {
             </p>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-2 lg:w-96">
+                <TabsList className="grid w-full grid-cols-3 lg:w-[500px]">
                     <TabsTrigger value="dashboard" className="flex items-center gap-2">
                         <BarChart3 size={16} />
                         Dashboard
@@ -42,6 +44,10 @@ const TabMaintenance = () => {
                     <TabsTrigger value="records" className="flex items-center gap-2">
                         <List size={16} />
                         Records
+                    </TabsTrigger>
+                    <TabsTrigger value="service-types" className="flex items-center gap-2">
+                        <Wrench size={16} />
+                        Service Types
                     </TabsTrigger>
                 </TabsList>
 
@@ -59,6 +65,13 @@ const TabMaintenance = () => {
                             <VehicleMaintenanceAdmin />
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                <TabsContent value="service-types" className="mt-6">
+                    <ServiceTypes
+                        displayMode="management"
+                        className="space-y-6"
+                    />
                 </TabsContent>
             </Tabs>
         </div>

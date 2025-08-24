@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import ServiceTypes, { ServiceType } from '@/components/maintenance/service-types';
 import {
   ArrowLeft,
   ArrowRight,
@@ -28,15 +29,11 @@ import {
   Send,
   CreditCard,
   Search,
-  X
+  X,
+  Save
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-
-interface ServiceType {
-  id: number;
-  name: string;
-}
 
 interface Asset {
   id: number;
@@ -166,10 +163,12 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   // Admin section form state
   const [adminRemarks, setAdminRemarks] = useState('');
   const [workshopPanel, setWorkshopPanel] = useState('none');
-  const [majorServiceOptions, setMajorServiceOptions] = useState<string[]>([]);
+  const [majorServiceOptions, setMajorServiceOptions] = useState<number[]>([]);
   const [majorServiceRemarks, setMajorServiceRemarks] = useState('');
   const [serviceConfirm, setServiceConfirm] = useState<'proceed' | 'reject' | ''>('');
   const [rejectionRemarks, setRejectionRemarks] = useState('');
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminSectionSaved, setAdminSectionSaved] = useState(false);
   const router = useRouter();
   const [navSearch, setNavSearch] = useState('');
 
@@ -257,6 +256,40 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
       toast.error('Failed to process invoice');
     } finally {
       setProcessingInvoice(false);
+    }
+  };
+
+  const handleAdminSave = async () => {
+    try {
+      setAdminSaving(true);
+      setAdminSectionSaved(false);
+
+      // Prepare form payload for service coordinator action
+      const payload = {
+        coordinator_comment: adminRemarks,
+        workshop_id: workshopPanel !== 'none' ? parseInt(workshopPanel) : null,
+        major_service_comment: majorServiceRemarks,
+        major_service_options: majorServiceOptions.join(','), // Imploded svcTypeId values
+        rejection_comment: rejectionRemarks,
+        service_confirmation: serviceConfirm === 'proceed' ? 1 : serviceConfirm === 'reject' ? 2 : null,
+        verification_date: new Date().toISOString().split('T')[0], // Current date in yyyy-mm-dd format
+        coordinator_id: 'admin' // You might want to get this from user context/auth
+      };
+
+      // Send PUT request to update the maintenance request
+      await authenticatedApi.put(`/api/mtn/request/${requestId}`, payload);
+      
+      toast.success('Service coordinator actions saved successfully');
+      setAdminSectionSaved(true);
+      
+      // Optionally refresh the request data
+      await fetchMaintenanceDetail();
+      
+    } catch (error) {
+      console.error('Error saving admin section:', error);
+      toast.error('Failed to save service coordinator actions');
+    } finally {
+      setAdminSaving(false);
     }
   };
 
@@ -606,8 +639,8 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                   <label className="text-sm font-medium text-gray-600">Service Types</label>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {request.svc_type.map((service) => (
-                      <Badge key={service.id} variant="outline" className="text-xs bg-gray-100 border-gray-300">
-                        {service.name}
+                      <Badge key={service.svcTypeId} variant="outline" className="text-xs bg-gray-100 border-gray-300">
+                        {service.svcType}
                       </Badge>
                     ))}
                   </div>
@@ -660,35 +693,13 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 <div>
                   <h4 className="text-sm font-semibold mb-2">Major Service Section</h4>
                   <label className="text-sm font-medium text-gray-600 block mb-2">Service Option:</label>
-                  <div className="space-y-2 mb-3">
-                    {[
-                      'Full Engine Overhaul',
-                      'Top Engine Overhaul',
-                      'Aircond Full Service',
-                      'Gearbox Overhaul',
-                      'Axle Shaft Overhaul',
-                      'Body Works',
-                    ].map((opt) => {
-                      const id = `ms-opt-${opt.replace(/\s+/g, '-').toLowerCase()}`;
-                      const checked = majorServiceOptions.includes(opt);
-                      return (
-                        <label key={opt} htmlFor={id} className="flex items-center gap-3">
-                          <Checkbox
-                            id={id}
-                            checked={checked}
-                            onCheckedChange={(val) => {
-                              const isChecked = Boolean(val);
-                              setMajorServiceOptions((prev) => {
-                                if (isChecked) return Array.from(new Set([...prev, opt]));
-                                return prev.filter((p) => p !== opt);
-                              });
-                            }}
-                          />
-                          <span className="text-sm">{opt}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <ServiceTypes
+                    filterByGroup="Major Service"
+                    selectedServiceIds={majorServiceOptions}
+                    onSelectionChange={setMajorServiceOptions}
+                    displayMode="checkboxes"
+                    className="space-y-2"
+                  />
 
                   <div>
                     <label className="text-sm font-medium text-gray-600 block mb-2">Major Service Remarks:</label>
@@ -799,9 +810,30 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                   </div>
                 )}
 
+                {adminSectionSaved && (
+                  <p className="text-green-600 text-sm mt-2">
+                    Admin section saved successfully!
+                  </p>
+                )}
                 <div className="flex justify-between items-center">
                   
-                  <Button onClick={() => toast.success('Admin section saved (local only)')}>Save</Button>
+                  <Button 
+                    onClick={handleAdminSave}
+                    disabled={adminSaving}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {adminSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save
+                      </>
+                    )}
+                  </Button>
                 </div>
                 <Separator />
                 <div className="space-y-3">
@@ -890,7 +922,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                         <div className="mt-2 flex flex-wrap gap-0.5 mb-2">
                           {rec.svc_type.map((service, index) => (
                             <Badge key={index} variant="outline" className="text-xs bg-indigo-700 text-white">
-                              {service.name}
+                              {service.svcType}
                             </Badge>
                           ))}
                         </div>

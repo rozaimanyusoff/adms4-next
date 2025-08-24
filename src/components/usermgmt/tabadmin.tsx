@@ -7,6 +7,7 @@ import Groups from "./c-group";
 import Navigations from "./c-nav";
 import Roles from "./c-role";
 import CLogs from "./c-logs";
+import ApprovalLevel from "./approval-level";
 
 const UserMgmtMain = () => {
     const tabTitles = [
@@ -14,6 +15,7 @@ const UserMgmtMain = () => {
         { value: "roles", label: "Roles" },
         { value: "group", label: "Group" },
         { value: "navigation", label: "Navigation" },
+        { value: "approval", label: "Approval Levels" },
         { value: "logs", label: "Logs" },
     ];
 
@@ -22,6 +24,7 @@ const UserMgmtMain = () => {
         roles: <Roles />,
         group: <Groups />,
         navigation: <Navigations />,
+        approval: <ApprovalLevel />,
         logs: <CLogs />,
     };
 
