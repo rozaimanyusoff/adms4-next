@@ -5,6 +5,7 @@ import { authenticatedApi } from "@/config/api";
 import { Plus } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 
@@ -58,7 +59,10 @@ export default function AssetTransfer() {
     }, [data]);
 
     return (
-        <div className="mt-4">
+        <div className="p-4">
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold">Asset Transfer Management</h2>
+            </div>
             {/* Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <Card>
