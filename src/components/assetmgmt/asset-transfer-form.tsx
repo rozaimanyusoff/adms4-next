@@ -3,7 +3,7 @@ import { AuthContext } from "@/store/AuthContext";
 import { Checkbox } from '../ui/checkbox';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown } from "lucide-react";
+import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
@@ -22,11 +22,11 @@ export interface AssetTransferItem {
     identifier: string | { ramco_id: string; name: string };
     curr_owner?: { ramco_id: string; name: string } | null;
     curr_department?: { id: number; name: string } | null;
-    curr_district?: { id: number; name: string } | null;
+    curr_location?: { id: number; name: string } | null;
     curr_costcenter?: { id: number; name: string } | null;
     new_owner?: { ramco_id: string; name: string } | null;
     new_department?: { id: number; name: string } | null;
-    new_district?: { id: number; name: string } | null;
+    new_location?: { id: number; name: string } | null;
     new_costcenter?: { id: number; name: string } | null;
     effective_date?: string;
     reasons?: string;
@@ -43,7 +43,7 @@ export interface AssetTransferItem {
     owner?: { ramco_id: string; name: string } | null;
     costcenter?: { id: number; name: string } | null;
     department?: { id: number; name: string } | null;
-    district?: { id: number; name: string } | null;
+    location?: { id: number; name: string } | null;
 }
 
 export interface AssetTransferRequest {
@@ -54,7 +54,7 @@ export interface AssetTransferRequest {
         name: string;
         cost_center?: { id: number; name: string };
         department?: { id: number; name: string };
-        district?: { id: number; name: string };
+        location?: { id: number; name: string };
         [key: string]: any;
     };
     request_date: string;
@@ -89,7 +89,7 @@ type Requestor = {
     position: { id: number; name: string } | null;
     department: { id: number; name: string, code: string } | null;
     costcenter: { id: number; name: string } | null;
-    district: { id: number; name: string, code: string } | null;
+    location: { id: number; name: string, code: string } | null;
     email?: string;
     contact?: string;
     // Add any other fields as needed
@@ -120,7 +120,7 @@ interface Department {
     status: number;
 }
 
-interface District {
+interface Location {
     id: number;
     name: string;
     code: string;
@@ -147,7 +147,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [selectedOwnerName, setSelectedOwnerName] = React.useState('');
     const [costCenters, setCostCenters] = React.useState<CostCenter[]>([]);
     const [departments, setDepartments] = React.useState<Department[]>([]);
-    const [districts, setDistricts] = React.useState<District[]>([]);
+    const [locations, setLocations] = React.useState<Location[]>([]);
     const [itemReasons, setItemReasons] = React.useState<any>({});
     const [workflow, setWorkflow] = React.useState<any>({});
     const [requestStatus, setRequestStatus] = React.useState<'draft' | 'submitted'>('draft');
@@ -162,6 +162,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [error, setError] = React.useState<string | null>(null);
     const [showAccordionTooltip, setShowAccordionTooltip] = React.useState<{ [id: string]: boolean }>({});
     const [showAddItemsTooltip, setShowAddItemsTooltip] = React.useState(false);
+    // Track which items' accordions are expanded so we can apply the approval-level visual style
+    const [expandedItems, setExpandedItems] = React.useState<Record<number, boolean>>({});
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -220,7 +222,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                 const newDetails = { ...emptyDetails, ...(transfer.new || {}) };
                 const new_costcenter = { id: parseInt(newDetails.costCenter || current.costCenter || item.costcenter?.id || '0', 10), name: item.costcenter?.name || '' };
                 const new_department = { id: parseInt(newDetails.department || current.department || item.department?.id || '0', 10), name: item.department?.name || '' };
-                const new_district = { id: parseInt(newDetails.location || current.location || item.district?.id || '0', 10), name: item.district?.name || '' };
+                const new_location = { id: parseInt(newDetails.location || current.location || item.location?.id || '0', 10), name: item.location?.name || '' };
                 const reasonsStr = Object.entries(reasons)
                     .filter(([key, value]) => (typeof value === 'boolean' ? value : value === 'true'))
                     .map(([key]) => key)
@@ -257,10 +259,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     curr_owner: item.owner ? { ramco_id: item.owner.ramco_id, name: item.owner.full_name } : item.curr_owner ? { ramco_id: item.curr_owner.ramco_id, name: item.curr_owner.name } : null,
                     curr_costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : item.curr_costcenter ? { id: item.curr_costcenter.id, name: item.curr_costcenter.name } : null,
                     curr_department: item.department ? { id: item.department.id, name: item.department.name } : item.curr_department ? { id: item.curr_department.id, name: item.curr_department.name } : null,
-                    curr_district: item.district ? { id: item.district.id, name: item.district.name } : item.curr_district ? { id: item.curr_district.id, name: item.curr_district.name } : null,
+                    curr_location: item.location ? { id: item.location.id, name: item.location.name } : item.curr_location ? { id: item.curr_location.id, name: item.curr_location.name } : null,
                     new_costcenter,
                     new_department,
-                    new_district,
+                    new_location,
                     reasons: reasonsStr,
                     remarks: reasons.othersText,
                     attachment: null,
@@ -304,7 +306,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                 effectiveDate: prev[itemId]?.effectiveDate || '',
             };
 
-            // Automatically check or uncheck the corresponding checkbox for New Owner, Cost Center, Department, or District
+            // Automatically check or uncheck the corresponding checkbox for New Owner, Cost Center, Department, or Location
             if (section === 'new' && ['ownerName', 'costCenter', 'department', 'location'].includes(field)) {
                 updatedItem[section].ownerChecked = field === 'ownerName' ? !!value : updatedItem[section].ownerChecked;
             }
@@ -403,7 +405,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                         position: data.position || null,
                         department: data.department || null,
                         costcenter: data.costcenter || null,
-                        district: data.district || null,
+                        location: data.location || null,
                         email: data.email || '',
                         contact: data.contact || '',
                         // Add any other fields as needed
@@ -475,19 +477,19 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         return fallback;
     }
 
-    // Fetch data for cost center, departments, and districts from their respective APIs and populate the dropdowns.
+    // Fetch data for cost center, departments, and locations from their respective APIs and populate the dropdowns.
     useEffect(() => {
         async function fetchDropdownData() {
             try {
-                const [costCentersRes, departmentsRes, districtsRes] = await Promise.all([
+                const [costCentersRes, departmentsRes, locationsRes] = await Promise.all([
                     authenticatedApi.get<{ data: CostCenter[] }>('/api/assets/costcenters'),
                     authenticatedApi.get<{ data: Department[] }>('/api/assets/departments'),
-                    authenticatedApi.get<{ data: District[] }>('/api/assets/districts'),
+                    authenticatedApi.get<{ data: Location[] }>('/api/assets/locations'),
                 ]);
 
                 setCostCenters(costCentersRes.data.data || []);
                 setDepartments(departmentsRes.data.data || []);
-                setDistricts(districtsRes.data.data || []);
+                setLocations(locationsRes.data.data || []);
             } catch (error) {
                 console.error('Failed to fetch dropdown data:', error);
             }
@@ -531,7 +533,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                 owner: item.curr_owner,
                                 costcenter: item.curr_costcenter,
                                 department: item.curr_department,
-                                district: item.curr_district,
+                                location: item.curr_location,
                             })));
                             // Prefill effective dates
                             setItemEffectiveDates(
@@ -545,14 +547,14 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                         ownerStaffId: item.curr_owner?.ramco_id || '',
                                         costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
                                         department: item.curr_department?.id ? String(item.curr_department.id) : '',
-                                        location: item.curr_district?.id ? String(item.curr_district.id) : '',
+                                        location: item.curr_location?.id ? String(item.curr_location.id) : '',
                                     },
                                     new: {
                                         ownerName: item.new_owner?.name || '',
                                         ownerStaffId: item.new_owner?.ramco_id || '',
                                         costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
                                         department: item.new_department?.id ? String(item.new_department.id) : '',
-                                        location: item.new_district?.id ? String(item.new_district.id) : '',
+                                        location: item.new_location?.id ? String(item.new_location.id) : '',
                                     },
                                     effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
                                 }]))
@@ -595,7 +597,22 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="w-full min-h-screen pt-10 bg-gray-50 dark:bg-gray-800">
+        <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
+            {/* HEADER (dark) similar to screenshot */}
+            <div className="w-full bg-slate-900 mb-10">
+                <div className="mx-auto px-6 py-2">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-white text-sm font-semibold">
+                                Asset Transfer Form
+                            </h2>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button className="p-2 bg-red-600 hover:bg-red-700 text-white" onClick={handleCancel} aria-label="close"><X size={16} /></Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {/* AlertDialogs for confirmation */}
             <AlertDialog open={openSubmitDialog} onOpenChange={setOpenSubmitDialog}>
                 <AlertDialogContent>
@@ -697,8 +714,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                 <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.costcenter?.name || ''}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">District</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.district?.name || ''}</span>
+                                <label className="block font-medium min-w-[120px] my-0.5">Location</label>
+                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.location?.name || ''}</span>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -751,7 +768,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                     e.ramco_id === item.ramco_id || e.full_name === item.full_name
                                 );
                                 return (
-                                    <Accordion type="single" collapsible key={item.id} className="mb-4 bg-gray-100 dark:bg-gray-800 rounded px-4">
+                                    <Accordion
+                                        type="single"
+                                        collapsible
+                                        key={item.id}
+                                        // controlled expansion so we can style the expanded item
+                                        value={expandedItems[item.id] ? `item-${item.id}` : undefined}
+                                        onValueChange={(val: string | undefined) => setExpandedItems(prev => ({ ...prev, [item.id]: !!val }))}
+                                        className={`mb-4 bg-gray-100 dark:bg-gray-800 rounded px-4 ${expandedItems[item.id] ? 'border rounded-lg' : ''}`}
+                                    >
                                         <AccordionItem value={`item-${item.id}`}>
                                             <AccordionTrigger>
                                                 <div className="flex items-center justify-between w-full">
@@ -788,6 +813,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                 </div>
                                             </AccordionTrigger>
                                             <AccordionContent>
+                                                <div className={`p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
                                                 {/* EMPLOYEE DETAILS SECTION */}
                                                 {item.transfer_type === 'Employee' && (
                                                     <div className="py-2 rounded">
@@ -1000,15 +1026,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                             onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
 
                                                                         />
-                                                                        District
+                                                                        Location
                                                                     </label>
                                                                 </td>
-                                                                <td className="py-0.5">{renderValue(item.district?.name)}</td>
+                                                                <td className="py-0.5">{renderValue(item.location?.name)}</td>
                                                                 <td className="py-0.5">
                                                                     <Select value={itemTransferDetails[item.id]?.new.location} onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)} disabled={!!returnToAssetManager[item.id]}>
-                                                                        <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New District" /></SelectTrigger>
+                                                                        <SelectTrigger className="w-full" size="sm"><SelectValue placeholder="New Location" /></SelectTrigger>
                                                                         <SelectContent>
-                                                                            {districts.map((district: District) => <SelectItem key={district.id} value={String(district.id)}>{renderValue(district.code)}</SelectItem>)}
+                                                                            {locations.map((loc: Location) => <SelectItem key={loc.id} value={String(loc.id)}>{renderValue(loc.code)}</SelectItem>)}
                                                                         </SelectContent>
                                                                     </Select>
                                                                 </td>
@@ -1077,6 +1103,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
 
                                                 {/* Comment before Attachments */}
 
+                                                </div>
                                             </AccordionContent>
                                         </AccordionItem>
                                     </Accordion>
@@ -1117,17 +1144,28 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                     })
                                                     .map((emp: any, idx: number, arr: any[]) => (
                                                         <React.Fragment key={emp.ramco_id}>
-                                                            <li className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded px-3 py-0.5">
-                                                                <CirclePlus className="text-blue-500 w-6 h-6 cursor-pointer" onClick={() => { addSelectedItem(emp); }} />
-                                                                <User className="w-6 h-6 text-cyan-600 text-shadow-2xs" />
-                                                                <div>
-                                                                    <span className='dark:text-dark-light'>{emp.full_name} <span className="text-xs text-gray-500 dark:text-dark-light">({emp.ramco_id})</span></span>
+                                                            <div className="flex items-start gap-3 bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-700">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { addSelectedItem(emp); }}
+                                                                    className="w-8 h-8 flex items-center justify-center rounded-full border border-blue-200 text-blue-500 hover:bg-blue-50"
+                                                                    aria-label={`Add ${emp.full_name}`}
+                                                                >
+                                                                    <CirclePlus className="w-4 h-4" />
+                                                                </button>
+                                                                <User className="w-6 h-6 text-cyan-600 mt-1" />
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="text-sm font-medium text-gray-800 dark:text-dark-light">
+                                                                            {emp.full_name} <span className="text-xs text-gray-500">({emp.ramco_id})</span>
+                                                                        </div>
+                                                                    </div>
                                                                     {emp.position?.name && (
-                                                                        <div className="text-xs text-gray-600 dark:text-dark-light">{emp.position?.name}</div>
+                                                                        <div className="text-xs text-gray-500 mt-1">{emp.position?.name}</div>
                                                                     )}
                                                                 </div>
-                                                            </li>
-                                                            {idx < arr.length - 1 && <hr className="my-2 border-gray-300" />}
+                                                            </div>
+                                                            {idx < arr.length - 1 && <hr className="my-2 border-gray-200" />}
                                                         </React.Fragment>
                                                     ))
                                             )}
@@ -1183,7 +1221,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                         }
                                                         return (
                                                             <React.Fragment key={a.id || a.register_number || j}>
-                                                                <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded px-3 py-0.5">
+                                                                <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-0.5">
                                                                     <div className="flex items-center gap-3">
                                                                         <div className="flex items-center gap-2">
                                                                             <CirclePlus className="text-blue-500 w-6 h-6 cursor-pointer" onClick={() => { addSelectedItem(a); }} />

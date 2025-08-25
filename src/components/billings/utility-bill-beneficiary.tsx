@@ -19,7 +19,8 @@ interface Beneficiary {
   bfcy_ctc?: string;
   bfcy_logo?: string;
   // backend may return an object { ramco_id, full_name } or a simple ramco_id string
-  prepared_by?: { ramco_id: string; full_name: string } | string | null;
+  entry_by?: { ramco_id: string; full_name: string } | string | null;
+  entry_position?: string;
   acc_no?: string;
 }
 
@@ -54,8 +55,8 @@ const BeneficiaryManager: React.FC = () => {
   const fetchList = async () => {
     setLoading(true);
     try {
-  const res: any = await authenticatedApi.get('/api/bills/util/beneficiaries');
-  const data = res.data?.data || [];
+      const res: any = await authenticatedApi.get('/api/bills/util/beneficiaries');
+      const data = res.data?.data || [];
       setRows(data);
     } catch (err) {
       console.error(err);
@@ -69,9 +70,9 @@ const BeneficiaryManager: React.FC = () => {
 
   const openCreate = () => {
     setEditing(null);
-  setForm({ bfcy_name: '', bfcy_desc: '', cat_id: undefined, bfcy_fileno: '', bfcy_pic: '', bfcy_ctc: '', bfcy_logo: '', acc_no: '', prepared_by: undefined });
+    setForm({ bfcy_name: '', bfcy_desc: '', cat_id: undefined, bfcy_fileno: '', bfcy_pic: '', bfcy_ctc: '', bfcy_logo: '', acc_no: '', entry_by: undefined });
     setLogoFile(null);
-  setPreparedName('');
+    setPreparedName('');
     setSidebarOpen(true);
   };
 
@@ -79,8 +80,8 @@ const BeneficiaryManager: React.FC = () => {
     if (!id) return;
     setLoading(true);
     try {
-  const res: any = await authenticatedApi.get(`/api/bills/util/beneficiaries/${id}`);
-  const data = res.data?.data || null;
+      const res: any = await authenticatedApi.get(`/api/bills/util/beneficiaries/${id}`);
+      const data = res.data?.data || null;
       if (data) {
         setEditing(data);
         setForm({
@@ -93,19 +94,20 @@ const BeneficiaryManager: React.FC = () => {
           bfcy_ctc: data.bfcy_ctc || '',
           bfcy_logo: data.bfcy_logo || '',
           // store ramco_id string in form for payload
-          prepared_by: data.prepared_by ? (typeof data.prepared_by === 'object' ? String(data.prepared_by.ramco_id) : String(data.prepared_by)) : undefined,
+          entry_by: data.entry_by ? (typeof data.entry_by === 'object' ? String(data.entry_by.ramco_id) : String(data.entry_by)) : undefined,
+          entry_position: data.entry_position || '',
           acc_no: data.acc_no || ''
         });
         setLogoFile(null);
-        // if there's an existing prepared_by (ramco id), fetch name for display
-        if (data?.prepared_by) {
+        // if there's an existing entry_by (ramco id), fetch name for display
+        if (data?.entry_by) {
           try {
-            const query = typeof data.prepared_by === 'object' ? data.prepared_by.ramco_id : data.prepared_by;
+            const query = typeof data.entry_by === 'object' ? data.entry_by.ramco_id : data.entry_by;
             const r: any = await authenticatedApi.get(`/api/assets/employees/search?q=${query}`);
             const list = (r.data?.data || r.data || []);
             const found = Array.isArray(list) ? list.find((x: any) => String(x.ramco_id) === String(query)) : null;
             if (found) setPreparedName(found.full_name);
-            else if (typeof data.prepared_by === 'object') setPreparedName(data.prepared_by.full_name || '');
+            else if (typeof data.entry_by === 'object') setPreparedName(data.entry_by.full_name || '');
           } catch (err) {
             // ignore
           }
@@ -193,7 +195,8 @@ const BeneficiaryManager: React.FC = () => {
         payload.append('bfcy_pic', form.bfcy_pic || '');
         payload.append('bfcy_ctc', form.bfcy_ctc || '');
         payload.append('acc_no', form.acc_no || '');
-        payload.append('prepared_by', form.prepared_by || '');
+        payload.append('entry_by', form.entry_by || '');
+        payload.append('entry_position', form.entry_position || '');
         payload.append('bfcy_logo', logoFile);
       } else {
         payload = {
@@ -204,7 +207,8 @@ const BeneficiaryManager: React.FC = () => {
           bfcy_pic: form.bfcy_pic,
           bfcy_ctc: form.bfcy_ctc,
           acc_no: form.acc_no,
-          prepared_by: form.prepared_by,
+          entry_by: form.entry_by,
+          entry_position: form.entry_position,
         };
       }
 
@@ -241,15 +245,19 @@ const BeneficiaryManager: React.FC = () => {
     { key: 'bfcy_name', header: 'Name', filter: 'input' },
     { key: 'bfcy_cat', header: 'Category', render: (r: any) => r.bfcy_cat || (CATEGORY_OPTIONS.find((c) => c.id === r.cat_id)?.label || ''), filter: 'singleSelect' },
     { key: 'bfcy_desc', header: 'Description', filter: 'input' },
-  { key: 'prepared_by', header: 'Bill Manager', filter: 'input', render: (r: any) => (r.prepared_by && typeof r.prepared_by === 'object') ? r.prepared_by.full_name : (r.prepared_by || '') },
+        { key: 'bfcy_ctc', header: 'Contact', filter: 'input' },
+    { key: 'entry_by', header: 'Bill Manager', filter: 'input', render: (r: any) => (r.entry_by && typeof r.entry_by === 'object') ? r.entry_by.full_name : (r.entry_by || '') },
+    { key: 'entry_position', header: 'Position' },
     { key: 'bfcy_fileno', header: 'File Reference', filter: 'input' },
-    { key: 'bfcy_ctc', header: 'Contact', filter: 'input' },
-    { key: 'bfcy_logo', header: 'Logo', render: (r: any) => {
-      const src = r?.bfcy_logo || r?.logo || r?.bfcy_pic || r?.bfcy_pic_url;
-      const alt = r?.bfcy_name || r?.acc_no || 'logo';
-      return src ? (<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" />) : null;
-    } },
-  // actions are handled via row double-click
+
+    {
+      key: 'bfcy_logo', header: 'Logo', render: (r: any) => {
+        const src = r?.bfcy_logo || r?.logo || r?.bfcy_pic || r?.bfcy_pic_url;
+        const alt = r?.bfcy_name || r?.acc_no || 'logo';
+        return src ? (<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" />) : null;
+      }
+    },
+    // actions are handled via row double-click
   ];
 
   return (
@@ -261,7 +269,7 @@ const BeneficiaryManager: React.FC = () => {
         </div>
       </div>
 
-  <CustomDataGrid columns={columns as any} data={rows} pagination={false} inputFilter={false} theme="sm" onRowDoubleClick={(row: any) => openEdit(row?.bfcy_id)} dataExport={true} />
+      <CustomDataGrid columns={columns as any} data={rows} pagination={false} inputFilter={false} theme="sm" onRowDoubleClick={(row: any) => openEdit(row?.bfcy_id)} dataExport={true} />
 
       <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded mt-3">
         💡 <strong>Actions:</strong> Double-click any row to edit a beneficiary
@@ -293,7 +301,7 @@ const BeneficiaryManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Description</label>
+                <label className="block text-sm font-medium mb-1">Product Description</label>
                 <Input value={form.bfcy_desc} onChange={e => setForm(prev => ({ ...prev, bfcy_desc: e.target.value }))} />
               </div>
 
@@ -302,14 +310,18 @@ const BeneficiaryManager: React.FC = () => {
                 <Input value={form.acc_no} onChange={e => setForm(prev => ({ ...prev, acc_no: e.target.value }))} />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium mb-1">Beneficiary Contact</label>
+                <Input value={form.bfcy_ctc} onChange={e => setForm(prev => ({ ...prev, bfcy_ctc: e.target.value }))} />
+              </div>
               <div ref={employeeWrapRef} className="relative">
-                <label className="block text-sm font-medium mb-1">Prepared By</label>
+                <label className="block text-sm font-medium mb-1">Managed By (RTSB)</label>
                 <Input
                   value={preparedName || ''}
                   onChange={(e) => {
                     const v = e.target.value;
                     setPreparedName(v);
-                    setForm(prev => ({ ...prev, prepared_by: undefined }));
+                    setForm(prev => ({ ...prev, entry_by: undefined }));
                     setEmployeeQuery(v);
                   }}
                   onFocus={() => { if (employeeOptions.length) setShowEmployeeDropdown(true); }}
@@ -323,7 +335,7 @@ const BeneficiaryManager: React.FC = () => {
                     ) : employeeOptions.length ? (
                       employeeOptions.map(opt => (
                         <div key={opt.ramco_id} className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => {
-                          setForm(prev => ({ ...prev, prepared_by: String(opt.ramco_id) } as any));
+                          setForm(prev => ({ ...prev, entry_by: String(opt.ramco_id) } as any));
                           setPreparedName(opt.full_name);
                           setShowEmployeeDropdown(false);
                         }}>
@@ -337,13 +349,13 @@ const BeneficiaryManager: React.FC = () => {
                 )}
               </div>
 
+              {/* Position */}
               <div>
-                <label className="block text-sm font-medium mb-1">Contact</label>
-                <Input value={form.bfcy_ctc} onChange={e => setForm(prev => ({ ...prev, bfcy_ctc: e.target.value }))} />
+                <label className="block text-sm font-medium mb-1">Position (RTSB)</label>
+                <Input value={form.entry_position} onChange={e => setForm(prev => ({ ...prev, entry_position: e.target.value }))} />
               </div>
-
               <div>
-                <label className="block text-sm font-medium mb-1">File No</label>
+                <label className="block text-sm font-medium mb-1">RTSB File Reference</label>
                 <Input value={form.bfcy_fileno} onChange={e => setForm(prev => ({ ...prev, bfcy_fileno: e.target.value }))} />
               </div>
 

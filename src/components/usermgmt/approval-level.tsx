@@ -77,7 +77,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
-  
+
   // Employee search state
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
@@ -97,7 +97,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
     isOpen: false,
     title: '',
     description: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
     confirmText: 'Confirm',
     cancelText: 'Cancel'
   });
@@ -184,7 +184,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      
+
       // Validate required fields
       if (!formData.module_name || !formData.level_name || !formData.employee_ramco_id) {
         toast.error('Please fill in all required fields');
@@ -200,12 +200,12 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
         await authenticatedApi.post('/api/users/approvals', formData);
         toast.success('Approval level created successfully');
       }
-      
+
       setIsDialogOpen(false);
       setEditingLevel(null);
       resetForm();
       await fetchApprovalLevels();
-      
+
     } catch (error) {
       console.error('Error saving approval level:', error);
       toast.error('Failed to save approval level');
@@ -256,7 +256,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
       is_active: level.is_active,
       employee_ramco_id: level.employee?.ramco_id || ''
     });
-    
+
     // Set selected employee if available
     if (level.employee) {
       setSelectedEmployee({
@@ -266,7 +266,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
     } else {
       setSelectedEmployee(null);
     }
-    
+
     setIsDialogOpen(true);
   };
 
@@ -294,7 +294,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
 
   const handleToggleActive = async (level: ApprovalLevel) => {
     const action = level.is_active ? 'deactivate' : 'activate';
-    
+
     const performToggle = async () => {
       try {
         const updatedLevel = { ...level, is_active: !level.is_active };
@@ -368,7 +368,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                 {editingLevel ? 'Update the approval level details' : 'Create a new approval level for workflow management'}
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="grid grid-cols-2 gap-4 py-4">
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Module Name *</label>
@@ -385,7 +385,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Employee *</label>
                 <div className="relative employee-dropdown">
@@ -426,7 +426,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                       </Button>
                     )}
                   </div>
-                  
+
                   {employeeComboboxOpen && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
                       {employeeSearchLoading ? (
@@ -463,7 +463,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                       )}
                     </div>
                   )}
-                  
+
                   {selectedEmployee && (
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
                       <span className="font-medium text-blue-800">Selected: </span>
@@ -483,7 +483,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                   placeholder="Enter level order"
                 />
               </div>
-              
+
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Level Name *</label>
                 <Input
@@ -492,7 +492,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                   placeholder="e.g., Prepare, Verify, Approve"
                 />
               </div>
-              
+
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Description</label>
                 <Textarea
@@ -502,7 +502,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                   rows={3}
                 />
               </div>
-              
+
               <div className="col-span-2">
                 <div className="flex items-center space-x-2">
                   <Switch
@@ -513,13 +513,13 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
-                onClick={handleSave} 
+              <Button
+                onClick={handleSave}
                 disabled={saving || !formData.module_name || !formData.level_name || !formData.employee_ramco_id}
               >
                 {saving ? (
@@ -547,7 +547,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
       ) : (
         <Accordion type="multiple" className="space-y-4">
           {Object.entries(groupedLevels).map(([moduleName, levels]) => (
-            <AccordionItem key={moduleName} value={moduleName} className="border rounded-lg">
+            <AccordionItem key={moduleName} value={moduleName} className='border rounded-lg'>
               <AccordionTrigger className="px-6 py-4 hover:no-underline">
                 <div className="flex items-center justify-between w-full mr-4">
                   <div className="flex items-center gap-3">

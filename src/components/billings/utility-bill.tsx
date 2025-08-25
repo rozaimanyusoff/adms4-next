@@ -143,7 +143,6 @@ interface UtilityBillForm {
   ubill_count: string;
   ubill_usage: string;
   ubill_paystat: string;
-  ubill_payref: string;
   ubill_ref?: string; // File reference for uploaded payment document
 }
 
@@ -239,7 +238,6 @@ const UtilityBill = () => {
     ubill_count: '0',
     ubill_usage: '0.00',
     ubill_paystat: 'Pending',
-    ubill_payref: '',
     ubill_ref: '',
   });
 
@@ -311,7 +309,7 @@ const UtilityBill = () => {
       ...prev,
       [field]: value
     }));
-    
+
     // Auto-calculate grand total when amounts change
     if (['ubill_stotal', 'ubill_tax', 'ubill_disc', 'ubill_round', 'ubill_rent', 'ubill_bw', 'ubill_color'].includes(field)) {
       calculateGrandTotal(field, value);
@@ -322,22 +320,22 @@ const UtilityBill = () => {
   const handleNumericInputChange = (field: keyof UtilityBillForm, value: string) => {
     // Allow empty string, numbers, and decimal points
     const numericRegex = /^-?\d*\.?\d*$/;
-    
+
     if (value === '' || numericRegex.test(value)) {
       // For empty string, set to '0.00' 
       const processedValue = value === '' ? '0.00' : value;
-      
+
       setFormData(prev => ({
         ...prev,
         [field]: processedValue
       }));
-      
+
       // Auto-calculate grand total when amounts change
       if (['ubill_stotal', 'ubill_tax', 'ubill_disc', 'ubill_round', 'ubill_rent', 'ubill_bw', 'ubill_color'].includes(field)) {
         calculateGrandTotal(field, processedValue);
       }
     }
-  };  const calculateGrandTotal = (changedField: keyof UtilityBillForm, newValue: string) => {
+  }; const calculateGrandTotal = (changedField: keyof UtilityBillForm, newValue: string) => {
     const currentData = { ...formData, [changedField]: newValue };
     const subTotal = parseFloat(currentData.ubill_stotal) || 0;
     const tax = parseFloat(currentData.ubill_tax) || 0;
@@ -366,27 +364,42 @@ const UtilityBill = () => {
       type: file.type,
       valid: file instanceof File
     });
-    
+
     // Validate file type - only accept PDF
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
       toast.error('Only PDF files are allowed for bill references');
       return;
     }
-    
+
     // Validate file size (optional - you can set a maximum size)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
       toast.error('File size must be less than 10MB');
       return;
     }
-    
+
     setPaymentRefFile(file);
 
-    // PDF files don't need image preview
-    setPaymentRefPreview(null);
-    
+    // Create a blob URL for previewing the PDF (thumbnail/embed)
+    try {
+      const url = URL.createObjectURL(file);
+      setPaymentRefPreview(url);
+    } catch (err) {
+      console.error('Failed to create preview URL for PDF', err);
+      setPaymentRefPreview(null);
+    }
+
     console.log('PDF file accepted and state set');
   };
+
+  // Revoke object URL when preview changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (paymentRefPreview) {
+        try { URL.revokeObjectURL(paymentRefPreview); } catch (e) { /* noop */ }
+      }
+    };
+  }, [paymentRefPreview]);
 
   // Search functionality - now handled by useMemo
   const handleSearchChange = (value: string) => {
@@ -396,13 +409,13 @@ const UtilityBill = () => {
   // Account selection handler
   const handleAccountSelect = async (account: BillingAccount) => {
     setIsFormLoading(true);
-    
+
     // Show toast notification for account switching
     toast.success(`Switched to ${account.provider || 'Account'} - ${account.service || 'Service'}`, {
-      description: 'Form data refreshed with new account information',
+      //description: 'Form data refreshed with new account information',
       duration: 2000,
     });
-    
+
     setSelectedAccount(account);
     setSidebarSize('lg');
 
@@ -411,7 +424,7 @@ const UtilityBill = () => {
 
     // Clear any editing state when switching accounts
     setEditingBill(null);
-    
+
     // Only clear file upload state when switching to a different account
     // Don't clear if user is just re-selecting the same account
     if (selectedAccount?.bill_id !== account.bill_id) {
@@ -443,7 +456,6 @@ const UtilityBill = () => {
       ubill_count: '0',
       ubill_usage: '0.00',
       ubill_paystat: 'Pending',
-      ubill_payref: '',
       ubill_ref: '',
     });
 
@@ -473,7 +485,6 @@ const UtilityBill = () => {
       ubill_count: '0',
       ubill_usage: '0.00',
       ubill_paystat: 'Pending',
-      ubill_payref: '',
       ubill_ref: '',
     });
     setEditingBill(null);
@@ -499,7 +510,7 @@ const UtilityBill = () => {
   const handleRowDoubleClick = (bill: UtilityBill & { rowNumber: number }) => {
     console.log('Double-clicked bill:', bill); // Debug log
     const originalDate = (bill as any).ubill_date_original || bill.ubill_date;
-    
+
     setFormData({
       bill_id: bill.account?.bill_id,
       cc_id: bill.account?.costcenter ? String(bill.account.costcenter.id) : 'none',
@@ -519,7 +530,6 @@ const UtilityBill = () => {
       ubill_count: bill.ubill_count || '0',
       ubill_usage: bill.ubill_usage || '0.00',
       ubill_paystat: bill.ubill_paystat || 'Pending',
-      ubill_payref: bill.ubill_payref || '',
       ubill_ref: (bill as any).ubill_ref || '',
     });
     setEditingBill(bill);
@@ -577,7 +587,6 @@ const UtilityBill = () => {
         payload.append('ubill_count', formData.ubill_count || '0');
         payload.append('ubill_usage', formData.ubill_usage || '0.00');
         payload.append('ubill_paystat', formData.ubill_paystat || 'Pending');
-        payload.append('ubill_payref', formData.ubill_payref || '');
         payload.append('ubill_ref', paymentRefFile, paymentRefFile.name);
         console.log('Uploading file:', paymentRefFile.name, 'Size:', paymentRefFile.size, 'Type:', paymentRefFile.type);
       } else {
@@ -593,9 +602,9 @@ const UtilityBill = () => {
       if (editingBill) {
         // Update existing bill (use util_id)
         if (paymentRefFile && paymentRefFile instanceof File && paymentRefFile.size > 0) {
-          // For FormData, use empty headers to let browser set multipart/form-data with boundary
+          // Explicitly set multipart/form-data so the request is sent as FormData
           await authenticatedApi.put(`/api/bills/util/${editingBill.util_id}`, payload, {
-            headers: {}
+            headers: { 'Content-Type': 'multipart/form-data' }
           });
         } else {
           await authenticatedApi.put(`/api/bills/util/${editingBill.util_id}`, payload);
@@ -604,9 +613,9 @@ const UtilityBill = () => {
       } else {
         // Create new bill
         if (paymentRefFile && paymentRefFile instanceof File && paymentRefFile.size > 0) {
-          // For FormData, use empty headers to let browser set multipart/form-data with boundary
+          // Explicitly set multipart/form-data so the request is sent as FormData
           await authenticatedApi.post('/api/bills/util', payload, {
-            headers: {}
+            headers: { 'Content-Type': 'multipart/form-data' }
           });
         } else {
           await authenticatedApi.post('/api/bills/util', payload);
@@ -614,9 +623,12 @@ const UtilityBill = () => {
         toast.success('Utility bill created successfully');
       }
 
-      setSidebarOpen(false);
-      resetForm();
-      fetchUtilityBills();
+  // Close only the form pane: collapse to small sidebar and clear selection/editing
+  setSidebarSize('sm');
+  setSelectedAccount(null);
+  setEditingBill(null);
+  resetForm();
+  fetchUtilityBills();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to save utility bill');
       console.error('Error saving bill:', error);
@@ -684,22 +696,22 @@ const UtilityBill = () => {
       ),
     },
     { key: 'ubill_no', header: 'Bill No', filter: 'input' },
-    { 
-      key: 'ubill_date', 
+    {
+      key: 'ubill_date',
       header: 'Date',
       render: (row: UtilityBill) => (row as any).ubill_date_display || row.ubill_date
     },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
     { key: 'provider', header: 'Provider', filter: 'singleSelect' },
-    { 
-      key: 'costcenter', 
-      header: 'Cost Center', 
+    {
+      key: 'costcenter',
+      header: 'Cost Center',
       filter: 'singleSelect',
       render: (row: UtilityBill) => row.account?.costcenter?.name || 'N/A'
     },
-    { 
-      key: 'location', 
-      header: 'Location', 
+    {
+      key: 'location',
+      header: 'Location',
       filter: 'singleSelect',
       render: (row: UtilityBill) => row.account?.location?.name || 'N/A'
     },
@@ -717,9 +729,14 @@ const UtilityBill = () => {
             <Button
               variant="secondary"
               className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
-              onClick={() => {
-                // TODO: Implement batch PDF export for selected utility bills
-                toast.info(`Export functionality for ${selectedRowIds.length} selected bills will be implemented`);
+              onClick={async () => {
+                try {
+                  const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-utility-costcenter');
+                  await exportTelcoBillSummaryPDFs(selectedRowIds);
+                } catch (err) {
+                  console.error('Failed to export utility PDF batch', err);
+                  toast.error('Failed to export PDF.');
+                }
               }}
             >
               <Download size={16} className="mr-1" /> Export PDF
@@ -809,9 +826,9 @@ const UtilityBill = () => {
                   {filteredAccountsWithLogos.map((account) => (
                     <div
                       key={account.bill_id}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${selectedAccount?.bill_id === account.bill_id
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700'
+                      className={`px-3 py-1 border rounded-lg cursor-pointer transition-colors bg-gray-50 hover:bg-amber-100 dark:hover:bg-gray-800 ${selectedAccount?.bill_id === account.bill_id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-gray-200 dark:border-gray-700'
                         }`}
                       onClick={() => handleAccountSelect(account)}
                     >
@@ -854,9 +871,9 @@ const UtilityBill = () => {
                         </div>
 
                         {sidebarSize === 'sm' && (
-                          <ChevronRight className="w-8 h-8 text-gray-400" />
+                          <ChevronRight className="w-8 h-8 text-gray-600" />
                         )}
-                        
+
                         {/* Selected indicator */}
                         {selectedAccount?.bill_id === account.bill_id && (
                           <div className="flex-shrink-0">
@@ -898,7 +915,7 @@ const UtilityBill = () => {
                     </div>
                   </div>
                 )}
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                   {/* Date and Bill Number */}
@@ -1115,29 +1132,62 @@ const UtilityBill = () => {
                       </div>
                     ) : (
                       <div className="flex items-center gap-3 justify-center">
-                        {/* Always show PDF icon since we only accept PDFs */}
-                        <div className="w-16 h-16 flex items-center justify-center bg-red-100 dark:bg-red-900 rounded">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-red-600">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                          </svg>
-                        </div>
-                        <div className="text-left">
-                          <div className="text-sm font-medium">{paymentRefFile.name}</div>
-                          <div className="text-xs text-gray-500">{Math.round(paymentRefFile.size / 1024)} KB</div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-500 hover:bg-red-500 hover:text-white"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            setPaymentRefFile(null);
-                            setPaymentRefPreview(null);
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                          }}
-                        >
-                          Remove
-                        </Button>
+                        {paymentRefPreview ? (
+                          <div className="flex items-center gap-3">
+                            <div className="w-20 h-20 bg-white dark:bg-gray-900 rounded overflow-hidden border">
+                              {/* Embed the PDF preview - browsers will render first page as a mini viewer */}
+                              <embed src={paymentRefPreview} type="application/pdf" width="100%" height="100%" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">{paymentRefFile?.name}</div>
+                              <div className="text-xs text-gray-500">{Math.round((paymentRefFile?.size || 0) / 1024)} KB</div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <a href={paymentRefPreview} target="_blank" rel="noreferrer" className="text-xs underline text-blue-600">Open</a>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:bg-red-500 hover:text-white"
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  setPaymentRefFile(null);
+                                  if (paymentRefPreview) {
+                                    try { URL.revokeObjectURL(paymentRefPreview); } catch (e) { /* noop */ }
+                                  }
+                                  setPaymentRefPreview(null);
+                                  if (fileInputRef.current) fileInputRef.current.value = '';
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="w-16 h-16 flex items-center justify-center bg-red-100 dark:bg-red-900 rounded">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-red-600">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                              </svg>
+                            </div>
+                            <div className="text-left">
+                              <div className="text-sm font-medium">{paymentRefFile?.name}</div>
+                              <div className="text-xs text-gray-500">{Math.round((paymentRefFile?.size || 0) / 1024)} KB</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:bg-red-500 hover:text-white"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setPaymentRefFile(null);
+                                setPaymentRefPreview(null);
+                                if (fileInputRef.current) fileInputRef.current.value = '';
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1193,7 +1243,7 @@ function downloadBlob(blob: Blob, filename: string) {
   document.body.removeChild(link);
 }
 
-/* 
+/*
 
 ToDo:
 - Add utility bill form page at /billings/utility/form
