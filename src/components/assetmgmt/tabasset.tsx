@@ -4,16 +4,19 @@ import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashAsset from "./dash-asset";
 import CoreAsset from "./record-asset";
+import AssetManager from "./asset-manager";
 
 const AssetMgmtMain = () => {
     const tabTitles = [
         { value: "dash", label: "Dashboard" },
         { value: "records", label: "Records" },
+        { value: "manager", label: "Asset Manager" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         dash: <DashAsset />,
         records: <CoreAsset />,
+        manager: <AssetManager />,
     };
 
     const validTabValues = tabTitles.map(t => t.value);
