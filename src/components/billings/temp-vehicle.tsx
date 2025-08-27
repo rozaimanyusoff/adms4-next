@@ -6,6 +6,7 @@ import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SingleSelect } from '@/components/ui/combobox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { Checkbox } from '@/components/ui/checkbox';
@@ -32,8 +33,10 @@ interface Category {
 interface Vehicle {
   // new backend asset fields
   id?: number; // asset id
+  entry_code?: string; // new field
   register_number?: string; // vehicle registration in new API
   transmission?: string;
+  effective_date?: string | null;
   fuel_type?: string;
   purchase_date?: string | null;
   purchase_year?: number;
@@ -72,49 +75,62 @@ const TempVehicle: React.FC = () => {
   const [availableModels, setAvailableModels] = useState<Model[]>([]); // Models available for selected brand
   const [departments, setDepartments] = useState<{ id: number; code: string }[]>([]);
   const [costcenters, setCostcenters] = useState<{ id: number; name: string }[]>([]);
+  const [locations, setLocations] = useState<{ id: number; name: string }[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [owners, setOwners] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchResults, setOwnerSearchResults] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
   const [classificationFilter, setClassificationFilter] = useState<string | null>(null);
 
+  // Helper to map backend asset object to UI Vehicle shape (keeps entry_code)
+  const mapAssetToVehicle = (item: any): Vehicle => ({
+    id: item.id ?? undefined,
+    entry_code: item.entry_code ?? undefined,
+  effective_date: item.effective_date ?? null,
+  register_number: item.register_number ?? item.reg_no ?? undefined,
+  transmission: item.transmission ?? undefined,
+  fuel_type: item.fuel_type ?? undefined,
+  purchase_date: item.purchase_date ?? null,
+    purchase_year: item.purchase_year ?? undefined,
+    disposed_date: item.disposed_date ?? null,
+    costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : undefined,
+    department: item.department ? { id: item.department.id, name: item.department.name } : undefined,
+    location: item.location ? { id: item.location.id, name: item.location.name } : undefined,
+    types: item.types ? { id: item.types.id, name: item.types.name } : undefined,
+    categories: item.categories ? { id: item.categories.id, name: item.categories.name } : undefined,
+    brands: item.brands ? { id: Number(item.brands.id), name: item.brands.name } : undefined,
+    owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
+    models: item.models ? { id: Number(item.models.id), name: item.models.name } : undefined,
+    fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
+    brand_id: item.brands ? String(item.brands.id) : undefined,
+    model_id: item.models ? String(item.models.id) : undefined,
+    category_id: item.categories ? String(item.categories.id) : undefined,
+    classification: item.classification ?? (item.types?.name ?? undefined),
+    record_status: item.record_status ?? item.status ?? undefined,
+    purpose: item.purpose ?? undefined,
+    condition_status: item.condition_status ?? undefined,
+    age: item.age ?? undefined,
+  });
+
+  // format value to yyyy-mm-dd or return null
+  const formatToYMD = (value: any): string | null => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   useEffect(() => {
     setLoading(true);
 
     // Fetch vehicles (map backend asset shape to local Vehicle shape)
-    authenticatedApi.get<{ data: any[] }>('/api/assets?type=2,10') // Assuming type 2,10 for vehicles
+    authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2') // Assuming type 2,10 for vehicles
       .then(res => {
         const data = res?.data?.data || [];
-        const mapped: Vehicle[] = data.map((item: any) => {
-          // map backend asset -> UI Vehicle using new fields
-          const vehicle: Vehicle = {
-            id: item.id ?? undefined,
-            register_number: item.register_number ?? item.reg_no ?? undefined,
-            transmission: item.transmission ?? undefined,
-            fuel_type: item.fuel_type ?? undefined,
-            purchase_date: item.purchase_date ?? null,
-            purchase_year: item.purchase_year ?? undefined,
-            disposed_date: item.disposed_date ?? null,
-            costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : undefined,
-            department: item.department ? { id: item.department.id, name: item.department.name } : undefined,
-            location: item.location ? { id: item.location.id, name: item.location.name } : undefined,
-            types: item.types ? { id: item.types.id, name: item.types.name } : undefined,
-            categories: item.categories ? { id: item.categories.id, name: item.categories.name } : undefined,
-            brands: item.brands ? { id: Number(item.brands.id), name: item.brands.name } : undefined,
-            owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
-            models: item.models ? { id: Number(item.models.id), name: item.models.name } : undefined,
-            fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
-            brand_id: item.brands ? String(item.brands.id) : undefined,
-            model_id: item.models ? String(item.models.id) : undefined,
-            category_id: item.categories ? String(item.categories.id) : undefined,
-            classification: item.classification ?? (item.types?.name ?? undefined),
-            record_status: item.record_status ?? item.status ?? undefined,
-            purpose: item.purpose ?? undefined,
-            condition_status: item.condition_status ?? undefined,
-            age: item.age ?? undefined,
-          };
-          return vehicle;
-        });
+        const mapped: Vehicle[] = data.map(mapAssetToVehicle);
         setVehicles(mapped);
       });
 
@@ -128,10 +144,13 @@ const TempVehicle: React.FC = () => {
         ramco_id: String(o.ramco_id),
         full_name: o.full_name
       }))));
+    authenticatedApi.get<{ data: { id: number; name: string }[] }>('/api/assets/locations')
+      .then(res => setLocations(res.data?.data || []))
+      .catch(() => setLocations([]));
 
     // Fetch categories and brands with models, then combine the data
     Promise.all([
-      authenticatedApi.get<{ data: any[] }>('/api/assets/categories?type=2,10'), // Using any[] to handle simple brand objects
+      authenticatedApi.get<{ data: any[] }>('/api/assets/categories?manager=2'), // Using any[] to handle simple brand objects
       authenticatedApi.get<{ data: Brand[] }>('/api/assets/brands?type=2')
     ]).then(([categoriesRes, brandsRes]) => {
       const categoriesData = categoriesRes.data?.data || [];
@@ -248,6 +267,8 @@ const TempVehicle: React.FC = () => {
     { key: 'fleetcard', header: 'Fleet Card', render: (row: Vehicle) => row.fleetcard?.card_no || '', filter: 'input' },
     { key: 'costcenter', header: 'Cost Center', render: (row: Vehicle) => row.costcenter?.name || '', filter: 'singleSelect' },
     { key: 'department', header: 'Department', render: (row: Vehicle) => row.department?.name || '', filter: 'singleSelect' },
+    //locations
+    { key: 'location', header: 'Location', render: (row: Vehicle) => row.location?.name || '', filter: 'singleSelect' },
     { key: 'owner', header: 'Owner', render: (row: Vehicle) => row.owner?.full_name || '', filter: 'input' },
     { key: 'classification', header: 'Classification', filter: 'singleSelect', colClass: 'capitalize' },
     { key: 'condition_status', header: 'Condition Status', filter: 'singleSelect', colClass: 'capitalize' },
@@ -341,6 +362,13 @@ const TempVehicle: React.FC = () => {
       errors.record_status = 'Record status is required';
     }
 
+    // If updating an existing record, require effective_date
+    if (selectedVehicle?.id && selectedVehicle.id !== 0) {
+      if (!selectedVehicle.effective_date) {
+        errors.effective_date = 'Effective date is required';
+      }
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -354,41 +382,55 @@ const TempVehicle: React.FC = () => {
     }
 
     try {
-      const payload = { ...selectedVehicle } as any;
-      // Map nested objects to their IDs for API
+  const payload = { ...selectedVehicle } as any;
+  // Ensure entry_code is included in payload (may not be present in UI)
+  payload.entry_code = payload.entry_code ?? '';
+    // Ensure effective_date is formatted to yyyy-mm-dd (or null)
+    payload.effective_date = formatToYMD(payload.effective_date) ?? null;
+      // Map nested objects to their IDs for API (create & update payload)
       if (payload.costcenter) {
-        payload.cc_id = String(payload.costcenter.id);
+        payload.costcenter_id = String(payload.costcenter.id);
         delete payload.costcenter;
       }
-  if (payload.brands) payload.brand_id = String(payload.brands.id);
-  if (payload.models) payload.model_id = String(payload.models.id);
-  if (payload.categories) payload.category_id = String(payload.categories.id);
-      if (payload.department) payload.dept_id = payload.department?.id;
+      if (payload.types) {
+        payload.type_id = String(payload.types.id);
+        delete payload.types;
+      }
+      if (payload.location) {
+        payload.location_id = String(payload.location.id);
+        delete payload.location;
+      }
+      if (payload.brands) payload.brand_id = String(payload.brands.id);
+      if (payload.models) payload.model_id = String(payload.models.id);
+      if (payload.categories) payload.category_id = String(payload.categories.id);
+      if (payload.department) {
+        payload.department_id = payload.department?.id;
+        delete payload.department;
+      }
       if (payload.owner) {
         payload.ramco_id = payload.owner.ramco_id;
         delete payload.owner;
       }
 
-  // Remove nested objects
-  delete payload.brands;
-  delete payload.models;
-  delete payload.categories;
-  delete payload.department;
+      // Remove other nested objects to keep payload flat
+      delete payload.brands;
+      delete payload.models;
+      delete payload.categories;
 
       if (payload.id && payload.id !== 0) {
         // Update existing vehicle
-        await authenticatedApi.put(`/api/bills/temp-vehicle/${payload.id}`, payload);
+        await authenticatedApi.put(`/api/assets/${payload.id}`, payload);
         toast.success('Vehicle updated successfully');
       } else {
         // Create new vehicle
-        await authenticatedApi.post('/api/bills/temp-vehicle', payload);
+        await authenticatedApi.post('/api/assets', payload);
         toast.success('Vehicle created successfully');
       }
 
       setSidebarOpen(false);
       // Refresh vehicle list
-      const res = await authenticatedApi.get<{ data: Vehicle[] }>('/api/bills/temp-vehicle');
-      setVehicles(res?.data?.data || []);
+  const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
+  setVehicles((res?.data?.data || []).map(mapAssetToVehicle));
     } catch (error) {
       toast.error('Failed to save vehicle');
     }
@@ -552,7 +594,7 @@ const TempVehicle: React.FC = () => {
           title="Vehicle Details"
           content={
             selectedVehicle && (
-              <div className="space-y-4 p-4">
+              <div className="space-y-3 min-h-screen px-4 mb-10">
                 <div>
                   <Label>Reg No {validationErrors.register_number && <span className="text-red-500">{validationErrors.register_number}</span>}</Label>
                   <Input
@@ -568,87 +610,59 @@ const TempVehicle: React.FC = () => {
                         setValidationErrors(prev => ({ ...prev, register_number: '' }));
                       }
                     }}
-                    className='uppercase placeholder:normal-case'
+                    className='uppercase placeholder:normal-case text-black dark:text-white'
                     placeholder="Enter Registration Number (without spaces)"
                     disabled={selectedVehicle.id !== 0}
                   />
                 </div>
                 <div>
                   <Label>Category {validationErrors.category && <span className="text-red-500">{validationErrors.category}</span>}</Label>
-                  <Select
+                  <SingleSelect
+                    options={categories.map(c => ({ value: String(c.id), label: c.name }))}
                     value={selectedVehicle.categories?.id ? String(selectedVehicle.categories.id) : ''}
                     onValueChange={val => {
                       const category = categories.find(c => String(c.id) === val);
                       setSelectedVehicle({
                         ...selectedVehicle,
                         categories: category ? { id: Number(category.id), name: category.name } : undefined,
-                        brands: undefined, // Reset brand when category changes
-                        models: undefined // Reset model when category changes
+                        brands: undefined,
+                        models: undefined
                       });
-                      if (category) {
-                        setValidationErrors(prev => ({ ...prev, category: '' }));
-                      }
+                      if (category) setValidationErrors(prev => ({ ...prev, category: '' }));
                     }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select Category"
+                    clearable
+                  />
                 </div>
                 <div>
                   <Label>Brand {validationErrors.brand && <span className="text-red-500">{validationErrors.brand}</span>}</Label>
-                  <Select
+                  <SingleSelect
+                    options={availableBrands.map(b => ({ value: String(b.id), label: b.name }))}
                     value={selectedVehicle.brands?.id ? String(selectedVehicle.brands.id) : ''}
                     onValueChange={val => {
                       const brand = availableBrands.find(b => String(b.id) === val);
-                      setSelectedVehicle({
-                        ...selectedVehicle,
-                        brands: brand ? { id: Number(brand.id), name: brand.name } : undefined,
-                        models: undefined // Reset model when brand changes
-                      });
-                      if (brand) {
-                        setValidationErrors(prev => ({ ...prev, brand: '' }));
-                      }
+                      setSelectedVehicle({ ...selectedVehicle, brands: brand ? { id: Number(brand.id), name: brand.name } : undefined, models: undefined });
+                      if (brand) setValidationErrors(prev => ({ ...prev, brand: '' }));
                     }}
-                    disabled={!selectedVehicle.categories} // Disable if no category selected
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedVehicle.categories ? "Select Brand" : "Select Category First"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableBrands.map(b => (
-                        <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder={selectedVehicle.categories ? "Select Brand" : "Select Category First"}
+                    clearable
+                    disabled={!selectedVehicle.categories}
+                  />
                 </div>
                 <div>
                   <Label>Model {validationErrors.models && <span className="text-red-500">{validationErrors.models}</span>}</Label>
-                  <Select
+                  <SingleSelect
+                    options={availableModels.map(m => ({ value: String(m.id), label: m.name }))}
                     value={selectedVehicle.models?.id ? String(selectedVehicle.models.id) : ''}
                     onValueChange={val => {
                       const model = availableModels.find(m => String(m.id) === val);
                       setSelectedVehicle({ ...selectedVehicle, models: model ? { id: Number(model.id), name: model.name } : undefined });
-                      if (model) {
-                        setValidationErrors(prev => ({ ...prev, models: '' }));
-                      }
+                      if (model) setValidationErrors(prev => ({ ...prev, models: '' }));
                     }}
-                    disabled={!selectedVehicle.brands} // Disable if no brand selected
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={selectedVehicle.brands ? "Select Model" : "Select Brand First"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableModels.map(m => (
-                        <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder={selectedVehicle.brands ? "Select Model" : "Select Brand First"}
+                    clearable
+                    disabled={!selectedVehicle.brands}
+                  />
                 </div>
                 <div>
                   <Label>Fuel Type {validationErrors.fuel_type && <span className="text-red-500">{validationErrors.fuel_type}</span>}</Label>
@@ -668,6 +682,7 @@ const TempVehicle: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div>
                   <Label>Transmission {validationErrors.transmission && <span className="text-red-500">{validationErrors.transmission}</span>}</Label>
                   <Select value={selectedVehicle.transmission || ''} onValueChange={val => {
@@ -688,50 +703,44 @@ const TempVehicle: React.FC = () => {
                 </div>
                 <div>
                   <Label>Cost Center {validationErrors.costcenter && <span className="text-red-500">{validationErrors.costcenter}</span>}</Label>
-                  <Select
+                  <SingleSelect
+                    options={costcenters.map(cc => ({ value: String(cc.id), label: cc.name }))}
                     value={selectedVehicle.costcenter?.id ? String(selectedVehicle.costcenter.id) : ''}
                     onValueChange={val => {
                       const costcenter = costcenters.find(cc => String(cc.id) === val);
-                      setSelectedVehicle({ ...selectedVehicle, costcenter });
-                      if (costcenter) {
-                        setValidationErrors(prev => ({ ...prev, costcenter: '' }));
-                      }
+                      setSelectedVehicle({ ...selectedVehicle, costcenter: costcenter ? { id: costcenter.id, name: costcenter.name } : undefined });
+                      if (costcenter) setValidationErrors(prev => ({ ...prev, costcenter: '' }));
                     }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Cost Center" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {costcenters.map(cc => (
-                        <SelectItem key={cc.id} value={String(cc.id)}>{cc.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select Cost Center"
+                    clearable
+                  />
                 </div>
                 <div>
                   <Label>Department {validationErrors.department && <span className="text-red-500">{validationErrors.department}</span>}</Label>
-                  <Select
+                  <SingleSelect
+                    options={departments.map(d => ({ value: String(d.id), label: d.code }))}
                     value={selectedVehicle.department?.id ? String(selectedVehicle.department.id) : ''}
                     onValueChange={val => {
                       const department = departments.find(d => String(d.id) === val);
-                      setSelectedVehicle({
-                        ...selectedVehicle,
-                        department: department ? { id: department.id, name: department.code } : undefined
-                      });
-                      if (department) {
-                        setValidationErrors(prev => ({ ...prev, department: '' }));
-                      }
+                      setSelectedVehicle({ ...selectedVehicle, department: department ? { id: department.id, name: department.code } : undefined });
+                      if (department) setValidationErrors(prev => ({ ...prev, department: '' }));
                     }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map(d => (
-                        <SelectItem key={d.id} value={String(d.id)}>{d.code}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select Department"
+                    clearable
+                  />
+                </div>
+                <div>
+                  <Label>Location</Label>
+                  <SingleSelect
+                    options={locations.map(l => ({ value: String(l.id), label: l.name }))}
+                    value={selectedVehicle.location?.id ? String(selectedVehicle.location.id) : ''}
+                    onValueChange={val => {
+                      const loc = locations.find(l => String(l.id) === val);
+                      setSelectedVehicle({ ...selectedVehicle, location: loc ? { id: Number(loc.id), name: loc.name } : undefined });
+                    }}
+                    placeholder="Select Location"
+                    clearable
+                  />
                 </div>
                 {/* classifocation: [asset, consumable, personal, rental] */}
                 <div>
@@ -755,35 +764,17 @@ const TempVehicle: React.FC = () => {
                 {/* Owner: show name on field but hidden payload is ramco_id */}
                 <div>
                   <Label>Owner {validationErrors.owner && <span className="text-red-500">{validationErrors.owner}</span>}</Label>
-                  <Input
-                    value={selectedVehicle.owner?.full_name || ''}
-                    onChange={(e) => {
-                      const fullName = e.target.value;
-                      setSelectedVehicle({ ...selectedVehicle, owner: { ramco_id: selectedVehicle.owner?.ramco_id || '', full_name: fullName } });
-                      if (fullName) {
-                        setValidationErrors(prev => ({ ...prev, owner: '' }));
-                      }
+                  <SingleSelect
+                    options={owners.map(o => ({ value: o.ramco_id, label: o.full_name }))}
+                    value={selectedVehicle.owner?.ramco_id || ''}
+                    onValueChange={val => {
+                      const owner = owners.find(o => o.ramco_id === val);
+                      setSelectedVehicle({ ...selectedVehicle, owner: owner ? { ramco_id: owner.ramco_id, full_name: owner.full_name } : undefined });
+                      if (val) setValidationErrors(prev => ({ ...prev, owner: '' }));
                     }}
-                    onKeyUp={(e) => handleOwnerSearch((e.target as HTMLInputElement).value)}
-                    placeholder="Enter Owner Name"
-                    className="w-full"
+                    placeholder="Select Owner"
+                    clearable
                   />
-                  {ownerSearchResults.length > 0 && (
-                    <div className="absolute bg-white border border-gray-300 rounded shadow-md w-full">
-                      {ownerSearchResults.map((result) => (
-                        <div
-                          key={result.ramco_id}
-                          className="p-2 hover:bg-gray-100 cursor-pointer"
-                          onClick={() => {
-                            setSelectedVehicle({ ...selectedVehicle, owner: result });
-                            setOwnerSearchResults([]); // Clear results after selection
-                          }}
-                        >
-                          {result.full_name}
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 {/* purpose: [pool, project, staff cost] */}
                 <div>
@@ -825,11 +816,23 @@ const TempVehicle: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                {/* <div className="flex justify-end mt-4">
+                <div>
+                  <Label>Effective Date {validationErrors.effective_date && <span className="text-red-500">{validationErrors.effective_date}</span>}</Label>
+                  <Input
+                    type="date"
+                    value={selectedVehicle.effective_date ? formatToYMD(selectedVehicle.effective_date) || '' : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedVehicle({ ...selectedVehicle, effective_date: val ? val : null });
+                    }}
+                    className="w-full"
+                  />
+                </div>
+                <div className="flex justify-end mt-4">
                   <Button variant="default" onClick={handleSubmit}>
                     Submit
                   </Button>
-                </div> */}
+                </div>
               </div>
             )
           }
