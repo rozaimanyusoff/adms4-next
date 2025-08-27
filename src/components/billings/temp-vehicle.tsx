@@ -387,6 +387,8 @@ const TempVehicle: React.FC = () => {
   payload.entry_code = payload.entry_code ?? '';
     // Ensure effective_date is formatted to yyyy-mm-dd (or null)
     payload.effective_date = formatToYMD(payload.effective_date) ?? null;
+    // Ensure purchase_date is formatted to yyyy-mm-dd (or null) to satisfy backend
+    payload.purchase_date = formatToYMD(payload.purchase_date) ?? null;
       // Map nested objects to their IDs for API (create & update payload)
       if (payload.costcenter) {
         payload.costcenter_id = String(payload.costcenter.id);
