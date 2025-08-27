@@ -87,37 +87,23 @@ interface UtilityBill {
 
 interface BillingAccount {
   bill_id: number;
-  bill_ac: string | null;
-  provider: string | null;
-  logo: string | null;
-  service: string | null;
-  bfcy_id: number;
-  cat_id: number;
-  bill_product: string | null;
-  bill_desc: string | null;
-  bill_loc: string | null;
-  loc_id: number;
-  bill_depo: string;
-  bill_mth: string;
-  bill_stat: string;
-  bill_consumable: string;
-  bill_cont_start: string;
-  bill_cont_end: string;
-  bill_total: string;
-  bill_count: number;
-  bill_dt: string;
-  bill_bfcy: string;
-  bfcy_cat: string;
-  billowner: string;
+  account: string;
+  category?: string;
+  description?: string;
+  status?: string;
+  contract_start?: string | null;
+  contract_end?: string | null;
+  deposit?: string;
+  rental?: string;
   beneficiary?: {
-    bfcy_id: number;
-    bfcy_name: string;
+    id: number;
+    name: string;
     logo: string | null;
-  };
+  } | null;
   costcenter?: {
     id: number;
     name: string;
-  };
+  } | null;
   location?: {
     id: number;
     name: string;
@@ -177,11 +163,12 @@ const UtilityBill = () => {
   // Compute whether printing fields should be shown based on selected account or editing bill
   const showPrintingFields = useMemo(() => {
     if (editingBill) {
-      return isPrintingService(editingBill.account?.service);
-    }
-    if (selectedAccount) {
-      return isPrintingService(selectedAccount.service);
-    }
+        return isPrintingService(editingBill.account?.service);
+      }
+      if (selectedAccount) {
+        // category may map to non-printing/printing; fall back to description if needed
+        return isPrintingService(selectedAccount.category || selectedAccount.description || undefined);
+      }
     return false;
   }, [editingBill, selectedAccount]);
 
@@ -190,7 +177,7 @@ const UtilityBill = () => {
     console.log('Processing logo URLs for', billingAccounts.length, 'accounts');
     return billingAccounts.map(account => ({
       ...account,
-      logoUrl: getLogoUrl(account.logo)
+      logoUrl: getLogoUrl(account.beneficiary?.logo || null)
     }));
   }, [billingAccounts]);
 
@@ -201,16 +188,16 @@ const UtilityBill = () => {
     } else {
       const searchLower = searchTerm.toLowerCase();
       const filtered = accountsWithLogos.filter((account) =>
-        (account.service?.toLowerCase() || '').includes(searchLower) ||
-        (account.provider?.toLowerCase() || '').includes(searchLower) ||
-        (account.bill_ac?.toLowerCase() || '').includes(searchLower) ||
-        (account.bill_product?.toLowerCase() || '').includes(searchLower)
+  (account.category?.toLowerCase() || '').includes(searchLower) ||
+  (account.beneficiary?.name?.toLowerCase() || '').includes(searchLower) ||
+  (account.account?.toLowerCase() || '').includes(searchLower) ||
+  (account.description?.toLowerCase() || '').includes(searchLower)
       );
 
       // Sort with provider matches first
       return filtered.sort((a, b) => {
-        const aProviderMatch = (a.provider?.toLowerCase() || '').includes(searchLower);
-        const bProviderMatch = (b.provider?.toLowerCase() || '').includes(searchLower);
+  const aProviderMatch = (a.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
+  const bProviderMatch = (b.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
 
         if (aProviderMatch && !bProviderMatch) return -1;
         if (!aProviderMatch && bProviderMatch) return 1;
@@ -344,7 +331,7 @@ const UtilityBill = () => {
     const rental = parseFloat(currentData.ubill_rent) || 0;
 
     // Only include B&W and Color if service supports printing
-    const isPrintingAccount = selectedAccount ? isPrintingService(selectedAccount.service) :
+    const isPrintingAccount = selectedAccount ? isPrintingService(selectedAccount.category || selectedAccount.description) :
       editingBill ? isPrintingService(editingBill.account?.service) : false;
     const bw = isPrintingAccount ? (parseFloat(currentData.ubill_bw) || 0) : 0;
     const color = isPrintingAccount ? (parseFloat(currentData.ubill_color) || 0) : 0;
@@ -411,7 +398,7 @@ const UtilityBill = () => {
     setIsFormLoading(true);
 
     // Show toast notification for account switching
-    toast.success(`Switched to ${account.provider || 'Account'} - ${account.service || 'Service'}`, {
+  toast.success(`Switched to ${account.beneficiary?.name || 'Account'} - ${account.category || account.description || 'Service'}`, {
       //description: 'Form data refreshed with new account information',
       duration: 2000,
     });
@@ -420,7 +407,7 @@ const UtilityBill = () => {
     setSidebarSize('lg');
 
     // Check if this is a printing service
-    const isPrinting = isPrintingService(account.service);
+  const isPrinting = isPrintingService(account.category || account.description || undefined);
 
     // Clear any editing state when switching accounts
     setEditingBill(null);
@@ -790,7 +777,7 @@ const UtilityBill = () => {
           editingBill
             ? `Edit Bill - ${editingBill.account?.service || 'Utility Bill'}`
             : selectedAccount
-              ? `New Bill - ${selectedAccount.service} (${selectedAccount.provider})`
+              ? `New Bill - ${selectedAccount.category || selectedAccount.description} (${selectedAccount.beneficiary?.name})`
               : 'Utility Billing Accounts'
         }
         onClose={() => {
@@ -837,9 +824,9 @@ const UtilityBill = () => {
                         <div className="flex-shrink-0">
                           <img
                             src={
-                              ((account as any).account?.beneficiary?.logo) ? getLogoUrl((account as any).account.beneficiary.logo) : (account.logoUrl || getLogoUrl(account.logo || null))
+                              ((account as any).beneficiary?.logo) ? getLogoUrl((account as any).beneficiary.logo) : (account.logoUrl || getLogoUrl(account.beneficiary?.logo || null))
                             }
-                            alt={account.provider || (account as any).account?.beneficiary?.name || 'Provider'}
+                            alt={account.beneficiary?.name || 'Provider'}
                             className="w-15 rounded-0 object-cover bg-gray-100 dark:bg-gray-800"
                             onError={(e) => {
                               const img = e.target as HTMLImageElement;
@@ -854,13 +841,13 @@ const UtilityBill = () => {
                         {/* Provider details stacked on the right */}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                            {account.provider || 'Unknown Provider'}
+                            {account.beneficiary?.name || 'Unknown Provider'}
                           </p>
                           <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                            Account: {account.bill_ac || 'N/A'}
+                            Account: {account.account || 'N/A'}
                           </p>
                           <p className="text-xs text-blue-600 dark:text-blue-400 truncate">
-                            {account.service || 'Unknown Service'}
+                            {account.category || account.description || 'Unknown Service'}
                           </p>
                           <p className="text-xs text-blue-600 dark:text-blue-300 truncate">
                             {account.costcenter?.name || 'N/A'}

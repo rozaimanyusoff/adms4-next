@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Plus, Loader2 } from 'lucide-react';
@@ -14,52 +14,33 @@ import { toast } from 'sonner';
 
 interface BillingAccount {
   bill_id: number;
-  bill_ac: string;
-  service: string;
-  provider?: string | null;
-  bfcy_id: number;
-  cat_id: number;
-  // bill_product removed
-  bill_product?: string | null;
-  bill_desc: string;
-  cc_id: number;
-  bill_loc: string;
-  loc_id: number;
-  bill_depo: string;
-  bill_mth: string;
-  bill_stat: string;
-  bill_consumable: string;
-  bill_cont_start: string;
-  bill_cont_end: string;
-  bill_total: string;
-  bill_count: number;
-  bill_dt: string;
-  bill_bfcy: string;
-  bfcy_cat: string;
-  billowner: string;
-  // new nested shapes from backend
-  beneficiary?: { bfcy_id: number; bfcy_name: string; logo?: string } | null;
+  account: string; // was bill_ac
+  category?: string; // was service
+  description?: string; // was bill_desc
+  status?: string; // was bill_stat
+  contract_start?: string;
+  contract_end?: string;
+  // optional financial fields left untouched
+  deposit?: string;
+  rental?: string;
+  // nested objects
+  beneficiary?: { id: number; name: string; logo?: string } | null;
   costcenter?: { id: number; name: string } | null;
   location?: { id: number; name: string } | null;
-  prepared_by?: string | null;
 }
 
 interface BillingAccountForm {
-  bill_ac: string;
-  service: string;
-  // bill_product removed
-  bill_desc: string;
+  account: string;
+  category: string;
+  description: string;
   cc_id: string;
-  bfcy_id?: string;
+  beneficiary_id?: string;
   location_id?: string;
-  bill_loc: string;
-  bill_depo: string;
-  bill_mth: string;
-  bill_stat: string;
-  bill_consumable: string;
-  bill_cont_start: string;
-  bill_cont_end: string;
-  billowner: string;
+  deposit?: string;
+  rental?: string;
+  status: string;
+  contract_start: string;
+  contract_end: string;
 }
 
 const BillingAccount = () => {
@@ -70,25 +51,22 @@ const BillingAccount = () => {
   const [editingAccount, setEditingAccount] = useState<BillingAccount | null>(null);
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
   // provider removed; beneficiaries are used instead
-  const [beneficiariesList, setBeneficiariesList] = useState<{ bfcy_id: number; bfcy_name: string }[]>([]);
+  const [beneficiariesList, setBeneficiariesList] = useState<{ id: number; name: string }[]>([]);
   const [locationsList, setLocationsList] = useState<{ id: number; name: string }[]>([]);
 
   // Service to provider mapping
   const [formData, setFormData] = useState<BillingAccountForm>({
-    bill_ac: '',
-    service: 'utilities',
-    bill_desc: '',
+    account: '',
+    category: 'utilities',
+    description: '',
     cc_id: 'none',
-    bfcy_id: undefined,
+    beneficiary_id: undefined,
     location_id: '',
-    bill_loc: '',
-    bill_depo: '0.00',
-    bill_mth: '0.00',
-    bill_stat: 'Active',
-    bill_consumable: 'yes',
-    bill_cont_start: '',
-    bill_cont_end: '',
-    billowner: '',
+    deposit: '0.00',
+    rental: '0.00',
+    status: 'Active',
+    contract_start: '',
+    contract_end: '',
   });
 
   // Fetch accounts data
@@ -125,8 +103,8 @@ const BillingAccount = () => {
   useEffect(() => {
     fetchAccounts();
     fetchCostCenters();
-    // Fetch beneficiaries filtered by default service
-    fetchBeneficiaries(formData.service);
+    // Fetch beneficiaries filtered by default category
+    fetchBeneficiaries(formData.category);
     fetchLocations();
     // no provider list — beneficiaries represent providers
   }, []);
@@ -135,13 +113,13 @@ const BillingAccount = () => {
     try {
       const url = service ? `/api/bills/util/beneficiaries?services=${encodeURIComponent(service)}` : '/api/bills/util/beneficiaries';
       const res: any = await authenticatedApi.get(url);
-      const list = res.data?.data || res.data || [];
-      const normalized = Array.isArray(list) ? list.map((b: any) => ({ bfcy_id: b.bfcy_id, bfcy_name: b.bfcy_name })) : [];
+  const list = res.data?.data || res.data || [];
+  const normalized = Array.isArray(list) ? list.map((b: any) => ({ id: b.id, name: b.name })) : [];
       setBeneficiariesList(normalized);
       // Clear selected beneficiary if it's not in the new list
       setFormData(prev => {
-        if (prev.bfcy_id && !normalized.find(nb => String(nb.bfcy_id) === String(prev.bfcy_id))) {
-          return { ...prev, bfcy_id: undefined };
+        if (prev.beneficiary_id && !normalized.find(nb => String(nb.id) === String(prev.beneficiary_id))) {
+          return { ...prev, beneficiary_id: undefined };
         }
         return prev;
       });
@@ -150,10 +128,10 @@ const BillingAccount = () => {
     }
   };
 
-  // Refetch beneficiaries when service selection changes
+  // Refetch beneficiaries when category selection changes
   useEffect(() => {
-    fetchBeneficiaries(formData.service);
-  }, [formData.service]);
+    fetchBeneficiaries(formData.category);
+  }, [formData.category]);
 
   const fetchLocations = async () => {
     try {
@@ -176,20 +154,17 @@ const BillingAccount = () => {
 
   const resetForm = () => {
     setFormData({
-      bill_ac: '',
-      service: 'utilities',
-      bill_desc: '',
-      cc_id: 'none',
-      bfcy_id: undefined,
-      location_id: '',
-      bill_loc: '',
-      bill_depo: '0.00',
-      bill_mth: '0.00',
-      bill_stat: 'Active',
-      bill_consumable: 'yes',
-      bill_cont_start: '',
-      bill_cont_end: '',
-      billowner: '',
+  account: '',
+  category: 'utilities',
+  description: '',
+  cc_id: 'none',
+  beneficiary_id: undefined,
+  location_id: '',
+  deposit: '0.00',
+  rental: '0.00',
+  status: 'Active',
+  contract_start: '',
+  contract_end: '',
     });
     setEditingAccount(null);
   };
@@ -201,30 +176,27 @@ const BillingAccount = () => {
 
   const handleRowDoubleClick = (account: BillingAccount) => {
     setFormData({
-      bill_ac: account.bill_ac || '',
-      service: account.service || '',
-      // bill_product removed
-      bill_desc: account.bill_desc || '',
-  cc_id: (account.cc_id ? account.cc_id.toString() : (account.costcenter ? String(account.costcenter.id) : 'none')),
-  bfcy_id: account.bfcy_id ? String(account.bfcy_id) : (account.beneficiary ? String(account.beneficiary.bfcy_id) : undefined),
-  location_id: (account.loc_id ? String(account.loc_id) : (account.location ? String(account.location.id) : '')),
-      bill_loc: account.bill_loc || '',
-      bill_depo: account.bill_depo || '0.00',
-      bill_mth: account.bill_mth || '0.00',
-      bill_stat: account.bill_stat || 'Active',
-      // convert backend 'c'/'nc' to form 'yes'/'no'
-  bill_consumable: account.bill_consumable === 'c' ? 'yes' : 'no',
-      bill_cont_start: account.bill_cont_start ? new Date(account.bill_cont_start).toISOString().split('T')[0] : '',
-      bill_cont_end: account.bill_cont_end ? new Date(account.bill_cont_end).toISOString().split('T')[0] : '',
-      billowner: account.billowner || '',
+  account: account.account || '',
+  category: account.category || '',
+  // description
+  description: account.description || '',
+  cc_id: (account.costcenter ? String(account.costcenter.id) : 'none'),
+  beneficiary_id: account.beneficiary ? String(account.beneficiary.id) : undefined,
+  location_id: (account.location ? String(account.location.id) : ''),
+  deposit: account.deposit || '0.00',
+  rental: account.rental || '0.00',
+  status: account.status || 'Active',
+  contract_start: safeToInputDate(account.contract_start),
+  contract_end: safeToInputDate(account.contract_end),
     });
     setEditingAccount(account);
-    setSidebarOpen(true);
+  // Open the sidebar to edit the selected account when double-clicked
+  setSidebarOpen(true);
   };
 
   const handleSave = async () => {
-    if (!formData.bill_ac || !formData.bfcy_id || !formData.service) {
-      toast.error('Please fill in required fields: Account Number, Beneficiary, and Service');
+    if (!formData.account || !formData.beneficiary_id || !formData.category) {
+      toast.error('Please fill in required fields: Account Number, Beneficiary, and Category');
       return;
     }
 
@@ -232,32 +204,30 @@ const BillingAccount = () => {
     try {
       // Build explicit payload to match backend expected field names
       const payload = {
-        bill_ac: formData.bill_ac,
-        service: formData.service,
-        bill_desc: formData.bill_desc,
+        account: formData.account,
+        category: formData.category,
+        description: formData.description,
         // cost center -> numeric id or null
-  cc_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
+        costcenter_id: (formData.cc_id && formData.cc_id !== 'none') ? parseInt(formData.cc_id) : null,
         // beneficiary id
-  bfcy_id: formData.bfcy_id ? parseInt(formData.bfcy_id) : null,
-        // backend expects loc_id for location reference
-  loc_id: formData.location_id ? parseInt(formData.location_id) : null,
-        bill_depo: formData.bill_depo || '0.00',
-        bill_mth: formData.bill_mth || '0.00',
-        bill_stat: formData.bill_stat,
-        // convert form 'yes'/'no' back to backend 'c'/'nc'
-        bill_consumable: formData.bill_consumable === 'yes' ? 'c' : 'nc',
-  // send date-only string (YYYY-MM-DD) to match DB DATE column expectations
-  bill_cont_start: formData.bill_cont_start ? formData.bill_cont_start : null,
-  bill_cont_end: formData.bill_cont_end ? formData.bill_cont_end : null,
+        beneficiary_id: formData.beneficiary_id ? parseInt(formData.beneficiary_id) : null,
+        // location
+        location_id: formData.location_id ? parseInt(formData.location_id) : null,
+        deposit: formData.deposit || '0.00',
+        rental: formData.rental || '0.00',
+        status: formData.status,
+        // send date-only string (YYYY-MM-DD) to match DB DATE column expectations
+        contract_start: formData.contract_start ? formData.contract_start : null,
+        contract_end: formData.contract_end ? formData.contract_end : null,
       };
 
       if (editingAccount) {
         // Update existing account
-        await authenticatedApi.put(`/api/bills/util/accounts/${editingAccount.bill_id}`, payload);
+  await authenticatedApi.put(`/api/bills/util/accounts/${editingAccount.bill_id}`, payload);
         toast.success('Billing account updated successfully');
       } else {
         // Create new account
-        await authenticatedApi.post('/api/bills/util/accounts', payload);
+  await authenticatedApi.post('/api/bills/util/accounts', payload);
         toast.success('Billing account created successfully');
       }
 
@@ -273,41 +243,107 @@ const BillingAccount = () => {
   };
 
   const columns: ColumnDef<any>[] = [
-    { key: 'rowNumber', header: '#', render: (r: any) => r.rowNumber },
+    { key: 'bill_id', header: '#', sortable: true },
     { key: 'logo', header: 'Logo', render: (r: any) => {
-      // support multiple possible backend shapes
-      const src = r?.beneficiary?.logo || r?.beneficiary?.bfcy_logo || r?.beneficiary?.bfcy_pic || r?.bfcy_logo || r?.logo || r?.bfcy_pic;
-      const alt = r?.beneficiary?.bfcy_name || r?.bfcy_name || r?.bill_bfcy || 'logo';
+      const src = r?.beneficiary?.logo || r?.beneficiary?.bfcy_logo || r?.logo || r?.bfcy_pic;
+      const alt = r?.beneficiary?.name || r?.beneficiary?.bfcy_name || r?.bill_bfcy || 'logo';
       return src ? (<span>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" /></span>) : null;
     } },
-    { key: 'bill_ac', header: 'Account No', filter: 'input' },
-    { key: 'service', header: 'Service', filter: 'singleSelect' },
-  { key: 'provider', header: 'Provider', render: (r: any) => r.provider || r?.beneficiary?.bfcy_name || '' },
-    // product column removed
-    { key: 'bill_desc', header: 'Description' },
-    { key: 'beneficiary', header: 'Beneficiary', render: (r: any) => r?.beneficiary?.bfcy_name || r?.bill_bfcy || '' },
+    { key: 'account', header: 'Account No', filter: 'input' },
+    { key: 'category', header: 'Category', filter: 'singleSelect' },
+    { key: 'beneficiary', header: 'Beneficiary', filter: 'singleSelect', render: (r: any) => r?.beneficiary?.name || '' },
+    { key: 'description', header: 'Description', filter: 'input' },
     { key: 'costcenter', header: 'Cost Center', render: (r: any) => r?.costcenter?.name || '-' },
-    { key: 'location', header: 'Location', render: (r: any) => r?.location?.name || (r?.bill_loc || '-') },
-    { key: 'bill_stat', header: 'Status', filter: 'singleSelect' },
+    { key: 'location', header: 'Location', render: (r: any) => r?.location?.name || '-' },
+    { key: 'status', header: 'Status', filter: 'singleSelect' },
     {
-      key: 'bill_cont_start',
+      key: 'contract_start',
       header: 'Contract Start',
-      render: (row) => row.bill_cont_start ? new Date(row.bill_cont_start).toLocaleDateString() : '-'
+      render: (row) => {
+        const val = row.contract_start;
+        if (!val) return '-';
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? '-' : d.toLocaleDateString();
+      }
     },
     {
-      key: 'bill_cont_end',
+      key: 'contract_end',
       header: 'Contract End',
-      render: (row) => row.bill_cont_end ? new Date(row.bill_cont_end).toLocaleDateString() : '-'
+      render: (row) => {
+        const val = row.contract_end;
+        if (!val) return '-';
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? '-' : d.toLocaleDateString();
+      }
     },
   ];
+
+  // Helpers: safely format dates for display and for date-input value (YYYY-MM-DD)
+  const safeToInputDate = (value?: string | null) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString().split('T')[0];
+  };
 
   const rows = accounts.map((account, index) => ({
     ...account,
     rowNumber: index + 1,
   }));
 
+  // Summaries: counts by status and by category
+  const statusCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    accounts.forEach(a => {
+      const key = (a.status || 'Unknown') as string;
+      map[key] = (map[key] || 0) + 1;
+    });
+    return map;
+  }, [accounts]);
+
+  const categoryCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    accounts.forEach(a => {
+      const key = (a.category || 'Uncategorized') as string;
+      map[key] = (map[key] || 0) + 1;
+    });
+    return map;
+  }, [accounts]);
+
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded">
+          <h3 className="text-sm font-semibold">Status Summary</h3>
+          <div className="mt-2 space-y-1">
+            {Object.entries(statusCounts).map(([k, v]) => (
+              <div key={k} className="flex justify-between text-sm">
+                <div className="capitalize">{k}</div>
+                <div className="font-medium">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded">
+          <h3 className="text-sm font-semibold">Category Summary</h3>
+          <div className="mt-2 space-y-1">
+            {Object.entries(categoryCounts).map(([k, v]) => (
+              <div key={k} className="flex justify-between text-sm">
+                <div className="capitalize">{k}</div>
+                <div className="font-medium">{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded flex items-center justify-center">
+          <div className="text-center">
+            <h3 className="text-sm font-semibold">Total Accounts</h3>
+            <div className="text-2xl font-bold mt-2">{accounts.length}</div>
+          </div>
+        </div>
+      </div>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold">Billing Accounts</h2>
@@ -326,6 +362,7 @@ const BillingAccount = () => {
         theme="sm"
         dataExport={true}
         onRowDoubleClick={handleRowDoubleClick}
+        rowClass={(row: any) => row.status === 'Terminated' ? 'bg-red-50' : ''}
       />
 
       {sidebarOpen && (
@@ -335,13 +372,13 @@ const BillingAccount = () => {
             setSidebarOpen(false);
             resetForm();
           }}
-          size={'lg'}
+          size={'sm'}
           content={
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="service">Service *</Label>
-                  <Select value={formData.service} onValueChange={(value) => handleInputChange('service', value)}>
+                  <Label htmlFor="category">Category *</Label>
+                  <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
                     <SelectTrigger className='w-full'>
                       <SelectValue placeholder="Select service type" />
                     </SelectTrigger>
@@ -356,140 +393,119 @@ const BillingAccount = () => {
                 <div className="space-y-2">
                   <Label htmlFor="bfcy_id">Beneficiary</Label>
                   <SearchableSelect
-                    options={beneficiariesList.map(b => ({ value: String(b.bfcy_id), label: b.bfcy_name }))}
-                    value={formData.bfcy_id ? String(formData.bfcy_id) : ''}
-                    onValueChange={(val) => setFormData(prev => ({ ...prev, bfcy_id: val }))}
+                    options={beneficiariesList.map(b => ({ value: String(b.id), label: b.name }))}
+                    value={formData.beneficiary_id ? String(formData.beneficiary_id) : ''}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, beneficiary_id: val }))}
                     placeholder="Search beneficiary..."
                     searchPlaceholder="Type to search beneficiary"
-                    emptyMessage="No beneficiaries found for selected service"
+                    emptyMessage="No beneficiaries found for selected category"
                     className="w-full"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="bill_desc">Description</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
                   <Textarea
-                    id="bill_desc"
-                    value={formData.bill_desc}
-                    onChange={(e) => handleInputChange('bill_desc', e.target.value)}
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
                     placeholder="Enter description"
                     rows={2}
                   />
                 </div>
                 {/* Product field removed */}
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_ac">Account Number *</Label>
-                      <Input
-                        id="bill_ac"
-                        value={formData.bill_ac}
-                        onChange={(e) => handleInputChange('bill_ac', e.target.value)}
-                        placeholder="Enter account number"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_depo">Deposit</Label>
-                      <Input
-                        id="bill_depo"
-                        type="number"
-                        step="0.01"
-                        value={formData.bill_depo}
-                        onChange={(e) => handleInputChange('bill_depo', e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_mth">Monthly Amount</Label>
-                      <Input
-                        id="bill_mth"
-                        type="number"
-                        step="0.01"
-                        value={formData.bill_mth}
-                        onChange={(e) => handleInputChange('bill_mth', e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="account">Account Number *</Label>
+                  <Input
+                    id="account"
+                    value={formData.account}
+                    onChange={(e) => handleInputChange('account', e.target.value)}
+                    placeholder="Enter account number"
+                  />
                 </div>
 
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="cc_id">Cost Center</Label>
-                      <SearchableSelect
-                        options={[{ value: 'none', label: 'None' }, ...costCenters.map(cc => ({ value: cc.id, label: cc.name }))]}
-                        value={formData.cc_id || 'none'}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, cc_id: val }))}
-                        placeholder="Search or select cost center"
-                        searchPlaceholder="Type to search cost center"
-                        emptyMessage="No cost centers found"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="space-y-2 flex items-center justify-center">
-                      <div className="flex flex-col items-center">
-                        <Label htmlFor="bill_consumable">Consumable?</Label>
-                        <Checkbox
-                        className='w-6 h-6'
-                          checked={formData.bill_consumable === 'yes'}
-                          onCheckedChange={(checked: any) => handleInputChange('bill_consumable', checked ? 'yes' : 'no')}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="location_id">Location</Label>
-                      <SearchableSelect
-                        options={locationsList.map(l => ({ value: String(l.id), label: l.name }))}
-                        value={formData.location_id ? String(formData.location_id) : ''}
-                        onValueChange={(val) => setFormData(prev => ({ ...prev, location_id: val }))}
-                        placeholder="Search or select location"
-                        searchPlaceholder="Type to search location"
-                        emptyMessage="No locations found"
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deposit">Deposit</Label>
+                  <Input
+                    id="deposit"
+                    type="number"
+                    step="0.01"
+                    value={formData.deposit}
+                    onChange={(e) => handleInputChange('deposit', e.target.value)}
+                    placeholder="0.00"
+                  />
                 </div>
 
-                <div className="md:col-span-2">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_cont_start">Contract Start</Label>
-                      <Input
-                        id="bill_cont_start"
-                        type="date"
-                        value={formData.bill_cont_start}
-                        onChange={(e) => handleInputChange('bill_cont_start', e.target.value)}
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rental">Monthly/Rental</Label>
+                  <Input
+                    id="rental"
+                    type="number"
+                    step="0.01"
+                    value={formData.rental}
+                    onChange={(e) => handleInputChange('rental', e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_cont_end">Contract End</Label>
-                      <Input
-                        id="bill_cont_end"
-                        type="date"
-                        value={formData.bill_cont_end}
-                        onChange={(e) => handleInputChange('bill_cont_end', e.target.value)}
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cc_id">Cost Center</Label>
+                  <SearchableSelect
+                    options={[{ value: 'none', label: 'None' }, ...costCenters.map(cc => ({ value: cc.id, label: cc.name }))]}
+                    value={formData.cc_id || 'none'}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, cc_id: val }))}
+                    placeholder="Search or select cost center"
+                    searchPlaceholder="Type to search cost center"
+                    emptyMessage="No cost centers found"
+                    className="w-full"
+                  />
+                </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="bill_stat">Status</Label>
-                      <Select value={formData.bill_stat} onValueChange={(value) => handleInputChange('bill_stat', value)}>
-                        <SelectTrigger className='w-full'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Active">Active</SelectItem>
-                          <SelectItem value="Inactive">Inactive</SelectItem>
-                          <SelectItem value="Suspended">Suspended</SelectItem>
-                          <SelectItem value="Terminated">Terminated</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="location_id">Location</Label>
+                  <SearchableSelect
+                    options={locationsList.map(l => ({ value: String(l.id), label: l.name }))}
+                    value={formData.location_id ? String(formData.location_id) : ''}
+                    onValueChange={(val) => setFormData(prev => ({ ...prev, location_id: val }))}
+                    placeholder="Search or select location"
+                    searchPlaceholder="Type to search location"
+                    emptyMessage="No locations found"
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contract_start">Contract Start</Label>
+                  <Input
+                    id="contract_start"
+                    type="date"
+                    value={formData.contract_start}
+                    onChange={(e) => handleInputChange('contract_start', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contract_end">Contract End</Label>
+                  <Input
+                    id="contract_end"
+                    type="date"
+                    value={formData.contract_end}
+                    onChange={(e) => handleInputChange('contract_end', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={formData.status} onValueChange={(value) => handleInputChange('status', value)}>
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Inactive">Inactive</SelectItem>
+                      <SelectItem value="Suspended">Suspended</SelectItem>
+                      <SelectItem value="Terminated">Terminated</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
               </div>

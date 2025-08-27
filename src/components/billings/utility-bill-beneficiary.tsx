@@ -9,19 +9,18 @@ import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 
 interface Beneficiary {
-  bfcy_id?: number;
-  bfcy_name: string;
-  bfcy_desc?: string;
-  cat_id?: number;
-  bfcy_fileno?: string;
-  bfcy_cat?: string;
-  bfcy_pic?: string;
-  bfcy_ctc?: string;
-  bfcy_logo?: string;
+  id?: number;
+  name: string;
+  category?: string;
+  logo?: string | null;
+  created_at?: string;
   // backend may return an object { ramco_id, full_name } or a simple ramco_id string
   entry_by?: { ramco_id: string; full_name: string } | string | null;
-  entry_position?: string;
-  acc_no?: string;
+  entry_position?: string | null;
+  contact_name?: string | null;
+  contact_no?: string | null;
+  address?: string | null;
+  file_reference?: string | null;
 }
 
 const CATEGORY_OPTIONS: { id: number; label: string }[] = [
@@ -40,7 +39,7 @@ const BeneficiaryManager: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   // form state
-  const [form, setForm] = useState<Beneficiary>({ bfcy_name: '', bfcy_desc: '', cat_id: undefined, bfcy_fileno: '', bfcy_pic: '', bfcy_ctc: '', bfcy_logo: '', acc_no: '' });
+  const [form, setForm] = useState<Beneficiary>({ name: '', category: undefined, logo: null, contact_name: '', contact_no: '', address: '', file_reference: '', entry_by: undefined, entry_position: '' });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [employeeQuery, setEmployeeQuery] = useState('');
@@ -70,7 +69,7 @@ const BeneficiaryManager: React.FC = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ bfcy_name: '', bfcy_desc: '', cat_id: undefined, bfcy_fileno: '', bfcy_pic: '', bfcy_ctc: '', bfcy_logo: '', acc_no: '', entry_by: undefined });
+  setForm({ name: '', category: undefined, logo: null, contact_name: '', contact_no: '', address: '', file_reference: '', entry_by: undefined, entry_position: '' });
     setLogoFile(null);
     setPreparedName('');
     setSidebarOpen(true);
@@ -85,18 +84,17 @@ const BeneficiaryManager: React.FC = () => {
       if (data) {
         setEditing(data);
         setForm({
-          bfcy_id: data.bfcy_id,
-          bfcy_name: data.bfcy_name || '',
-          bfcy_desc: data.bfcy_desc || '',
-          cat_id: data.cat_id || undefined,
-          bfcy_fileno: data.bfcy_fileno || '',
-          bfcy_pic: data.bfcy_pic || '',
-          bfcy_ctc: data.bfcy_ctc || '',
-          bfcy_logo: data.bfcy_logo || '',
+          id: data.id,
+          name: data.name || '',
+          category: data.category || undefined,
+          logo: data.logo || null,
+          contact_name: data.contact_name || '',
+          contact_no: data.contact_no || '',
+          address: data.address || '',
+          file_reference: data.file_reference || '',
           // store ramco_id string in form for payload
           entry_by: data.entry_by ? (typeof data.entry_by === 'object' ? String(data.entry_by.ramco_id) : String(data.entry_by)) : undefined,
           entry_position: data.entry_position || '',
-          acc_no: data.acc_no || ''
         });
         setLogoFile(null);
         // if there's an existing entry_by (ramco id), fetch name for display
@@ -174,7 +172,7 @@ const BeneficiaryManager: React.FC = () => {
   }, []);
 
   const validate = () => {
-    if (!form.bfcy_name || !form.bfcy_name.trim()) {
+    if (!form.name || !String(form.name).trim()) {
       toast.error('Name is required');
       return false;
     }
@@ -188,36 +186,34 @@ const BeneficiaryManager: React.FC = () => {
       let payload: any;
       if (logoFile) {
         payload = new FormData();
-        payload.append('bfcy_name', form.bfcy_name || '');
-        payload.append('bfcy_desc', form.bfcy_desc || '');
-        if (form.cat_id) payload.append('cat_id', String(form.cat_id));
-        payload.append('bfcy_fileno', form.bfcy_fileno || '');
-        payload.append('bfcy_pic', form.bfcy_pic || '');
-        payload.append('bfcy_ctc', form.bfcy_ctc || '');
-        payload.append('acc_no', form.acc_no || '');
+        payload.append('name', form.name || '');
+        payload.append('category', String(form.category || ''));
+        payload.append('contact_name', form.contact_name || '');
+        payload.append('contact_no', form.contact_no || '');
+        payload.append('address', form.address || '');
+        payload.append('file_reference', form.file_reference || '');
         payload.append('entry_by', form.entry_by || '');
         payload.append('entry_position', form.entry_position || '');
-        payload.append('bfcy_logo', logoFile);
+        payload.append('logo', logoFile);
       } else {
         payload = {
-          bfcy_name: form.bfcy_name,
-          bfcy_desc: form.bfcy_desc,
-          cat_id: form.cat_id,
-          bfcy_fileno: form.bfcy_fileno,
-          bfcy_pic: form.bfcy_pic,
-          bfcy_ctc: form.bfcy_ctc,
-          acc_no: form.acc_no,
+          name: form.name,
+          category: form.category,
+          contact_name: form.contact_name,
+          contact_no: form.contact_no,
+          address: form.address,
+          file_reference: form.file_reference,
           entry_by: form.entry_by,
           entry_position: form.entry_position,
         };
       }
 
-      if (form.bfcy_id) {
+      if (form.id) {
         // update
         if (payload instanceof FormData) {
-          await authenticatedApi.put(`/api/bills/util/beneficiaries/${form.bfcy_id}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+          await authenticatedApi.put(`/api/bills/util/beneficiaries/${form.id}`, payload, { headers: { 'Content-Type': 'multipart/form-data' } });
         } else {
-          await authenticatedApi.put(`/api/bills/util/beneficiaries/${form.bfcy_id}`, payload);
+          await authenticatedApi.put(`/api/bills/util/beneficiaries/${form.id}`, payload);
         }
         toast.success('Beneficiary updated');
       } else {
@@ -241,14 +237,13 @@ const BeneficiaryManager: React.FC = () => {
   };
 
   const columns: ColumnDef<any>[] = [
-    { key: 'bfcy_id', header: 'ID' },
-    { key: 'bfcy_name', header: 'Name', filter: 'input' },
-    { key: 'bfcy_cat', header: 'Category', render: (r: any) => r.bfcy_cat || (CATEGORY_OPTIONS.find((c) => c.id === r.cat_id)?.label || ''), filter: 'singleSelect' },
-    { key: 'bfcy_desc', header: 'Description', filter: 'input' },
-        { key: 'bfcy_ctc', header: 'Contact', filter: 'input' },
+    { key: 'id', header: 'ID' },
+    { key: 'name', header: 'Name', filter: 'input' },
+    { key: 'category', header: 'Category', filter: 'singleSelect' },
+    { key: 'contact', header: 'Contact', filter: 'input' },
     { key: 'entry_by', header: 'Bill Manager', filter: 'input', render: (r: any) => (r.entry_by && typeof r.entry_by === 'object') ? r.entry_by.full_name : (r.entry_by || '') },
     { key: 'entry_position', header: 'Position' },
-    { key: 'bfcy_fileno', header: 'File Reference', filter: 'input' },
+    { key: 'file_reference', header: 'File Reference', filter: 'input' },
 
     {
       key: 'bfcy_logo', header: 'Logo', render: (r: any) => {
@@ -284,17 +279,17 @@ const BeneficiaryManager: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Name</label>
-                <Input value={form.bfcy_name} onChange={e => setForm(prev => ({ ...prev, bfcy_name: e.target.value }))} />
+                <Input value={form.name || ''} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} />
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1">Category</label>
-                <Select value={form.cat_id ? String(form.cat_id) : ''} onValueChange={val => setForm(prev => ({ ...prev, cat_id: val ? Number(val) : undefined }))}>
+                <Select value={form.category ? String(form.category) : ''} onValueChange={val => setForm(prev => ({ ...prev, category: val || undefined }))}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select Category" /></SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
                       <SelectLabel>Category</SelectLabel>
-                      {CATEGORY_OPTIONS.map(c => (<SelectItem key={c.id} value={String(c.id)}>{c.label}</SelectItem>))}
+                      {CATEGORY_OPTIONS.map(c => (<SelectItem key={c.id} value={c.label.toLowerCase()}>{c.label}</SelectItem>))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -302,17 +297,17 @@ const BeneficiaryManager: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium mb-1">Product Description</label>
-                <Input value={form.bfcy_desc} onChange={e => setForm(prev => ({ ...prev, bfcy_desc: e.target.value }))} />
+                <Input value={(form.address as string) || ''} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Account No</label>
-                <Input value={form.acc_no} onChange={e => setForm(prev => ({ ...prev, acc_no: e.target.value }))} />
+                <label className="block text-sm font-medium mb-1">Account / File Reference</label>
+                <Input value={(form.file_reference as string) || ''} onChange={e => setForm(prev => ({ ...prev, file_reference: e.target.value }))} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Beneficiary Contact</label>
-                <Input value={form.bfcy_ctc} onChange={e => setForm(prev => ({ ...prev, bfcy_ctc: e.target.value }))} />
+                <label className="block text-sm font-medium mb-1">Beneficiary Contact Name</label>
+                <Input value={(form.contact_name as string) || ''} onChange={e => setForm(prev => ({ ...prev, contact_name: e.target.value }))} />
               </div>
               <div ref={employeeWrapRef} className="relative">
                 <label className="block text-sm font-medium mb-1">Managed By (RTSB)</label>
@@ -352,11 +347,11 @@ const BeneficiaryManager: React.FC = () => {
               {/* Position */}
               <div>
                 <label className="block text-sm font-medium mb-1">Position (RTSB)</label>
-                <Input value={form.entry_position} onChange={e => setForm(prev => ({ ...prev, entry_position: e.target.value }))} />
+                <Input value={(form.entry_position as string) || ''} onChange={e => setForm(prev => ({ ...prev, entry_position: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">RTSB File Reference</label>
-                <Input value={form.bfcy_fileno} onChange={e => setForm(prev => ({ ...prev, bfcy_fileno: e.target.value }))} />
+                <Input value={(form.file_reference as string) || ''} onChange={e => setForm(prev => ({ ...prev, file_reference: e.target.value }))} />
               </div>
 
               <div>
@@ -405,14 +400,14 @@ const BeneficiaryManager: React.FC = () => {
                 </div>
 
                 {/* existing preview for remote logo when no local file selected */}
-                {!logoFile && form.bfcy_logo && (
+                {!logoFile && form.logo && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={form.bfcy_logo} alt="logo" className="w-16 h-16 object-contain mt-2" />
+                  <img src={form.logo as string} alt="logo" className="w-16 h-16 object-contain mt-2" />
                 )}
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button onClick={handleSave} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : (form.bfcy_id ? 'Save' : 'Create')}</Button>
+                <Button onClick={handleSave} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : (form.id ? 'Save' : 'Create')}</Button>
                 <Button variant="outline" onClick={() => setSidebarOpen(false)}>Cancel</Button>
               </div>
             </div>
