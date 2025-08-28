@@ -14,10 +14,18 @@ interface Asset {
     register_number: string;
     fuel_type: string;
     costcenter?: CostCenter | null;
+    locations?: Location | null; // backend uses 'locations' object in fleet response
     purpose?: string;
+    entry_code?: string;
+    location_id?: number;
+    vehicle_id?: number;
 }
 
 interface CostCenter {
+    id: number;
+    name: string;
+}
+interface Location {
     id: number;
     name: string;
 }
@@ -186,6 +194,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     window.history.replaceState({}, '', currentUrl.toString());
 
                     // Reload to fetch the newly created record
+                    // Commented out to allow browser inspection of network/devtools after create
                     setTimeout(() => {
                         window.location.reload();
                     }, 1000);
@@ -267,9 +276,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 const litre = fmtNum(detail.total_litre);
                 return {
                     asset_id: asset.asset_id,
+                    vehicle_id: asset.vehicle_id,
                     stmt_date: header.stmt_date,
                     card_id: detail.fleetcard?.id || '',
                     costcenter_id: costcenter ? costcenter.id : null,
+                    entry_code: asset.entry_code ?? '',
+                    location_id: asset.locations ? asset.locations.id : asset.location_id ?? null,
                     category: asset.purpose || 'project',
                     start_odo: fmtNum(detail.start_odo),
                     end_odo: fmtNum(detail.end_odo),
@@ -323,10 +335,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         if (currentStmtId && currentStmtId > 0) {
             authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${currentStmtId}`)
                 .then(res => {
-                        setData(res.data.data);
-                        // normalize update response details into the UI shape
-                        const normalized = (res.data.data.details || []).map((d: any) => normalizeIncomingDetail(d));
-                        setEditableDetails(normalized);
+                    setData(res.data.data);
+                    // normalize update response details into the UI shape
+                    const normalized = (res.data.data.details || []).map((d: any) => normalizeIncomingDetail(d));
+                    setEditableDetails(normalized);
                     setSummary({
                         stmt_stotal: res.data.data.stmt_stotal || '',
                         stmt_disc: res.data.data.stmt_disc || '',
@@ -378,6 +390,24 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         }
     }, [currentStmtId]);
 
+    // When an Issuer (vendor) is selected in create mode, preload fleet cards for that vendor
+    useEffect(() => {
+        // Only preload when creating a new statement (no currentStmtId)
+        if (!selectedVendor) return;
+        if (currentStmtId && currentStmtId > 0) return;
+
+        authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet?vendor=${selectedVendor}`)
+            .then(res => {
+                const list = (res.data && Array.isArray(res.data.data)) ? res.data.data : [];
+                // Normalize fleet items into the table's detail shape
+                const normalized = list.map((item: any) => normalizeIncomingDetail(item));
+                setEditableDetails(normalized);
+            })
+            .catch(err => {
+                console.error('Error fetching fleet for vendor:', err);
+            });
+    }, [selectedVendor, currentStmtId]);
+
     // Normalize incoming items from either endpoint so table columns can use a single shape
     const normalizeIncomingDetail = (item: any) => {
         const fleetcardId = item.fleetcard?.id ?? item.id ?? item.card_id ?? 0;
@@ -385,9 +415,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         const assetObj = item.asset || {};
         const assetId = assetObj.id ?? assetObj.asset_id ?? item.asset_id ?? 0;
         const registerNumber = assetObj.register_number ?? assetObj.vehicle_regno ?? item.register_number ?? '';
-    const fuelType = assetObj.fuel_type ?? assetObj.vfuelType ?? item.vfuel_type ?? '';
+        const fuelType = assetObj.fuel_type ?? assetObj.vfuelType ?? item.vfuel_type ?? '';
         const purpose = assetObj.purpose ?? item.purpose ?? '';
         const costcenter = assetObj.costcenter ?? null;
+
+        // Normalize location information: backend may return `locations`, `location`, or `location_id`/`loc_id`
+        const locationsObj = assetObj.locations ?? assetObj.location ?? item.locations ?? item.location ?? null;
+        const locationId = assetObj.location_id ?? assetObj.locations?.id ?? item.location_id ?? item.loc_id ?? null;
+
+        // Normalize vehicle id and entry_code if present
+        const vehicleId = assetObj.vehicle_id ?? item.vehicle_id ?? undefined;
+        const entryCode = assetObj.entry_code ?? item.entry_code ?? '';
 
         return {
             s_id: item.s_id ?? item.id ?? Date.now(),
@@ -403,6 +441,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 // normalized fuel_type
                 fuel_type: fuelType,
                 costcenter: costcenter,
+                // preserve various location shapes
+                locations: locationsObj ?? undefined,
+                location_id: locationId ?? undefined,
+                vehicle_id: vehicleId,
+                entry_code: entryCode,
                 purpose: purpose,
             },
             stmt_date: item.stmt_date ?? (item.reg_date ? String(item.reg_date).slice(0, 10) : ''),
@@ -580,6 +623,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 card_id: detail.fleetcard?.id,
                 card_no: editFormData.card_no.trim(),
                 asset_id: detail.asset?.asset_id,
+                vehicle_id: detail.asset?.vehicle_id,
                 costcenter_id: editFormData.costcenter_id ? parseInt(editFormData.costcenter_id) : null,
                 purpose: editFormData.purpose
             };
