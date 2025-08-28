@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Loader2 } from 'lucide-react';
+import { SingleSelect } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 
@@ -42,10 +43,8 @@ const BeneficiaryManager: React.FC = () => {
   const [form, setForm] = useState<Beneficiary>({ name: '', category: undefined, logo: null, contact_name: '', contact_no: '', address: '', file_reference: '', entry_by: undefined, entry_position: '' });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [employeeQuery, setEmployeeQuery] = useState('');
   const [employeeOptions, setEmployeeOptions] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [employeeLoading, setEmployeeLoading] = useState(false);
-  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
   const [preparedName, setPreparedName] = useState<string>('');
   const employeeWrapRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -101,7 +100,7 @@ const BeneficiaryManager: React.FC = () => {
         if (data?.entry_by) {
           try {
             const query = typeof data.entry_by === 'object' ? data.entry_by.ramco_id : data.entry_by;
-            const r: any = await authenticatedApi.get(`/api/assets/employees/search?q=${query}`);
+            const r: any = await authenticatedApi.get(`/api/assets/employees/search?q=${query}&status=active&dept=9`);
             const list = (r.data?.data || r.data || []);
             const found = Array.isArray(list) ? list.find((x: any) => String(x.ramco_id) === String(query)) : null;
             if (found) setPreparedName(found.full_name);
@@ -133,38 +132,31 @@ const BeneficiaryManager: React.FC = () => {
     }
   }, [logoFile]);
 
-  // debounce employee search
-  useEffect(() => {
-    if (!employeeQuery || employeeQuery.trim().length < 2) {
-      setEmployeeOptions([]);
-      setEmployeeLoading(false);
-      return;
-    }
-
+  // load active employees for combobox
+  const fetchEmployees = async () => {
     setEmployeeLoading(true);
-    const id = setTimeout(async () => {
-      try {
-        const res: any = await authenticatedApi.get(`/api/assets/employees/search?q=${encodeURIComponent(employeeQuery)}`);
-        // API may return data array directly or inside data.data
-        const list = res.data?.data || res.data || [];
-        setEmployeeOptions(Array.isArray(list) ? list : []);
-      } catch (err) {
-        console.error('employee search', err);
-        setEmployeeOptions([]);
-      } finally {
-        setEmployeeLoading(false);
-        setShowEmployeeDropdown(true);
-      }
-    }, 300);
+    try {
+      const res: any = await authenticatedApi.get('/api/assets/employees?status=active&dept=9');
+      const list = res.data?.data || res.data || [];
+      const arr = Array.isArray(list) ? list : [];
+      setEmployeeOptions(arr);
+      return arr;
+    } catch (err) {
+      console.error('fetch employees', err);
+      setEmployeeOptions([]);
+      return [];
+    } finally {
+      setEmployeeLoading(false);
+    }
+  };
 
-    return () => clearTimeout(id);
-  }, [employeeQuery]);
+  useEffect(() => { fetchEmployees(); }, []);
 
   // click outside to close employee dropdown
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (employeeWrapRef.current && !employeeWrapRef.current.contains(e.target as Node)) {
-        setShowEmployeeDropdown(false);
+        // dropdown behavior removed; no action required
       }
     };
     document.addEventListener('click', onDoc);
@@ -172,8 +164,12 @@ const BeneficiaryManager: React.FC = () => {
   }, []);
 
   const validate = () => {
-    if (!form.name || !String(form.name).trim()) {
-      toast.error('Name is required');
+    const missing: string[] = [];
+    if (!form.name || !String(form.name).trim()) missing.push('Name');
+    if (!form.category) missing.push('Category');
+    if (!form.address || !String(form.address).trim()) missing.push('Product Description');
+    if (missing.length) {
+      toast.error(`${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} required`);
       return false;
     }
     return true;
@@ -190,6 +186,8 @@ const BeneficiaryManager: React.FC = () => {
         payload.append('category', String(form.category || ''));
         payload.append('contact_name', form.contact_name || '');
         payload.append('contact_no', form.contact_no || '');
+        // description (product description)
+        payload.append('description', form.address || '');
         payload.append('address', form.address || '');
         payload.append('file_reference', form.file_reference || '');
         payload.append('entry_by', form.entry_by || '');
@@ -199,6 +197,8 @@ const BeneficiaryManager: React.FC = () => {
         payload = {
           name: form.name,
           category: form.category,
+          // description (product description)
+          description: form.address,
           contact_name: form.contact_name,
           contact_no: form.contact_no,
           address: form.address,
@@ -240,6 +240,7 @@ const BeneficiaryManager: React.FC = () => {
     { key: 'id', header: 'ID' },
     { key: 'name', header: 'Name', filter: 'input' },
     { key: 'category', header: 'Category', filter: 'singleSelect' },
+    { key: 'description', header: 'Product Description', filter: 'input' },
     { key: 'contact', header: 'Contact', filter: 'input' },
     { key: 'entry_by', header: 'Bill Manager', filter: 'input', render: (r: any) => (r.entry_by && typeof r.entry_by === 'object') ? r.entry_by.full_name : (r.entry_by || '') },
     { key: 'entry_position', header: 'Position' },
@@ -264,7 +265,19 @@ const BeneficiaryManager: React.FC = () => {
         </div>
       </div>
 
-      <CustomDataGrid columns={columns as any} data={rows} pagination={false} inputFilter={false} theme="sm" onRowDoubleClick={(row: any) => openEdit(row?.bfcy_id)} dataExport={true} />
+      <CustomDataGrid
+        columns={columns as any}
+        data={rows}
+        pagination={false}
+        inputFilter={false}
+        theme="sm"
+        onRowDoubleClick={(row: any) => {
+          const id = row?.id;
+          if (!id) return;
+          Promise.resolve().then(() => openEdit(id));
+        }}
+        dataExport={true}
+      />
 
       <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded mt-3">
         💡 <strong>Actions:</strong> Double-click any row to edit a beneficiary
@@ -278,12 +291,12 @@ const BeneficiaryManager: React.FC = () => {
           content={
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
+                <label className="block text-sm font-medium mb-1">Name <span className="text-red-500">*</span></label>
                 <Input value={form.name || ''} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Category</label>
+                <label className="block text-sm font-medium mb-1">Category <span className="text-red-500">*</span></label>
                 <Select value={form.category ? String(form.category) : ''} onValueChange={val => setForm(prev => ({ ...prev, category: val || undefined }))}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Select Category" /></SelectTrigger>
                   <SelectContent>
@@ -296,7 +309,7 @@ const BeneficiaryManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">Product Description</label>
+                <label className="block text-sm font-medium mb-1">Product Description <span className="text-red-500">*</span></label>
                 <Input value={(form.address as string) || ''} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} />
               </div>
 
@@ -311,35 +324,26 @@ const BeneficiaryManager: React.FC = () => {
               </div>
               <div ref={employeeWrapRef} className="relative">
                 <label className="block text-sm font-medium mb-1">Managed By (RTSB)</label>
-                <Input
-                  value={preparedName || ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setPreparedName(v);
-                    setForm(prev => ({ ...prev, entry_by: undefined }));
-                    setEmployeeQuery(v);
+                {/* SingleSelect expects options: { value, label } */}
+                <SingleSelect
+                  options={employeeOptions.map(e => ({ value: String(e.ramco_id), label: e.full_name }))}
+                  value={form.entry_by ? String(form.entry_by) : (preparedName ? '' : '')}
+                  onValueChange={(val: string) => {
+                    // val is ramco_id string
+                    setForm(prev => ({ ...prev, entry_by: val } as any));
+                    const found = employeeOptions.find(x => String(x.ramco_id) === String(val));
+                    if (found) setPreparedName(found.full_name);
                   }}
-                  onFocus={() => { if (employeeOptions.length) setShowEmployeeDropdown(true); }}
-                  placeholder="Type employee name..."
+                  placeholder={preparedName || 'Select or search employee...'}
+                  emptyMessage="No matches"
+                  searchPlaceholder="Search employee..."
+                  clearable
+                  className="w-full"
                 />
-
-                {showEmployeeDropdown && (
+                {/* keep legacy dropdown behavior for showing results while typing */}
+                {(!employeeOptions.length && employeeLoading) && (
                   <div className="absolute z-40 left-0 right-0 bg-white border mt-1 max-h-48 overflow-auto shadow-md">
-                    {employeeLoading ? (
-                      <div className="p-2">Searching...</div>
-                    ) : employeeOptions.length ? (
-                      employeeOptions.map(opt => (
-                        <div key={opt.ramco_id} className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => {
-                          setForm(prev => ({ ...prev, entry_by: String(opt.ramco_id) } as any));
-                          setPreparedName(opt.full_name);
-                          setShowEmployeeDropdown(false);
-                        }}>
-                          {opt.full_name}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-2 text-sm text-gray-500">No matches</div>
-                    )}
+                    <div className="p-2">Searching...</div>
                   </div>
                 )}
               </div>
