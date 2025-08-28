@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, Download, Loader2, ChevronRight, Search, X } from 'lucide-react';
+import { Plus, Download, Loader2, ChevronRight, Search, X, Printer } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
+import { SingleSelect } from '@/components/ui/combobox';
 import { Separator } from '@radix-ui/react-select';
 
 // Helper function to construct logo URL
@@ -78,9 +79,9 @@ interface UtilityBill {
   ubill_usage: string | null;
   ubill_paystat: string | null;
   ubill_payref: string | null;
-  // legacy helpers for grid display (filled at fetch time)
+  // legacy/helpers for grid display (filled at fetch time)
   service?: string;
-  provider?: string;
+  beneficiary?: string;
   costcenter?: string;
   location?: string;
 }
@@ -143,13 +144,14 @@ const UtilityBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Default open
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed
   const [saving, setSaving] = useState(false);
   const [editingBill, setEditingBill] = useState<UtilityBill | null>(null);
   const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [beneficiaryFilter, setBeneficiaryFilter] = useState<string>('');
   const [yearFilter, setYearFilter] = useState<string>(String(new Date().getFullYear()));
   const [selectedAccount, setSelectedAccount] = useState<BillingAccount | null>(null);
   const [sidebarSize, setSidebarSize] = useState<'sm' | 'lg'>('sm');
@@ -163,12 +165,12 @@ const UtilityBill = () => {
   // Compute whether printing fields should be shown based on selected account or editing bill
   const showPrintingFields = useMemo(() => {
     if (editingBill) {
-        return isPrintingService(editingBill.account?.service);
-      }
-      if (selectedAccount) {
-        // category may map to non-printing/printing; fall back to description if needed
-        return isPrintingService(selectedAccount.category || selectedAccount.description || undefined);
-      }
+      return isPrintingService(editingBill.account?.service);
+    }
+    if (selectedAccount) {
+      // category may map to non-printing/printing; fall back to description if needed
+      return isPrintingService(selectedAccount.category || selectedAccount.description || undefined);
+    }
     return false;
   }, [editingBill, selectedAccount]);
 
@@ -181,6 +183,40 @@ const UtilityBill = () => {
     }));
   }, [billingAccounts]);
 
+  // Derive beneficiary options from billing accounts
+  const beneficiaryOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    billingAccounts.forEach(acc => {
+      if (acc.beneficiary && acc.beneficiary.id) {
+        map.set(acc.beneficiary.id, acc.beneficiary.name);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ value: String(id), label: name }));
+  }, [billingAccounts]);
+
+  // Displayed rows after beneficiary filter
+  const displayedRows = useMemo(() => {
+    if (!beneficiaryFilter) return rows;
+    return rows.filter(r => String(r.account?.beneficiary?.id || '') === beneficiaryFilter);
+  }, [rows, beneficiaryFilter]);
+
+  // Whether export is allowed: require explicit row selection by the user
+  const canExport = useMemo(() => {
+    try {
+      const hasSelected = selectedRowIds && selectedRowIds.length > 0;
+      return !loading && hasSelected;
+    } catch (e) {
+      return false;
+    }
+  }, [selectedRowIds, loading]);
+
+  // When beneficiary filter is cleared, also clear any selected rows and prevent row selection
+  useEffect(() => {
+    if (!beneficiaryFilter) {
+      setSelectedRowIds([]);
+    }
+  }, [beneficiaryFilter]);
+
   // Filter memoized accounts with provider prioritization
   const filteredAccountsWithLogos = useMemo(() => {
     if (searchTerm.trim() === '') {
@@ -188,16 +224,16 @@ const UtilityBill = () => {
     } else {
       const searchLower = searchTerm.toLowerCase();
       const filtered = accountsWithLogos.filter((account) =>
-  (account.category?.toLowerCase() || '').includes(searchLower) ||
-  (account.beneficiary?.name?.toLowerCase() || '').includes(searchLower) ||
-  (account.account?.toLowerCase() || '').includes(searchLower) ||
-  (account.description?.toLowerCase() || '').includes(searchLower)
+        (account.category?.toLowerCase() || '').includes(searchLower) ||
+        (account.beneficiary?.name?.toLowerCase() || '').includes(searchLower) ||
+        (account.account?.toLowerCase() || '').includes(searchLower) ||
+        (account.description?.toLowerCase() || '').includes(searchLower)
       );
 
       // Sort with provider matches first
       return filtered.sort((a, b) => {
-  const aProviderMatch = (a.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
-  const bProviderMatch = (b.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
+        const aProviderMatch = (a.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
+        const bProviderMatch = (b.beneficiary?.name?.toLowerCase() || '').includes(searchLower);
 
         if (aProviderMatch && !bProviderMatch) return -1;
         if (!aProviderMatch && bProviderMatch) return 1;
@@ -398,7 +434,7 @@ const UtilityBill = () => {
     setIsFormLoading(true);
 
     // Show toast notification for account switching
-  toast.success(`Switched to ${account.beneficiary?.name || 'Account'} - ${account.category || account.description || 'Service'}`, {
+    toast.success(`Switched to ${account.beneficiary?.name || 'Account'} - ${account.category || account.description || 'Service'}`, {
       //description: 'Form data refreshed with new account information',
       duration: 2000,
     });
@@ -407,7 +443,7 @@ const UtilityBill = () => {
     setSidebarSize('lg');
 
     // Check if this is a printing service
-  const isPrinting = isPrintingService(account.category || account.description || undefined);
+    const isPrinting = isPrintingService(account.category || account.description || undefined);
 
     // Clear any editing state when switching accounts
     setEditingBill(null);
@@ -610,12 +646,12 @@ const UtilityBill = () => {
         toast.success('Utility bill created successfully');
       }
 
-  // Close only the form pane: collapse to small sidebar and clear selection/editing
-  setSidebarSize('sm');
-  setSelectedAccount(null);
-  setEditingBill(null);
-  resetForm();
-  fetchUtilityBills();
+      // Close only the form pane: collapse to small sidebar and clear selection/editing
+      setSidebarSize('sm');
+      setSelectedAccount(null);
+      setEditingBill(null);
+      resetForm();
+      fetchUtilityBills();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to save utility bill');
       console.error('Error saving bill:', error);
@@ -638,7 +674,7 @@ const UtilityBill = () => {
           ...item,
           rowNumber: idx + 1,
           service: item.account?.service || '',
-          provider: item.account?.beneficiary?.name || item.account?.provider || '',
+          beneficiary: item.account?.beneficiary?.name || item.account?.provider || '',
           costcenter: item.account?.costcenter?.name || '',
           location: item.account?.location?.name || '',
           ubill_date_display: item.ubill_date ? new Date(item.ubill_date).toLocaleDateString() : '',
@@ -689,7 +725,7 @@ const UtilityBill = () => {
       render: (row: UtilityBill) => (row as any).ubill_date_display || row.ubill_date
     },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
-    { key: 'provider', header: 'Provider', filter: 'singleSelect' },
+    { key: 'beneficiary', header: 'Beneficiary', filter: 'singleSelect' },
     {
       key: 'costcenter',
       header: 'Cost Center',
@@ -712,58 +748,83 @@ const UtilityBill = () => {
         <div className="flex items-center gap-2">
 
           <h2 className="text-lg font-bold">Utility Bills Summary</h2>
-          {selectedRowIds.length > 0 && (
+          {/* Export button removed; use single Print button to handle batch export */}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Beneficiary filter combobox and printer export */}
+          <div className="flex items-center gap-2">
+            <div className="w-80">
+              <SingleSelect
+                options={beneficiaryOptions}
+                value={beneficiaryFilter}
+                onValueChange={(v) => setBeneficiaryFilter(v)}
+                placeholder="Select beneficiary to print memo"
+                clearable
+                searchPlaceholder="Search beneficiary..."
+                className="w-full py-0"
+              />
+            </div>
             <Button
-              variant="secondary"
-              className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
+              variant="default"
               onClick={async () => {
                 try {
-                  const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-utility-costcenter');
-                  await exportTelcoBillSummaryPDFs(selectedRowIds);
+                  // If user selected rows, export those; otherwise export currently filtered (displayed) rows
+                  const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
+                    ? selectedRowIds
+                    : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
+
+                  if (!idsToExport || idsToExport.length === 0) {
+                    toast.error('No bills to export');
+                    return;
+                  }
+
+                  const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
+          await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
                 } catch (err) {
                   console.error('Failed to export utility PDF batch', err);
                   toast.error('Failed to export PDF.');
                 }
               }}
+              disabled={!canExport}
             >
-              <Download size={16} className="mr-1" /> Export PDF
+        <Printer size={16} className="mr-1" /> Batch Bill Print
             </Button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center">
-            <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
-              <SelectTrigger className="w-28 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All years</SelectItem>
-                {Array.from({ length: 6 }).map((_, i) => {
-                  const y = String(new Date().getFullYear() - i);
-                  return (<SelectItem key={y} value={y}>{y}</SelectItem>);
-                })}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center">
+              <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
+                <SelectTrigger className="w-28 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All years</SelectItem>
+                  {Array.from({ length: 6 }).map((_, i) => {
+                    const y = String(new Date().getFullYear() - i);
+                    return (<SelectItem key={y} value={y}>{y}</SelectItem>);
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              variant={'default'}
+              onClick={handleAdd}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+            </Button>
           </div>
-          <Button
-            variant={'default'}
-            onClick={handleAdd}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-          </Button>
         </div>
       </div>
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
-        data={rows}
+        data={displayedRows}
         pagination={false}
         inputFilter={false}
         theme="sm"
         dataExport={true}
         onRowDoubleClick={handleRowDoubleClick}
         rowSelection={{
-          enabled: true,
+          // Enable row selection only after a beneficiary is selected
+          enabled: Boolean(beneficiaryFilter),
           getRowId: (row: any) => row.util_id || row.account?.bill_id,
           onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
             setSelectedRowIds(selectedKeys.map(Number));
@@ -795,7 +856,7 @@ const UtilityBill = () => {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
-                    placeholder="Search by provider, service, account..."
+                    placeholder="Search by beneficiary, service, account..."
                     value={searchTerm}
                     onChange={(e) => handleSearchChange(e.target.value)}
                     className="pl-10"
