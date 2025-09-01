@@ -13,17 +13,18 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-interface PurchaseRecord {
+interface ApiPurchase {
   id: number;
   request_type: string;
-  costcenter: string;
-  pic: string;
-  item_type: string;
+  requestor?: { ramco_id: string; full_name: string } | string;
+  costcenter?: { id: number; name: string } | string;
+  type?: { id: number; name: string } | string;
   items: string;
-  supplier: string;
-  brand?: string;
+  supplier?: { id: number; name: string } | string;
+  brand?: { id: number; name: string } | string;
   qty: number;
-  unit_price: string; // API returns as string
+  unit_price: string;
+  total_price?: string;
   pr_date?: string;
   pr_no?: string;
   po_date?: string;
@@ -34,26 +35,35 @@ interface PurchaseRecord {
   inv_no?: string;
   grn_date?: string;
   grn_no?: string;
+  released_to?: string | null;
+  released_at?: string | null;
 }
 
 interface PurchaseCardProps {
-  purchase: PurchaseRecord;
+  purchase: ApiPurchase;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
+// Format number for RM display: thousand separators + 2 decimals
+const fmtRM = (value: number) => {
+  return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 // Get status based on available data
-const getStatusType = (purchase: PurchaseRecord): string => {
-  if (purchase.grn_date && purchase.grn_no) return 'completed';
-  if (purchase.inv_date && purchase.inv_no) return 'invoiced';
+// Completed is set when Handover (inv_date/inv_no) is registered by Asset Manager.
+const getStatusType = (purchase: ApiPurchase): string => {
+  // Procurement 'Released' indicates transfer to Asset Manager (released_at/released_to)
+  if (purchase.released_at || purchase.released_to) return 'released';
+  if (purchase.grn_date && purchase.grn_no) return 'delivered';
   if (purchase.do_date && purchase.do_no) return 'delivered';
   if (purchase.po_date && purchase.po_no) return 'ordered';
   if (purchase.pr_date && purchase.pr_no) return 'requested';
   return 'draft';
 };
 
-const getPurchaseStatus = (purchase: PurchaseRecord): string => {
+const getPurchaseStatus = (purchase: ApiPurchase): string => {
   return getStatusType(purchase);
 };
 
@@ -77,11 +87,11 @@ const getStatusConfig = (status: string) => {
       label: 'Delivered',
       variant: 'outline' as const,
       icon: Truck,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-50'
+      color: 'text-white',
+      bgColor: 'bg-amber-500'
     },
-    invoiced: {
-      label: 'Invoiced',
+    released: {
+      label: 'Released',
       variant: 'secondary' as const,
       icon: FileText,
       color: 'text-purple-600',
@@ -100,7 +110,7 @@ const getStatusConfig = (status: string) => {
 };
 
 const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, onDelete }) => {
-  const status = getPurchaseStatus(purchase);
+  const status = getPurchaseStatus(purchase as any);
   const statusConfig = getStatusConfig(status);
   const StatusIcon = statusConfig.icon;
   
@@ -115,7 +125,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <span>#{purchase.id}</span>
               <span>•</span>
-              <span>{purchase.supplier}</span>
+              <span>{typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '')}</span>
             </div>
           </div>
           <Badge variant={statusConfig.variant} className="shrink-0">
@@ -130,7 +140,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-gray-600">Cost Center</p>
-            <p className="font-medium">{purchase.costcenter}</p>
+            <p className="font-medium">{typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || '')}</p>
           </div>
           <div>
             <p className="text-gray-600">Type</p>
@@ -145,7 +155,11 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
           <div>
             <p className="text-gray-600">Total Amount</p>
             <p className="font-bold text-green-600">
-              RM {(purchase.qty * parseFloat(purchase.unit_price)).toFixed(2)}
+              {(() => {
+                const total = Number(purchase.total_price ?? NaN);
+                if (Number.isFinite(total)) return `RM ${fmtRM(total)}`;
+                return `RM ${fmtRM((purchase.qty || 0) * (Number(purchase.unit_price) || 0))}`;
+              })()}
             </p>
           </div>
         </div>
@@ -180,23 +194,32 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
             }`}>
               <Truck className="w-4 h-4" />
             </div>
-            <div className={`flex-1 h-1 ${
-              purchase.inv_date ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            
-            {/* Invoice */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.inv_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
-              <FileText className="w-4 h-4" />
-            </div>
+            {/* GRN */}
             <div className={`flex-1 h-1 ${
               purchase.grn_date ? 'bg-green-300' : 'bg-gray-200'
             }`} />
-            
-            {/* GRN */}
             <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
               purchase.grn_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+            }`}>
+              <CheckCircle className="w-4 h-4" />
+            </div>
+
+            {/* Released */}
+            <div className={`flex-1 h-1 ${
+              purchase.released_at ? 'bg-green-300' : 'bg-gray-200'
+            }`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+              purchase.released_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+            }`}>
+              <FileText className="w-4 h-4" />
+            </div>
+
+            {/* Completed (Procurement closed) */}
+            <div className={`flex-1 h-1 ${
+              purchase.released_at ? 'bg-green-300' : 'bg-gray-200'
+            }`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
+              purchase.released_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
             }`}>
               <CheckCircle className="w-4 h-4" />
             </div>
@@ -210,7 +233,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
             {purchase.pr_no && <p>PR: {purchase.pr_no}</p>}
             {purchase.po_no && <p>PO: {purchase.po_no}</p>}
             {purchase.do_no && <p>DO: {purchase.do_no}</p>}
-            {purchase.inv_no && <p>INV: {purchase.inv_no}</p>}
+            {purchase.inv_no && <p>Handover: {purchase.inv_no}</p>}
             {purchase.grn_no && <p>GRN: {purchase.grn_no}</p>}
           </div>
         )}

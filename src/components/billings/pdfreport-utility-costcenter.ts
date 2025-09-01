@@ -221,8 +221,8 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.setFontSize(9);
         const signatures = [
             {
-                name: responseBeneficiary?.entry_by?.full_name || responseBeneficiary?.name || 'Undefined Name',
-                title: responseBeneficiary?.entry_position || 'Undefined Position',
+                name: responseBeneficiary?.entry_by?.full_name || 'NOR AFFISHA NAJEEHA BT AFFIDIN',
+                title: responseBeneficiary?.entry_position || 'Admin Assistant',
                 x: 15
             },
             { name: 'MUHAMMAD ARIF BIN ABDUL JALIL', title: 'Senior Executive Administration', x: pageWidth / 2 - 28 },

@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 
 interface Department { id: number; name: string; code: string; }
 interface Position { id: number; name: string; }
-interface District { id: number; name: string; code: string; }
+interface Location { id: number; name: string; code?: string; }
 interface CostCenter { id: number; name: string; }
 interface Employee {
     id: number;
@@ -41,7 +41,7 @@ interface Employee {
     position?: Position;
     department?: Department;
     costcenter?: CostCenter;
-    district?: District;
+    location?: Location;
 }
 
 const OrgEmp: React.FC = () => {
@@ -50,7 +50,7 @@ const OrgEmp: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
-    const [districts, setDistricts] = useState<District[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
     const [formData, setFormData] = useState<Partial<Employee>>({
         ramco_id: '',
         full_name: '',
@@ -64,10 +64,10 @@ const OrgEmp: React.FC = () => {
         employment_type: '',
         employment_status: '',
         grade: '',
-        department: undefined,
-        position: undefined,
-        district: undefined,
-        costcenter: undefined,
+                department: undefined,
+                position: undefined,
+                location: undefined,
+                costcenter: undefined,
     });
 
     const fetchData = async () => {
@@ -76,14 +76,14 @@ const OrgEmp: React.FC = () => {
                 authenticatedApi.get<any>("/api/assets/employees"),
                 authenticatedApi.get<any>("/api/assets/departments"),
                 authenticatedApi.get<any>("/api/assets/positions"),
-                authenticatedApi.get<any>("/api/assets/districts"),
+                        authenticatedApi.get<any>("/api/assets/locations"),
             ]);
             setData(Array.isArray(empRes.data.data) ? empRes.data.data : []);
             setDepartments(Array.isArray(deptRes.data) ? deptRes.data : (deptRes.data && deptRes.data.data ? deptRes.data.data : []));
             setPositions(Array.isArray(posRes.data) ? posRes.data : (posRes.data && posRes.data.data ? posRes.data.data : []));
-            setDistricts(Array.isArray(distRes.data) ? distRes.data : (distRes.data && distRes.data.data ? distRes.data.data : []));
+            setLocations(Array.isArray(distRes.data) ? distRes.data : (distRes.data && distRes.data.data ? distRes.data.data : []));
         } catch (error) {
-            setData([]); setDepartments([]); setPositions([]); setDistricts([]);
+                setData([]); setDepartments([]); setPositions([]); setLocations([]);
         } finally {
             setLoading(false);
         }
@@ -108,7 +108,7 @@ const OrgEmp: React.FC = () => {
                 grade: formData.grade,
                 departmentId: formData.department?.id,
                 positionId: formData.position?.id,
-                districtId: formData.district?.id,
+                    locationId: formData.location?.id,
                 costcenterId: formData.costcenter?.id,
             };
             if (formData.id) {
@@ -133,7 +133,7 @@ const OrgEmp: React.FC = () => {
                 grade: '',
                 department: undefined,
                 position: undefined,
-                district: undefined,
+                location: undefined,
                 costcenter: undefined,
             });
         } catch (error) { }
@@ -183,7 +183,7 @@ const OrgEmp: React.FC = () => {
         { key: "service_length" as any, header: "Service Length", render: (row: Employee) => getServiceLength(row.hire_date) },
         { key: "department", header: "Department", render: (row: Employee) => row.department?.code || "-", filter: 'singleSelect' },
         { key: "costcenter", header: "Cost Center", render: (row: Employee) => row.costcenter?.name || "-", filter: 'singleSelect' },
-        { key: "district", header: "District", render: (row: Employee) => row.district?.code || "-", filter: 'singleSelect' },
+    { key: "location", header: "Location", render: (row: Employee) => row.location?.name || "-", filter: 'singleSelect' },
         { key: "employment_type", header: "Type", filter: 'singleSelect' },
         { key: "employment_status", header: "Status", filter: 'singleSelect' },
         /* { key: "grade", header: "Grade" }, */
@@ -351,28 +351,28 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">District</Label>
-                            <Select
-                                value={formData.district?.id?.toString() || ""}
-                                onValueChange={val => {
-                                    const selected = districts.find(l => l.id === Number(val));
-                                    setFormData({ ...formData, district: selected });
-                                }}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a district" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Districts</SelectLabel>
-                                        {districts.map(dist => (
-                                            <SelectItem key={dist.id} value={dist.id.toString()}>
-                                                {dist.code}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
+                            <Label className="block text-sm font-medium text-gray-700">Location</Label>
+                                <Select
+                                    value={formData.location?.id?.toString() || ""}
+                                    onValueChange={val => {
+                                        const selected = locations.find(l => l.id === Number(val));
+                                        setFormData({ ...formData, location: selected });
+                                    }}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select a location" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectLabel>Locations</SelectLabel>
+                                            {locations.map(loc => (
+                                                <SelectItem key={loc.id} value={loc.id.toString()}>
+                                                    {loc.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
                         </div>
                         <div className="mb-4">
                             <Label className="block text-sm font-medium text-gray-700">Cost Center</Label>
