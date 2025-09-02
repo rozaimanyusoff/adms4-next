@@ -52,6 +52,34 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
     if (!record) return <div className="p-4">Summon not found.</div>;
 
     const attachment = record.attachment_url || record.summon_upl || null;
+    const [attachmentBlobUrl, setAttachmentBlobUrl] = useState<string | null>(null);
+
+    // Try to fetch the attachment through authenticatedApi as a blob and expose a blob URL for inline rendering.
+    useEffect(() => {
+        let mounted = true;
+        // cleanup previous blob
+        if (attachmentBlobUrl) {
+            URL.revokeObjectURL(attachmentBlobUrl);
+            setAttachmentBlobUrl(null);
+        }
+        if (!attachment) return;
+        const run = async () => {
+            try {
+                // request as blob (authenticated) to avoid Content-Disposition: attachment or CORS issues
+                const res = await authenticatedApi.get(attachment, { responseType: 'blob' } as any);
+                const blob = (res as any).data || res;
+                if (!mounted || !blob) return;
+                const url = URL.createObjectURL(blob);
+                setAttachmentBlobUrl(url);
+            } catch (err) {
+                // fallback: leave attachment as-is (link)
+                console.error('Failed to fetch attachment as blob, will fallback to direct URL', err);
+                setAttachmentBlobUrl(null);
+            }
+        };
+        run();
+        return () => { mounted = false; if (attachmentBlobUrl) { URL.revokeObjectURL(attachmentBlobUrl); } };
+    }, [attachment]);
 
     const submitReceipt = async () => {
         try {
@@ -111,10 +139,10 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                 <strong>Summon Ticket</strong>
                                 <div className="mt-2 bg-white border rounded p-3">
                                     {attachment ? (
-                                        attachment.endsWith('.png') || attachment.endsWith('.jpg') || attachment.endsWith('.jpeg') ? (
-                                            <img src={attachment} alt="summon" className="w-full object-contain" />
+                                        (attachment.endsWith('.png') || attachment.endsWith('.jpg') || attachment.endsWith('.jpeg')) ? (
+                                            <img src={attachmentBlobUrl || attachment} alt="summon" className="w-full object-contain" />
                                         ) : (
-                                            <object data={attachment} type="application/pdf" width="100%" height="600">
+                                            <object data={attachmentBlobUrl || attachment} type="application/pdf" width="100%" height="600">
                                                 <a className="text-blue-600" href={attachment} target="_blank" rel="noreferrer">Open attachment</a>
                                             </object>
                                         )
