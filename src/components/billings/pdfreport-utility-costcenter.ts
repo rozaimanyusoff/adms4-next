@@ -66,8 +66,10 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.setFontSize(18);
         doc.text('M E M O', pageWidth / 15, 24, { align: 'left' });
         doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Our Ref : ${responseBeneficiary?.filing || 'Undefined reference'} ( )`, 15, 34);
+    doc.setFont('helvetica', 'normal');
+    // include the utilId(s) passed to the exporter; fall back to first bill id or 'N/A'
+    const refUtil = (Array.isArray(utilIds) && utilIds.length) ? String(utilIds[0]) : (bills[0]?.id ? String(bills[0].id) : 'N/A');
+    doc.text(`Our Ref : ${responseBeneficiary?.filing || 'Undefined reference'} (${refUtil})`, 15, 34);
         const currentDate = new Date();
         doc.text(`Date : ${formatDate(currentDate)}`, pageWidth - 70, 34, { align: 'right' });
         doc.text('To      : Head of Finance', 15, 44);
