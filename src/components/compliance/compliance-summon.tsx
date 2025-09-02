@@ -45,7 +45,8 @@ const ComplianceSummonList: React.FC = () => {
     const [assets, setAssets] = useState<any[]>([]);
     const [assetOptions, setAssetOptions] = useState<ComboboxOption[]>([]);
     const [driverOptions, setDriverOptions] = useState<ComboboxOption[]>([]);
-    const [formData, setFormData] = useState<any>({ register_number: '', asset_id: null, assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: 0, summon_agency: 'PDRM' });
+    const [allDriverOptions, setAllDriverOptions] = useState<ComboboxOption[]>([]);
+    const [formData, setFormData] = useState<any>({ register_number: '', asset_id: null, assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' });
     const [summonFile, setSummonFile] = useState<File | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
@@ -83,6 +84,31 @@ const ComplianceSummonList: React.FC = () => {
             });
         return () => { mounted = false; };
     }, []);
+
+    // Preload active employees so Assigned Driver can also choose from global list
+    useEffect(() => {
+        let mounted = true;
+        authenticatedApi.get('/api/assets/employees', { params: { status: 'active' } })
+            .then(res => {
+                const data = (res as any).data?.data || (res as any).data || [];
+                if (!mounted) return;
+                const list = Array.isArray(data) ? data : [];
+                setAllDriverOptions(list.map((e: any) => ({ value: String(e.ramco_id ?? e.id ?? e.employee_id ?? ''), label: e.full_name || e.name || String(e.ramco_id ?? e.id ?? '') })));
+            })
+            .catch(err => {
+                console.error('Failed to load employees for Assigned Driver', err);
+                setAllDriverOptions([]);
+            });
+        return () => { mounted = false; };
+    }, []);
+
+    const mergedDriverOptions = useMemo(() => {
+        const map: Record<string, ComboboxOption> = {};
+        // prefer asset-scoped options first
+        (driverOptions || []).forEach(o => { if (o?.value) map[o.value] = o; });
+        (allDriverOptions || []).forEach(o => { if (o?.value && !map[o.value]) map[o.value] = o; });
+        return Object.values(map);
+    }, [driverOptions, allDriverOptions]);
 
     // Create preview URL for PNG files
     useEffect(() => {
@@ -170,11 +196,11 @@ const ComplianceSummonList: React.FC = () => {
                     const fd = new FormData();
                     Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
                     fd.append('summon_upl', summonFile, summonFile.name);
-                    await authenticatedApi.put(`/api/compliance/summons/${id}`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                    await authenticatedApi.put(`/api/compliance/summon/${id}`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
                         if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
                     } } as any));
                 } else {
-                    await authenticatedApi.put(`/api/compliance/summons/${id}`, mapped);
+                    await authenticatedApi.put(`/api/compliance/summon/${id}`, mapped);
                 }
                 toast.success('Summon updated');
             } else {
@@ -182,7 +208,7 @@ const ComplianceSummonList: React.FC = () => {
                     const fd = new FormData();
                     Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
                     fd.append('summon_upl', summonFile, summonFile.name);
-                    await authenticatedApi.post('/api/compliance/summons', fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                    await authenticatedApi.post('/api/compliance/summon', fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
                         if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
                     } } as any));
                 } else {
@@ -279,7 +305,7 @@ const ComplianceSummonList: React.FC = () => {
 
                             <div>
                                 <Label>Assigned Driver:</Label>
-                                <SingleSelect options={driverOptions} value={formData.assigned_driver} className={formErrors.ramco_id ? 'ring-2 ring-red-500' : ''} onValueChange={(val) => setFormData((s: any) => ({ ...s, assigned_driver: val }))} placeholder="Select driver" />
+                                <SingleSelect options={mergedDriverOptions} value={formData.assigned_driver} className={formErrors.ramco_id ? 'ring-2 ring-red-500' : ''} onValueChange={(val) => setFormData((s: any) => ({ ...s, assigned_driver: val }))} placeholder="Select driver" />
                             </div>
                         </div>
 
@@ -349,7 +375,24 @@ const ComplianceSummonList: React.FC = () => {
                             </div>
                             <div>
                                 <Label>Amount (RM):</Label>
-                                <Input type="number" value={formData.summon_amt} className={formErrors.summon_amt ? 'ring-2 ring-red-500' : ''} onChange={(e: any) => setFormData((s: any) => ({ ...s, summon_amt: Number(e.target.value) }))} />
+                                <Input
+                                    type="text"
+                                    value={formData.summon_amt}
+                                    className={formErrors.summon_amt ? 'ring-2 ring-red-500' : ''}
+                                    onChange={(e: any) => {
+                                        // allow only digits and dot
+                                        const v = e.target.value.replace(/[^0-9.]/g, '');
+                                        // prevent multiple dots
+                                        const parts = v.split('.');
+                                        const safe = parts.length <= 1 ? parts[0] : `${parts[0]}.${parts.slice(1).join('').slice(0,2)}`;
+                                        setFormData((s: any) => ({ ...s, summon_amt: safe }));
+                                    }}
+                                    onBlur={() => {
+                                        // format to 2 decimals
+                                        const num = Number(String(formData.summon_amt).replace(/,/g, '')) || 0;
+                                        setFormData((s: any) => ({ ...s, summon_amt: num.toFixed(2) }));
+                                    }}
+                                />
                                 {formErrors.summon_amt ? <div className="text-xs text-red-600 mt-1">Amount is required</div> : null}
                             </div>
                         </div>
@@ -438,7 +481,7 @@ const ComplianceSummonList: React.FC = () => {
             </div>
             <div className='flex items-center justify-between my-4'>
                 <h2 className='text-lg font-semibold'>Summon Management</h2>
-                <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: 0, summon_agency: 'PDRM' }); setSidebarOpen(true); }}>
+                <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' }); setSidebarOpen(true); }}>
                     <Plus className="w-4 h-4 mr-2" />Register Summon
                 </Button>
             </div>
@@ -468,7 +511,7 @@ const ComplianceSummonList: React.FC = () => {
                             summon_loc: r.summon_loc || '',
                             myeg_date: r.myeg_date || '',
                             type_of_summon: r.type_of_summon || '',
-                            summon_amt: r.summon_amt || 0,
+                            summon_amt: (typeof r.summon_amt === 'number' ? Number(r.summon_amt).toFixed(2) : (r.summon_amt || '0.00')),
                             summon_agency: r.summon_agency || 'PDRM'
                         };
                         setFormData(pre);
