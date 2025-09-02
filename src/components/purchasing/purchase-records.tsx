@@ -4,7 +4,7 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
 // PurchaseSummary is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
-import { Plus, FileSpreadsheet, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search } from 'lucide-react';
+import { Plus, FileSpreadsheet, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle } from 'lucide-react';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1257,6 +1257,18 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                         >
                           <Edit className="h-4 w-4" />
                           <span>Edit</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const typeId = typeof row.type === 'string' ? '' : (row.type?.id || '');
+                            window.open(`/purchase/asset/${row.id}?type_id=${typeId}`, '_blank');
+                          }}
+                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                          <span>Register Asset</span>
                         </Button>
                         <Button
                           size="sm"
