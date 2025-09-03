@@ -13,7 +13,8 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
-import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PurchaseData {
   id: number;
@@ -23,23 +24,31 @@ interface PurchaseData {
   costcenter?: { id: number; name: string } | string;
   requestor?: { ramco_id: string; full_name: string } | string;
   type?: { id: number; name: string; icon?: string } | string;
+  type_detail?: { id: number; name: string } | string;
   supplier?: { id: number; name: string } | string;
   brand?: { id: number; name: string } | string;
   qty: number;
   unit_price: string;
+  total_price?: string;
   pr_no?: string;
   pr_date?: string;
+  do_no?: string;
+  do_date?: string;
+  inv_no?: string;
+  inv_date?: string;
 }
 
 interface AssetFormData {
   register_number: string;
   model: string;
   brand: string;
+  category: string;
   costcenter: string;
   description: string;
   location: string;
   condition: string;
-  warranty_expiry: string;
+  classification: string;
+  warranty_period: string; // years
   notes: string;
 }
 
@@ -71,6 +80,11 @@ interface LocationOption {
   building?: string;
 }
 
+interface CategoryOption {
+  id: number;
+  name: string;
+}
+
 const PurchaseAssetRegistration: React.FC = () => {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -82,22 +96,25 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [assetItems, setAssetItems] = useState<AssetItem[]>([]);
   const [visibleAssetCount, setVisibleAssetCount] = useState(2); // Initially show only 2 forms
-  const [collapsedAssets, setCollapsedAssets] = useState<Set<string>>(new Set()); // Track collapsed asset forms
   const [sameModel, setSameModel] = useState(true);
   const [brandOptions, setBrandOptions] = useState<BrandOption[]>([]);
   const [costCenterOptions, setCostCenterOptions] = useState<CostCenterOption[]>([]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingCostCenters, setLoadingCostCenters] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [loadingCategories, setLoadingCategories] = useState(false);
   const [bulkFormData, setBulkFormData] = useState<Omit<AssetFormData, 'register_number'>>({
     model: '',
     brand: '',
+    category: '',
     costcenter: '',
     description: '',
     location: '',
     condition: 'new',
-    warranty_expiry: '',
+    classification: 'Asset',
+    warranty_period: '',
     notes: ''
   });
 
@@ -118,6 +135,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   useEffect(() => {
     if (type_id) {
       fetchBrandOptions();
+      fetchCategoryOptions();
     }
     fetchCostCenterOptions();
     fetchLocationOptions();
@@ -181,6 +199,21 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
+  const fetchCategoryOptions = async () => {
+    if (!type_id) return;
+    setLoadingCategories(true);
+    try {
+      const response = await authenticatedApi.get(`/api/assets/categories?type=${type_id}`);
+      const data = (response as any).data?.data || (response as any).data || [];
+      setCategoryOptions(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load category options:', error);
+      setCategoryOptions([]);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
   const initializeAssetItems = () => {
     if (!purchase) return;
     
@@ -191,11 +224,13 @@ const PurchaseAssetRegistration: React.FC = () => {
     setBulkFormData({
       model: defaultModel,
       brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
+      category: '',
       costcenter: typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || ''),
       description: purchase.items || '',
       location: '',
       condition: 'new',
-      warranty_expiry: '',
+      classification: 'Asset',
+      warranty_period: '',
       notes: ''
     });
 
@@ -205,11 +240,13 @@ const PurchaseAssetRegistration: React.FC = () => {
         register_number: '',
         model: defaultModel,
         brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
+        category: '',
         costcenter: typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || ''),
         description: purchase.items || '',
         location: '',
         condition: 'new',
-        warranty_expiry: '',
+        classification: 'Asset',
+        warranty_period: '',
         notes: ''
       });
     }
@@ -220,14 +257,6 @@ const PurchaseAssetRegistration: React.FC = () => {
     setAssetItems(prev => prev.map(item => 
       item.id === id ? { ...item, [field]: value } : item
     ));
-    
-    // Auto-collapse when form becomes complete
-    setTimeout(() => {
-      const updatedAsset = assetItems.find(item => item.id === id);
-      if (updatedAsset && isAssetComplete({ ...updatedAsset, [field]: value })) {
-        setCollapsedAssets(prev => new Set([...prev, id]));
-      }
-    }, 500); // Small delay to show the completion state briefly
   };
 
   const addMoreAssets = () => {
@@ -236,16 +265,24 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
-  // Helper function to check if an asset form is complete
-  const isAssetComplete = (asset: AssetItem): boolean => {
+  // Complete for overview: only register number must be present
+  const isAssetOverviewComplete = (asset: AssetItem): boolean => {
+    const isSoftware = asset.category?.toLowerCase() === 'software';
+    return isSoftware || !!asset.register_number?.trim();
+  };
+
+  // Complete for card ring/collapse: all fields except description
+  const isAssetFormComplete = (asset: AssetItem): boolean => {
     return !!(
       asset.register_number &&
+      asset.warranty_period !== undefined &&
       asset.condition &&
       asset.brand &&
       asset.model &&
+      asset.category &&
+      asset.classification &&
       asset.costcenter &&
-      asset.location &&
-      asset.description
+      asset.location
     );
   };
 
@@ -254,26 +291,11 @@ const PurchaseAssetRegistration: React.FC = () => {
     return value.trim() !== '';
   };
 
-  // Helper function to get field ring color class
-  const getFieldRingClass = (value: string): string => {
-    if (isFieldFilled(value)) {
-      return 'ring-2 ring-green-200 border-green-300 focus:ring-green-300';
-    }
-    return 'focus:ring-blue-500';
-  };
+  // Field rings disabled per requirement
+  const getFieldRingClass = (_value: string): string => '';
 
   // Toggle collapse state for an asset
-  const toggleAssetCollapse = (assetId: string) => {
-    setCollapsedAssets(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(assetId)) {
-        newSet.delete(assetId);
-      } else {
-        newSet.add(assetId);
-      }
-      return newSet;
-    });
-  };
+  // Collapse disabled per requirement
 
   // Scroll to specific asset form
   const scrollToAsset = (assetId: string) => {
@@ -282,12 +304,6 @@ const PurchaseAssetRegistration: React.FC = () => {
       element.scrollIntoView({ 
         behavior: 'smooth', 
         block: 'center'
-      });
-      // Ensure the form is expanded
-      setCollapsedAssets(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(assetId);
-        return newSet;
       });
     }
   };
@@ -327,7 +343,12 @@ const PurchaseAssetRegistration: React.FC = () => {
   };
 
   const handleSave = async () => {
-    const invalidAssets = assetItems.filter(item => !item.register_number || !item.description);
+    const invalidAssets = assetItems.filter(item => {
+      const isSoftware = (item.category || '').toLowerCase() === 'software';
+      const missingRegister = !isSoftware && !item.register_number?.trim();
+      const missingDesc = !item.description?.trim();
+      return missingRegister || missingDesc;
+    });
     if (invalidAssets.length > 0) {
       toast.error('Please fill in required fields for all assets');
       return;
@@ -335,14 +356,23 @@ const PurchaseAssetRegistration: React.FC = () => {
 
     setSaving(true);
     try {
+      // Helper mappers from names to IDs
+      const brandIdByName = (name: string) => brandOptions.find(b => b.name === name)?.id;
+      const costCenterIdByName = (name: string) => costCenterOptions.find(c => c.name === name)?.id;
+      const locationIdByName = (name: string) => locationOptions.find(l => l.name === name)?.id;
+      const categoryIdByName = (name: string) => categoryOptions.find(c => c.name === name)?.id;
+
       const payload = assetItems.map(item => ({
-        ...item,
-        purchase_id: pr_id,
+        register_number: item.register_number,
+        classification: item.classification,
         type_id: type_id,
-        purchase_reference: purchase?.pr_no || '',
-        requestor: typeof purchase?.requestor === 'string' ? purchase.requestor : (purchase?.requestor?.ramco_id || ''),
-        costcenter_id: typeof purchase?.costcenter === 'string' ? purchase.costcenter : (purchase?.costcenter?.id || ''),
-        supplier_id: typeof purchase?.supplier === 'string' ? purchase.supplier : (purchase?.supplier?.id || ''),
+        category_id: categoryIdByName(item.category) ?? null,
+        brand_id: brandIdByName(item.brand) ?? null,
+        model: item.model,
+        costcenter_id: costCenterIdByName(item.costcenter) ?? null,
+        location_id: locationIdByName(item.location) ?? null,
+        condition: item.condition,
+        description: item.description,
       }));
 
       await authenticatedApi.post('/api/assets/register-batch', { assets: payload });
@@ -437,7 +467,7 @@ const PurchaseAssetRegistration: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header Navbar */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className=" mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <Package className="h-8 w-8 text-blue-600 mr-3" />
@@ -454,8 +484,6 @@ const PurchaseAssetRegistration: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <Badge variant="outline">PR: {purchase.pr_no || 'N/A'}</Badge>
-              <Badge variant="secondary">Qty: {purchase.qty}</Badge>
               {purchase.type && (
                 <Badge variant="outline" className="flex items-center space-x-1">
                   {typeof purchase.type === 'object' && purchase.type.icon && (
@@ -464,24 +492,16 @@ const PurchaseAssetRegistration: React.FC = () => {
                   <span>Type: {typeof purchase.type === 'string' ? purchase.type : purchase.type.name}</span>
                 </Badge>
               )}
-              <Button variant="outline" onClick={() => window.close()} disabled={saving}>
+              <Button variant="outline" className='bg-red-600 text-white border-0' onClick={() => window.close()} disabled={saving}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Close
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={saving || assetItems.some(item => !item.register_number || !item.description)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {saving ? 'Registering...' : `Register ${assetItems.length} Asset${assetItems.length > 1 ? 's' : ''}`}
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="min-w-7xl mx-auto p-6 space-y-6">
                 {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Purchase Information (Read-only) */}
@@ -494,6 +514,34 @@ const PurchaseAssetRegistration: React.FC = () => {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
+                <Label className="text-sm font-medium text-gray-600">Request Type</Label>
+                {(() => {
+                  const rt = (purchase.request_type || '').toUpperCase();
+                  const color = rt === 'CAPEX' ? 'bg-green-600' : rt === 'OPEX' ? 'bg-blue-600' : 'bg-amber-600';
+                  return (
+                    <div className="mt-1">
+                      <Badge className={`${color} text-white`}>{purchase.request_type}</Badge>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Asset Type</Label>
+                <p className="font-medium text-sm">
+                  {(() => {
+                    const td = purchase.type_detail as any;
+                    const t = purchase.type as any;
+                    if (td) {
+                      return typeof td === 'string' ? td : (td?.name || 'N/A');
+                    }
+                    if (t) {
+                      return typeof t === 'string' ? t : (t?.name || 'N/A');
+                    }
+                    return 'N/A';
+                  })()}
+                </p>
+              </div>
+              <div>
                 <Label className="text-sm font-medium text-gray-600">Item Description</Label>
                 <p className="font-medium text-sm">{purchase.items}</p>
               </div>
@@ -503,10 +551,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                   <p className="font-medium text-sm text-gray-800 whitespace-pre-wrap">{purchase.items_details}</p>
                 </div>
               )}
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Request Type</Label>
-                <p className="font-medium text-sm">{purchase.request_type}</p>
-              </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
                 <p className="font-medium text-sm">
@@ -520,12 +564,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                 </p>
               </div>
               <div>
-                <Label className="text-sm font-medium text-gray-600">Supplier</Label>
-                <p className="font-medium text-sm">
-                  {typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || 'N/A')}
-                </p>
-              </div>
-              <div>
                 <Label className="text-sm font-medium text-gray-600">Quantity</Label>
                 <p className="font-medium text-sm text-blue-600">{purchase.qty} items</p>
               </div>
@@ -533,12 +571,46 @@ const PurchaseAssetRegistration: React.FC = () => {
                 <Label className="text-sm font-medium text-gray-600">Unit Price</Label>
                 <p className="font-medium text-sm">RM {parseFloat(purchase.unit_price || '0').toFixed(2)}</p>
               </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Total Price</Label>
+                <p className="font-medium text-sm">RM {(
+                  purchase.total_price ? parseFloat(purchase.total_price) : (purchase.qty || 0) * parseFloat(purchase.unit_price || '0')
+                ).toFixed(2)}</p>
+              </div>
+              <Separator className="my-2" />
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Supplier</Label>
+                <p className="font-medium text-sm">
+                  {typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || 'N/A')}
+                </p>
+              </div>
+              {(purchase.do_no || purchase.do_date) && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">DO</Label>
+                  <p className="font-medium text-sm">
+                    {purchase.do_no ? `No: ${purchase.do_no}` : ''}
+                    {purchase.do_no && purchase.do_date ? ' • ' : ''}
+                    {purchase.do_date ? `Date: ${new Date(purchase.do_date).toLocaleDateString()}` : ''}
+                  </p>
+                </div>
+              )}
+              {(purchase.inv_no || purchase.inv_date) && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">Invoice</Label>
+                  <p className="font-medium text-sm">
+                    {purchase.inv_no ? `No: ${purchase.inv_no}` : ''}
+                    {purchase.inv_no && purchase.inv_date ? ' • ' : ''}
+                    {purchase.inv_date ? `Date: ${new Date(purchase.inv_date).toLocaleDateString()}` : ''}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Asset Registration Forms */}
           <div className="lg:col-span-2 space-y-6">
             {/* Bulk Options */}
+            {purchase.qty > 1 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center justify-between">
@@ -566,163 +638,19 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </div>
                 </CardTitle>
               </CardHeader>
+              {purchase.qty > 1 && (
               <CardContent className="space-y-4">
-                {/* First Row: Brand and Model */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-brand">Brand</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToAll('brand')}
-                        className="h-5 w-5 p-0"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {brandOptions.length > 0 ? (
-                      <SingleSelect
-                        options={brandOptions.map(option => ({ 
-                          value: option.name, 
-                          label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
-                        }))}
-                        value={bulkFormData.brand}
-                        onValueChange={(value) => handleBulkChange('brand', value)}
-                        placeholder={loadingBrands ? "Loading brands..." : "Select brand"}
-                        searchPlaceholder="Search brands..."
-                        disabled={loadingBrands}
-                        clearable
-                        className="h-10"
-                      />
-                    ) : (
-                      <Input
-                        id="bulk-brand"
-                        value={bulkFormData.brand}
-                        onChange={(e) => handleBulkChange('brand', e.target.value)}
-                        placeholder={loadingBrands ? "Loading brands..." : "Enter brand"}
-                        disabled={loadingBrands}
-                        className="h-10"
-                      />
-                    )}
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-model">Model</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToAll('model')}
-                        className="h-5 w-5 p-0"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <Input
-                      id="bulk-model"
-                      value={bulkFormData.model}
-                      onChange={(e) => handleBulkChange('model', e.target.value)}
-                      placeholder="Enter model"
-                      className="h-10"
-                    />
-                  </div>
-                </div>
-
-                {/* Second Row: Cost Center, Location, and Condition inline */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-costcenter">Cost Center</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToAll('costcenter')}
-                        className="h-5 w-5 p-0"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {costCenterOptions.length > 0 ? (
-                      <SingleSelect
-                        options={costCenterOptions.map(option => ({ 
-                          value: option.name, 
-                          label: `${option.name}${option.code ? ` (${option.code})` : ''}`
-                        }))}
-                        value={bulkFormData.costcenter}
-                        onValueChange={(value) => handleBulkChange('costcenter', value)}
-                        placeholder={loadingCostCenters ? "Loading cost centers..." : "Select cost center"}
-                        searchPlaceholder="Search cost centers..."
-                        disabled={loadingCostCenters}
-                        clearable
-                        className="h-10"
-                      />
-                    ) : (
-                      <Input
-                        id="bulk-costcenter"
-                        value={bulkFormData.costcenter}
-                        onChange={(e) => handleBulkChange('costcenter', e.target.value)}
-                        placeholder={loadingCostCenters ? "Loading cost centers..." : "Enter cost center"}
-                        disabled={loadingCostCenters}
-                        className="h-10"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-location">Location</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToAll('location')}
-                        className="h-5 w-5 p-0"
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {locationOptions.length > 0 ? (
-                      <SingleSelect
-                        options={locationOptions.map(option => ({ 
-                          value: option.name, 
-                          label: `${option.name}${option.building ? ` (${option.building})` : ''}`
-                        }))}
-                        value={bulkFormData.location}
-                        onValueChange={(value) => handleBulkChange('location', value)}
-                        placeholder={loadingLocations ? "Loading locations..." : "Select location"}
-                        searchPlaceholder="Search locations..."
-                        disabled={loadingLocations}
-                        clearable
-                        className="h-10"
-                      />
-                    ) : (
-                      <Input
-                        id="bulk-location"
-                        value={bulkFormData.location}
-                        onChange={(e) => handleBulkChange('location', e.target.value)}
-                        placeholder={loadingLocations ? "Loading locations..." : "Enter location"}
-                        disabled={loadingLocations}
-                        className="h-10"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
+                {/* Row 1: Condition (justify-end) */}
+                <div className="flex justify-end">
+                  <div className="w-full md:w-1/3">
+                    <div className="flex items-center space-x-1 justify-between">
                       <Label htmlFor="bulk-condition">Condition</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToAll('condition')}
-                        className="h-5 w-5 p-0"
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('condition')} className="h-5 w-5 p-0">
                         <Copy className="h-3 w-3" />
                       </Button>
                     </div>
                     <SingleSelect
-                      options={[
-                        { value: 'new', label: 'New' },
-                        { value: 'good', label: 'Good' },
-                        { value: 'fair', label: 'Fair' },
-                        { value: 'poor', label: 'Poor' }
-                      ]}
+                      options={[{ value: 'new', label: 'New' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'poor', label: 'Poor' }]}
                       value={bulkFormData.condition}
                       onValueChange={(value) => handleBulkChange('condition', value)}
                       placeholder="Select condition"
@@ -730,29 +658,99 @@ const PurchaseAssetRegistration: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
+                {/* Row 2: Category, Brand, Model */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-category">Category</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('category')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {categoryOptions.length > 0 ? (
+                      <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
+                    ) : (
+                      <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-brand">Brand</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('brand')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {brandOptions.length > 0 ? (
+                      <SingleSelect options={brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` }))} value={bulkFormData.brand} onValueChange={(value) => handleBulkChange('brand', value)} placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'} searchPlaceholder="Search brands..." disabled={loadingBrands} clearable className="h-10" />
+                    ) : (
+                      <Input id="bulk-brand" value={bulkFormData.brand} onChange={(e) => handleBulkChange('brand', e.target.value)} placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'} disabled={loadingBrands} className="h-10" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-model">Model</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('model')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Input id="bulk-model" value={bulkFormData.model} onChange={(e) => handleBulkChange('model', e.target.value)} placeholder="Enter model" className="h-10" />
+                  </div>
+                </div>
+
+                {/* Row 3: Classification, Cost Center, Location */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-classification">Classification</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('classification')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <SingleSelect options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]} value={bulkFormData.classification} onValueChange={(value) => handleBulkChange('classification', value)} placeholder="Select classification" className="h-10" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-costcenter">Cost Center</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('costcenter')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {costCenterOptions.length > 0 ? (
+                      <SingleSelect options={costCenterOptions.map(option => ({ value: option.name, label: `${option.name}${option.code ? ` (${option.code})` : ''}` }))} value={bulkFormData.costcenter} onValueChange={(value) => handleBulkChange('costcenter', value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Select cost center'} searchPlaceholder="Search cost centers..." disabled={loadingCostCenters} clearable className="h-10" />
+                    ) : (
+                      <Input id="bulk-costcenter" value={bulkFormData.costcenter} onChange={(e) => handleBulkChange('costcenter', e.target.value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Enter cost center'} disabled={loadingCostCenters} className="h-10" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-1">
+                      <Label htmlFor="bulk-location">Location</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('location')} className="h-5 w-5 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {locationOptions.length > 0 ? (
+                      <SingleSelect options={locationOptions.map(option => ({ value: option.name, label: `${option.name}${option.building ? ` (${option.building})` : ''}` }))} value={bulkFormData.location} onValueChange={(value) => handleBulkChange('location', value)} placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} searchPlaceholder="Search locations..." disabled={loadingLocations} clearable className="h-10" />
+                    ) : (
+                      <Input id="bulk-location" value={bulkFormData.location} onChange={(e) => handleBulkChange('location', e.target.value)} placeholder={loadingLocations ? 'Loading locations...' : 'Enter location'} disabled={loadingLocations} className="h-10" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 4: Description */}
                 <div>
                   <div className="flex items-center justify-between">
                     <Label htmlFor="bulk-description">Description *</Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToAll('description')}
-                      className="h-6 w-6 p-0"
-                    >
+                    <Button variant="ghost" size="sm" onClick={() => copyToAll('description')} className="h-6 w-6 p-0">
                       <Copy className="h-3 w-3" />
                     </Button>
                   </div>
-                  <Textarea
-                    id="bulk-description"
-                    value={bulkFormData.description}
-                    onChange={(e) => handleBulkChange('description', e.target.value)}
-                    placeholder="Enter asset description"
-                    rows={2}
-                  />
+                  <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
                 </div>
               </CardContent>
+              )}
             </Card>
+            )}
 
             {/* Individual Asset Forms */}
             <div className="space-y-4">
@@ -765,20 +763,15 @@ const PurchaseAssetRegistration: React.FC = () => {
                 )}
               </div>
               
-              <div className="max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 pr-2 space-y-4">
+              <div className="max-h-[500px] auto-hide-scroll pr-2 space-y-4">
                 {assetItems.slice(0, visibleAssetCount).map((asset, index) => {
-                  const isComplete = isAssetComplete(asset);
-                  const isCollapsed = collapsedAssets.has(asset.id);
+                  const isComplete = isAssetFormComplete(asset);
                   
                   return (
                   <Card 
                     key={asset.id}
                     id={`asset-card-${asset.id}`}
-                    className={`relative transition-all duration-200 ${
-                      isComplete 
-                        ? 'ring-2 ring-green-200 border-green-300 bg-green-50/30' 
-                        : 'hover:shadow-md'
-                    }`}
+                    className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}
                   >
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
@@ -787,18 +780,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                           {isComplete && (
                             <CheckCircle className="h-5 w-5 text-green-600" />
                           )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleAssetCollapse(asset.id)}
-                            className="h-6 w-6 p-0 hover:bg-gray-100"
-                          >
-                            {isCollapsed ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronUp className="h-4 w-4" />
-                            )}
-                          </Button>
+                          {/* Collapse removed */}
                         </div>
                         {assetItems.length > 1 && (
                           <Button
@@ -813,12 +795,25 @@ const PurchaseAssetRegistration: React.FC = () => {
                       </div>
                     </CardHeader>
                     
-                    {!isCollapsed && (
                     <CardContent className="space-y-4">
-                      {/* Row 1: Register Number (full width) + Condition */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Row 1: Register Number, Warranty (years), Condition */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="md:col-span-2">
-                          <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
+                            {((asset.category || '').toLowerCase() === 'software') && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center text-amber-600 cursor-help">
+                                    <Info className="h-3.5 w-3.5" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Register number not required for Software category
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                           <Input
                             id={`register_number_${asset.id}`}
                             value={asset.register_number}
@@ -826,6 +821,22 @@ const PurchaseAssetRegistration: React.FC = () => {
                             placeholder="e.g., AST001234"
                             required
                             className={`h-10 ${getFieldRingClass(asset.register_number)}`}
+                          />
+                          {((asset.category || '').toLowerCase() === 'software') && (
+                            <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
+                          )}
+                        </div>
+                        <div>
+                          <Label htmlFor={`warranty_period_${asset.id}`}>Warranty Period (years)</Label>
+                          <Input
+                            id={`warranty_period_${asset.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={asset.warranty_period}
+                            onChange={(e) => handleAssetChange(asset.id, 'warranty_period', e.target.value)}
+                            placeholder="e.g., 3"
+                            className={`h-10 ${getFieldRingClass(asset.warranty_period)}`}
                           />
                         </div>
                         <div>
@@ -845,8 +856,32 @@ const PurchaseAssetRegistration: React.FC = () => {
                         </div>
                       </div>
                       
-                      {/* Row 2: Brand + Model */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Row 2: Category, Brand, Model */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label htmlFor={`category_${asset.id}`}>Category</Label>
+                          {categoryOptions.length > 0 ? (
+                            <SingleSelect
+                              options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
+                              value={asset.category}
+                              onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
+                              placeholder="Select category"
+                              searchPlaceholder="Search categories..."
+                              disabled={loadingCategories}
+                              clearable
+                              className={`h-10 ${getFieldRingClass(asset.category)}`}
+                            />
+                          ) : (
+                            <Input
+                              id={`category_${asset.id}`}
+                              value={asset.category}
+                              onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
+                              placeholder="Enter category"
+                              disabled={loadingCategories}
+                              className={`h-10 ${getFieldRingClass(asset.category)}`}
+                            />
+                          )}
+                        </div>
                         <div>
                           <Label htmlFor={`brand_${asset.id}`}>Brand</Label>
                           {brandOptions.length > 0 ? (
@@ -885,9 +920,19 @@ const PurchaseAssetRegistration: React.FC = () => {
                           />
                         </div>
                       </div>
-                      
-                      {/* Row 3: Cost Center + Location + Warranty Expiry */}
+
+                      {/* Row 3: Classification, Cost Center, Location */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
+                          <SingleSelect
+                            options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]}
+                            value={asset.classification}
+                            onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
+                            placeholder="Select classification"
+                            className={`h-10 ${getFieldRingClass(asset.classification)}`}
+                          />
+                        </div>
                         <div>
                           <Label htmlFor={`costcenter_${asset.id}`}>Cost Center</Label>
                           {costCenterOptions.length > 0 ? (
@@ -942,28 +987,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                             />
                           )}
                         </div>
-                        <div>
-                          <Label htmlFor={`warranty_expiry_${asset.id}`}>Warranty Expiry</Label>
-                          <Input
-                            id={`warranty_expiry_${asset.id}`}
-                            type="date"
-                            value={asset.warranty_expiry}
-                            onChange={(e) => handleAssetChange(asset.id, 'warranty_expiry', e.target.value)}
-                            className={`h-10 ${getFieldRingClass(asset.warranty_expiry)}`}
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor={`description_${asset.id}`}>Description *</Label>
-                        <Textarea
-                          id={`description_${asset.id}`}
-                          value={asset.description}
-                          onChange={(e) => handleAssetChange(asset.id, 'description', e.target.value)}
-                          placeholder="Enter asset description"
-                          rows={2}
-                          required
-                        />
                       </div>
                       
                       {/* Row 4: Description (full width) */}
@@ -980,20 +1003,8 @@ const PurchaseAssetRegistration: React.FC = () => {
                         />
                       </div>
                       
-                      {/* Row 5: Notes (full width) */}
-                      <div>
-                        <Label htmlFor={`notes_${asset.id}`}>Notes</Label>
-                        <Textarea
-                          id={`notes_${asset.id}`}
-                          value={asset.notes}
-                          onChange={(e) => handleAssetChange(asset.id, 'notes', e.target.value)}
-                          placeholder="Additional notes"
-                          rows={1}
-                          className={`${getFieldRingClass(asset.notes)}`}
-                        />
-                      </div>
+                      {/* Notes removed per requirement */}
                     </CardContent>
-                    )}
                   </Card>
                   );
                 })}
@@ -1026,156 +1037,69 @@ const PurchaseAssetRegistration: React.FC = () => {
                     Asset Overview
                   </div>
                   <div className="text-sm font-normal text-gray-500">
-                    {assetItems.filter(asset => isAssetComplete(asset)).length}/{assetItems.length}
+                    {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
                   </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {/* Summary Stats */}
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  <div className="bg-green-50 p-2 rounded text-center">
-                    <div className="text-lg font-semibold text-green-600">
-                      {assetItems.filter(asset => isAssetComplete(asset)).length}
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="bg-green-50 p-2 rounded text-center">
+                      <div className="text-lg font-semibold text-green-600">
+                      {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}
+                      </div>
+                      <div className="text-xs text-green-700">Completed</div>
                     </div>
-                    <div className="text-xs text-green-700">Completed</div>
-                  </div>
-                  <div className="bg-orange-50 p-2 rounded text-center">
-                    <div className="text-lg font-semibold text-orange-600">
-                      {assetItems.filter(asset => !isAssetComplete(asset)).length}
+                    <div className="bg-orange-50 p-2 rounded text-center">
+                      <div className="text-lg font-semibold text-orange-600">
+                      {assetItems.filter(asset => !isAssetOverviewComplete(asset)).length}
+                      </div>
+                      <div className="text-xs text-orange-700">Pending</div>
                     </div>
-                    <div className="text-xs text-orange-700">Pending</div>
                   </div>
-                </div>
 
-                {/* Register Number List */}
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {/* Register Number List (simplified) */}
+                <div className="space-y-2 max-h-[400px] auto-hide-scroll">
                   <Label className="text-sm font-medium text-gray-600">Register Numbers</Label>
-                  {assetItems.map((asset, index) => {
-                    const isComplete = isAssetComplete(asset);
-                    const isCollapsed = collapsedAssets.has(asset.id);
-                    
-                    return (
-                      <div
-                        key={asset.id}
-                        className={`p-3 rounded-lg border transition-all cursor-pointer hover:shadow-sm ${
-                          isComplete
-                            ? 'bg-green-50 border-green-200'
-                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                        }`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          // If clicking on the chevron area, toggle collapse
-                          if ((e.target as HTMLElement).closest('.chevron-area')) {
-                            toggleAssetCollapse(asset.id);
-                          } else {
-                            // Otherwise, scroll to the asset form
-                            scrollToAsset(asset.id);
-                          }
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs font-medium text-gray-500">#{index + 1}</span>
-                            {isComplete && (
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-1 chevron-area">
-                            {isCollapsed ? (
-                              <ChevronDown className="h-4 w-4 text-gray-400" />
-                            ) : (
-                              <ChevronUp className="h-4 w-4 text-gray-400" />
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="mt-2">
-                          <div className="font-medium text-sm">
-                            {asset.register_number || (
-                              <span className="text-gray-400 italic">Not entered</span>
-                            )}
-                          </div>
-                          {asset.register_number && (
-                            <div className="text-xs text-gray-600 mt-1">
-                              {asset.brand && asset.model && (
-                                <span>{asset.brand} {asset.model}</span>
-                              )}
-                              {asset.location && (
-                                <div className="text-gray-500">📍 {asset.location}</div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Progress indicator */}
-                        <div className="mt-2">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Progress</span>
-                            <span>
-                              {[
-                                asset.register_number,
-                                asset.condition,
-                                asset.brand,
-                                asset.model,
-                                asset.costcenter,
-                                asset.location,
-                                asset.description
-                              ].filter(Boolean).length}/7
+                  <ul className="space-y-1">
+                    {assetItems.map((asset, index) => {
+                      const isComplete = isAssetOverviewComplete(asset);
+                      return (
+                        <li
+                          key={asset.id}
+                          className="flex items-center justify-between rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50"
+                          onClick={() => scrollToAsset(asset.id)}
+                          title={isComplete ? 'Complete' : 'Pending'}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs text-gray-500 shrink-0">#{index + 1}</span>
+                            <span className={`text-sm font-medium truncate ${asset.register_number ? '' : 'text-gray-400 italic font-normal'}`}>
+                              {asset.register_number || 'Not entered'}
                             </span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div
-                              className={`h-1.5 rounded-full transition-all ${
-                                isComplete ? 'bg-green-500' : 'bg-blue-500'
-                              }`}
-                              style={{
-                                width: `${
-                                  ([
-                                    asset.register_number,
-                                    asset.condition,
-                                    asset.brand,
-                                    asset.model,
-                                    asset.costcenter,
-                                    asset.location,
-                                    asset.description
-                                  ].filter(Boolean).length / 7) * 100
-                                }%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                          <Badge variant={isComplete ? 'default' : 'secondary'} className={isComplete ? 'bg-green-600 hover:bg-green-600' : ''}>
+                            {isComplete ? 'Complete' : 'Pending'}
+                          </Badge>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
 
-                {/* Quick Actions */}
-                <div className="pt-3 border-t space-y-2">
+                <Separator className="my-3" />
+                <div>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Expand all incomplete forms, collapse all complete forms
-                      const newCollapsedSet = new Set<string>();
-                      assetItems.forEach(asset => {
-                        if (isAssetComplete(asset)) {
-                          newCollapsedSet.add(asset.id);
-                        }
-                      });
-                      setCollapsedAssets(newCollapsedSet);
-                    }}
-                    className="w-full text-xs"
+                    onClick={handleSave}
+                    disabled={
+                      saving || assetItems.some(item => {
+                        const isSoftware = (item.category || '').toLowerCase() === 'software';
+                        return !isSoftware && !item.register_number?.trim();
+                      })
+                    }
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
                   >
-                    Focus on Incomplete
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCollapsedAssets(new Set())}
-                    className="w-full text-xs"
-                  >
-                    Expand All
+                    <Save className="mr-2 h-4 w-4" />
+                    {saving ? 'Submitting...' : 'Submit'}
                   </Button>
                 </div>
               </CardContent>

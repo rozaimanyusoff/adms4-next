@@ -516,6 +516,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     return 'Requested';
   };
 
+  // Badge class for request type: CAPEX -> green, OPEX -> blue, others -> amber
+  const getRequestTypeBadgeClass = (type?: string) => {
+    const t = (type || '').toString().toUpperCase();
+    if (t === 'CAPEX') return 'bg-green-600 text-white text-xs';
+    if (t === 'OPEX') return 'bg-blue-600 text-white text-xs';
+    return 'bg-amber-600 text-white text-xs';
+  };
+
   // Define columns for DataGrid
   const columns: ColumnDef<any>[] = [
     { key: 'id', header: 'No' },
@@ -523,9 +531,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       key: 'request_type',
       header: 'Request Type',
       render: (row: any) => (
-        <Badge variant="outline" className="text-xs">
+        <span className={getRequestTypeBadgeClass(row.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
           {row.request_type}
-        </Badge>
+        </span>
       ),
       filter: 'singleSelect'
     },
@@ -971,7 +979,11 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             <CardContent className="space-y-3">
               <div>
                 <Label className="text-sm font-medium text-gray-600">Request Type</Label>
-                <p className="font-medium">{selectedPurchase.request_type}</p>
+                <div className="mt-1">
+                  <span className={getRequestTypeBadgeClass(selectedPurchase.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
+                    {selectedPurchase.request_type}
+                  </span>
+                </div>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
