@@ -84,6 +84,8 @@ interface UtilityBill {
   beneficiary?: string;
   costcenter?: string;
   location?: string;
+  // derived for grid display/filtering
+  account_display?: string;
 }
 
 interface BillingAccount {
@@ -677,6 +679,10 @@ const UtilityBill = () => {
           beneficiary: item.account?.beneficiary?.name || item.account?.provider || '',
           costcenter: item.account?.costcenter?.name || '',
           location: item.account?.location?.name || '',
+          account_display: (() => {
+            const accNo = item.account?.account || item.account?.bill_ac || '';
+            return `${accNo}`;
+          })(),
           ubill_date_display: item.ubill_date ? new Date(item.ubill_date).toLocaleDateString() : '',
           ubill_date_original: item.ubill_date, // Keep original date for editing
         })));
@@ -726,6 +732,12 @@ const UtilityBill = () => {
     },
     { key: 'service', header: 'Service', filter: 'singleSelect' },
     { key: 'beneficiary', header: 'Beneficiary', filter: 'singleSelect' },
+    {
+      key: 'account_display',
+      header: 'Account',
+      filter: 'singleSelect',
+      render: (row: UtilityBill) => row.account_display || (row as any).account?.account || ''
+    },
     {
       key: 'costcenter',
       header: 'Cost Center',

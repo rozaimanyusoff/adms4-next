@@ -13,7 +13,8 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
-import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info } from 'lucide-react';
+import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info, Search, RefreshCcw, Link2 } from 'lucide-react';
+import ActionSidebar from '@/components/ui/action-aside';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface PurchaseData {
@@ -118,6 +119,13 @@ const PurchaseAssetRegistration: React.FC = () => {
     notes: ''
   });
 
+  // Action Sidebar: existing assets and target mapping
+  const [assetSearch, setAssetSearch] = useState('');
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [existingAssets, setExistingAssets] = useState<any[]>([]);
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+
   useEffect(() => {
     if (pr_id) {
       fetchPurchaseData();
@@ -141,18 +149,63 @@ const PurchaseAssetRegistration: React.FC = () => {
     fetchLocationOptions();
   }, [type_id]);
 
+  // Fetch existing active assets when sidebar opens or dependencies change
+  useEffect(() => {
+    if (showSidebar) fetchExistingAssets();
+  }, [type_id, showSidebar, purchase]);
+
   const fetchPurchaseData = async () => {
     setLoading(true);
     try {
       const response = await authenticatedApi.get(`/api/purchases/${pr_id}`);
       const data = (response as any).data?.data || (response as any).data;
-      setPurchase(data);
+      // Normalize API differences: map costcenter_detail(s) -> costcenter
+      const normalized: any = { ...data };
+      if (!normalized.costcenter) {
+        const cc = normalized.costcenter_detail ?? normalized.costcenter_details;
+        if (cc) normalized.costcenter = cc;
+      }
+      setPurchase(normalized);
     } catch (error) {
       toast.error('Failed to load purchase data');
       console.error('Error loading purchase:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchExistingAssets = async () => {
+    setLoadingAssets(true);
+    try {
+      const qs = new URLSearchParams({ status: 'active' });
+      // Prefer query param type_id; fallback to purchase.type_detail.id
+      const tId = type_id || (purchase && typeof (purchase as any).type_detail === 'object' ? String((purchase as any).type_detail.id || '') : '');
+      if (tId) qs.set('manager', String(tId));
+      // If brand id available on purchase, include it to filter
+      const bId = (purchase && typeof (purchase as any).brand === 'object' && (purchase as any).brand?.id) ? String((purchase as any).brand.id) : '';
+      if (bId) qs.set('brand', bId);
+      const response = await authenticatedApi.get(`/api/assets?${qs.toString()}`);
+      const data = (response as any).data?.data || (response as any).data || [];
+      setExistingAssets(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load existing assets:', error);
+      setExistingAssets([]);
+    } finally {
+      setLoadingAssets(false);
+    }
+  };
+
+  const mapRegisterNumberToActive = (registerNo: string) => {
+    if (!assetItems || assetItems.length === 0) return;
+    const targetId = activeAssetId || assetItems.find(a => !a.register_number)?.id || assetItems[0]?.id || null;
+    if (!targetId) {
+      toast.error('No asset form available to map');
+      return;
+    }
+    setAssetItems(prev => prev.map(item => item.id === targetId ? { ...item, register_number: registerNo } : item));
+    requestAnimationFrame(() => scrollToAsset(targetId));
+    toast.success('Register number mapped');
+    setShowSidebar(false);
   };
 
   const fetchBrandOptions = async () => {
@@ -219,13 +272,18 @@ const PurchaseAssetRegistration: React.FC = () => {
     
     const items: AssetItem[] = [];
     const defaultModel = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
+    const purchaseCostcenter = (() => {
+      const cc: any = (purchase as any).costcenter ?? (purchase as any).costcenter_detail ?? (purchase as any).costcenter_details;
+      if (typeof cc === 'string') return cc;
+      return cc?.name || '';
+    })();
     
     // Pre-fill bulk form data
     setBulkFormData({
       model: defaultModel,
       brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
       category: '',
-      costcenter: typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || ''),
+      costcenter: purchaseCostcenter,
       description: purchase.items || '',
       location: '',
       condition: 'new',
@@ -241,7 +299,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         model: defaultModel,
         brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
         category: '',
-        costcenter: typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || ''),
+        costcenter: purchaseCostcenter,
         description: purchase.items || '',
         location: '',
         condition: 'new',
@@ -554,7 +612,10 @@ const PurchaseAssetRegistration: React.FC = () => {
               <div>
                 <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
                 <p className="font-medium text-sm">
-                  {typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || 'N/A')}
+                  {(() => {
+                    const cc: any = (purchase as any).costcenter ?? (purchase as any).costcenter_detail ?? (purchase as any).costcenter_details;
+                    return typeof cc === 'string' ? cc : (cc?.name || 'N/A');
+                  })()}
                 </p>
               </div>
               <div>
@@ -801,6 +862,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                         <div className="md:col-span-2">
                           <div className="flex items-center gap-2">
                             <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline text-xs"
+                              onClick={() => {
+                                setActiveAssetId(asset.id);
+                                setShowSidebar(true);
+                                fetchExistingAssets();
+                              }}
+                            >
+                              Map existing assets
+                            </button>
                             {((asset.category || '').toLowerCase() === 'software') && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -817,6 +889,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                           <Input
                             id={`register_number_${asset.id}`}
                             value={asset.register_number}
+                            onFocus={() => setActiveAssetId(asset.id)}
                             onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
                             placeholder="e.g., AST001234"
                             required
@@ -1028,7 +1101,7 @@ const PurchaseAssetRegistration: React.FC = () => {
           </div>
 
           {/* Right Pane - Register Number Overview */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-4">
             <Card className="sticky top-4">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center justify-between">
@@ -1107,6 +1180,81 @@ const PurchaseAssetRegistration: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Action Sidebar for mapping existing assets */}
+      <ActionSidebar
+        size="sm"
+        title="Map Existing Asset"
+        isOpen={showSidebar}
+        onClose={() => setShowSidebar(false)}
+        content={(
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  value={assetSearch}
+                  onChange={(e) => setAssetSearch(e.target.value)}
+                  placeholder="Search by register number or brand..."
+                  className="pl-8 h-9"
+                />
+              </div>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchExistingAssets} disabled={loadingAssets}>
+                <RefreshCcw className={`h-4 w-4 ${loadingAssets ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            <div className="text-xs text-gray-500">
+              {(() => {
+                const idx = activeAssetId ? assetItems.findIndex(a => a.id === activeAssetId) : -1;
+                return idx >= 0 ? `Targeting Asset #${idx + 1}` : 'Tip: Click a Register Number field to target a form.';
+              })()}
+            </div>
+            <div className="max-h-[70vh] overflow-auto space-y-2">
+              {loadingAssets && (
+                <div className="text-sm text-gray-500">Loading assets…</div>
+              )}
+              {!loadingAssets && (() => {
+                const query = assetSearch.trim().toLowerCase();
+                const filtered = existingAssets.filter((a: any) => {
+                  const reg = (a.register_number || '').toLowerCase();
+                  const brand = (a.brands?.name || a.brand?.name || a.brand || '').toLowerCase();
+                  return !query || reg.includes(query) || brand.includes(query);
+                });
+                if (filtered.length === 0) {
+                  return <div className="text-sm text-gray-500">No active assets found.</div>;
+                }
+                return (
+                  <ul className="space-y-2">
+                    {filtered.map((a: any) => {
+                      const brand = a.brands?.name || a.brand?.name || a.brand || '-';
+                      const model = a.models?.name || a.model?.name || a.model || '-';
+                      const pdate = a.purchase_date ? new Date(a.purchase_date).toLocaleDateString() : '-';
+                      return (
+                        <li key={a.id} className="flex items-center justify-between rounded-md border p-2 bg-white">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{a.register_number || '—'}</div>
+                            <div className="text-xs text-gray-500 truncate">{brand} • {model} • {pdate}</div>
+                          </div>
+                          <div className="shrink-0">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => mapRegisterNumberToActive(a.register_number)}
+                              disabled={!a.register_number}
+                              title="Map register number to selected form"
+                            >
+                              <Link2 className="h-4 w-4 mr-1" /> Map
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+      />
     </div>
   );
 };

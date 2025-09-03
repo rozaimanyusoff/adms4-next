@@ -249,6 +249,111 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.text('Date:', pageWidth / 2 - 28, y);
         doc.text('Date:', pageWidth - 73, y);
         y += 10;
+
+        // Previous 5 bills trend table (if available per account)
+        try {
+            // Build account -> meta + previous_5_bills map
+            const accountPrevMap = new Map<string, { arr: any[]; currentUbillNo?: string; costcenter?: string; location?: string }>();
+            bills.forEach((b: any) => {
+                const acct = b?.account?.account_no;
+                if (!acct) return;
+                const meta = {
+                    arr: Array.isArray(b?.previous_5_bills) ? [...b.previous_5_bills] : [],
+                    currentUbillNo: b?.ubill_no,
+                    costcenter: b?.account?.costcenter?.name,
+                    location: b?.account?.location?.name,
+                };
+                if (meta.arr.length) accountPrevMap.set(acct, meta);
+            });
+
+            if (accountPrevMap.size) {
+                // Header label
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.text('Previous month bill status:', 15, y);
+                y += 4;
+
+                // Sorting helpers for months like 'Jul-2025'
+                const monthIdx: Record<string, number> = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+                const parseMonthKey = (m?: string): number => {
+                    if (!m) return 0;
+                    const [mon, yr] = String(m).split('-');
+                    const yNum = Number(yr || 0);
+                    const mNum = monthIdx[mon as keyof typeof monthIdx] ?? 0;
+                    return yNum * 12 + mNum;
+                };
+                const fmtHeaderMonth = (m?: string) => {
+                    if (!m) return '';
+                    const [mon, yr] = String(m).split('-');
+                    return `${mon}\'${String(yr || '').slice(-2)}`;
+                };
+
+                // Collect union of months across accounts, sort earliest -> latest, keep up to 5
+                const monthSet = new Set<string>();
+                accountPrevMap.forEach(({ arr }) => arr.forEach(pb => pb?.month && monthSet.add(pb.month)));
+                const monthsSorted = Array.from(monthSet).sort((a, b) => parseMonthKey(a) - parseMonthKey(b)).slice(-5);
+
+                // Build table rows
+                const headRow = ['No', 'Account No', ...monthsSorted.map(m => fmtHeaderMonth(m))];
+                const bodyRows: any[] = [];
+                let idxCounter = 1;
+                // helper to format trending with thousands separators and sign
+                const formatTrend = (v: any): string => {
+                    if (v === null || v === undefined || v === '') return '';
+                    const s = String(v).trim();
+                    const hasExplicitSign = s.startsWith('+') || s.startsWith('-');
+                    const sign = s.startsWith('-') ? '-' : (s.startsWith('+') ? '+' : '');
+                    const num = Number(s.replace(/[,+]/g, ''));
+                    if (!Number.isFinite(num)) return s; // fallback to raw if unparseable
+                    const absFmt = Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                    return hasExplicitSign ? `${sign}${absFmt}` : absFmt;
+                };
+
+                accountPrevMap.forEach((meta, acct) => {
+                    const byMonth = new Map<string, any>(meta.arr.map(pb => [pb.month, pb]));
+                    const suffix = meta.costcenter && meta.location
+                        ? ` (${meta.costcenter} - ${meta.location})`
+                        : meta.costcenter
+                            ? ` (${meta.costcenter})`
+                            : meta.location
+                                ? ` (${meta.location})`
+                                : '';
+                    const acctWithCc = `${acct}${suffix}`;
+                    const row: any[] = [String(idxCounter++), acctWithCc];
+                    monthsSorted.forEach(m => {
+                        const pb = byMonth.get(m);
+                        if (!pb) {
+                            row.push('-');
+                            return;
+                        }
+                        const amt = Number(pb.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                        const trendVal = formatTrend(pb.trending);
+                        const trend = trendVal ? ` (${trendVal})` : '';
+                        const billLine = pb.ubill_no ? `\n(${pb.ubill_no})` : '';
+                        row.push(`RM ${amt}${trend}${billLine}`);
+                    });
+                    bodyRows.push(row);
+                });
+
+                // Render compact grid with font size 7
+                autoTable(doc, {
+                    startY: y,
+                    head: [headRow],
+                    body: bodyRows,
+                    styles: { font: 'helvetica', fontSize: 7, cellPadding: 1, halign: 'center' },
+                    headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+                    columnStyles: {
+                        0: { halign: 'center', cellWidth: 10 },
+                        1: { halign: 'left', cellWidth: 65 },
+                    },
+                    margin: { left: 14, right: 14 },
+                    theme: 'grid',
+                });
+                y = (doc as any).lastAutoTable.finalY + 4;
+            }
+        } catch (e) {
+            // no-op if structure not present
+        }
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(8);
         const pageHeight = doc.internal.pageSize.getHeight();
