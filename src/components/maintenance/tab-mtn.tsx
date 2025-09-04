@@ -6,6 +6,7 @@ import { BarChart3, List, Activity, Wrench } from 'lucide-react';
 import MaintenanceDash from './mtn-dash';
 import VehicleMaintenanceAdmin from './vehicle-mtn-admin';
 import ServiceTypes from './service-types';
+import InsuranceModule from './insurance-module';
 import Link from "next/link";
 
 const TabMaintenance = () => {
@@ -14,6 +15,7 @@ const TabMaintenance = () => {
         { value: 'dashboard', label: 'Dashboard' },
         { value: 'records', label: 'Records' },
         { value: 'service-types', label: 'Service Types' },
+        { value: 'insurance', label: 'Insurance' },
     ];
 
 
@@ -36,7 +38,7 @@ const TabMaintenance = () => {
             </p>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-3 lg:w-[500px]">
+                <TabsList className="grid w-full grid-cols-4 lg:w-[700px]">
                     <TabsTrigger value="dashboard" className="flex items-center gap-2">
                         <BarChart3 size={16} />
                         Dashboard
@@ -48,6 +50,9 @@ const TabMaintenance = () => {
                     <TabsTrigger value="service-types" className="flex items-center gap-2">
                         <Wrench size={16} />
                         Service Types
+                    </TabsTrigger>
+                    <TabsTrigger value="insurance" className="flex items-center gap-2">
+                        Insurance
                     </TabsTrigger>
                 </TabsList>
 
@@ -72,6 +77,9 @@ const TabMaintenance = () => {
                         displayMode="management"
                         className="space-y-6"
                     />
+                </TabsContent>
+                <TabsContent value="insurance" className="mt-6">
+                    <InsuranceModule />
                 </TabsContent>
             </Tabs>
         </div>
