@@ -308,9 +308,9 @@ const InsuranceModule: React.FC = () => {
                   <div className="col-span-2">{r.id}</div>
                   <div className="col-span-3 font-medium">{r.insurer}</div>
                   <div className="col-span-3">{r.policy_no}</div>
-                  <div className="col-span-2">{r.start_date?.slice(0,10) || '-'}</div>
+                  <div className="col-span-2">{r.coverage_start?.slice(0,10) || '-'}</div>
                   <div className="col-span-2 flex items-center gap-2">
-                    {r.end_date?.slice(0,10) || '-'}
+                    {r.coverage_end?.slice(0,10) || '-'}
                     <Button size="sm" variant="outline" onClick={() => openUpdateAside(r.id)}>Update</Button>
                   </div>
                 </div>
