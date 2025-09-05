@@ -156,6 +156,25 @@ const sortData = <T,>(data: T[], key: keyof T, direction: 'asc' | 'desc') => {
     });
 };
 
+// When building filter options or comparing singleSelect values, prefer a human-readable string.
+// 1) Use the raw primitive value if string/number
+// 2) Else, if the column provides a render function that returns string/number, use that
+// 3) Else, attempt common display fields on objects (name/label/title)
+// 4) Fallback to empty string
+const getCellComparableValue = <T,>(row: T, col: ColumnDef<T>): string => {
+    const raw = row[col.key as keyof T] as unknown;
+    if (typeof raw === 'string' || typeof raw === 'number') return String(raw);
+    const rendered = col.render?.(row) as unknown;
+    if (typeof rendered === 'string' || typeof rendered === 'number') return String(rendered);
+    if (raw && typeof raw === 'object') {
+        const candidate = (raw as any);
+        for (const k of ['name', 'label', 'title']) {
+            if (candidate && typeof candidate[k] !== 'undefined') return String(candidate[k]);
+        }
+    }
+    return '';
+};
+
 
 // Main Grid Component
 const CustomDataGridInner = <T,>({
@@ -425,13 +444,9 @@ const CustomDataGridInner = <T,>({
                         return String(cellValue ?? '').toLowerCase() === filterVal;
                     });
                 } else if (column?.filter === 'singleSelect') {
-                    // Single select filter - exact match
+                    // Single select filter - exact match against a comparable string
                     const filterVal = String(value);
-                    // Always use raw data for filtering comparison
-                    const compareValue = typeof cellValue === 'string' || typeof cellValue === 'number'
-                        ? String(cellValue)
-                        : '';
-                    
+                    const compareValue = getCellComparableValue(row, column);
                     return compareValue === filterVal;
                 } else {
                     // Input filter - contains match
@@ -1190,21 +1205,22 @@ const CustomDataGridInner = <T,>({
                                                                         const upstreamKey = chainedFilters[i];
                                                                         const filterVal = columnFilters[upstreamKey];
                                                                         if (filterVal) {
+                                                                            const upstreamCol = flatColumns.find(c => String(c.key) === upstreamKey);
                                                                             scoped = scoped.filter(row => {
-                                                                                // Always use raw data for filtering comparison
-                                                                                const val = row[upstreamKey as keyof T];
-                                                                                return typeof val === 'string' || typeof val === 'number'
-                                                                                    ? String(val) === String(filterVal)
-                                                                                    : false;
+                                                                                const compareVal = upstreamCol
+                                                                                    ? getCellComparableValue(row, upstreamCol as ColumnDef<T>)
+                                                                                    : String((row as any)[upstreamKey] ?? '');
+                                                                                return compareVal === String(filterVal);
                                                                             });
                                                                         }
                                                                     }
                                                                 }
-                                                                return Array.from(new Set(scoped.map(row => {
-                                                                    // Always use raw data for filter options, never the rendered JSX
-                                                                    const raw = row[col.key as keyof T];
-                                                                    return typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '';
-                                                                }).filter(Boolean)));
+                                                                // Build options from the same comparable string we use to filter
+                                                                return Array.from(new Set(
+                                                                    scoped
+                                                                        .map(row => getCellComparableValue(row, col))
+                                                                        .filter(Boolean)
+                                                                ));
                                                             })();
 
                                                         const filteredOptions = selectSearch 

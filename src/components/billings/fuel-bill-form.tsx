@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, PlusCircle, Edit3 } from 'lucide-react';
+import { Loader2, PlusCircle, Edit3, ArrowBigRight, ArrowBigLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -115,6 +115,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
     const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
     const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
+    // Asset picker for Edit Detail Row
+    const [editAssetPickerOpen, setEditAssetPickerOpen] = useState(false);
+    const [editAssetOptions, setEditAssetOptions] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string } }[]>([]);
+    const [editAssetSearch, setEditAssetSearch] = useState('');
 
     // Add Fleet Card sidebar state
     const [addFleetCardSidebarOpen, setAddFleetCardSidebarOpen] = useState(false);
@@ -125,8 +129,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const [editFormData, setEditFormData] = useState({
         card_no: '',
         costcenter_id: '',
-        purpose: 'project'
+        purpose: 'project',
+        asset_id: '',
     });
+    const [editErrors, setEditErrors] = useState<{ asset_id?: string }>({});
 
 
     // Add state for summary fields with default values for RON95, RON97, Diesel
@@ -526,9 +532,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         return Boolean(hasValidOdo || hasValidLitre || hasValidAmount);
     };
 
-    // Filtered details based on asset search and empty row filter
+    // Filtered details based on search (asset reg no or fleet card) and empty row filter
     const filteredDetails = editableDetails.filter(detail => {
-        const matchesSearch = detail.asset?.register_number?.toLowerCase().includes(search.toLowerCase());
+        const q = search.toLowerCase();
+        const regNo = detail.asset?.register_number?.toLowerCase() || '';
+        const cardNo = detail.fleetcard?.card_no?.toLowerCase() || '';
+        const matchesSearch = !q || regNo.includes(q) || cardNo.includes(q);
         if (showEmptyRowsOnly) {
             return matchesSearch && !isRowFilled(detail);
         }
@@ -602,35 +611,74 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             setEditFormData({
                 card_no: detail.fleetcard?.card_no || '',
                 costcenter_id: String(detail.asset?.costcenter?.id || ''),
-                purpose: detail.asset?.purpose || 'project'
+                purpose: detail.asset?.purpose || 'project',
+                asset_id: String(detail.asset?.asset_id || ''),
             });
         }
         setEditingDetailIndex(index);
         setSidebarOpen(true);
     };
 
+    // Load active assets when opening the asset picker in edit sidebar
+    useEffect(() => {
+        if (!editAssetPickerOpen) return;
+        if (editAssetOptions.length > 0) return;
+        authenticatedApi
+            .get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } }[] }>(
+                '/api/assets',
+                { params: { type: 2, status: 'active' } }
+            )
+            .then(res => setEditAssetOptions(res.data?.data || []))
+            .catch(() => {
+                toast.error('Failed to load assets');
+                setEditAssetOptions([]);
+            });
+    }, [editAssetPickerOpen, editAssetOptions.length]);
+
     // Handle updating the detail row from ActionSidebar
+    /**
+     * Edit Detail Row — Save handler
+     * Endpoint: PUT `/api/bills/fleet/:card_id/billing`
+     * Payload fields:
+     * - card_id: number | undefined (fleet card id of the row)
+     * - asset_id: number | null (selected asset id)
+     * - costcenter_id: number | null (selected cost center id)
+     * - purpose: string ('project' | 'staff cost' | 'pool')
+     * - stmt_id: number (current statement id)
+     * - card_no: string (kept for compatibility)
+     */
     const handleUpdateDetail = async () => {
         if (editingDetailIndex === null) return;
 
         const detail = editableDetails[editingDetailIndex];
         if (!detail) return;
 
+        // validation: asset is required
+        if (!editFormData.asset_id) {
+            setEditErrors(prev => ({ ...prev, asset_id: 'Asset is required' }));
+            toast.error('Please select an asset');
+            return;
+        }
+        setEditErrors(prev => ({ ...prev, asset_id: undefined }));
+
         setUpdatingDetail(true);
         try {
             // Prepare payload
+            // Payload sent to backend to update fleet + statement linkage
             const payload = {
                 card_id: detail.fleetcard?.id,
-                card_no: editFormData.card_no.trim(),
-                asset_id: detail.asset?.asset_id,
-                vehicle_id: detail.asset?.vehicle_id,
+                asset_id: editFormData.asset_id ? parseInt(editFormData.asset_id) : detail.asset?.asset_id,
                 costcenter_id: editFormData.costcenter_id ? parseInt(editFormData.costcenter_id) : null,
-                purpose: editFormData.purpose
+                purpose: editFormData.purpose,
+                stmt_id: currentStmtId,
+                // keep card_no for compatibility if backend uses it
+                card_no: editFormData.card_no.trim(),
             };
 
             // Make PUT request to update the fleet card
             let response;
             if (detail.fleetcard?.id) {
+                // Endpoint used to update: PUT /api/bills/fleet/:card_id/billing
                 response = await authenticatedApi.put<{ status: string; message: string }>(`/api/bills/fleet/${detail.fleetcard.id}/billing`, payload);
             }
 
@@ -663,6 +711,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     // Update purpose
                     if (updated.asset) {
                         updated.asset = { ...updated.asset, purpose: payload.purpose };
+                    }
+
+                    // Update asset selection (id + register_number)
+                    if (updated.asset) {
+                        const selected = editAssetOptions.find(a => a.id === payload.asset_id);
+                        const regNo = selected?.register_number || updated.asset.register_number;
+                        updated.asset = {
+                            ...updated.asset,
+                            asset_id: payload.asset_id ?? updated.asset.asset_id,
+                            register_number: regNo,
+                        } as Asset;
                     }
 
                     return updated;
@@ -1109,7 +1168,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                             </div>
                             <Input
                                 type="text"
-                                placeholder="Search Asset..."
+                                placeholder="Search Asset or Card..."
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
                                 className="w-56"
@@ -1280,27 +1339,63 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     onClose={() => {
                         setSidebarOpen(false);
                         setEditingDetailIndex(null);
+                        setEditAssetPickerOpen(false);
                     }}
-                    size={'sm'}
+                    size={editAssetPickerOpen ? 'md' : 'sm'}
                     content={
                         currentEditingDetail ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Fleet Card</label>
-                                    <Input
-                                        type="text"
-                                        value={editFormData.card_no}
-                                        onChange={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value }))}
-                                        placeholder="Enter fleet card number"
-                                        className="w-full"
-                                        onBlur={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value.trim() }))}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Cost Center</label>
-                                    <Select
-                                        value={editFormData.costcenter_id}
-                                        onValueChange={(value) => setEditFormData(prev => ({ ...prev, costcenter_id: value }))}
+                            <div className={editAssetPickerOpen ? 'flex gap-4' : 'space-y-4'}>
+                                <div className={editAssetPickerOpen ? 'space-y-4 flex-1' : ''}>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Fleet Card</label>
+                                        <Input
+                                            type="text"
+                                            value={editFormData.card_no}
+                                            onChange={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value }))}
+                                            placeholder="Enter fleet card number"
+                                            className="w-full"
+                                            onBlur={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value.trim() }))}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Asset</label>
+                                        <div className="relative">
+                                            <Input
+                                                readOnly
+                                                placeholder="No asset selected"
+                                                className={`pr-10 cursor-pointer ${editErrors.asset_id ? 'border-red-500 focus:ring-red-500' : ''}`}
+                                                onClick={() => setEditAssetPickerOpen(true)}
+                                                value={(() => {
+                                                    const id = editFormData.asset_id;
+                                                    if (!id) return '';
+                                                    const fromOptions = editAssetOptions.find(a => String(a.id) === String(id));
+                                                    if (fromOptions) return fromOptions.register_number || `#${fromOptions.id}`;
+                                                    // fallback to current row asset
+                                                    if (currentEditingDetail?.asset?.asset_id && String(currentEditingDetail.asset.asset_id) === String(id)) {
+                                                        return currentEditingDetail.asset.register_number || `#${id}`;
+                                                    }
+                                                    return `#${id}`;
+                                                })()}
+                                            />
+                                            <button
+                                                type="button"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
+                                                title="Choose from assets"
+                                                onClick={() => setEditAssetPickerOpen(true)}
+                                                aria-label="Open asset picker"
+                                            >
+                                                <ArrowBigRight />
+                                            </button>
+                                            {editErrors.asset_id && (
+                                                <p className="mt-1 text-sm text-red-600">{editErrors.asset_id}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Cost Center</label>
+                                        <Select
+                                            value={editFormData.costcenter_id}
+                                            onValueChange={(value) => setEditFormData(prev => ({ ...prev, costcenter_id: value }))}
                                     >
                                         <SelectTrigger className="w-full">
                                             <SelectValue placeholder="Select Cost Center" />
@@ -1316,44 +1411,71 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             </SelectGroup>
                                         </SelectContent>
                                     </Select>
-                                </div>
+                                    </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Purpose</label>
-                                    <Select
-                                        value={editFormData.purpose}
-                                        onValueChange={(value) => setEditFormData(prev => ({ ...prev, purpose: value }))}
-                                    >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select Purpose" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectGroup>
-                                                <SelectLabel>Purpose</SelectLabel>
-                                                <SelectItem value="project">Project</SelectItem>
-                                                <SelectItem value="staff cost">Staff Cost</SelectItem>
-                                                <SelectItem value="pool">Poolcar</SelectItem>
-                                            </SelectGroup>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Purpose</label>
+                                        <Select
+                                            value={editFormData.purpose}
+                                            onValueChange={(value) => setEditFormData(prev => ({ ...prev, purpose: value }))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select Purpose" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectGroup>
+                                                    <SelectLabel>Purpose</SelectLabel>
+                                                    <SelectItem value="project">Project</SelectItem>
+                                                    <SelectItem value="staff cost">Staff Cost</SelectItem>
+                                                    <SelectItem value="pool">Poolcar</SelectItem>
+                                                </SelectGroup>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
 
-                                <div className="flex gap-2 pt-4">
-                                    <Button onClick={handleUpdateDetail} className="flex-1" disabled={updatingDetail}>
-                                        {updatingDetail && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
-                                        {updatingDetail ? "Saving..." : "Save Changes"}
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setSidebarOpen(false);
-                                            setEditingDetailIndex(null);
-                                        }}
-                                        className="flex-1"
-                                    >
-                                        Cancel
-                                    </Button>
+                                    <div className="flex gap-2 pt-4">
+                                        <Button onClick={handleUpdateDetail} className="flex-1" disabled={updatingDetail}>
+                                            {updatingDetail && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
+                                            {updatingDetail ? "Saving..." : "Save Changes"}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => {
+                                                setSidebarOpen(false);
+                                                setEditingDetailIndex(null);
+                                                setEditAssetPickerOpen(false);
+                                            }}
+                                            className="flex-1"
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
                                 </div>
+                                {editAssetPickerOpen && (
+                                    <div className="w-96 border-l pl-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="font-semibold">Select Asset</h3>
+                                            <Button size="sm" variant="default" onClick={() => setEditAssetPickerOpen(false)}>Hide List</Button>
+                                        </div>
+                                        <Input placeholder="Search..." value={editAssetSearch} onChange={e => setEditAssetSearch(e.target.value)} className="mb-3" />
+                                        <div className="max-h-[600px] overflow-y-auto space-y-2">
+                                            {editAssetOptions.filter(a => (a.register_number || '').toLowerCase().includes(editAssetSearch.toLowerCase())).map(a => (
+                                                <div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
+                                                    <div>
+                                                        <div className="font-medium">{a.register_number || `#${a.id}`}</div>
+                                                        <div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                                    </div>
+                                                    <span className="text-green-500 cursor-pointer" onClick={() => {
+                                                        setEditFormData(prev => ({ ...prev, asset_id: String(a.id) }));
+                                                        setEditAssetPickerOpen(false);
+                                                    }} title="Select this asset">
+                                                        <ArrowBigLeft />
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : null
                     }
@@ -1372,7 +1494,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                     size={'sm'}
                     content={
                         <div className="space-y-4">
-                            <div className="text-sm text-gray-600 mb-4">
+                            <div className="text-xs text-red-600 mb-4">
                                 Select a fleet card to add to your fuel statement. Only fleet cards not already in the details table are shown.
                             </div>
 
@@ -1393,7 +1515,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     <p className="text-xs mt-2">All fleet cards are already included in the details table.</p>
                                 </div>
                             ) : (
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                <div className="space-y-2 max-h-[600px] overflow-y-auto">
                                     {availableFleetCardsToAdd
                                         .filter(card => {
                                             if (!fleetCardSearch) return true;

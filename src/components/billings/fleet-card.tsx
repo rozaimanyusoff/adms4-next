@@ -56,6 +56,7 @@ const FleetCardList: React.FC = () => {
     const [formLoading, setFormLoading] = useState(false);
     const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
     const [showDuplicateCardsOnly, setShowDuplicateCardsOnly] = useState(false);
+    const [errors, setErrors] = useState<{ fuel_id?: string }>({});
 
     interface FleetForm {
         card_no: string;
@@ -136,7 +137,13 @@ const FleetCardList: React.FC = () => {
 
     // data to show in grid based on filter
     const displayedCards = React.useMemo(() => {
-        return cards.filter(c => {
+        // Flatten nested fields needed by the grid filters/sorters
+        const augmented = cards.map(c => ({
+            ...c,
+            // expose register_number at top-level so column input filter works
+            register_number: c.asset?.register_number || '',
+        }));
+        return augmented.filter(c => {
             if (showDuplicateCardsOnly && !duplicatedCardNumbers.has(c.card_no || '')) return false;
             if (showDuplicatesOnly && !(c.asset && duplicatedAssetIds.has(c.asset.id!))) return false;
             return true;
@@ -297,6 +304,7 @@ const FleetCardList: React.FC = () => {
             setEditingCard(null);
             setForm({ card_no: '', asset_id: '', fuel_id: '', pin: '', status: 'active', reg_date: '', expiry_date: '', remarks: '' });
         }
+        setErrors({});
         setSidebarOpen(true);
     };
 
@@ -315,6 +323,13 @@ const FleetCardList: React.FC = () => {
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        // basic validation for required vendor (fuel_id)
+        if (!form.fuel_id) {
+            setErrors(prev => ({ ...prev, fuel_id: 'Vendor is required' }));
+            toast.error('Please select a vendor');
+            return;
+        }
+        setErrors(prev => ({ ...prev, fuel_id: undefined }));
         const payload = {
             card_no: form.card_no,
             pin: form.pin,
@@ -404,7 +419,7 @@ const FleetCardList: React.FC = () => {
                 <ActionSidebar
                     onClose={() => setSidebarOpen(false)}
                     title={editingCard ? 'Edit Fleet Card' : 'Add Fleet Card'}
-                    size={assetPickerOpen ? 'md' : 'sm'}
+                    size={assetPickerOpen ? 'lg' : 'sm'}
                     content={
                         <div className={assetPickerOpen ? 'flex gap-4' : undefined}>
                             <form className="space-y-4 flex-1" onSubmit={handleSubmit}>
@@ -418,8 +433,8 @@ const FleetCardList: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1">Vendor</label>
-                                <Select value={form.fuel_id} onValueChange={v => setForm(f => ({ ...f, fuel_id: v }))} required>
-                                    <SelectTrigger className="w-full">
+                                <Select value={form.fuel_id} onValueChange={v => { setForm(f => ({ ...f, fuel_id: v })); setErrors(p => ({ ...p, fuel_id: undefined })); }} required>
+                                    <SelectTrigger className={`w-full ${errors.fuel_id ? 'border-red-500 focus:ring-red-500' : ''}`} aria-invalid={!!errors.fuel_id}>
                                         <SelectValue placeholder="Select Vendor" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -431,25 +446,37 @@ const FleetCardList: React.FC = () => {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {errors.fuel_id && (
+                                    <p className="mt-1 text-sm text-red-600">{errors.fuel_id}</p>
+                                )}
                             </div>
-                            <div className="relative">
+                            <div>
                                 <label className="block text-sm font-medium mb-1">Asset</label>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1">
-                                        <Select value={form.asset_id} onValueChange={v => setForm(f => ({ ...f, asset_id: v }))} required>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select Asset" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {assets.map(a => (
-                                                    <SelectItem key={a.id} value={String(a.id)}>{a.register_number || `#${a.id}`}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <span className="text-amber-500 cursor-pointer" title="Choose from assets" onClick={() => setAssetPickerOpen(true)}>
+                                <div className="relative">
+                                    <Input
+                                        readOnly
+                                        placeholder="No asset selected"
+                                        className="pr-10 cursor-pointer"
+                                        onClick={() => setAssetPickerOpen(true)}
+                                        value={(() => {
+                                            const id = form.asset_id;
+                                            if (!id) return '';
+                                            const fromAssets = assets.find(a => String(a.id) === String(id));
+                                            if (fromAssets) return fromAssets.register_number || `#${fromAssets.id}`;
+                                            const fromOptions = assetOptions.find(a => String(a.id) === String(id));
+                                            if (fromOptions) return fromOptions.register_number || `#${fromOptions.id}`;
+                                            return `#${id}`;
+                                        })()}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
+                                        title="Choose from assets"
+                                        onClick={() => setAssetPickerOpen(true)}
+                                        aria-label="Open asset picker"
+                                    >
                                         <ArrowBigRight />
-                                    </span>
+                                    </button>
                                 </div>
                             </div>
                             <div>
