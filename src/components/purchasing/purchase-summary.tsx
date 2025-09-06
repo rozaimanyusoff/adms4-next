@@ -41,9 +41,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     const totalValue = amounts.reduce((s, a) => s + a, 0);
 
     // Calculate status counts by deriving per-purchase procurement status (match PurchaseCard logic)
-    type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'released' | 'closed' | 'draft';
+    type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'closed' | 'draft';
   const deriveStatus = (p: any): ProcStatus => {
-      if ((p as any).released_at || (p as any).released_to) return 'released';
+      if ((p as any).handover_at || (p as any).handover_to) return 'handover';
       if (p.grn_date && p.grn_no) return 'delivered';
       if (p.do_date && p.do_no) return 'delivered';
       if (p.po_date && p.po_no) return 'ordered';
@@ -55,12 +55,12 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       const st = deriveStatus(p);
       acc[st] = (acc[st] || 0) + 1;
       return acc;
-    }, { requested: 0, ordered: 0, delivered: 0, released: 0, closed: 0, draft: 0 } as Record<ProcStatus, number>);
+    }, { requested: 0, ordered: 0, delivered: 0, handover: 0, closed: 0, draft: 0 } as Record<ProcStatus, number>);
 
     const pending = counts.requested;
     const ordered = counts.ordered;
     const delivered = counts.delivered;
-    const released = counts.released;
+    const handover = counts.handover;
     const completed = counts.closed;
 
     // Request type breakdown
@@ -85,7 +85,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       pending,
       ordered,
       delivered,
-      released,
+      handover,
       completed,
       capex,
       opex,
@@ -140,6 +140,31 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     });
 
     const rows = Object.keys(map).map(k => ({ type: k, ...map[k] }));
+    rows.sort((a, b) => b.total - a.total);
+    return rows;
+  }, [purchases]);
+
+  // Status breakdown by Item Type (focus on Handover monitoring)
+  const statusByType = useMemo(() => {
+    type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'draft';
+    const rows: Array<{ type: string; requested: number; ordered: number; delivered: number; handover: number; total: number }>= [];
+    const map: Record<string, { requested: number; ordered: number; delivered: number; handover: number; total: number }> = {};
+    const derive = (p: any): ProcStatus => {
+      if (p.handover_at || p.handover_to || (p.inv_date && p.inv_no)) return 'handover';
+      if (p.grn_date && p.grn_no) return 'delivered';
+      if (p.do_date && p.do_no) return 'delivered';
+      if (p.po_date && p.po_no) return 'ordered';
+      if (p.pr_date && p.pr_no) return 'requested';
+      return 'draft';
+    };
+    purchases.forEach(p => {
+      const t = typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || 'Unknown';
+      if (!map[t]) map[t] = { requested: 0, ordered: 0, delivered: 0, handover: 0, total: 0 };
+      const st = derive(p);
+      (map[t] as any)[st] = ((map[t] as any)[st] || 0) + 1;
+      map[t].total += 1;
+    });
+    Object.keys(map).forEach(k => rows.push({ type: k, ...map[k] } as any));
     rows.sort((a, b) => b.total - a.total);
     return rows;
   }, [purchases]);
@@ -372,12 +397,12 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <FileText className="h-4 w-4 text-purple-600" />
-                <span className="text-sm">Released</span>
+                <span className="text-sm">Handover</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.released}</span>
+                <span className="text-sm font-medium">{stats.handover}</span>
                 <Badge variant="secondary" className="text-xs">
-                  {stats.total > 0 ? ((stats.released / stats.total) * 100).toFixed(0) : 0}%
+                  {stats.total > 0 ? ((stats.handover / stats.total) * 100).toFixed(0) : 0}%
                 </Badge>
               </div>
             </div>
@@ -394,6 +419,37 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                 </Badge>
               </div>
             </div>
+          </div>
+
+          {/* Breakdown by Item Type for Handover monitoring */}
+          <div className="mt-4">
+            <p className="text-xs text-gray-700 mb-2">By Item Type (Handover progress)</p>
+            {statusByType.length === 0 ? (
+              <div className="text-xs text-gray-500">No data</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left bg-gray-100">
+                      <th className="px-2 py-1">Type</th>
+                      <th className="px-2 py-1 text-right">Handover</th>
+                      <th className="px-2 py-1 text-right">Pending</th>
+                      <th className="px-2 py-1 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statusByType.map(row => (
+                      <tr key={row.type} className="border-t">
+                        <td className="px-2 py-1">{row.type}</td>
+                        <td className="px-2 py-1 text-right">{row.handover}</td>
+                        <td className="px-2 py-1 text-right">{row.total - row.handover}</td>
+                        <td className="px-2 py-1 text-right">{row.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
