@@ -2,28 +2,24 @@
 
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import CoreCategory from "./core-category";
-import CoreBrand from "./core-brand";
-import CoreType from "./core-type";
+import CoreCategory from "./assetdata-categories";
+import CoreBrand from "./assetdata-brands";
+import CoreType from "./assetdata-types";
 import CoreModel from "./core-model";
 import CoreSoftware from "./core-software";
 import Link from "next/link";
 
 const TabCore: React.FC = () => {
   const tabTitles = [
-    { value: "types", label: "Types" },
-    { value: "categories", label: "Categories" },
+    { value: "types", label: "Types & Categories" },
     { value: "brands", label: "Brands" },
     { value: "models", label: "Models" },
-    { value: "softwares", label: "Softwares" },
   ];
 
   const tabComponents: Record<string, React.ReactNode> = {
     types: <CoreType />,
-    categories: <CoreCategory />,
     brands: <CoreBrand />,
     models: <CoreModel />,
-    softwares: <CoreSoftware />,
   };
 
   const [activeTab, setActiveTab] = useState<string>(() => {

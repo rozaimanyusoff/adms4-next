@@ -13,9 +13,11 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
+import { AuthContext } from '@/store/AuthContext';
 import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info, Search, RefreshCcw, Link2 } from 'lucide-react';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 interface PurchaseData {
   id: number;
@@ -125,6 +127,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [existingAssets, setExistingAssets] = useState<any[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const auth = React.useContext(AuthContext);
 
   useEffect(() => {
     if (pr_id) {
@@ -210,7 +213,7 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   const fetchBrandOptions = async () => {
     if (!type_id) return;
-    
+
     setLoadingBrands(true);
     try {
       const response = await authenticatedApi.get(`/api/assets/brands?type=${type_id}`);
@@ -269,7 +272,7 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   const initializeAssetItems = () => {
     if (!purchase) return;
-    
+
     const items: AssetItem[] = [];
     const defaultModel = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
     const purchaseCostcenter = (() => {
@@ -277,7 +280,7 @@ const PurchaseAssetRegistration: React.FC = () => {
       if (typeof cc === 'string') return cc;
       return cc?.name || '';
     })();
-    
+
     // Pre-fill bulk form data
     setBulkFormData({
       model: defaultModel,
@@ -312,7 +315,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   };
 
   const handleAssetChange = (id: string, field: keyof AssetFormData, value: string) => {
-    setAssetItems(prev => prev.map(item => 
+    setAssetItems(prev => prev.map(item =>
       item.id === id ? { ...item, [field]: value } : item
     ));
   };
@@ -359,8 +362,8 @@ const PurchaseAssetRegistration: React.FC = () => {
   const scrollToAsset = (assetId: string) => {
     const element = document.getElementById(`asset-card-${assetId}`);
     if (element) {
-      element.scrollIntoView({ 
-        behavior: 'smooth', 
+      element.scrollIntoView({
+        behavior: 'smooth',
         block: 'center'
       });
     }
@@ -368,7 +371,7 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   const handleBulkChange = (field: keyof Omit<AssetFormData, 'register_number'>, value: string) => {
     setBulkFormData(prev => ({ ...prev, [field]: value }));
-    
+
     if (sameModel) {
       setAssetItems(prev => prev.map(item => ({ ...item, [field]: value })));
     }
@@ -383,7 +386,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const generateRegisterNumbers = () => {
     const baseNumber = bulkFormData.description.replace(/\s+/g, '').substring(0, 3).toUpperCase();
     const timestamp = Date.now().toString().slice(-4);
-    
+
     setAssetItems(prev => prev.map((item, index) => ({
       ...item,
       register_number: `${baseNumber}${timestamp}${(index + 1).toString().padStart(3, '0')}`
@@ -400,6 +403,25 @@ const PurchaseAssetRegistration: React.FC = () => {
     setVisibleAssetCount(prev => Math.max(prev - 1, 1));
   };
 
+  /**
+   * Submit registered assets
+   * Endpoint: POST `/api/purchases/registry`
+   * Payload: {
+   *   pr_id: number,          // parent purchase id (integer)
+   *   assets: Array<{
+   *     register_number: string,
+   *     classification: string,
+   *     type_id: string,
+   *     category_id: number | null,
+   *     brand_id: number | null,
+   *     model: string,
+   *     costcenter_id: number | null,
+   *     location_id: number | null,
+   *     item_condition: string, // renamed from `condition` to avoid SQL reserved word
+   *     description: string,
+   *   }>
+   * }
+   */
   const handleSave = async () => {
     const invalidAssets = assetItems.filter(item => {
       const isSoftware = (item.category || '').toLowerCase() === 'software';
@@ -429,13 +451,22 @@ const PurchaseAssetRegistration: React.FC = () => {
         model: item.model,
         costcenter_id: costCenterIdByName(item.costcenter) ?? null,
         location_id: locationIdByName(item.location) ?? null,
-        condition: item.condition,
+        item_condition: item.condition,
         description: item.description,
       }));
 
-      await authenticatedApi.post('/api/assets/register-batch', { assets: payload });
+      // Include link to parent purchase/pr for backend association (integer pr_id)
+      const requestBody: any = {
+        assets: payload,
+        pr_id: Number(pr_id),
+        created_by: (auth?.authData?.user?.username) || (() => {
+          try { return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || ''; } catch { return ''; }
+        })(),
+      };
+
+      await authenticatedApi.post('/api/purchases/registry', requestBody);
       toast.success(`${assetItems.length} assets registered successfully`);
-      
+
       if (window.opener) {
         window.close();
       }
@@ -471,7 +502,7 @@ const PurchaseAssetRegistration: React.FC = () => {
             </div>
           </div>
         </header>
-        
+
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center">
             <Package className="mx-auto h-12 w-12 text-gray-400 mb-4 animate-pulse" />
@@ -506,7 +537,7 @@ const PurchaseAssetRegistration: React.FC = () => {
             </div>
           </div>
         </header>
-        
+
         <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
           <div className="text-center">
             <FileText className="mx-auto h-12 w-12 text-red-400 mb-4" />
@@ -560,7 +591,7 @@ const PurchaseAssetRegistration: React.FC = () => {
       </header>
 
       <div className="min-w-7xl mx-auto p-6 space-y-6">
-                {/* Main Content Grid */}
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Purchase Information (Read-only) */}
           <Card className="lg:col-span-1">
@@ -672,145 +703,145 @@ const PurchaseAssetRegistration: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
             {/* Bulk Options */}
             {purchase.qty > 1 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Package className="mr-2 h-5 w-5" />
-                    Bulk Configuration
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="same-model"
-                        checked={sameModel}
-                        onCheckedChange={setSameModel}
-                      />
-                      <Label htmlFor="same-model" className="text-sm">Same model for all</Label>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Package className="mr-2 h-5 w-5" />
+                      Bulk Configuration
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={generateRegisterNumbers}
-                      disabled={!bulkFormData.description}
-                    >
-                      Generate Register Numbers
-                    </Button>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              {purchase.qty > 1 && (
-              <CardContent className="space-y-4">
-                {/* Row 1: Condition (justify-end) */}
-                <div className="flex justify-end">
-                  <div className="w-full md:w-1/3">
-                    <div className="flex items-center space-x-1 justify-between">
-                      <Label htmlFor="bulk-condition">Condition</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('condition')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
+                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="same-model"
+                          checked={sameModel}
+                          onCheckedChange={setSameModel}
+                        />
+                        <Label htmlFor="same-model" className="text-sm">Same model for all</Label>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={generateRegisterNumbers}
+                        disabled={!bulkFormData.description}
+                      >
+                        Generate Register Numbers
                       </Button>
                     </div>
-                    <SingleSelect
-                      options={[{ value: 'new', label: 'New' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'poor', label: 'Poor' }]}
-                      value={bulkFormData.condition}
-                      onValueChange={(value) => handleBulkChange('condition', value)}
-                      placeholder="Select condition"
-                      className="h-10"
-                    />
-                  </div>
-                </div>
+                  </CardTitle>
+                </CardHeader>
+                {purchase.qty > 1 && (
+                  <CardContent className="space-y-4">
+                    {/* Row 1: Condition (justify-end) */}
+                    <div className="flex justify-end">
+                      <div className="w-full md:w-1/3">
+                        <div className="flex items-center space-x-1 justify-between">
+                          <Label htmlFor="bulk-condition">Condition</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('condition')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <SingleSelect
+                          options={[{ value: 'new', label: 'New' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'poor', label: 'Poor' }]}
+                          value={bulkFormData.condition}
+                          onValueChange={(value) => handleBulkChange('condition', value)}
+                          placeholder="Select condition"
+                          className="h-10"
+                        />
+                      </div>
+                    </div>
 
-                {/* Row 2: Category, Brand, Model */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-category">Category</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('category')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
+                    {/* Row 2: Category, Brand, Model */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-category">Category</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('category')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {categoryOptions.length > 0 ? (
+                          <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
+                        ) : (
+                          <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-brand">Brand</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('brand')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {brandOptions.length > 0 ? (
+                          <SingleSelect options={brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` }))} value={bulkFormData.brand} onValueChange={(value) => handleBulkChange('brand', value)} placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'} searchPlaceholder="Search brands..." disabled={loadingBrands} clearable className="h-10" />
+                        ) : (
+                          <Input id="bulk-brand" value={bulkFormData.brand} onChange={(e) => handleBulkChange('brand', e.target.value)} placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'} disabled={loadingBrands} className="h-10" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-model">Model</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('model')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <Input id="bulk-model" value={bulkFormData.model} onChange={(e) => handleBulkChange('model', e.target.value)} placeholder="Enter model" className="h-10" />
+                      </div>
                     </div>
-                    {categoryOptions.length > 0 ? (
-                      <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
-                    ) : (
-                      <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-brand">Brand</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('brand')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {brandOptions.length > 0 ? (
-                      <SingleSelect options={brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` }))} value={bulkFormData.brand} onValueChange={(value) => handleBulkChange('brand', value)} placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'} searchPlaceholder="Search brands..." disabled={loadingBrands} clearable className="h-10" />
-                    ) : (
-                      <Input id="bulk-brand" value={bulkFormData.brand} onChange={(e) => handleBulkChange('brand', e.target.value)} placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'} disabled={loadingBrands} className="h-10" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-model">Model</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('model')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <Input id="bulk-model" value={bulkFormData.model} onChange={(e) => handleBulkChange('model', e.target.value)} placeholder="Enter model" className="h-10" />
-                  </div>
-                </div>
 
-                {/* Row 3: Classification, Cost Center, Location */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-classification">Classification</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('classification')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
+                    {/* Row 3: Classification, Cost Center, Location */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-classification">Classification</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('classification')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <SingleSelect options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]} value={bulkFormData.classification} onValueChange={(value) => handleBulkChange('classification', value)} placeholder="Select classification" className="h-10" />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-costcenter">Cost Center</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('costcenter')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {costCenterOptions.length > 0 ? (
+                          <SingleSelect options={costCenterOptions.map(option => ({ value: option.name, label: `${option.name}${option.code ? ` (${option.code})` : ''}` }))} value={bulkFormData.costcenter} onValueChange={(value) => handleBulkChange('costcenter', value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Select cost center'} searchPlaceholder="Search cost centers..." disabled={loadingCostCenters} clearable className="h-10" />
+                        ) : (
+                          <Input id="bulk-costcenter" value={bulkFormData.costcenter} onChange={(e) => handleBulkChange('costcenter', e.target.value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Enter cost center'} disabled={loadingCostCenters} className="h-10" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="bulk-location">Location</Label>
+                          <Button variant="ghost" size="sm" onClick={() => copyToAll('location')} className="h-5 w-5 p-0">
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {locationOptions.length > 0 ? (
+                          <SingleSelect options={locationOptions.map(option => ({ value: option.name, label: `${option.name}${option.building ? ` (${option.building})` : ''}` }))} value={bulkFormData.location} onValueChange={(value) => handleBulkChange('location', value)} placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} searchPlaceholder="Search locations..." disabled={loadingLocations} clearable className="h-10" />
+                        ) : (
+                          <Input id="bulk-location" value={bulkFormData.location} onChange={(e) => handleBulkChange('location', e.target.value)} placeholder={loadingLocations ? 'Loading locations...' : 'Enter location'} disabled={loadingLocations} className="h-10" />
+                        )}
+                      </div>
                     </div>
-                    <SingleSelect options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]} value={bulkFormData.classification} onValueChange={(value) => handleBulkChange('classification', value)} placeholder="Select classification" className="h-10" />
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-costcenter">Cost Center</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('costcenter')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {costCenterOptions.length > 0 ? (
-                      <SingleSelect options={costCenterOptions.map(option => ({ value: option.name, label: `${option.name}${option.code ? ` (${option.code})` : ''}` }))} value={bulkFormData.costcenter} onValueChange={(value) => handleBulkChange('costcenter', value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Select cost center'} searchPlaceholder="Search cost centers..." disabled={loadingCostCenters} clearable className="h-10" />
-                    ) : (
-                      <Input id="bulk-costcenter" value={bulkFormData.costcenter} onChange={(e) => handleBulkChange('costcenter', e.target.value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Enter cost center'} disabled={loadingCostCenters} className="h-10" />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-1">
-                      <Label htmlFor="bulk-location">Location</Label>
-                      <Button variant="ghost" size="sm" onClick={() => copyToAll('location')} className="h-5 w-5 p-0">
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {locationOptions.length > 0 ? (
-                      <SingleSelect options={locationOptions.map(option => ({ value: option.name, label: `${option.name}${option.building ? ` (${option.building})` : ''}` }))} value={bulkFormData.location} onValueChange={(value) => handleBulkChange('location', value)} placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} searchPlaceholder="Search locations..." disabled={loadingLocations} clearable className="h-10" />
-                    ) : (
-                      <Input id="bulk-location" value={bulkFormData.location} onChange={(e) => handleBulkChange('location', e.target.value)} placeholder={loadingLocations ? 'Loading locations...' : 'Enter location'} disabled={loadingLocations} className="h-10" />
-                    )}
-                  </div>
-                </div>
 
-                {/* Row 4: Description */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="bulk-description">Description *</Label>
-                    <Button variant="ghost" size="sm" onClick={() => copyToAll('description')} className="h-6 w-6 p-0">
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                  <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
-                </div>
-              </CardContent>
-              )}
-            </Card>
+                    {/* Row 4: Description */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="bulk-description">Description *</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('description')} className="h-6 w-6 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
             )}
 
             {/* Individual Asset Forms */}
@@ -823,266 +854,266 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </Badge>
                 )}
               </div>
-              
+
               <div className="max-h-[500px] auto-hide-scroll pr-2 space-y-4">
                 {assetItems.slice(0, visibleAssetCount).map((asset, index) => {
                   const isComplete = isAssetFormComplete(asset);
-                  
+
                   return (
-                  <Card 
-                    key={asset.id}
-                    id={`asset-card-${asset.id}`}
-                    className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <CardTitle className="text-base">Asset #{index + 1}</CardTitle>
-                          {isComplete && (
-                            <CheckCircle className="h-5 w-5 text-green-600" />
-                          )}
-                          {/* Collapse removed */}
-                        </div>
-                        {assetItems.length > 1 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeAsset(asset.id)}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                    
-                    <CardContent className="space-y-4">
-                      {/* Row 1: Register Number, Warranty (years), Condition */}
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="md:col-span-2">
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
-                            <button
-                              type="button"
-                              className="text-blue-600 hover:underline text-xs"
-                              onClick={() => {
-                                setActiveAssetId(asset.id);
-                                setShowSidebar(true);
-                                fetchExistingAssets();
-                              }}
+                    <Card
+                      key={asset.id}
+                      id={`asset-card-${asset.id}`}
+                      className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <CardTitle className="text-base">Asset #{index + 1}</CardTitle>
+                            {isComplete && (
+                              <CheckCircle className="h-5 w-5 text-green-600" />
+                            )}
+                            {/* Collapse removed */}
+                          </div>
+                          {assetItems.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeAsset(asset.id)}
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                             >
-                              Map existing assets
-                            </button>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="space-y-4">
+                        {/* Row 1: Register Number, Warranty (years), Condition */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div className="md:col-span-2">
+                            <div className="flex items-center gap-2">
+                              <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
+                              <button
+                                type="button"
+                                className="text-blue-600 hover:underline text-xs"
+                                onClick={() => {
+                                  setActiveAssetId(asset.id);
+                                  setShowSidebar(true);
+                                  fetchExistingAssets();
+                                }}
+                              >
+                                Map existing assets
+                              </button>
+                              {((asset.category || '').toLowerCase() === 'software') && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center text-amber-600 cursor-help">
+                                      <Info className="h-3.5 w-3.5" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Register number not required for Software category
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <Input
+                              id={`register_number_${asset.id}`}
+                              value={asset.register_number}
+                              onFocus={() => setActiveAssetId(asset.id)}
+                              onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
+                              placeholder="e.g., AST001234"
+                              required
+                              className={`h-10 ${getFieldRingClass(asset.register_number)}`}
+                            />
                             {((asset.category || '').toLowerCase() === 'software') && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex items-center text-amber-600 cursor-help">
-                                    <Info className="h-3.5 w-3.5" />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Register number not required for Software category
-                                </TooltipContent>
-                              </Tooltip>
+                              <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
                             )}
                           </div>
-                          <Input
-                            id={`register_number_${asset.id}`}
-                            value={asset.register_number}
-                            onFocus={() => setActiveAssetId(asset.id)}
-                            onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
-                            placeholder="e.g., AST001234"
-                            required
-                            className={`h-10 ${getFieldRingClass(asset.register_number)}`}
-                          />
-                          {((asset.category || '').toLowerCase() === 'software') && (
-                            <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor={`warranty_period_${asset.id}`}>Warranty Period (years)</Label>
-                          <Input
-                            id={`warranty_period_${asset.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={asset.warranty_period}
-                            onChange={(e) => handleAssetChange(asset.id, 'warranty_period', e.target.value)}
-                            placeholder="e.g., 3"
-                            className={`h-10 ${getFieldRingClass(asset.warranty_period)}`}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`condition_${asset.id}`}>Condition</Label>
-                          <SingleSelect
-                            options={[
-                              { value: 'new', label: 'New' },
-                              { value: 'good', label: 'Good' },
-                              { value: 'fair', label: 'Fair' },
-                              { value: 'poor', label: 'Poor' }
-                            ]}
-                            value={asset.condition}
-                            onValueChange={(value) => handleAssetChange(asset.id, 'condition', value)}
-                            placeholder="Select condition"
-                            className={`h-10 ${getFieldRingClass(asset.condition)}`}
-                          />
-                        </div>
-                      </div>
-                      
-                      {/* Row 2: Category, Brand, Model */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label htmlFor={`category_${asset.id}`}>Category</Label>
-                          {categoryOptions.length > 0 ? (
-                            <SingleSelect
-                              options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
-                              value={asset.category}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
-                              placeholder="Select category"
-                              searchPlaceholder="Search categories..."
-                              disabled={loadingCategories}
-                              clearable
-                              className={`h-10 ${getFieldRingClass(asset.category)}`}
-                            />
-                          ) : (
+                          <div>
+                            <Label htmlFor={`warranty_period_${asset.id}`}>Warranty Period (years)</Label>
                             <Input
-                              id={`category_${asset.id}`}
-                              value={asset.category}
-                              onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
-                              placeholder="Enter category"
-                              disabled={loadingCategories}
-                              className={`h-10 ${getFieldRingClass(asset.category)}`}
+                              id={`warranty_period_${asset.id}`}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={asset.warranty_period}
+                              onChange={(e) => handleAssetChange(asset.id, 'warranty_period', e.target.value)}
+                              placeholder="e.g., 3"
+                              className={`h-10 ${getFieldRingClass(asset.warranty_period)}`}
                             />
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor={`brand_${asset.id}`}>Brand</Label>
-                          {brandOptions.length > 0 ? (
+                          </div>
+                          <div>
+                            <Label htmlFor={`condition_${asset.id}`}>Condition</Label>
                             <SingleSelect
-                              options={brandOptions.map(option => ({ 
-                                value: option.name, 
-                                label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
-                              }))}
-                              value={asset.brand}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'brand', value)}
-                              placeholder="Select brand"
-                              searchPlaceholder="Search brands..."
-                              disabled={loadingBrands}
-                              clearable
-                              className={`h-10 ${getFieldRingClass(asset.brand)}`}
+                              options={[
+                                { value: 'new', label: 'New' },
+                                { value: 'good', label: 'Good' },
+                                { value: 'fair', label: 'Fair' },
+                                { value: 'poor', label: 'Poor' }
+                              ]}
+                              value={asset.condition}
+                              onValueChange={(value) => handleAssetChange(asset.id, 'condition', value)}
+                              placeholder="Select condition"
+                              className={`h-10 ${getFieldRingClass(asset.condition)}`}
                             />
-                          ) : (
-                            <Input
-                              id={`brand_${asset.id}`}
-                              value={asset.brand}
-                              onChange={(e) => handleAssetChange(asset.id, 'brand', e.target.value)}
-                              placeholder="Enter brand"
-                              disabled={loadingBrands}
-                              className={`h-10 ${getFieldRingClass(asset.brand)}`}
-                            />
-                          )}
+                          </div>
                         </div>
-                        <div>
-                          <Label htmlFor={`model_${asset.id}`}>Model</Label>
-                          <Input
-                            id={`model_${asset.id}`}
-                            value={asset.model}
-                            onChange={(e) => handleAssetChange(asset.id, 'model', e.target.value)}
-                            placeholder="Enter model"
-                            className={`h-10 ${getFieldRingClass(asset.model)}`}
-                          />
-                        </div>
-                      </div>
 
-                      {/* Row 3: Classification, Cost Center, Location */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Row 2: Category, Brand, Model */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <Label htmlFor={`category_${asset.id}`}>Category</Label>
+                            {categoryOptions.length > 0 ? (
+                              <SingleSelect
+                                options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
+                                value={asset.category}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
+                                placeholder="Select category"
+                                searchPlaceholder="Search categories..."
+                                disabled={loadingCategories}
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.category)}`}
+                              />
+                            ) : (
+                              <Input
+                                id={`category_${asset.id}`}
+                                value={asset.category}
+                                onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
+                                placeholder="Enter category"
+                                disabled={loadingCategories}
+                                className={`h-10 ${getFieldRingClass(asset.category)}`}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <Label htmlFor={`brand_${asset.id}`}>Brand</Label>
+                            {brandOptions.length > 0 ? (
+                              <SingleSelect
+                                options={brandOptions.map(option => ({
+                                  value: option.name,
+                                  label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
+                                }))}
+                                value={asset.brand}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'brand', value)}
+                                placeholder="Select brand"
+                                searchPlaceholder="Search brands..."
+                                disabled={loadingBrands}
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.brand)}`}
+                              />
+                            ) : (
+                              <Input
+                                id={`brand_${asset.id}`}
+                                value={asset.brand}
+                                onChange={(e) => handleAssetChange(asset.id, 'brand', e.target.value)}
+                                placeholder="Enter brand"
+                                disabled={loadingBrands}
+                                className={`h-10 ${getFieldRingClass(asset.brand)}`}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <Label htmlFor={`model_${asset.id}`}>Model</Label>
+                            <Input
+                              id={`model_${asset.id}`}
+                              value={asset.model}
+                              onChange={(e) => handleAssetChange(asset.id, 'model', e.target.value)}
+                              placeholder="Enter model"
+                              className={`h-10 ${getFieldRingClass(asset.model)}`}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Row 3: Classification, Cost Center, Location */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
+                            <SingleSelect
+                              options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]}
+                              value={asset.classification}
+                              onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
+                              placeholder="Select classification"
+                              className={`h-10 ${getFieldRingClass(asset.classification)}`}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`costcenter_${asset.id}`}>Cost Center</Label>
+                            {costCenterOptions.length > 0 ? (
+                              <SingleSelect
+                                options={costCenterOptions.map(option => ({
+                                  value: option.name,
+                                  label: `${option.name}${option.code ? ` (${option.code})` : ''}`
+                                }))}
+                                value={asset.costcenter}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'costcenter', value)}
+                                placeholder="Select cost center"
+                                searchPlaceholder="Search cost centers..."
+                                disabled={loadingCostCenters}
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
+                              />
+                            ) : (
+                              <Input
+                                id={`costcenter_${asset.id}`}
+                                value={asset.costcenter}
+                                onChange={(e) => handleAssetChange(asset.id, 'costcenter', e.target.value)}
+                                placeholder="Enter cost center"
+                                disabled={loadingCostCenters}
+                                className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
+                              />
+                            )}
+                          </div>
+                          <div>
+                            <Label htmlFor={`location_${asset.id}`}>Location</Label>
+                            {locationOptions.length > 0 ? (
+                              <SingleSelect
+                                options={locationOptions.map(option => ({
+                                  value: option.name,
+                                  label: `${option.name}${option.building ? ` (${option.building})` : ''}`
+                                }))}
+                                value={asset.location}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'location', value)}
+                                placeholder="Select location"
+                                searchPlaceholder="Search locations..."
+                                disabled={loadingLocations}
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.location)}`}
+                              />
+                            ) : (
+                              <Input
+                                id={`location_${asset.id}`}
+                                value={asset.location}
+                                onChange={(e) => handleAssetChange(asset.id, 'location', e.target.value)}
+                                placeholder="Enter location"
+                                disabled={loadingLocations}
+                                className={`h-10 ${getFieldRingClass(asset.location)}`}
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Row 4: Description (full width) */}
                         <div>
-                          <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
-                          <SingleSelect
-                            options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]}
-                            value={asset.classification}
-                            onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
-                            placeholder="Select classification"
-                            className={`h-10 ${getFieldRingClass(asset.classification)}`}
+                          <Label htmlFor={`description_${asset.id}`}>Description *</Label>
+                          <Textarea
+                            id={`description_${asset.id}`}
+                            value={asset.description}
+                            onChange={(e) => handleAssetChange(asset.id, 'description', e.target.value)}
+                            placeholder="Enter asset description"
+                            rows={2}
+                            required
+                            className={`${getFieldRingClass(asset.description)}`}
                           />
                         </div>
-                        <div>
-                          <Label htmlFor={`costcenter_${asset.id}`}>Cost Center</Label>
-                          {costCenterOptions.length > 0 ? (
-                            <SingleSelect
-                              options={costCenterOptions.map(option => ({ 
-                                value: option.name, 
-                                label: `${option.name}${option.code ? ` (${option.code})` : ''}`
-                              }))}
-                              value={asset.costcenter}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'costcenter', value)}
-                              placeholder="Select cost center"
-                              searchPlaceholder="Search cost centers..."
-                              disabled={loadingCostCenters}
-                              clearable
-                              className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
-                            />
-                          ) : (
-                            <Input
-                              id={`costcenter_${asset.id}`}
-                              value={asset.costcenter}
-                              onChange={(e) => handleAssetChange(asset.id, 'costcenter', e.target.value)}
-                              placeholder="Enter cost center"
-                              disabled={loadingCostCenters}
-                              className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor={`location_${asset.id}`}>Location</Label>
-                          {locationOptions.length > 0 ? (
-                            <SingleSelect
-                              options={locationOptions.map(option => ({ 
-                                value: option.name, 
-                                label: `${option.name}${option.building ? ` (${option.building})` : ''}`
-                              }))}
-                              value={asset.location}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'location', value)}
-                              placeholder="Select location"
-                              searchPlaceholder="Search locations..."
-                              disabled={loadingLocations}
-                              clearable
-                              className={`h-10 ${getFieldRingClass(asset.location)}`}
-                            />
-                          ) : (
-                            <Input
-                              id={`location_${asset.id}`}
-                              value={asset.location}
-                              onChange={(e) => handleAssetChange(asset.id, 'location', e.target.value)}
-                              placeholder="Enter location"
-                              disabled={loadingLocations}
-                              className={`h-10 ${getFieldRingClass(asset.location)}`}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Row 4: Description (full width) */}
-                      <div>
-                        <Label htmlFor={`description_${asset.id}`}>Description *</Label>
-                        <Textarea
-                          id={`description_${asset.id}`}
-                          value={asset.description}
-                          onChange={(e) => handleAssetChange(asset.id, 'description', e.target.value)}
-                          placeholder="Enter asset description"
-                          rows={2}
-                          required
-                          className={`${getFieldRingClass(asset.description)}`}
-                        />
-                      </div>
-                      
-                      {/* Notes removed per requirement */}
-                    </CardContent>
-                  </Card>
+
+                        {/* Notes removed per requirement */}
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
-              
+
               {/* Add More Button */}
               {visibleAssetCount < assetItems.length && (
                 <div className="flex justify-center pt-4">
@@ -1116,20 +1147,20 @@ const PurchaseAssetRegistration: React.FC = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 {/* Summary Stats */}
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="bg-green-50 p-2 rounded text-center">
-                      <div className="text-lg font-semibold text-green-600">
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <div className="bg-green-50 p-2 rounded text-center">
+                    <div className="text-lg font-semibold text-green-600">
                       {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}
-                      </div>
-                      <div className="text-xs text-green-700">Completed</div>
                     </div>
-                    <div className="bg-orange-50 p-2 rounded text-center">
-                      <div className="text-lg font-semibold text-orange-600">
-                      {assetItems.filter(asset => !isAssetOverviewComplete(asset)).length}
-                      </div>
-                      <div className="text-xs text-orange-700">Pending</div>
-                    </div>
+                    <div className="text-xs text-green-700">Completed</div>
                   </div>
+                  <div className="bg-orange-50 p-2 rounded text-center">
+                    <div className="text-lg font-semibold text-orange-600">
+                      {assetItems.filter(asset => !isAssetOverviewComplete(asset)).length}
+                    </div>
+                    <div className="text-xs text-orange-700">Pending</div>
+                  </div>
+                </div>
 
                 {/* Register Number List (simplified) */}
                 <div className="space-y-2 max-h-[400px] auto-hide-scroll">
@@ -1161,19 +1192,61 @@ const PurchaseAssetRegistration: React.FC = () => {
 
                 <Separator className="my-3" />
                 <div>
-                  <Button
-                    onClick={handleSave}
-                    disabled={
-                      saving || assetItems.some(item => {
-                        const isSoftware = (item.category || '').toLowerCase() === 'software';
-                        return !isSoftware && !item.register_number?.trim();
-                      })
-                    }
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {saving ? 'Submitting...' : 'Submit'}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        disabled={
+                          saving || assetItems.some(item => {
+                            const isSoftware = (item.category || '').toLowerCase() === 'software';
+                            return !isSoftware && !item.register_number?.trim();
+                          })
+                        }
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Save className="mr-2 h-4 w-4" />
+                        {saving ? 'Submitting...' : 'Submit'}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm Asset Registration</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Please confirm the following details are correct for all assets:
+                          Register Number, Category, Classification, and Cost Center.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <div className="max-h-[50vh] overflow-auto border rounded">
+                        <table className="min-w-full text-xs">
+                          <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                              <th className="text-left px-2 py-1 border">#</th>
+                              <th className="text-left px-2 py-1 border">Register No</th>
+                              <th className="text-left px-2 py-1 border">Category</th>
+                              <th className="text-left px-2 py-1 border">Classification</th>
+                              <th className="text-left px-2 py-1 border">Cost Center</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {assetItems.map((a, idx) => (
+                              <tr key={a.id} className="odd:bg-white even:bg-gray-50">
+                                <td className="px-2 py-1 border">{idx + 1}</td>
+                                <td className="px-2 py-1 border">{a.register_number || '-'}</td>
+                                <td className="px-2 py-1 border">{a.category || '-'}</td>
+                                <td className="px-2 py-1 border">{a.classification || '-'}</td>
+                                <td className="px-2 py-1 border">{a.costcenter || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Review Again</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleSave} disabled={saving}>
+                          Confirm & Submit
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </CardContent>
             </Card>

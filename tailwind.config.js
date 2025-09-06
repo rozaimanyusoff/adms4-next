@@ -16,6 +16,7 @@ module.exports = {
         },
         extend: {
             colors: {
+                // App brand palette (kept as-is)
                 primary: 'var(--color-primary, #4361ee)',
                 'primary-light': '#eaf1ff',
                 'primary-dark-light': 'rgba(67,97,238,.15)',
@@ -43,13 +44,44 @@ module.exports = {
                 white: '#ffffff',
                 'white-light': '#e0e6ed',
                 'white-dark': '#888ea8',
-                // shadcn/ui required colors (flat, not nested)
-                background: 'hsl(var(--background))',
-                foreground: 'hsl(var(--foreground))',
-                border: 'hsl(var(--border))',
-                input: 'hsl(var(--input))',
-                ring: 'hsl(var(--ring))',
-                // Optionally add card, popover, muted, accent, destructive, etc. as flat keys if needed
+
+                // shadcn/ui system tokens (read directly from CSS vars)
+                background: 'var(--background)',
+                foreground: 'var(--foreground)',
+                card: 'var(--card)',
+                'card-foreground': 'var(--card-foreground)',
+                popover: 'var(--popover)',
+                'popover-foreground': 'var(--popover-foreground)',
+                // Keep brand primary, but also expose UI primary tokens
+                'ui-primary': 'var(--primary)',
+                'ui-primary-foreground': 'var(--primary-foreground)',
+                secondary: '#805dca',
+                'secondary-foreground': 'var(--secondary-foreground)',
+                muted: 'var(--muted)',
+                'muted-foreground': 'var(--muted-foreground)',
+                accent: 'var(--accent)',
+                'accent-foreground': 'var(--accent-foreground)',
+                destructive: 'var(--destructive)',
+                'destructive-foreground': 'var(--foreground)',
+                border: 'var(--border)',
+                input: 'var(--input)',
+                ring: 'var(--ring)',
+                // charts and sidebar (optional)
+                'chart-1': 'var(--chart-1)',
+                'chart-2': 'var(--chart-2)',
+                'chart-3': 'var(--chart-3)',
+                'chart-4': 'var(--chart-4)',
+                'chart-5': 'var(--chart-5)',
+                sidebar: 'var(--sidebar)',
+                'sidebar-foreground': 'var(--sidebar-foreground)',
+                'sidebar-primary': 'var(--sidebar-primary)',
+                'sidebar-primary-foreground': 'var(--sidebar-primary-foreground)',
+                'sidebar-accent': 'var(--sidebar-accent)',
+                'sidebar-accent-foreground': 'var(--sidebar-accent-foreground)',
+                'sidebar-border': 'var(--sidebar-border)',
+                'sidebar-ring': 'var(--sidebar-ring)',
+                // Also map primary-foreground for shadcn buttons
+                'primary-foreground': 'var(--primary-foreground, #ffffff)'
             },
             fontFamily: {
                 nunito: ['var(--font-nunito)'],

@@ -1,10 +1,10 @@
 'use client';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
 // PurchaseSummary is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
-import { Plus, FileSpreadsheet, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle } from 'lucide-react';
+import { Plus, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle } from 'lucide-react';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,13 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
-import DataImporter from '@/components/data-importer/DataImporter';
+import { AuthContext } from '@/store/AuthContext';
+// import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+// Removed Excel importer – creating records directly in-app
 
 // Format number for RM display: thousand separators + 2 decimals
 const fmtRM = (value: number) => {
@@ -52,8 +48,8 @@ interface ApiPurchase {
   inv_no?: string;
   grn_date?: string;
   grn_no?: string;
-  released_to?: string | null;
-  released_at?: string | null;
+  handover_to?: string | null;
+  handover_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
   upload_path?: string | null;
@@ -68,7 +64,7 @@ interface PurchaseFormData {
   type_id: string;             // maps to purchase.type.id
   items: string;               // Match API field name
   supplier_id: string;
-  brand: string;
+  brand_id: string;            // send brand_id instead of brand name
   qty: number;
   unit_price: number;          // Will convert to string when sending to API
   pr_date: string;             // Match API field name
@@ -88,7 +84,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const [filteredPurchases, setFilteredPurchases] = useState<ApiPurchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarMode, setSidebarMode] = useState<'view' | 'create' | 'edit' | 'import'>('create');
+  const [sidebarMode, setSidebarMode] = useState<'view' | 'create' | 'edit'>('create');
   const [selectedPurchase, setSelectedPurchase] = useState<ApiPurchase | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,7 +96,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     type_id: '',
     items: '',
     supplier_id: '',
-    brand: '',
+    brand_id: '',
     qty: 0,
     unit_price: 0,
     pr_date: '',
@@ -160,11 +156,18 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const [suppliers, setSuppliers] = useState<Array<{ id: number | string; name: string }>>([]);
   const [supplierOptions, setSupplierOptions] = useState<ComboboxOption[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(false);
-  
+
   const [brands, setBrands] = useState<Array<{ id: number | string; name: string }>>([]);
   const [brandOptions, setBrandOptions] = useState<ComboboxOption[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
-  
+  // Quick-create state
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [creatingBrand, setCreatingBrand] = useState(false);
+  const [addingBrand, setAddingBrand] = useState(false);
+
   const [types, setTypes] = useState<Array<{ id: number | string; name: string }>>([]);
   const [typeOptions, setTypeOptions] = useState<ComboboxOption[]>([]);
   const [typesLoading, setTypesLoading] = useState(false);
@@ -195,14 +198,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
         setSuppliers(sups);
         setSupplierOptions(sups.map((s: any) => ({ value: String(s.id), label: s.name })));
-  setTypes(tps);
-  setTypeOptions(tps.map((t: any) => ({ value: String(t.id), label: t.name })));
+        setTypes(tps);
+        setTypeOptions(tps.map((t: any) => ({ value: String(t.id), label: t.name })));
       } catch (err) {
         console.error('Failed to load combobox data', err);
       } finally {
         setEmployeesLoading(false);
         setCostcentersLoading(false);
-  setTypesLoading(false);
+        setTypesLoading(false);
       }
     };
 
@@ -224,8 +227,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         const res = await authenticatedApi.get(`/api/assets/brands?type=${formData.type_id}`);
         const data = (res as any).data?.data || (res as any).data || [];
         setBrands(data);
-        // keep formData.brand as a string name to avoid changing payload shape
-        setBrandOptions(data.map((b: any) => ({ value: String(b.name), label: b.name })));
+        // use brand id as value
+        setBrandOptions(data.map((b: any) => ({ value: String(b.id ?? b.code ?? b.name), label: b.name })));
       } catch (err) {
         console.error('Failed to load brands for type', formData.type_id, err);
         setBrands([]);
@@ -238,10 +241,24 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     fetchBrands();
   }, [formData.type_id]);
 
-  // Load purchases data
+  // Username from AuthContext or localStorage fallback
+  const auth = useContext(AuthContext);
+  const getUsername = () => {
+    const fromCtx = auth?.authData?.user?.username;
+    if (fromCtx) return fromCtx;
+    try {
+      return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || '';
+    } catch {
+      return '';
+    }
+  };
+
+  // Load purchases whenever username becomes available/changes
   useEffect(() => {
-  loadPurchases();
-  }, []);
+    const uname = getUsername();
+    loadPurchases(uname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth?.authData?.user?.username]);
 
   // Filter purchases based on search and status
   useEffect(() => {
@@ -264,12 +281,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       filtered = filtered.filter(purchase => {
         const supplier = typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '');
         const cc = typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || '');
+        const brand = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
         const prNo = purchase.pr_no ? String(purchase.pr_no) : '';
         const poNo = purchase.po_no ? String(purchase.po_no) : '';
         return (
           (purchase.items || '').toLowerCase().includes(q) ||
           supplier.toLowerCase().includes(q) ||
           cc.toLowerCase().includes(q) ||
+          brand.toLowerCase().includes(q) ||
           prNo.toLowerCase().includes(q) ||
           poNo.toLowerCase().includes(q)
         );
@@ -287,10 +306,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     setFilteredPurchases(filtered);
   }, [purchases, searchQuery, statusFilter]);
 
-  const loadPurchases = async () => {
+  const loadPurchases = async (managerUsername?: string) => {
     setLoading(true);
     try {
-      const response = await authenticatedApi.get<{ data: ApiPurchase[] }>('/api/purchases');
+      const url = managerUsername
+        ? `/api/purchases?managers=${encodeURIComponent(managerUsername)}`
+        : '/api/purchases';
+      const response = await authenticatedApi.get<{ data: ApiPurchase[] }>(url);
       setPurchases(response.data?.data || []);
     } catch (error) {
       toast.error('Failed to load purchase records');
@@ -302,6 +324,11 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
   // Handle form field changes
   const handleInputChange = (field: keyof PurchaseFormData, value: any) => {
+    // Force uppercase for document number fields
+    const upperFields: (keyof PurchaseFormData)[] = ['pr_no', 'po_no', 'do_no', 'inv_no', 'grn_no'];
+    if (upperFields.includes(field)) {
+      value = String(value || '').toUpperCase();
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: '' }));
@@ -322,6 +349,10 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     if (!formData.items) errors.items = 'Item description is required';
     if (!formData.type_id) errors.type_id = 'Item type is required';
     if (!formData.supplier_id) errors.supplier_id = 'Supplier is required';
+    if (!formData.pr_no?.trim()) errors.pr_no = 'PR number is required';
+    if (!formData.pr_date?.trim()) errors.pr_date = 'PR date is required';
+    if (!formData.po_no?.trim()) errors.po_no = 'PO number is required';
+    if (!formData.po_date?.trim()) errors.po_date = 'PO date is required';
     if (!formData.qty || formData.qty <= 0) errors.qty = 'Quantity must be greater than 0';
     if (!formData.unit_price || formData.unit_price <= 0) errors.unit_price = 'Unit price must be greater than 0';
 
@@ -341,12 +372,15 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         unit_price: String(formData.unit_price ?? ''),
         // map to API expected keys (keep as-is; backend can coerce types if needed)
         costcenter_id: formData.costcenter,
-        ramco_id: formData.pic
+        ramco_id: formData.pic,
+        brand_id: formData.brand_id || undefined,
       };
 
       // remove the old keys to avoid sending duplicate data
       delete jsonPayload.costcenter;
       delete jsonPayload.pic;
+      // Do not send brand name field
+      delete jsonPayload.brand;
 
       // If a file was attached, send multipart/form-data and include the file under `upload_path`.
       if (uploadFile) {
@@ -406,7 +440,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   };
 
   // Sidebar handlers
-  const openSidebar = (mode: 'view' | 'create' | 'edit' | 'import', purchase?: ApiPurchase) => {
+  const openSidebar = (mode: 'view' | 'create' | 'edit', purchase?: ApiPurchase) => {
     setSidebarMode(mode);
     setSelectedPurchase(purchase || null);
 
@@ -418,7 +452,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         type_id: '',
         items: '',
         supplier_id: '',
-        brand: '',
+        brand_id: '',
         qty: 0,
         unit_price: 0,
         pr_date: '',
@@ -437,8 +471,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       const cc = typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.id ? String(purchase.costcenter.id) : (purchase.costcenter?.name || ''));
       const picVal = typeof purchase.requestor === 'string' ? purchase.requestor : (purchase.requestor?.ramco_id || '');
       const itemType = typeof purchase.type === 'string' ? purchase.type : (purchase.type?.name || '');
-      const supplierName = typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '');
-      const brandName = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
+      const supplierId = typeof purchase.supplier === 'string' ? '' : (purchase.supplier as any)?.id ? String((purchase.supplier as any).id) : '';
+      const brandId = typeof purchase.brand === 'string' ? '' : (purchase.brand as any)?.id ? String((purchase.brand as any).id) : '';
 
       setFormData({
         request_type: purchase.request_type || '',
@@ -446,8 +480,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         pic: picVal || '',
         type_id: purchase.type && typeof purchase.type !== 'string' && purchase.type.id ? String(purchase.type.id) : (itemType || ''),
         items: purchase.items || '',
-        supplier_id: purchase.supplier && typeof purchase.supplier !== 'string' && (purchase.supplier as any).id ? String((purchase.supplier as any).id) : '',
-        brand: brandName || '',
+        supplier_id: supplierId,
+        brand_id: brandId,
         qty: purchase.qty || 0,
         unit_price: parseFloat(purchase.unit_price || '0'),
         pr_date: purchase.pr_date ? purchase.pr_date.split('T')[0] : '',
@@ -509,8 +543,11 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
   // Get status text
   const getStatusText = (purchase: ApiPurchase) => {
+    // Completed when GRN is recorded
     if (purchase.grn_date && purchase.grn_no) return 'Completed';
-    if (purchase.inv_date && purchase.inv_no) return 'Handover';
+    // Handover ONLY when handover fields populated by Asset Registry
+    if ((purchase as any).handover_at || (purchase as any).handover_to) return 'Handover';
+    // Otherwise still in logistics/procurement flow
     if (purchase.do_date && purchase.do_no) return 'Delivered';
     if (purchase.po_date && purchase.po_no) return 'Ordered';
     return 'Requested';
@@ -629,7 +666,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           <CardContent className="space-y-4">
             {/* PR fields moved above Request Type (readonly in edit mode) */}
             <div>
-              <Label htmlFor="pr_no">PR Number</Label>
+              <Label htmlFor="pr_no">PR Number *</Label>
               <Input
                 id="pr_no"
                 value={formData.pr_no}
@@ -637,10 +674,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 placeholder="Enter PR number"
                 readOnly={sidebarMode === 'edit'}
               />
+              {validationErrors.pr_no && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
+              )}
             </div>
 
             <div>
-              <Label htmlFor="pr_date">PR Date</Label>
+              <Label htmlFor="pr_date">PR Date *</Label>
               <Input
                 id="pr_date"
                 type="date"
@@ -648,6 +688,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 onChange={(e) => handleInputChange('pr_date', e.target.value)}
                 readOnly={sidebarMode === 'edit'}
               />
+              {validationErrors.pr_date && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
+              )}
             </div>
 
             <div>
@@ -737,14 +780,59 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             <div>
               <Label htmlFor="brand">Brand</Label>
               <Combobox
-                options={brandOptions}
-                value={formData.brand}
-                onValueChange={(val) => handleInputChange('brand', val)}
+                options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
+                value={formData.brand_id}
+                onValueChange={(val) => {
+                  if (val === '__add_brand__') { setAddingBrand(true); return; }
+                  setAddingBrand(false);
+                  handleInputChange('brand_id', val);
+                }}
                 placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
                 emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
                 disabled={brandsLoading || !formData.type_id}
                 clearable={true}
               />
+              {addingBrand && (
+                <div className="relative mt-2">
+                  <Input
+                    value={newBrandName}
+                    onChange={(e) => setNewBrandName(e.target.value)}
+                    placeholder="Enter new brand name"
+                    disabled={!formData.type_id || creatingBrand}
+                    className="pr-10"
+                  />
+                  <Button
+                    size="icon"
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={async () => {
+                      if (!formData.type_id) { toast.error('Select item type first'); return; }
+                      const name = newBrandName.trim();
+                      if (!name) { toast.error('Brand name is required'); return; }
+                      try {
+                        setCreatingBrand(true);
+                        const res = await authenticatedApi.post('/api/assets/brands', { name, type_id: Number(formData.type_id) });
+                        const created: any = (res as any).data || {};
+                        const newId = created.id || created.data?.id || created.code || name;
+                        const option = { value: String(newId), label: name };
+                        setBrands(prev => [...prev, { id: newId, name }]);
+                        setBrandOptions(prev => [...prev, option]);
+                        setFormData(prev => ({ ...prev, brand_id: String(newId) }));
+                        setNewBrandName('');
+                        setAddingBrand(false);
+                        toast.success('Brand created');
+                      } catch (err) {
+                        toast.error('Failed to create brand');
+                        console.error('Create brand error', err);
+                      } finally {
+                        setCreatingBrand(false);
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -800,9 +888,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             <div>
               <Label htmlFor="supplier">Supplier *</Label>
               <Combobox
-                options={supplierOptions}
+                options={[...supplierOptions, { value: '__add_supplier__', label: 'Add new supplier…' }]}
                 value={formData.supplier_id}
-                onValueChange={(val) => handleInputChange('supplier_id', val)}
+                onValueChange={(val) => {
+                  if (val === '__add_supplier__') { setAddingSupplier(true); return; }
+                  setAddingSupplier(false);
+                  handleInputChange('supplier_id', val)
+                }}
                 placeholder="Select supplier"
                 emptyMessage="No suppliers"
                 disabled={suppliersLoading}
@@ -811,20 +903,63 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               {validationErrors.supplier_id && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.supplier_id}</p>
               )}
+              {addingSupplier && (
+                <div className="relative mt-2">
+                  <Input
+                    value={newSupplierName}
+                    onChange={(e) => setNewSupplierName(e.target.value)}
+                    placeholder="Enter new supplier name"
+                    disabled={creatingSupplier}
+                    className="pr-10"
+                  />
+                  <Button
+                    size="icon"
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={async () => {
+                      const name = newSupplierName.trim();
+                      if (!name) { toast.error('Supplier name is required'); return; }
+                      try {
+                        setCreatingSupplier(true);
+                        const res = await authenticatedApi.post('/api/purchases/suppliers', { name });
+                        const created: any = (res as any).data || {};
+                        const newId = created.id || created.data?.id || created.insertId || created.lastId || name;
+                        const option = { value: String(newId), label: name };
+                        setSuppliers(prev => [...prev, { id: newId, name }]);
+                        setSupplierOptions(prev => [...prev, option]);
+                        setFormData(prev => ({ ...prev, supplier_id: String(newId) }));
+                        setNewSupplierName('');
+                        setAddingSupplier(false);
+                        toast.success('Supplier created');
+                      } catch (err) {
+                        toast.error('Failed to create supplier');
+                        console.error('Create supplier error', err);
+                      } finally {
+                        setCreatingSupplier(false);
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div>
-              <Label htmlFor="po_no">PO Number</Label>
+              <Label htmlFor="po_no">PO Number *</Label>
               <Input
                 id="po_no"
                 value={formData.po_no}
                 onChange={(e) => handleInputChange('po_no', e.target.value)}
                 placeholder="Enter PO number"
               />
+              {validationErrors.po_no && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.po_no}</p>
+              )}
             </div>
 
             <div>
-              <Label htmlFor="po_no">PO Date</Label>
+              <Label htmlFor="po_no">PO Date *</Label>
               <Input
                 id="po_date"
                 type="date"
@@ -832,6 +967,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 onChange={(e) => handleInputChange('po_date', e.target.value)}
                 placeholder="Enter PO date"
               />
+              {validationErrors.po_date && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.po_date}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1101,21 +1239,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     );
   };
 
-  // Render import content
-  const renderImportContent = () => (
-    <div className="space-y-4">
-      <div className="text-center p-6">
-        <FileSpreadsheet className="mx-auto h-16 w-16 text-blue-500 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Import Purchase Records</h3>
-        <p className="text-gray-600 mb-4">
-          Upload an Excel file with your purchase data. The system will help you map the columns.
-        </p>
-      </div>
-
-      <DataImporter onConfirm={handleImportConfirm} />
-    </div>
-  );
-
   // Get sidebar content based on mode
   const getSidebarContent = () => {
     switch (sidebarMode) {
@@ -1124,8 +1247,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       case 'create':
       case 'edit':
         return renderFormContent();
-      case 'import':
-        return renderImportContent();
       default:
         return null;
     }
@@ -1139,8 +1260,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         return 'Create New Purchase Record';
       case 'edit':
         return 'Edit Purchase Record';
-      case 'import':
-        return 'Import Purchase Records';
       default:
         return 'Purchase Record';
     }
@@ -1182,7 +1301,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               <SelectItem value="requested">Requested</SelectItem>
               <SelectItem value="ordered">Ordered</SelectItem>
               <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="released">Released</SelectItem>
+              <SelectItem value="handover">Handover</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
             </SelectContent>
           </Select>
@@ -1207,25 +1326,11 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </Button>
           </div>
 
-          {/* Add Purchase Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Purchase
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => openSidebar('create')}>
-                <ShoppingCart className="mr-2 h-4 w-4" />
-                Create New Record
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openSidebar('import')}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Import from Excel
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Add Purchase */}
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => openSidebar('create')}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Purchase
+          </Button>
         </div>
       </div>
 
@@ -1318,7 +1423,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 </h3>
                 <p className="text-gray-500 mb-4">
                   {purchases.length === 0
-                    ? 'Get started by creating your first purchase record or importing data from Excel.'
+                    ? 'Get started by creating your first purchase record.'
                     : 'Try adjusting your search or filter criteria.'
                   }
                 </p>
@@ -1327,10 +1432,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                     <Button onClick={() => openSidebar('create')}>
                       <ShoppingCart className="mr-2 h-4 w-4" />
                       Create First Record
-                    </Button>
-                    <Button variant="outline" onClick={() => openSidebar('import')}>
-                      <FileSpreadsheet className="mr-2 h-4 w-4" />
-                      Import from Excel
                     </Button>
                   </div>
                 )}

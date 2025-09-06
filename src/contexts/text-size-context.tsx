@@ -31,7 +31,8 @@ interface TextSizeProviderProps {
 }
 
 export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) => {
-  const [textSize, setTextSize] = useState<TextSize>('md')
+  // Default smaller base to avoid oversized UI on first load
+  const [textSize, setTextSize] = useState<TextSize>('sm')
   const [mounted, setMounted] = useState(false)
 
   // Load saved text size from localStorage
@@ -138,9 +139,9 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
   if (!mounted) {
     return (
       <TextSizeContext.Provider value={{
-        textSize: 'md',
+        textSize: 'sm',
         setTextSize: () => {},
-        textSizeClasses: textSizeClasses.md
+        textSizeClasses: textSizeClasses.sm
       }}>
         {children}
       </TextSizeContext.Provider>

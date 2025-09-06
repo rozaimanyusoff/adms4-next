@@ -122,7 +122,7 @@ const ComponentLogin = () => {
             <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
                     <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-gray-700 mb-1">Email or Username</label>
-                    <Input id="emailOrUsername" name="emailOrUsername" type="text" required placeholder="Enter your email or username" />
+                    <Input id="emailOrUsername" name="emailOrUsername" type="text" required placeholder="Enter your email or username" className='dark:text-dark' />
                 </div>
                 <div>
                     <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
@@ -133,6 +133,7 @@ const ComponentLogin = () => {
                             type={showPassword ? "text" : "password"}
                             required
                             placeholder="Enter your password"
+                            className='dark:text-dark pr-10'
                         />
                         <button
                             type="button"

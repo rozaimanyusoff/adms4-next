@@ -254,8 +254,8 @@ const Sidebar = () => {
                             <IconCaretsDown className="m-auto rotate-90 text-orange-500" />
                         </button>
                     </div>
-                    {/* Temporarily remove PerfectScrollbar for debugging */}
-                    <div className="relative h-[calc(100vh-80px)] overflow-y-auto">
+                    {/* Scroll container with auto-hide scrollbar */}
+                    <div className="relative h-[calc(100vh-80px)] overflow-y-auto auto-hide-scroll">
                         <ul className="relative font-semibold space-y-0.5">
                             {renderMenuItems(navTree)}
                         </ul>

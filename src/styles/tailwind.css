@@ -44,8 +44,6 @@
 @import 'tailwindcss';
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 @config '../../tailwind.config.js';
 
 /* Global Text Size Classes */
@@ -55,68 +53,24 @@
     --text-size-small: 0.875rem;
     --text-size-large: 1.125rem;
   }
-  
-  /* Global text size application */
-  .text-size-xs {
-    font-size: 0.75rem !important;
-  }
-  .text-size-xs * {
-    font-size: inherit !important;
-  }
-  
-  .text-size-sm {
-    font-size: 0.875rem !important;
-  }
-  .text-size-sm * {
-    font-size: inherit !important;
-  }
-  
-  .text-size-md {
-    font-size: 1rem !important;
-  }
-  .text-size-md * {
-    font-size: inherit !important;
-  }
-  
-  .text-size-lg {
-    font-size: 1.125rem !important;
-  }
-  .text-size-lg * {
-    font-size: inherit !important;
-  }
-  
-  .text-size-xl {
-    font-size: 1.25rem !important;
-  }
-  .text-size-xl * {
-    font-size: inherit !important;
-  }
-  
-  /* Apply to common elements */
-  .text-size-xs h1, .text-size-xs h2, .text-size-xs h3, 
-  .text-size-xs h4, .text-size-xs h5, .text-size-xs h6 {
-    font-size: 0.875rem !important;
-  }
-  
-  .text-size-sm h1, .text-size-sm h2, .text-size-sm h3, 
-  .text-size-sm h4, .text-size-sm h5, .text-size-sm h6 {
-    font-size: 1rem !important;
-  }
-  
-  .text-size-md h1, .text-size-md h2, .text-size-md h3, 
-  .text-size-md h4, .text-size-md h5, .text-size-md h6 {
-    font-size: 1.125rem !important;
-  }
-  
-  .text-size-lg h1, .text-size-lg h2, .text-size-lg h3, 
-  .text-size-lg h4, .text-size-lg h5, .text-size-lg h6 {
-    font-size: 1.25rem !important;
-  }
-  
-  .text-size-xl h1, .text-size-xl h2, .text-size-xl h3, 
-  .text-size-xl h4, .text-size-xl h5, .text-size-xl h6 {
-    font-size: 1.5rem !important;
-  }
+
+  /* Smoothen font-size changes globally */
+  html, body { transition: font-size 0.2s ease-in-out; }
+
+  /*
+    IMPORTANT: Apply the scalable base size to the body only
+    when the html element has the corresponding class. Avoid
+    wildcard inheritance that overrides Tailwind `text-*` utilities.
+  */
+  .text-size-xs body { font-size: 0.75rem; }
+  .text-size-sm body { font-size: 0.875rem; }
+  .text-size-md body { font-size: 1rem; }
+  .text-size-lg body { font-size: 1.125rem; }
+  .text-size-xl body { font-size: 1.25rem; }
+
+  /* Keep Tailwind utilities effective; do NOT force headings or
+     descendants to inherit. Specific element sizes should be
+     handled with Tailwind classes or component-level styles. */
   
   /* Enhanced scrollbar styling for tabs */
   .tabs-scroll {
@@ -951,18 +905,21 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 
 @utility btn {
   /* Buttons */
-  @apply relative flex items-center justify-center rounded-md border px-5 py-2 text-sm font-semibold shadow-[0_10px_20px_-10px] outline-hidden transition duration-300 hover:shadow-none;
+  @apply relative flex items-center justify-center rounded-md border px-5 py-2 font-semibold shadow-[0_10px_20px_-10px] outline-hidden transition duration-300 hover:shadow-none;
+  font-size: var(--text-size-base);
   &[disabled] {
     @apply cursor-not-allowed opacity-60;
   }
 }
 
 @utility btn-lg {
-  @apply px-7 py-2.5 text-base;
+  @apply px-7 py-2.5;
+  font-size: var(--text-size-large);
 }
 
 @utility btn-sm {
-  @apply px-2.5 py-1.5 text-xs;
+  @apply px-2.5 py-1.5;
+  font-size: var(--text-size-small);
 }
 
 @utility btn-primary {
@@ -1027,7 +984,8 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 
 @utility badge {
   /* Badge */
-  @apply relative my-1 rounded-sm border border-transparent px-2 py-0.5 text-xs font-semibold text-white;
+  @apply relative my-1 rounded-sm border border-transparent px-2 py-0.5 font-semibold text-white;
+  font-size: var(--text-size-small);
 }
 
 @utility badge-outline-primary {
@@ -1060,7 +1018,8 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 
 @utility form-input {
   /* Form */
-  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 text-sm font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  font-size: var(--text-size-base);
 
   .has-error & {
     @apply border-danger bg-danger/[0.08] text-danger placeholder-danger/70 focus:border-danger;
@@ -1072,7 +1031,8 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 }
 
 @utility form-textarea {
-  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 text-sm font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  font-size: var(--text-size-base);
 
   .has-error & {
     @apply border-danger bg-danger/[0.08] text-danger placeholder-danger/70 focus:border-danger;
@@ -1084,7 +1044,8 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 }
 
 @utility form-select {
-  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 text-sm font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  font-size: var(--text-size-base);
 
   .has-error & {
     @apply border-danger bg-danger/[0.08] text-danger placeholder-danger/70 focus:border-danger;
@@ -1096,7 +1057,8 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 }
 
 @utility form-multiselect {
-  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 text-sm font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  @apply w-full rounded-md border border-white-light bg-white px-4 py-2 font-semibold text-black outline-hidden! focus:border-primary focus:ring-transparent dark:border-[#17263c] dark:bg-[#121e32] dark:text-white-dark dark:focus:border-primary;
+  font-size: var(--text-size-base);
 
   .has-error & {
     @apply border-danger bg-danger/[0.08] text-danger placeholder-danger/70 focus:border-danger;
@@ -1108,35 +1070,43 @@ hover:text-primary hover:before:bg-primary! ltr:before:mr-2 rtl:before:ml-2 dark
 }
 
 @utility form-input-lg {
-  @apply py-2.5 text-base;
+  @apply py-2.5;
+  font-size: var(--text-size-large);
 }
 
 @utility form-textarea-lg {
-  @apply py-2.5 text-base;
+  @apply py-2.5;
+  font-size: var(--text-size-large);
 }
 
 @utility form-select-lg {
-  @apply py-2.5 text-base;
+  @apply py-2.5;
+  font-size: var(--text-size-large);
 }
 
 @utility form-multiselect-lg {
-  @apply py-2.5 text-base;
+  @apply py-2.5;
+  font-size: var(--text-size-large);
 }
 
 @utility form-input-sm {
-  @apply py-1.5 text-xs;
+  @apply py-1.5;
+  font-size: var(--text-size-small);
 }
 
 @utility form-textarea-sm {
-  @apply py-1.5 text-xs;
+  @apply py-1.5;
+  font-size: var(--text-size-small);
 }
 
 @utility form-select-sm {
-  @apply py-1.5 text-xs;
+  @apply py-1.5;
+  font-size: var(--text-size-small);
 }
 
 @utility form-multiselect-sm {
-  @apply py-1.5 text-xs;
+  @apply py-1.5;
+  font-size: var(--text-size-small);
 }
 
 @utility has-error {

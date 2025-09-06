@@ -368,12 +368,12 @@ const FleetCardList: React.FC = () => {
         <div className="mt-4">
             {/* Summary cards: duplicates info and toggles */}
             <div className="mb-4 flex items-center gap-4">
-                <div className="p-3 border rounded bg-sky-100 shadow-sm">
+                <div className="p-3 border rounded bg-card shadow-sm">
                     <div className="text-sm text-muted-foreground">Total Cards</div>
                     <div className="text-lg font-semibold">{cards.length}</div>
                 </div>
                 <div
-                    className={`p-3 border rounded bg-yellow-100 shadow-sm cursor-pointer ${showDuplicatesOnly ? 'ring-2 ring-amber-300' : ''}`}
+                    className={`p-3 border rounded bg-card shadow-sm cursor-pointer ${showDuplicatesOnly ? 'ring-2 ring-ring' : ''}`}
                     onClick={() => setShowDuplicatesOnly(s => !s)}
                     role="button"
                     aria-pressed={showDuplicatesOnly}
@@ -382,7 +382,7 @@ const FleetCardList: React.FC = () => {
                     <div className="text-lg font-semibold">{duplicatedCount}</div>
                 </div>
                 <div
-                    className={`p-3 border rounded bg-rose-100 shadow-sm cursor-pointer ${showDuplicateCardsOnly ? 'ring-2 ring-rose-300' : ''}`}
+                    className={`p-3 border rounded bg-card shadow-sm cursor-pointer ${showDuplicateCardsOnly ? 'ring-2 ring-ring' : ''}`}
                     onClick={() => setShowDuplicateCardsOnly(s => !s)}
                     role="button"
                     aria-pressed={showDuplicateCardsOnly}
@@ -409,8 +409,8 @@ const FleetCardList: React.FC = () => {
                 inputFilter={false}
                 onRowDoubleClick={(row: FleetCard) => openEditor(row)}
                 rowClass={(row: FleetCard) => {
-                    if (duplicatedCardNumbers.has(row.card_no || '')) return 'bg-rose-100';
-                    if (row.asset && duplicatedAssetIds.has(row.asset.id!)) return 'bg-amber-100';
+                    if (duplicatedCardNumbers.has(row.card_no || '')) return 'bg-destructive/10';
+                    if (row.asset && duplicatedAssetIds.has(row.asset.id!)) return 'bg-accent/10';
                     return '';
                 }}
             />
@@ -545,13 +545,13 @@ const FleetCardList: React.FC = () => {
                                         {assetOptions.filter(a => (a.register_number || '').toLowerCase().includes(assetSearch.toLowerCase())).map(a => {
                                             const assigned = cards.find(c => c.asset && c.asset.id === a.id)?.card_no;
                                             return (
-                                                <div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
+                                                <div key={a.id} className="p-2 border rounded hover:bg-accent/20 flex items-center justify-between">
                                                     <div>
                                                         <div className="font-medium">{a.register_number || `#${a.id}`}</div>
-                                                        <div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
-                                                        <div className="text-xs text-gray-500">Current Card: <span className="text-red-600 font-bold">{assigned || '-'}</span></div>
+                                                        <div className="text-xs text-muted-foreground">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                                        <div className="text-xs text-muted-foreground">Current Card: <span className="text-destructive font-bold">{assigned || '-'}</span></div>
                                                     </div>
-                                                    <span className="text-green-500 cursor-pointer" onClick={() => {
+                                                    <span className="text-green-600 dark:text-green-400 cursor-pointer" onClick={() => {
                                                         setForm(f => ({ ...f, asset_id: String(a.id) }));
                                                         setAssetPickerOpen(false);
                                                     }} title="Select this asset">

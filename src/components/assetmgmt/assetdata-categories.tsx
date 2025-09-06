@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -28,10 +28,10 @@ import { toast } from "sonner";
 
 interface Category {
     id: number;
-    code: string;
     name: string;
     image?: string;
-    type_code?: string;
+    type_code?: string; // legacy support
+    type_id?: number;   // preferred for write operations
     type?: {
         id: number;
         name: string;
@@ -41,14 +41,14 @@ interface Category {
 interface Type {
     id: number;
     name: string;
-    code: string;
+    code?: string;
 }
 
 const CoreCategory: React.FC = () => {
     const [data, setData] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [formData, setFormData] = useState<Partial<Category & { type_code: string }>>({ name: "", type_code: "" });
+    const [formData, setFormData] = useState<Partial<Category & { type_id: number }>>({ name: "" });
     const [types, setTypes] = useState<Type[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -79,11 +79,10 @@ const CoreCategory: React.FC = () => {
     const handleSubmit = async () => {
         try {
             const payload = {
-                code: formData.code,
                 name: formData.name,
-                image: formData.image,
-                type_code: formData.type_code,
-            };
+                // image intentionally omitted from payload per new contract
+                type_id: typeof formData.type_id === 'number' ? formData.type_id : undefined,
+            } as { name?: string; type_id?: number };
             if (formData.id) {
                 await authenticatedApi.put(`/api/assets/categories/${formData.id}`, payload);
                 toast.success("Category updated successfully");
@@ -93,16 +92,28 @@ const CoreCategory: React.FC = () => {
             }
             fetchData();
             setIsModalOpen(false);
-            setFormData({ name: "", code: "", type_code: "" });
+            setFormData({ name: "" });
         } catch (error) {
             toast.error("Error submitting form");
             console.error("Error submitting form:", error);
         }
     };
 
+    const handleDelete = async (id: number) => {
+        try {
+            const ok = typeof window !== 'undefined' ? window.confirm('Delete this category?') : true;
+            if (!ok) return;
+            await authenticatedApi.delete(`/api/assets/categories/${id}`);
+            toast.success('Category deleted');
+            fetchData();
+        } catch (error) {
+            toast.error('Error deleting category');
+            console.error('Error deleting category:', error);
+        }
+    };
+
     const columns: ColumnDef<Category>[] = [
         { key: "id" as keyof Category, header: "ID" },
-        { key: "code" as keyof Category, header: "Code" },
         { key: "name" as keyof Category, header: "Name" },
         {
             key: "image" as keyof Category,
@@ -110,10 +121,12 @@ const CoreCategory: React.FC = () => {
             render: (row: Category) => row.image ? <img src={row.image} alt={row.name} className="h-10 w-10 object-cover" /> : <span className="text-gray-500">No Image</span>,
         },
         {
-            key: "type_code" as any,
+            key: "type" as any,
             header: "Type",
             render: (row: Category) => {
-                const found = types.find(t => t.code === row.type_code);
+                const foundById = row.type?.id ? types.find(t => t.id === row.type!.id) : undefined;
+                const foundByCode = row.type_code ? types.find(t => t.code === row.type_code) : undefined;
+                const found = foundById || foundByCode;
                 return found ? found.name : <span className="text-gray-500">N/A</span>;
             },
         },
@@ -121,29 +134,36 @@ const CoreCategory: React.FC = () => {
             key: "actions" as any as keyof Category,
             header: "Actions",
             render: (row: Category) => (
-                <Pencil
-                    size={20}
-                    className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    tabIndex={0}
-                    role="button"
-                    aria-label="Edit Category"
+                <div className="flex items-center gap-2">
+                    <Pencil
+                        size={20}
+                        className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                        tabIndex={0}
+                        role="button"
+                        aria-label="Edit Category"
                     onClick={() => {
-                        setFormData({
-                            ...row,
-                            type_code: row.type_code || (row.type ? types.find(t => t.id === (row.type as any)?.id)?.code || "" : "")
-                        });
+                        const inferredTypeId = row.type?.id ?? (row.type_code ? types.find(t => t.code === row.type_code)?.id : undefined);
+                        setFormData({ ...row, type_id: inferredTypeId });
                         setIsModalOpen(true);
                     }}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            setFormData({
-                                ...row,
-                                type_code: row.type_code || (row.type ? types.find(t => t.id === (row.type as any)?.id)?.code || "" : "")
-                            });
-                            setIsModalOpen(true);
-                        }
-                    }}
-                />
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                const inferredTypeId = row.type?.id ?? (row.type_code ? types.find(t => t.code === row.type_code)?.id : undefined);
+                                setFormData({ ...row, type_id: inferredTypeId });
+                                setIsModalOpen(true);
+                            }
+                        }}
+                    />
+                    <Trash2
+                        size={20}
+                        className="inline-flex items-center justify-center rounded hover:bg-red-100 cursor-pointer text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400"
+                        tabIndex={0}
+                        role="button"
+                        aria-label="Delete Category"
+                        onClick={() => handleDelete(row.id)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleDelete(row.id); }}
+                    />
+                </div>
             ),
         },
     ];
@@ -176,17 +196,6 @@ const CoreCategory: React.FC = () => {
                         }}
                     >
                         <div className="mb-4">
-                            <Label htmlFor="code" className="block text-sm font-medium text-gray-700">
-                                Code
-                            </Label>
-                            <Input
-                                id="code"
-                                value={formData.code || ""}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                    setFormData({ ...formData, code: e.target.value })
-                                }
-                                required
-                            />
                         </div>
                         <div className="mb-4">
                             <Label htmlFor="name" className="block text-sm font-medium text-gray-700">
@@ -229,8 +238,8 @@ const CoreCategory: React.FC = () => {
                                 Type
                             </Label>
                             <Select
-                                value={formData.type_code || ""}
-                                onValueChange={(value) => setFormData({ ...formData, type_code: value })}
+                                value={typeof formData.type_id === 'number' ? String(formData.type_id) : ""}
+                                onValueChange={(value) => setFormData({ ...formData, type_id: Number(value) })}
                             >
                                 <SelectTrigger id="type" className="w-full">
                                     <SelectValue placeholder="Select a type" />
@@ -239,7 +248,7 @@ const CoreCategory: React.FC = () => {
                                     <SelectGroup>
                                         <SelectLabel>Types</SelectLabel>
                                         {types.map((type) => (
-                                            <SelectItem key={type.code} value={type.code}>
+                                            <SelectItem key={type.id} value={String(type.id)}>
                                                 {type.name}
                                             </SelectItem>
                                         ))}

@@ -53,10 +53,14 @@ const themeConfigSlice = createSlice({
                 }
             }
 
+            const html = document.documentElement;
+            const body = document.body;
             if (state.isDarkMode) {
-                document.querySelector('body')?.classList.add('dark');
+                html?.classList.add('dark');
+                body?.classList.add('dark');
             } else {
-                document.querySelector('body')?.classList.remove('dark');
+                html?.classList.remove('dark');
+                body?.classList.remove('dark');
             }
         },
         toggleMenu(state, { payload }) {

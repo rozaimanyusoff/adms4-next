@@ -2,10 +2,10 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  Calendar, 
-  Package, 
-  DollarSign, 
+import {
+  Calendar,
+  Package,
+  DollarSign,
   Truck,
   FileText,
   CheckCircle,
@@ -35,8 +35,8 @@ interface ApiPurchase {
   inv_no?: string;
   grn_date?: string;
   grn_no?: string;
-  released_to?: string | null;
-  released_at?: string | null;
+  handover_to?: string | null;
+  handover_at?: string | null;
 }
 
 interface PurchaseCardProps {
@@ -54,8 +54,8 @@ const fmtRM = (value: number) => {
 // Get status based on available data
 // Completed is set when Handover (inv_date/inv_no) is registered by Asset Manager.
 const getStatusType = (purchase: ApiPurchase): string => {
-  // Procurement 'Released' indicates transfer to Asset Manager (released_at/released_to)
-  if (purchase.released_at || purchase.released_to) return 'released';
+  // Procurement 'Handover' indicates transfer to Asset Manager (handover_at/handover_to)
+  if (purchase.handover_at || purchase.handover_to) return 'handover';
   if (purchase.grn_date && purchase.grn_no) return 'delivered';
   if (purchase.do_date && purchase.do_no) return 'delivered';
   if (purchase.po_date && purchase.po_no) return 'ordered';
@@ -90,8 +90,8 @@ const getStatusConfig = (status: string) => {
       color: 'text-white',
       bgColor: 'bg-amber-500'
     },
-    released: {
-      label: 'Released',
+    handover: {
+      label: 'Handover',
       variant: 'secondary' as const,
       icon: FileText,
       color: 'text-purple-600',
@@ -105,7 +105,7 @@ const getStatusConfig = (status: string) => {
       bgColor: 'bg-green-50'
     }
   };
-  
+
   return configs[status as keyof typeof configs] || configs.requested;
 };
 
@@ -113,7 +113,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
   const status = getPurchaseStatus(purchase as any);
   const statusConfig = getStatusConfig(status);
   const StatusIcon = statusConfig.icon;
-  
+
   return (
     <Card className="hover:shadow-lg transition-shadow duration-200">
       <CardHeader className="pb-3">
@@ -134,7 +134,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
           </Badge>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         {/* Key Information */}
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -163,81 +163,70 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
             </p>
           </div>
         </div>
-        
+
         {/* Process Timeline */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-700">Process Status</p>
           <div className="flex items-center space-x-2">
             {/* Request */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.pr_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.pr_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <Calendar className="w-4 h-4" />
             </div>
-            <div className={`flex-1 h-1 ${
-              purchase.po_date ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            
+            <div className={`flex-1 h-1 ${purchase.po_date ? 'bg-green-300' : 'bg-gray-200'
+              }`} />
+
             {/* Purchase Order */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.po_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.po_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <Package className="w-4 h-4" />
             </div>
-            <div className={`flex-1 h-1 ${
-              purchase.do_date ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            
+            <div className={`flex-1 h-1 ${purchase.do_date ? 'bg-green-300' : 'bg-gray-200'
+              }`} />
+
             {/* Delivery */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.do_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.do_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <Truck className="w-4 h-4" />
             </div>
             {/* GRN */}
-            <div className={`flex-1 h-1 ${
-              purchase.grn_date ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.grn_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            <div className={`flex-1 h-1 ${purchase.grn_date ? 'bg-green-300' : 'bg-gray-200'
+              }`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.grn_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <CheckCircle className="w-4 h-4" />
             </div>
 
-            {/* Released */}
-            <div className={`flex-1 h-1 ${
-              purchase.released_at ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.released_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            {/* Handover */}
+            <div className={`flex-1 h-1 ${purchase.handover_at ? 'bg-green-300' : 'bg-gray-200'
+              }`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.handover_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <FileText className="w-4 h-4" />
             </div>
 
             {/* Completed (Procurement closed) */}
-            <div className={`flex-1 h-1 ${
-              purchase.released_at ? 'bg-green-300' : 'bg-gray-200'
-            }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-              purchase.released_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-            }`}>
+            <div className={`flex-1 h-1 ${purchase.handover_at ? 'bg-green-300' : 'bg-gray-200'
+              }`} />
+            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.handover_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+              }`}>
               <CheckCircle className="w-4 h-4" />
             </div>
           </div>
         </div>
-        
+
         {/* Reference Numbers */}
-        {(purchase.pr_no || purchase.po_no || purchase.do_no || 
+        {(purchase.pr_no || purchase.po_no || purchase.do_no ||
           purchase.inv_no || purchase.grn_no) && (
-          <div className="text-xs text-gray-600 space-y-1">
-            {purchase.pr_no && <p>PR: {purchase.pr_no}</p>}
-            {purchase.po_no && <p>PO: {purchase.po_no}</p>}
-            {purchase.do_no && <p>DO: {purchase.do_no}</p>}
-            {purchase.inv_no && <p>Handover: {purchase.inv_no}</p>}
-            {purchase.grn_no && <p>GRN: {purchase.grn_no}</p>}
-          </div>
-        )}
-        
+            <div className="text-xs text-gray-600 space-y-1">
+              {purchase.pr_no && <p>PR: {purchase.pr_no}</p>}
+              {purchase.po_no && <p>PO: {purchase.po_no}</p>}
+              {purchase.do_no && <p>DO: {purchase.do_no}</p>}
+              {purchase.inv_no && <p>Handover: {purchase.inv_no}</p>}
+              {purchase.grn_no && <p>GRN: {purchase.grn_no}</p>}
+            </div>
+          )}
+
         {/* Actions */}
         <div className="flex space-x-2 pt-2 border-t">
           <Button size="sm" variant="outline" onClick={onView} className="flex-1">

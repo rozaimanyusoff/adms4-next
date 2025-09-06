@@ -26,7 +26,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
   // stats memo
   const stats = useMemo(() => {
-  const total = purchases.length;
+    const total = purchases.length;
     // compute per-purchase amount: prefer total_price if available, else qty * unit_price
     const amounts = purchases.map(p => {
       const totalPrice = Number((p as any).total_price ?? NaN);
@@ -42,7 +42,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
     // Calculate status counts by deriving per-purchase procurement status (match PurchaseCard logic)
     type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'closed' | 'draft';
-  const deriveStatus = (p: any): ProcStatus => {
+    const deriveStatus = (p: any): ProcStatus => {
       if ((p as any).handover_at || (p as any).handover_to) return 'handover';
       if (p.grn_date && p.grn_no) return 'delivered';
       if (p.do_date && p.do_no) return 'delivered';
@@ -147,7 +147,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
   // Status breakdown by Item Type (focus on Handover monitoring)
   const statusByType = useMemo(() => {
     type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'draft';
-    const rows: Array<{ type: string; requested: number; ordered: number; delivered: number; handover: number; total: number }>= [];
+    const rows: Array<{ type: string; requested: number; ordered: number; delivered: number; handover: number; total: number }> = [];
     const map: Record<string, { requested: number; ordered: number; delivered: number; handover: number; total: number }> = {};
     const derive = (p: any): ProcStatus => {
       if (p.handover_at || p.handover_to || (p.inv_date && p.inv_no)) return 'handover';
@@ -197,7 +197,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       }
     });
 
-  const years = Array.from(yearsSet).sort((a, b) => Number(a) - Number(b));
+    const years = Array.from(yearsSet).sort((a, b) => Number(a) - Number(b));
     const rows = Object.keys(map).map(t => ({ type: t, total: map[t].total, perYear: map[t].perYear }));
     rows.sort((a, b) => b.total - a.total);
     return { years, rows };
@@ -249,14 +249,15 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
   // Random color themes for cards (shuffled once per mount)
   const palettes = [
-    { border: 'border-l-4 border-blue-500', icon: 'text-blue-600', bg: 'bg-blue-50' },
-    { border: 'border-l-4 border-green-500', icon: 'text-green-600', bg: 'bg-green-50' },
-    { border: 'border-l-4 border-amber-500', icon: 'text-amber-600', bg: 'bg-amber-50' },
-    { border: 'border-l-4 border-purple-500', icon: 'text-purple-600', bg: 'bg-purple-50' },
-    { border: 'border-l-4 border-rose-500', icon: 'text-rose-600', bg: 'bg-rose-50' },
-    { border: 'border-l-4 border-sky-500', icon: 'text-sky-600', bg: 'bg-sky-50' },
-    { border: 'border-l-4 border-indigo-500', icon: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { border: 'border-l-4 border-emerald-500', icon: 'text-emerald-600', bg: 'bg-emerald-50' }
+    // Theme-aware accents (no hard background so dark mode uses card surface)
+    { border: 'border-l-4 border-blue-500 dark:border-blue-400', icon: 'text-blue-600 dark:text-blue-400' },
+    { border: 'border-l-4 border-green-500 dark:border-green-400', icon: 'text-green-600 dark:text-green-400' },
+    { border: 'border-l-4 border-amber-500 dark:border-amber-400', icon: 'text-amber-600 dark:text-amber-300' },
+    { border: 'border-l-4 border-purple-500 dark:border-purple-400', icon: 'text-purple-600 dark:text-purple-400' },
+    { border: 'border-l-4 border-rose-500 dark:border-rose-400', icon: 'text-rose-600 dark:text-rose-400' },
+    { border: 'border-l-4 border-sky-500 dark:border-sky-400', icon: 'text-sky-600 dark:text-sky-400' },
+    { border: 'border-l-4 border-indigo-500 dark:border-indigo-400', icon: 'text-indigo-600 dark:text-indigo-400' },
+    { border: 'border-l-4 border-emerald-500 dark:border-emerald-400', icon: 'text-emerald-600 dark:text-emerald-400' }
   ];
 
   // Deterministic shuffle: derive seed from purchases so colors are stable for the same data
@@ -285,10 +286,10 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {/* Purchases summary (count + value) */}
-    <Card className={`${pick(0).bg} ${pick(0).border} md:col-span-2`}> 
+      <Card className={`${pick(0).border} md:col-span-2`}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Purchases Overview</CardTitle>
-      <ShoppingCart className={`h-4 w-4 ${pick(0).icon}`} />
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Purchases Overview</CardTitle>
+          <ShoppingCart className={`h-4 w-4 ${pick(0).icon}`} />
         </CardHeader>
         <CardContent>
           <div style={{ height: 220 }}>
@@ -308,18 +309,18 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       </Card>
 
       {/* Request by Item Types (table with per-year breakdown) */}
-  <Card className={`md:col-span-2 ${pick(1).bg} ${pick(1).border}`}>
+      <Card className={`md:col-span-2 ${pick(1).border}`}>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Request by Item Types</CardTitle>
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Request by Item Types</CardTitle>
         </CardHeader>
         <CardContent>
           {typeYearRows.rows.length === 0 ? (
-            <div className="text-sm text-gray-600">No item-typed purchases available</div>
+            <div className="text-[length:var(--text-size-base)] text-gray-600">No item-typed purchases available</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs table-auto">
+              <table className="w-full text-[length:var(--text-size-small)] table-auto">
                 <thead>
-                  <tr className="text-center">
+                  <tr className="text-center bg-muted/50">
                     <th className="pb-2">Item Type</th>
                     {typeYearRows.years.map(y => (
                       <th key={y} className="pb-2 text-right">{y}</th>
@@ -328,20 +329,20 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                   </tr>
                 </thead>
                 <tbody>
-          {typeYearRows.rows.map((r, idx) => (
-            <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-gray-50" onClick={() => onFilter?.({ type: r.type })}>
-                        <td className="py-2 text-gray-700">{r.type}</td>
-                        {typeYearRows.years.map(y => (
-                          <td key={y} className="py-2 text-right">{
-                            r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
-                          }</td>
-                        ))}
-                        <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+                  {typeYearRows.rows.map((r, idx) => (
+                    <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ type: r.type })}>
+                      <td className="py-2 text-foreground">{r.type}</td>
+                      {typeYearRows.years.map(y => (
+                        <td key={y} className="py-2 text-right">{
+                          r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
+                        }</td>
+                      ))}
+                      <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           )}
         </CardContent>
       </Card>
@@ -349,20 +350,20 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       {/* Completion Rate & Pending Items removed — covered in Process Status */}
 
       {/* Status Breakdown */}
-  <Card className={`md:col-span-2 ${pick(2).bg} ${pick(2).border}`}>
+      <Card className={`md:col-span-2 ${pick(2).border}`}>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Process Status</CardTitle>
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Process Status</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Clock className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm">Requested</span>
+                <span className="text-[length:var(--text-size-base)]">Requested</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.pending}</span>
-                <Badge variant="secondary" className="text-xs">
+                <span className="text-[length:var(--text-size-base)] font-medium">{stats.pending}</span>
+                <Badge variant="secondary" className="text-[length:var(--text-size-small)]">
                   {stats.total > 0 ? ((stats.pending / stats.total) * 100).toFixed(0) : 0}%
                 </Badge>
               </div>
@@ -371,11 +372,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Package className="h-4 w-4 text-blue-600" />
-                <span className="text-sm">Ordered</span>
+                <span className="text-[length:var(--text-size-base)]">Ordered</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.ordered}</span>
-                <Badge variant="default" className="text-xs">
+                <span className="text-[length:var(--text-size-base)] font-medium">{stats.ordered}</span>
+                <Badge variant="default" className="text-[length:var(--text-size-small)]">
                   {stats.total > 0 ? ((stats.ordered / stats.total) * 100).toFixed(0) : 0}%
                 </Badge>
               </div>
@@ -384,11 +385,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Truck className="h-4 w-4 text-amber-600" />
-                <span className="text-sm">Delivered</span>
+                <span className="text-[length:var(--text-size-base)]">Delivered</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.delivered}</span>
-                <Badge variant="outline" className="text-xs">
+                <span className="text-[length:var(--text-size-base)] font-medium">{stats.delivered}</span>
+                <Badge variant="outline" className="text-[length:var(--text-size-small)]">
                   {stats.total > 0 ? ((stats.delivered / stats.total) * 100).toFixed(0) : 0}%
                 </Badge>
               </div>
@@ -397,11 +398,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <FileText className="h-4 w-4 text-purple-600" />
-                <span className="text-sm">Handover</span>
+                <span className="text-[length:var(--text-size-base)]">Handover</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.handover}</span>
-                <Badge variant="secondary" className="text-xs">
+                <span className="text-[length:var(--text-size-base)] font-medium">{stats.handover}</span>
+                <Badge variant="secondary" className="text-[length:var(--text-size-small)]">
                   {stats.total > 0 ? ((stats.handover / stats.total) * 100).toFixed(0) : 0}%
                 </Badge>
               </div>
@@ -410,11 +411,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm">Completed</span>
+                <span className="text-[length:var(--text-size-base)]">Completed</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium">{stats.completed}</span>
-                <Badge variant="default" className="text-xs bg-green-600">
+                <span className="text-[length:var(--text-size-base)] font-medium">{stats.completed}</span>
+                <Badge variant="default" className="text-[length:var(--text-size-small)] bg-green-600">
                   {completionRate}%
                 </Badge>
               </div>
@@ -423,14 +424,14 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
           {/* Breakdown by Item Type for Handover monitoring */}
           <div className="mt-4">
-            <p className="text-xs text-gray-700 mb-2">By Item Type (Handover progress)</p>
+            <p className="text-[length:var(--text-size-small)] text-muted-foreground mb-2">By Item Type (Handover progress)</p>
             {statusByType.length === 0 ? (
-              <div className="text-xs text-gray-500">No data</div>
+              <div className="text-[length:var(--text-size-small)] text-muted-foreground">No data</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full text-[length:var(--text-size-small)]">
                   <thead>
-                    <tr className="text-left bg-gray-100">
+                    <tr className="text-left bg-muted/50">
                       <th className="px-2 py-1">Type</th>
                       <th className="px-2 py-1 text-right">Handover</th>
                       <th className="px-2 py-1 text-right">Pending</th>
@@ -455,16 +456,16 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       </Card>
 
       {/* Request Type Breakdown */}
-  <Card className={`md:col-span-2 ${pick(3).bg} ${pick(3).border}`}>
+      <Card className={`md:col-span-2 ${pick(3).border}`}>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Request Types</CardTitle>
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Request Types</CardTitle>
         </CardHeader>
         <CardContent>
           {requestTypeYearRows.years.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm table-auto">
+              <table className="w-full text-[length:var(--text-size-base)] table-auto">
                 <thead>
-                  <tr className="text-left">
+                  <tr className="text-left bg-muted/50">
                     <th className="pb-2">Request Type</th>
                     {requestTypeYearRows.years.map(y => (
                       <th key={y} className="pb-2 text-right">{y}</th>
@@ -474,7 +475,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                 </thead>
                 <tbody>
                   {requestTypeYearRows.rows.map(r => (
-                    <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-gray-50" onClick={() => onFilter?.({ request_type: r.type })}>
+                    <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ request_type: r.type })}>
                       <td className="py-2 text-gray-700">{r.type}</td>
                       {requestTypeYearRows.years.map(y => (
                         <td key={y} className="py-2 text-right">{
@@ -492,11 +493,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm">CAPEX</span>
+                  <span className="text-[length:var(--text-size-base)]">CAPEX</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">{stats.capex}</span>
-                  <Badge variant="outline" className="text-xs">
+                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.capex}</span>
+                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
                     {stats.total > 0 ? ((stats.capex / stats.total) * 100).toFixed(0) : 0}%
                   </Badge>
                 </div>
@@ -505,11 +506,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="text-sm">OPEX</span>
+                  <span className="text-[length:var(--text-size-base)]">OPEX</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">{stats.opex}</span>
-                  <Badge variant="outline" className="text-xs">
+                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.opex}</span>
+                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
                     {stats.total > 0 ? ((stats.opex / stats.total) * 100).toFixed(0) : 0}%
                   </Badge>
                 </div>
@@ -518,11 +519,11 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span className="text-sm">SERVICES</span>
+                  <span className="text-[length:var(--text-size-base)]">SERVICES</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm font-medium">{stats.services}</span>
-                  <Badge variant="outline" className="text-xs">
+                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.services}</span>
+                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
                     {stats.total > 0 ? ((stats.services / stats.total) * 100).toFixed(0) : 0}%
                   </Badge>
                 </div>
