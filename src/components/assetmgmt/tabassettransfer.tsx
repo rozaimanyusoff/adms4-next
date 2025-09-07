@@ -2,21 +2,19 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DashTransfer from "./dash-transfer";
-import AssetTransferForm from "./asset-transfer";
+import AssetTransfer from "./asset-transfer";
+import AssetTransferForm from "./asset-transfer-form";
 import AssetTransferChecklist from "./asset-transfer-checklist";
 
 const TransferApp = () => {
     const tabTitles = [
-        { value: "dash", label: "Dashboard" },
+        { value: 'form', label: 'Form' },
         { value: "records", label: "Records" },
-        { value: "checklist", label: "Checklist" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        dash: <DashTransfer />,
-        records: <AssetTransferForm />,
-        checklist: <AssetTransferChecklist />, // Assuming typeId 1 is for Asset Transfer
+        form: <AssetTransferForm />,
+        records: <AssetTransfer />,
     };
 
     const validTabValues = tabTitles.map(t => t.value);
@@ -30,8 +28,8 @@ const TransferApp = () => {
     }, [activeTab]);
 
     return (
-        <div className="p-4">
-            <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
+        <>
+            <ul className="mb-6 flex space-x-2 rtl:space-x-reverse ml-4 text-xl font-bold">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
                         Asset Transfer
@@ -53,7 +51,7 @@ const TransferApp = () => {
                     </TabsContent>
                 ))}
             </Tabs>
-        </div>
+        </>
     );
 };
 

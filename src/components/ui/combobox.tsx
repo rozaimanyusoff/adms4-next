@@ -136,7 +136,7 @@ export function Combobox(props: ComboboxProps) {
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "w-full justify-between h-auto min-h-[2.25rem] py-2",
+            "w-full justify-between h-auto min-h-[2.25rem] py-2 bg-inherit hover:bg-inherit",
             textSizeClasses.base,
             className
           )}

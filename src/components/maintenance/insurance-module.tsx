@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import ActionSidebar from '@/components/ui/action-aside';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
@@ -16,6 +19,9 @@ type Vehicle = {
   plate_no?: string; // legacy fallback
   models?: { id: number; name: string } | null;
   brands?: { id: number; name: string } | null;
+  costcenter?: { id: number; name: string } | null;
+  location?: { id: number; name: string } | null;
+  classification?: string | { name?: string } | null;
 };
 
 type InsuranceRow = {
@@ -42,7 +48,7 @@ const emptyInsurance: InsuranceForm = {
   policy_no: '',
   coverage_start: '',
   coverage_end: '',
-  premium_amount: '',
+  premium_amount: '0.00',
   coverage_details: '',
 };
 
@@ -66,6 +72,7 @@ const InsuranceModule: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehQuery, setVehQuery] = useState('');
   const [vehSelected, setVehSelected] = useState<Record<string | number, boolean>>({});
+  const [showPersonal, setShowPersonal] = useState(false); // unchecked by default (hide personal)
   const [submitting, setSubmitting] = useState(false);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
 
@@ -117,12 +124,23 @@ const InsuranceModule: React.FC = () => {
     setOpenCreate(false);
   }
 
+  // Helper to detect personal classification
+  const isPersonal = React.useCallback((v: any) => {
+    const cls = (v?.classification?.name || v?.classification || '').toString().toLowerCase();
+    return cls === 'personal';
+  }, []);
+
   async function loadVehicles() {
     setLoadingVehicles(true);
     try {
       const res: any = await authenticatedApi.get('/api/assets?status=active&manager=2');
       const data: Vehicle[] = res?.data?.data || res?.data || [];
-      setVehicles(Array.isArray(data) ? data : []);
+      const arr = Array.isArray(data) ? data : [];
+      setVehicles(arr);
+      // Default select all visible (non-personal) vehicles
+      const defaultSel: Record<string | number, boolean> = {};
+      arr.forEach(v => { if (!isPersonal(v)) defaultSel[v.id] = true; });
+      setVehSelected(defaultSel);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load vehicles');
@@ -133,15 +151,28 @@ const InsuranceModule: React.FC = () => {
   }
 
   const vehFiltered = useMemo(() => {
-    if (!vehQuery) return vehicles;
+    const list = vehicles.filter(v => (showPersonal ? true : !isPersonal(v)));
+    if (!vehQuery) return list;
     const q = vehQuery.toLowerCase();
-    return vehicles.filter(v => {
+    return list.filter(v => {
       const plate = (v.plate_no || v.register_number || '').toLowerCase();
       const modelName = (v.models?.name || '').toLowerCase();
       const brandName = (v.brands?.name || '').toLowerCase();
       return plate.includes(q) || modelName.includes(q) || brandName.includes(q);
     });
-  }, [vehicles, vehQuery]);
+  }, [vehicles, vehQuery, showPersonal, isPersonal]);
+
+  // Visible list derived from vehFiltered
+  const visibleIds = React.useMemo(() => vehFiltered.map(v => v.id), [vehFiltered]);
+  const allVisibleChecked = React.useMemo(() => visibleIds.length > 0 && visibleIds.every(id => vehSelected[id]), [visibleIds, vehSelected]);
+
+  function toggleAllVisible(val: boolean) {
+    setVehSelected(prev => {
+      const next = { ...prev } as Record<string | number, boolean>;
+      visibleIds.forEach(id => { next[id] = val; });
+      return next;
+    });
+  }
 
   function toggleVeh(id: string | number, value: boolean) {
     setVehSelected(prev => ({ ...prev, [id]: value }));
@@ -330,11 +361,11 @@ const InsuranceModule: React.FC = () => {
               <div className="space-y-3">
                 <div>
                   <Label>Insurer</Label>
-                  <Input value={insForm.insurer} onChange={e => setInsForm(s => ({ ...s, insurer: e.target.value }))} />
+                  <Input className="uppercase" value={insForm.insurer} onChange={e => setInsForm(s => ({ ...s, insurer: e.target.value.toUpperCase() }))} />
                 </div>
                 <div>
                   <Label>Policy No.</Label>
-                  <Input value={insForm.policy_no} onChange={e => setInsForm(s => ({ ...s, policy_no: e.target.value }))} />
+                  <Input className="uppercase" value={insForm.policy_no} onChange={e => setInsForm(s => ({ ...s, policy_no: e.target.value.toUpperCase() }))} />
                 </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
@@ -348,11 +379,36 @@ const InsuranceModule: React.FC = () => {
                   </div>
                 <div>
                   <Label>Coverage Details</Label>
-                  <Input value={insForm.coverage_details} onChange={e => setInsForm(s => ({ ...s, coverage_details: e.target.value }))} />
+                  <Textarea rows={3} value={insForm.coverage_details} onChange={e => setInsForm(s => ({ ...s, coverage_details: e.target.value }))} />
                 </div>
                 <div>
                   <Label>Premium Amount (MYR)</Label>
-                  <Input type="number" step="0.01" value={insForm.premium_amount} onChange={e => setInsForm(s => ({ ...s, premium_amount: e.target.value }))} />
+                  <Input
+                    placeholder="0.00"
+                    value={insForm.premium_amount}
+                    onChange={e => {
+                      let v = e.target.value.replace(/[^\d.]/g, '');
+                      const parts = v.split('.');
+                      if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('').replace(/\./g, '');
+                      const [intPart, decPart] = v.split('.');
+                      v = intPart.replace(/^0+(?=\d)/, '') + (decPart !== undefined ? ('.' + decPart.slice(0, 2)) : '');
+                      if (v === '' || v === '.') v = '';
+                      setInsForm(s => ({ ...s, premium_amount: v }));
+                    }}
+                    onBlur={e => {
+                      const num = parseFloat(insForm.premium_amount || '0');
+                      const formatted = Number.isFinite(num) ? num.toFixed(2) : '0.00';
+                      setInsForm(s => ({ ...s, premium_amount: formatted }));
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={closeCreateAside}>
+                    <X className="w-4 h-4 mr-1" /> Cancel
+                  </Button>
+                  <Button onClick={submitCreate} disabled={submitting}>
+                    <Save className="w-4 h-4 mr-1" /> {submitting ? 'Submitting...' : 'Submit'}
+                  </Button>
                 </div>
               </div>
 
@@ -367,34 +423,60 @@ const InsuranceModule: React.FC = () => {
                   <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" />
                   <Input placeholder="Search plate/model/brand" className="pl-7" value={vehQuery} onChange={e => setVehQuery(e.target.value)} />
                 </div>
-                <div className="border rounded max-h-80 overflow-auto divide-y">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600 mb-1">
+                  <div className="flex items-center gap-3">
+                    <span>Showing {vehFiltered.length} of {vehicles.length}</span>
+                    <span>Selected: {Object.values(vehSelected).filter(Boolean).length}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>Show Personal</span>
+                      <Switch checked={showPersonal} onCheckedChange={(v) => setShowPersonal(Boolean(v))} />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs">
+                      <Checkbox checked={allVisibleChecked} onCheckedChange={(v) => toggleAllVisible(Boolean(v))} />
+                      <span>Select All</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="border rounded max-h-[700px] overflow-auto divide-y">
                   {loadingVehicles && <div className="p-3 text-sm text-gray-500">Loading vehicles...</div>}
                   {!loadingVehicles && vehFiltered.length === 0 && <div className="p-3 text-sm text-gray-500">No vehicles</div>}
                   {!loadingVehicles && vehFiltered.map(v => {
                     const plate = v.plate_no || v.register_number || '-';
                     const brand = v.brands?.name || '';
                     const model = v.models?.name || '';
+                    const costcenter = (v as any).costcenter?.name || '';
+                    const location = (v as any).location?.name || '';
                     const checked = !!vehSelected[v.id];
                     return (
-                      <label key={v.id} className="flex items-center justify-between p-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900">
+                      <div
+                        key={v.id}
+                        className="flex items-center justify-between p-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900"
+                        onClick={() => toggleVeh(v.id, !checked)}
+                        role="button"
+                        aria-pressed={checked}
+                      >
                         <div>
                           <div className="font-medium">{plate}</div>
-                          <div className="text-xs text-gray-500">{model || ''} {brand ? `• ${brand}` : ''}</div>
+                          <div className="text-xs text-gray-500 space-y-0.5">
+                            {brand && <div>Brand: {brand}</div>}
+                            {model && <div>Model: {model}</div>}
+                            {costcenter && <div>Cost Center: {costcenter}</div>}
+                            {location && <div>Location: {location}</div>}
+                          </div>
                         </div>
-                        <input type="checkbox" checked={checked} onChange={(e) => toggleVeh(v.id, e.target.checked)} />
-                      </label>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(val) => toggleVeh(v.id, Boolean(val))}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                     );
                   })}
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={closeCreateAside}>
-                    <X className="w-4 h-4 mr-1" /> Cancel
-                  </Button>
-                  <Button onClick={submitCreate} disabled={submitting}>
-                    <Save className="w-4 h-4 mr-1" /> {submitting ? 'Submitting...' : 'Submit'}
-                  </Button>
-                </div>
+                {/* Buttons moved to the insurance form column */}
               </div>
             </div>
           }

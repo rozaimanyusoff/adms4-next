@@ -15,6 +15,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 // --- Asset Transfer API and Form Types ---
 export interface AssetTransferItem {
@@ -164,7 +168,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     // Add a loading state for sidebar data
     const [sidebarLoading, setSidebarLoading] = React.useState(false);
     const [openSubmitDialog, setOpenSubmitDialog] = React.useState(false);
-    const [openDraftDialog, setOpenDraftDialog] = React.useState(false);
+    // const [openDraftDialog, setOpenDraftDialog] = React.useState(false);
     const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
     const [loading, setLoading] = React.useState(!!id);
     const [error, setError] = React.useState<string | null>(null);
@@ -172,6 +176,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [showAddItemsTooltip, setShowAddItemsTooltip] = React.useState(false);
     // Track which items' accordions are expanded so we can apply the approval-level visual style
     const [expandedItems, setExpandedItems] = React.useState<Record<number, boolean>>({});
+    // Application type/purpose: resignation reporting vs transfer to someone else
+    const [applicationOption, setApplicationOption] = React.useState<'resignation' | 'transfer'>('transfer');
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -372,8 +378,16 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                         ...item,
                         transfer_type: 'Asset',
                         register_number: item.register_number,
-                        asset_code: item.asset_code || item.register_number,
-                        asset_type: item.type?.name || '',
+                        asset_code: item.entry_code || item.register_number,
+                        asset_type: item.types?.name || '',
+                        // Map the plural properties to singular for compatibility
+                        type: item.types,
+                        category: item.categories,
+                        brand: item.brands,
+                        model: item.models,
+                        costcenter: item.costcenter,
+                        department: item.department,
+                        location: item.location,
                     },
                 ];
             } else {
@@ -438,6 +452,38 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         }
     }, [dateRequest]);
 
+    // Auto-populate sidebar when resignation option is selected
+    React.useEffect(() => {
+        async function populateResignationSidebar() {
+            if (applicationOption === 'resignation' && (form?.requestor?.ramco_id || user?.username)) {
+                setSidebarLoading(true);
+                try {
+                    const param = form?.requestor?.ramco_id || user?.username;
+                    const res: any = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
+                    const assets = res.data?.data || [];
+
+                    // Populate the supervised assets for the sidebar
+                    setSupervised(assets);
+
+                    if (assets.length > 0) {
+                        toast.success(`${assets.length} asset(s) loaded. Select assets to process for resignation.`);
+                        // Immediately open the sidebar for asset selection
+                        setSidebarOpen(true);
+                    } else {
+                        toast.info('No assets found for this supervisor');
+                    }
+                } catch (err) {
+                    console.error('Error loading resignation assets:', err);
+                    toast.error('Failed to load assets for resignation');
+                } finally {
+                    setSidebarLoading(false);
+                }
+            }
+        }
+
+        populateResignationSidebar();
+    }, [applicationOption, form?.requestor?.ramco_id, user?.username]);
+
     // Handler to close the blank tab (window)
     async function handleCancel() {
         // This is now handled by AlertDialog, so just close dialog or navigate as needed
@@ -449,10 +495,20 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         setSidebarLoading(true);
         try {
             const param = form?.requestor?.ramco_id || user?.username;
-            const res: any = await authenticatedApi.get(`/api/assets/by-supervisor?ramco_id=${param}`);
+            let res: any;
+
+            if (applicationOption === 'resignation') {
+                // For resignation, get assets assigned to the supervisor/user
+                res = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
+            } else {
+                // For regular transfer, get assets by supervisor (existing behavior)
+                res = await authenticatedApi.get(`/api/assets/by-supervisor?ramco_id=${param}`);
+            }
+
             setSupervised(res.data?.data || []);
         } catch (err) {
-            // Optionally handle error
+            console.error('Error fetching assets:', err);
+            toast.error('Failed to load assets');
         } finally {
             setSidebarLoading(false);
             setSidebarOpen(true);
@@ -517,10 +573,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
             handleSubmit(event, 'submitted');
         }
     };
-    const handleSaveDraftConfirmed = () => {
-        setOpenDraftDialog(false);
-        handleSaveDraft();
-    };
+    // const handleSaveDraftConfirmed = () => {
+    //     setOpenDraftDialog(false);
+    //     handleSaveDraft();
+    // };
 
     // Fetch transfer request if id is provided
     React.useEffect(() => {
@@ -613,22 +669,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
-            {/* HEADER (dark) similar to screenshot */}
-            <div className="w-full bg-slate-900 mb-10">
-                <div className="mx-auto px-6 py-2">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <h2 className="text-white text-sm font-semibold">
-                                Asset Transfer Form
-                            </h2>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button className="p-2 bg-red-600 hover:bg-red-700 text-white" onClick={handleCancel} aria-label="close"><X size={16} /></Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div>
             {/* AlertDialogs for confirmation */}
             <AlertDialog open={openSubmitDialog} onOpenChange={setOpenSubmitDialog}>
                 <AlertDialogContent>
@@ -652,28 +693,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            <AlertDialog open={openDraftDialog} onOpenChange={setOpenDraftDialog}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Save as Draft?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Do you want to save this transfer request as a draft? You can continue editing later.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction asChild>
-                            <button
-                                type="button"
-                                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
-                                onClick={handleSaveDraftConfirmed}
-                            >
-                                Yes, Save Draft
-                            </button>
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            {/* Save Draft dialog removed */}
             <AlertDialog open={openCancelDialog} onOpenChange={setOpenCancelDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -696,692 +716,678 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            <form className="max-w-6xl mx-auto bg-white dark:bg-gray-900 p-6 rounded-xl shadow-md text-sm space-y-6" onSubmit={e => { e.preventDefault(); setOpenSubmitDialog(true); }} ref={formRef}>
-                {/* 1. Requestor Details */}
-                <fieldset className="border rounded-lg p-4">
-                    <legend className="font-semibold text-lg">Requestor</legend>
-                    <div className="space-y-2">
-                        {/* Hidden inputs for payload */}
-                        <input type="hidden" name="ramco_id" value={form.requestor.ramco_id} />
-                        <input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Name</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.full_name}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Ramco ID</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.ramco_id || form.requestor.ramco_id}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Position</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.position?.name || form.requestor.position || ''}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Department</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.department?.name || ''}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Cost Center</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.costcenter?.name || ''}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Location</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{form.requestor.location?.name || ''}</span>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex items-center gap-2">
-                                <label className="block font-medium min-w-[120px] my-0.5">Request Date</label>
-                                <span className="input w-full bg-white dark:bg-gray-900 border-none cursor-default">{dateRequest ? new Date(dateRequest).toLocaleString() : ''}</span>
-                            </div>
-                        </div>
-                    </div>
-                </fieldset>
 
-                {/* 2. Select Items (Button to open ActionSidebar) */}
-                <fieldset className="border rounded-lg p-4">
-                    <legend className="font-semibold flex items-center text-lg gap-2">
-                        Selected Items
-                        <TooltipProvider>
-                            <Tooltip open={showAddItemsTooltip}>
-                                <TooltipTrigger asChild>
-                                    <span>
-                                        <Button
-                                            type="button"
-                                            onClick={handleOpenSidebar}
-                                            size="icon"
-                                            variant="default"
-                                            className="ml-2"
-                                            title="Add Items"
-                                            disabled={sidebarLoading}
-                                        >
-                                            {sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                                        </Button>
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" align="center" className="z-50">
-                                    Click here to add items for transfer.
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    </legend>
-                    {selectedItems.length === 0 ? (
-                        <div className="text-gray-400 text-center py-4">No items selected.</div>
-                    ) : (
-                        <div className="mt-2 px-1">
-                            {selectedItems.map((item, idx) => {
-                                if (typeof item.id === 'undefined' || item.id === null) return null;
-                                const isEmployee = item.transfer_type === 'Employee';
-                                const typeLabel = isEmployee ? 'Employee' : 'Asset';
-                                // Find employee details for Employee accordions
-                                const allEmployees = supervised.flatMap(g => g.employee || []);
-                                const employeeDetails = allEmployees.find(e =>
-                                    e.ramco_id === item.ramco_id || e.full_name === item.full_name
-                                );
-                                return (
-                                    <Accordion
-                                        type="single"
-                                        collapsible
-                                        key={item.id}
-                                        // controlled expansion so we can style the expanded item
-                                        value={expandedItems[item.id] ? `item-${item.id}` : undefined}
-                                        onValueChange={(val: string | undefined) => setExpandedItems(prev => ({ ...prev, [item.id]: !!val }))}
-                                        className={`mb-4 bg-gray-100 dark:bg-gray-800 rounded px-4 ${expandedItems[item.id] ? 'border rounded-lg' : ''}`}
-                                    >
-                                        <AccordionItem value={`item-${item.id}`}>
-                                            <AccordionTrigger className="no-underline hover:no-underline">
-                                                <div className="flex items-center justify-between w-full">
-                                                    <div className="flex items-center gap-2">
-                                                        <Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
-                                                            <X />
-                                                        </Button>
-                                                        <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{typeLabel}</span>
-                                                        <span className="flex-1 font-medium">
-                                                            {isEmployee ? (
-                                                                <span>{renderValue(item.full_name) || renderValue(item.name) || renderValue(item.ramco_id)}</span>
-                                                            ) : (
-                                                                <>
-                                                                    <span>S/N: {renderValue(item.register_number)}
-                                                                        {item.asset_type && (
-                                                                            <span className="text-blue-500 text-xs"> [ {renderValue(item.asset_type)} ]</span>
-                                                                        )}
-                                                                    </span>
-                                                                </>
-                                                            )}
-                                                        </span>
-                                                        {/* Tooltip for expand notification */}
-                                                        <TooltipProvider>
-                                                            <Tooltip open={!!showAccordionTooltip[item.id]}>
-                                                                <TooltipTrigger asChild>
-                                                                    <span tabIndex={-1} />
-                                                                </TooltipTrigger>
-                                                                <TooltipContent side="top" align="center" className="z-50">
-                                                                    Please expand and complete the transfer details below.
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <label className="block font-medium mb-0 mr-2 text-xs">Effective Date</label>
-                                                        <Input
-                                                            type="date"
-                                                            required
-                                                            className={`w-[160px] ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
-                                                            value={itemEffectiveDates[item.id] || ''}
-                                                            onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
-                                                            onClick={e => e.stopPropagation()}
-                                                            onFocus={e => e.stopPropagation()}
-                                                        />
-                                                        {!itemEffectiveDates[item.id] && submitError && (
-                                                            <span className="ml-2 text-xs text-red-500">Required</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </AccordionTrigger>
-                                            <AccordionContent>
-                                                <div className={`p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
-                                                {/* EMPLOYEE DETAILS SECTION */}
-                                                {item.transfer_type === 'Employee' && (
-                                                    <div className="py-2 rounded">
-                                                        <div className="font-semibold text-sm mb-2">Employee Details</div>
-                                                        <div className="flex items-center justify-between text-sm">
-                                                            <div>
-                                                                <span className="text-muted-foreground">Position:</span>
-                                                                <span className="ml-1">{renderValue(employeeDetails?.position?.name)}</span>
+            <Card>
+                <CardHeader>
+                    <CardTitle className='text-lg'>Requestor</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form className="text-sm space-y-6" onSubmit={e => { e.preventDefault(); setOpenSubmitDialog(true); }} ref={formRef}>
+                        {/* 1. Requestor Details */}
+                        <div className="space-y-6">
+                            {/* Hidden inputs for payload */}
+                            <input type="hidden" name="ramco_id" value={form.requestor.ramco_id} />
+                            <input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
+                            {/* Row 1: Application Option & Request Date */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm">Request Type</Label>
+                                    <SingleSelect
+                                        options={[
+                                            { value: 'internal', label: 'Internal Transfer' },
+                                            { value: 'resignation', label: 'Resignation' },
+                                        ]}
+                                        value={applicationOption}
+                                        onValueChange={(v) => setApplicationOption(v as any)}
+                                        placeholder="Select request types"
+                                        className="h-10"
+                                    />
+                                </div>
+                                <div>
+                                    <Label className="text-sm">Request Date</Label>
+                                    <Input className="h-10" value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
+                                </div>
+                            </div>
+                            {/* Row 2: Name & Ramco ID */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm">Name</Label>
+                                    <Input className="h-10" value={form.requestor.full_name || ''} disabled />
+                                </div>
+                                <div>
+                                    <Label className="text-sm">Ramco ID</Label>
+                                    <Input className="h-10" value={form.requestor.ramco_id || ''} disabled />
+                                </div>
+                            </div>
+                            {/* Row 3: Cost Center & Department */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <Label className="text-sm">Cost Center</Label>
+                                    <Input className="h-10" value={form.requestor.costcenter?.name || ''} disabled />
+                                </div>
+                                <div>
+                                    <Label className="text-sm">Department</Label>
+                                    <Input className="h-10" value={form.requestor.department?.name || ''} disabled />
+                                </div>
+                            </div>
+                            {/* Application Options moved above next to Request Date */}
+                        </div>
+
+                        {/* 2. Transfer Items */}
+                        <Separator className="my-2" />
+                        <div className="p-0">
+                            <div className="font-semibold flex items-center justify-between text-lg gap-2">
+                                Transfer Items
+                                <TooltipProvider>
+                                    <Tooltip open={showAddItemsTooltip}>
+                                        <TooltipTrigger asChild>
+                                            <span>
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleOpenSidebar}
+                                                    size="icon"
+                                                    variant="default"
+                                                    className=""
+                                                    title="Add Items"
+                                                    disabled={sidebarLoading}
+                                                >
+                                                    {sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                                                </Button>
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center" className="z-50">
+                                            Click here to add items for transfer.
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                            {selectedItems.length === 0 ? (
+                                <div className="text-gray-400 text-center py-4">No items selected.</div>
+                            ) : (
+                                <div className="mt-2 px-1">
+                                    {selectedItems.map((item, idx) => {
+                                        if (typeof item.id === 'undefined' || item.id === null) return null;
+                                        const isEmployee = item.transfer_type === 'Employee';
+                                        const typeLabel = isEmployee ? 'Employee' : 'Asset';
+                                        // Find employee details for Employee accordions
+                                        const allEmployees = supervised.flatMap(g => g.employee || []);
+                                        const employeeDetails = allEmployees.find(e =>
+                                            e.ramco_id === item.ramco_id || e.full_name === item.full_name
+                                        );
+                                        return (
+                                            <Accordion
+                                                type="single"
+                                                collapsible
+                                                key={item.id}
+                                                // controlled expansion so we can style the expanded item
+                                                value={expandedItems[item.id] ? `item-${item.id}` : undefined}
+                                                onValueChange={(val: string | undefined) => setExpandedItems(prev => ({ ...prev, [item.id]: !!val }))}
+                                                className={`mb-0 px-4 rounded border ${expandedItems[item.id] ? 'border-blue-300' : 'border-gray-200'}`}
+                                            >
+                                                <AccordionItem value={`item-${item.id}`}>
+                                                    <AccordionTrigger className="no-underline hover:no-underline px-0">
+                                                        <div className="flex items-center justify-between w-full">
+                                                            <div className="flex items-center gap-2">
+                                                                <Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
+                                                                    <X />
+                                                                </Button>
+                                                                <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">Item {idx + 1}</span>
+                                                                <span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{typeLabel}</span>
+                                                                <span className="flex-1 font-medium">
+                                                                    {isEmployee ? (
+                                                                        <span>{renderValue(item.full_name) || renderValue(item.name) || renderValue(item.ramco_id)}</span>
+                                                                    ) : (
+                                                                        <>
+                                                                            <span>S/N: {renderValue(item.register_number)}
+                                                                                {item.asset_type && (
+                                                                                    <span className="text-blue-500 text-xs"> [ {renderValue(item.asset_type)} ]</span>
+                                                                                )}
+                                                                            </span>
+                                                                        </>
+                                                                    )}
+                                                                </span>
+                                                                {/* Tooltip for expand notification */}
+                                                                <TooltipProvider>
+                                                                    <Tooltip open={!!showAccordionTooltip[item.id]}>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span tabIndex={-1} />
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent side="top" align="center" className="z-50">
+                                                                            Please expand and complete the transfer details below.
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
                                                             </div>
-                                                            <div>
-                                                                <span className="text-muted-foreground">Email:</span>
-                                                                <span className="ml-1">{renderValue(employeeDetails?.email)}</span>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-muted-foreground">Contact:</span>
-                                                                <span className="ml-1">{renderValue(employeeDetails?.contact)}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <Label className="font-medium mb-0 mr-2 text-xs">Effective Date</Label>
+                                                                <Input
+                                                                    type="date"
+                                                                    required
+                                                                    className={`w-[160px] ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
+                                                                    value={itemEffectiveDates[item.id] || ''}
+                                                                    onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
+                                                                    onClick={e => e.stopPropagation()}
+                                                                    onFocus={e => e.stopPropagation()}
+                                                                />
+                                                                {!itemEffectiveDates[item.id] && submitError && (
+                                                                    <span className="ml-2 text-xs text-red-500">Required</span>
+                                                                )}
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                )}
-                                                {/* ASSET DETAILS SECTION */}
-                                                {item.transfer_type === 'Asset' && (
-                                                    <div className="py-2 rounded">
-                                                        <div className="font-semibold mb-1">Asset Details</div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-muted-foreground">Category:</span>
-                                                                <span className="font-medium text-blue-600">{renderValue(item.category?.name)}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-muted-foreground">Brand:</span>
-                                                                <span className="font-medium text-blue-600">{renderValue(item.brand?.name)}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-muted-foreground">Model:</span>
-                                                                <span className="font-medium text-blue-600">{renderValue(item.model?.name)}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {/* Transfer Details */}
-                                                <hr className="my-2 border-gray-300" />
-                                                <div>
-                                                    <div className="font-semibold mb-2 flex items-center justify-start gap-6">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="font-medium">Transfer Types: </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={!!returnToAssetManager[item.id] ? 'text-sm text-gray-400' : 'text-sm font-semibold'}>Reassignment</span>
-                                                                <Switch checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManager(prev => ({ ...prev, [item.id]: checked }))} />
-                                                                <span className={!!returnToAssetManager[item.id] ? 'text-sm font-semibold' : 'text-sm text-gray-400'}>Return to Asset Manager</span>
-                                                            </div>
-                                                        </div>
-                                                        {/* Show only Transfer Details error for this item */}
-                                                        {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
-                                                            && submitError.toLowerCase().includes('transfer detail') && (
-                                                                <div className="text-red-600 text-xs font-semibold">
-                                                                    {submitError}
+                                                    </AccordionTrigger>
+                                                    <AccordionContent>
+                                                        <div className={`p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
+                                                            {/* EMPLOYEE DETAILS SECTION */}
+                                                            {item.transfer_type === 'Employee' && (
+                                                                <div className="py-2 rounded">
+                                                                    <div className="font-semibold text-sm mb-2">Employee Details</div>
+                                                                    <div className="flex items-center justify-between text-sm">
+                                                                        <div>
+                                                                            <span className="text-muted-foreground">Position:</span>
+                                                                            <span className="ml-1">{renderValue(employeeDetails?.position?.name)}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-muted-foreground">Email:</span>
+                                                                            <span className="ml-1">{renderValue(employeeDetails?.email)}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-muted-foreground">Contact:</span>
+                                                                            <span className="ml-1">{renderValue(employeeDetails?.contact)}</span>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             )}
-                                                    </div>
+                                                            {/* ASSET DETAILS SECTION */}
+                                                            {item.transfer_type === 'Asset' && (
+                                                                <div className="py-2 rounded">
+                                                                    <div className="font-semibold mb-1">Asset Details</div>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-muted-foreground">Owner:</span>
+                                                                            <span className="font-medium text-blue-600">
+                                                                                {item.owner?.full_name || item.owner?.name || '-'}
+                                                                                {item.owner?.ramco_id && <span className="text-gray-400"> ({item.owner.ramco_id})</span>}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-muted-foreground">Type & Category:</span>
+                                                                            <span className="font-medium text-blue-600">
+                                                                                {item.type?.name || item.asset_type || '-'} & {renderValue(item.category?.name) || '-'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-muted-foreground">Brand & Model:</span>
+                                                                            <span className="font-medium text-blue-600">
+                                                                                {renderValue(item.brand?.name) || '-'} & {renderValue(item.model?.name) || '-'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {/* Transfer Details */}
+                                                            <hr className="my-2 border-gray-300" />
+                                                            <div>
+                                                                <div className="font-semibold mb-2 flex items-center justify-start gap-6">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="font-medium">Transfer Types: </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={!!returnToAssetManager[item.id] ? 'text-sm text-gray-400' : 'text-sm font-semibold'}>Reassignment</span>
+                                                                            <Switch checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManager(prev => ({ ...prev, [item.id]: checked }))} />
+                                                                            <span className={!!returnToAssetManager[item.id] ? 'text-sm font-semibold' : 'text-sm text-gray-400'}>Return to Asset Manager</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {/* Show only Transfer Details error for this item */}
+                                                                    {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
+                                                                        && submitError.toLowerCase().includes('transfer detail') && (
+                                                                            <div className="text-red-600 text-xs font-semibold">
+                                                                                {submitError}
+                                                                            </div>
+                                                                        )}
+                                                                </div>
 
-                                                    {/* Effective Date moved to header; Transfer type radio controls present in header */}
+                                                                {/* Effective Date moved to header; Transfer type radio controls present in header */}
 
-                                                    <table className="w-full text-left align-middle">
-                                                        <thead className="bg-transparent py-0">
-                                                            <tr>
-                                                                <th className="bg-transparent py-1 w-[20%]"></th>
-                                                                <th className="bg-transparent py-1 px-8">Current</th>
-                                                                <th className="bg-transparent py-1">New</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {/* Only show Owner row for assets */}
-                                                            {!isEmployee && (
-                                                                <tr className="border-b-0">
-                                                                    <td className="py-0.5">
-                                                                        <label className="flex items-center gap-2">
-                                                                            <Checkbox
-                                                                                checked={!!itemTransferDetails[item.id]?.new.ownerChecked}
-                                                                                disabled={!!returnToAssetManager[item.id]}
-                                                                                onCheckedChange={checked => {
-                                                                                    if (checked === false) {
-                                                                                        // clearNewOwnerField(item.id);
-                                                                                    } else {
-                                                                                        detectNewChanges(item.id, 'new', 'ownerName', selectedOwnerName || '');
-                                                                                    }
-                                                                                }}
-                                                                            />
-                                                                            Owner
-                                                                        </label>
-                                                                    </td>
-                                                                    <td className="py-0.5 px-8">
-                                                                        <Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.owner?.full_name)}</Badge>
-                                                                    </td>
-                                                                    <td className="py-0.5">
-                                                                        {/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
-                                                                            <div>
-                                                                                {/* Use Combobox SingleSelect for new owner - show employee full names but store ramco_id as value */}
-                                                                                <Combobox
-                                                                                    options={employees.map(emp => ({ value: emp.ramco_id, label: emp.full_name }))}
-                                                                                    value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
-                                                                                    onValueChange={(val: string) => {
-                                                                                        // set staff id and ownerName where appropriate
-                                                                                        detectNewChanges(item.id, 'new', 'ownerName', employees.find(e => e.ramco_id === val)?.full_name || '');
-                                                                                        detectNewChanges(item.id, 'new', 'ownerStaffId', val);
-                                                                                    }}
-                                                                                    placeholder="Search new owner"
-                                                                                    searchPlaceholder="Search employees..."
-                                                                                    emptyMessage="No employees"
+                                                                <table className="w-full text-left align-middle">
+                                                                    <thead className="bg-transparent py-0">
+                                                                        <tr>
+                                                                            <th className="bg-transparent py-1 w-[20%]"></th>
+                                                                            <th className="bg-transparent py-1 px-8">Current</th>
+                                                                            <th className="bg-transparent py-1">New</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {/* Only show Owner row for assets */}
+                                                                        {!isEmployee && (
+                                                                            <tr className="border-b-0">
+                                                                                <td className="py-0.5">
+                                                                                    <Label className="flex items-center gap-2">
+                                                                                        <Checkbox
+                                                                                            checked={!!itemTransferDetails[item.id]?.new.ownerChecked}
+                                                                                            disabled={!!returnToAssetManager[item.id]}
+                                                                                            onCheckedChange={checked => {
+                                                                                                if (checked === false) {
+                                                                                                    // clearNewOwnerField(item.id);
+                                                                                                } else {
+                                                                                                    detectNewChanges(item.id, 'new', 'ownerName', selectedOwnerName || '');
+                                                                                                }
+                                                                                            }}
+                                                                                        />
+                                                                                        Owner
+                                                                                    </Label>
+                                                                                </td>
+                                                                                <td className="py-0.5 px-8">
+                                                                                    <Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.owner?.full_name)}</Badge>
+                                                                                </td>
+                                                                                <td className="py-0.5">
+                                                                                    {/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
+                                                                                    <div>
+                                                                                        {/* Use Combobox SingleSelect for new owner - show employee full names but store ramco_id as value */}
+                                                                                        <Combobox
+                                                                                            options={employees.map(emp => ({ value: emp.ramco_id, label: emp.full_name }))}
+                                                                                            value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
+                                                                                            onValueChange={(val: string) => {
+                                                                                                // set staff id and ownerName where appropriate
+                                                                                                detectNewChanges(item.id, 'new', 'ownerName', employees.find(e => e.ramco_id === val)?.full_name || '');
+                                                                                                detectNewChanges(item.id, 'new', 'ownerStaffId', val);
+                                                                                            }}
+                                                                                            placeholder="Search new owner"
+                                                                                            searchPlaceholder="Search employees..."
+                                                                                            emptyMessage="No employees"
+                                                                                            disabled={!!returnToAssetManager[item.id]}
+                                                                                            className="w-full border border-gray-200 rounded-md bg-white"
+                                                                                        />
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                        {/* Cost Center, Department, Location rows remain for both */}
+                                                                        <tr className="border-b-0">
+                                                                            <td className="py-0.5">
+                                                                                <Label className="flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemTransferDetails[item.id]?.new.costCenter}
+                                                                                        disabled={!!returnToAssetManager[item.id]}
+                                                                                        onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'costCenter', ''); }}
+
+                                                                                    />
+                                                                                    Cost Center
+                                                                                </Label>
+                                                                            </td>
+                                                                            <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.costcenter?.name)}</Badge></td>
+                                                                            <td className="py-0.5">
+                                                                                <SingleSelect
+                                                                                    options={costCenters.map(cc => ({ value: String(cc.id), label: cc.name }))}
+                                                                                    value={itemTransferDetails[item.id]?.new.costCenter || ''}
+                                                                                    onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)}
+                                                                                    placeholder="New Cost Center"
                                                                                     disabled={!!returnToAssetManager[item.id]}
                                                                                     className="w-full border border-gray-200 rounded-md bg-white"
                                                                                 />
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr className="border-b-0">
+                                                                            <td className="py-0.5">
+                                                                                <Label className="flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemTransferDetails[item.id]?.new.department}
+                                                                                        disabled={!!returnToAssetManager[item.id]}
+                                                                                        onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'department', ''); }}
+
+                                                                                    />
+                                                                                    Department
+                                                                                </Label>
+                                                                            </td>
+                                                                            <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.department?.name)}</Badge></td>
+                                                                            <td className="py-0.5">
+                                                                                <SingleSelect
+                                                                                    options={departments.map(dept => ({ value: String(dept.id), label: dept.code || dept.name }))}
+                                                                                    value={itemTransferDetails[item.id]?.new.department || ''}
+                                                                                    onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)}
+                                                                                    placeholder="New Department"
+                                                                                    disabled={!!returnToAssetManager[item.id]}
+                                                                                    className="w-full border border-gray-200 rounded-md bg-white"
+                                                                                />
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr className="border-b-0">
+                                                                            <td className="py-0.5">
+                                                                                <Label className="flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemTransferDetails[item.id]?.new.location}
+                                                                                        disabled={!!returnToAssetManager[item.id]}
+                                                                                        onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
+
+                                                                                    />
+                                                                                    Location
+                                                                                </Label>
+                                                                            </td>
+                                                                            <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.location?.name)}</Badge></td>
+                                                                            <td className="py-0.5">
+                                                                                <SingleSelect
+                                                                                    options={locations.map(loc => ({ value: String(loc.id), label: loc.code || loc.name }))}
+                                                                                    value={itemTransferDetails[item.id]?.new.location || ''}
+                                                                                    onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)}
+                                                                                    placeholder="New Location"
+                                                                                    disabled={!!returnToAssetManager[item.id]}
+                                                                                    className="w-full border border-gray-200 rounded-md bg-white"
+                                                                                />
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                            <hr className="my-2 border-gray-300" />
+                                                            {/* Reason for Transfer */}
+                                                            <div>
+                                                                <div className="font-semibold mb-2 flex items-center justify-start gap-6">
+                                                                    Reason for Transfer
+                                                                    {/* Show only Reason for Transfer error for this item */}
+                                                                    {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
+                                                                        && submitError.toLowerCase().includes('reason for transfer') && (
+                                                                            <div className="text-red-600 text-xs font-semibold">
+                                                                                {submitError}
                                                                             </div>
-                                                                    </td>
-                                                                </tr>
-                                                            )}
-                                                            {/* Cost Center, Department, Location rows remain for both */}
-                                                            <tr className="border-b-0">
-                                                                <td className="py-0.5">
-                                                                    <label className="flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemTransferDetails[item.id]?.new.costCenter}
-                                                                            disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'costCenter', ''); }}
-
-                                                                        />
-                                                                        Cost Center
-                                                                    </label>
-                                                                </td>
-                                                                <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.costcenter?.name)}</Badge></td>
-                                                                <td className="py-0.5">
-                                                                    <SingleSelect
-                                                                        options={costCenters.map(cc => ({ value: String(cc.id), label: cc.name }))}
-                                                                        value={itemTransferDetails[item.id]?.new.costCenter || ''}
-                                                                        onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)}
-                                                                        placeholder="New Cost Center"
-                                                                        disabled={!!returnToAssetManager[item.id]}
-                                                                        className="w-full border border-gray-200 rounded-md bg-white"
-                                                                    />
-                                                                </td>
-                                                            </tr>
-                                                            <tr className="border-b-0">
-                                                                <td className="py-0.5">
-                                                                    <label className="flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemTransferDetails[item.id]?.new.department}
-                                                                            disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'department', ''); }}
-
-                                                                        />
-                                                                        Department
-                                                                    </label>
-                                                                </td>
-                                                                <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.department?.name)}</Badge></td>
-                                                                <td className="py-0.5">
-                                                                    <SingleSelect
-                                                                        options={departments.map(dept => ({ value: String(dept.id), label: dept.code || dept.name }))}
-                                                                        value={itemTransferDetails[item.id]?.new.department || ''}
-                                                                        onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)}
-                                                                        placeholder="New Department"
-                                                                        disabled={!!returnToAssetManager[item.id]}
-                                                                        className="w-full border border-gray-200 rounded-md bg-white"
-                                                                    />
-                                                                </td>
-                                                            </tr>
-                                                            <tr className="border-b-0">
-                                                                <td className="py-0.5">
-                                                                    <label className="flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemTransferDetails[item.id]?.new.location}
-                                                                            disabled={!!returnToAssetManager[item.id]}
-                                                                            onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
-
-                                                                        />
-                                                                        Location
-                                                                    </label>
-                                                                </td>
-                                                                <td className="py-0.5 px-8"><Badge variant="outline" className="w-full py-1.5 bg-blue-600 text-white justify-center rounded-md text-sm">{renderValue(item.location?.name)}</Badge></td>
-                                                                <td className="py-0.5">
-                                                                    <SingleSelect
-                                                                        options={locations.map(loc => ({ value: String(loc.id), label: loc.code || loc.name }))}
-                                                                        value={itemTransferDetails[item.id]?.new.location || ''}
-                                                                        onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)}
-                                                                        placeholder="New Location"
-                                                                        disabled={!!returnToAssetManager[item.id]}
-                                                                        className="w-full border border-gray-200 rounded-md bg-white"
-                                                                    />
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                <hr className="my-2 border-gray-300" />
-                                                {/* Reason for Transfer */}
-                                                <div>
-                                                    <div className="font-semibold mb-2 flex items-center justify-start gap-6">
-                                                        Reason for Transfer
-                                                        {/* Show only Reason for Transfer error for this item */}
-                                                        {submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
-                                                            && submitError.toLowerCase().includes('reason for transfer') && (
-                                                                <div className="text-red-600 text-xs font-semibold">
-                                                                    {submitError}
+                                                                        )}
                                                                 </div>
-                                                            )}
-                                                    </div>
 
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                        {/* Operational Reasons (combined groups) */}
-                                                        <div>
-                                                            <div className="font-semibold mb-2">Operational</div>
-                                                            <div className="flex flex-col gap-2">
-                                                                {REASONS_OPERATIONAL.map(reason => (
-                                                                    <label key={reason.value} className="inline-flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemReasons[item.id]?.[reason.value]}
-                                                                            onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-                                                                        />
-                                                                        {reason.label}
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Organizational Reasons */}
-                                                        <div>
-                                                            <div className="font-semibold mb-2">Organizational</div>
-                                                            <div className="flex flex-col gap-2">
-                                                                {REASONS_ORGANIZATIONAL.map(reason => (
-                                                                    <label key={reason.value} className="inline-flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemReasons[item.id]?.[reason.value]}
-                                                                            onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-                                                                        />
-                                                                        {reason.label}
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Condition Reasons */}
-                                                        <div>
-                                                            <div className="font-semibold mb-2">Condition</div>
-                                                            <div className="flex flex-col gap-2">
-                                                                {REASONS_CONDITION.map(reason => (
-                                                                    <label key={reason.value} className="inline-flex items-center gap-2">
-                                                                        <Checkbox
-                                                                            checked={!!itemReasons[item.id]?.[reason.value]}
-                                                                            onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-                                                                        />
-                                                                        {reason.label}
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    {form.reason.others && (
-                                                        <div className="mt-2 px-2">
-                                                            <textarea
-                                                                className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
-                                                                placeholder="Please specify..."
-                                                                value={form.reason.othersText}
-                                                                onChange={e => handleInput('reason', 'othersText', e.target.value)}
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
-                                                        <div className="flex-1">
-                                                            <label className="font-semibold mb-1 block">Other Reason</label>
-                                                            <textarea className="w-full min-h-[60px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <label className="font-semibold mb-1 block">Attachments</label>
-                                                            <div className="border-2 border-dashed rounded-md p-4 text-center bg-white">
-                                                                <input
-                                                                    id={`attachment-${item.id}`}
-                                                                    type="file"
-                                                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                                                    className="hidden"
-                                                                    onChange={(e) => {
-                                                                        const f = e.target.files?.[0] || null;
-                                                                        handleItemAttachment(item.id, f);
-                                                                        if (f) setItemAttachmentNames(prev => ({ ...prev, [item.id]: f.name }));
-                                                                    }}
-                                                                />
-                                                                <label htmlFor={`attachment-${item.id}`} className="cursor-pointer inline-block w-full">
-                                                                    <div className="py-6">
-                                                                        <div className="text-sm text-gray-600">Drag & drop a file here or click to browse</div>
-                                                                        <div className="mt-2 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
-                                                                    </div>
-                                                                </label>
-                                                                <div className="mt-2 text-sm text-gray-700">
-                                                                    {itemAttachments[item.id]?.name || itemAttachmentNames[item.id] || <span className="text-gray-400">No file chosen</span>}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Comment before Attachments */}
-
-                                                </div>
-                                            </AccordionContent>
-                                        </AccordionItem>
-                                    </Accordion>
-                                );
-                            })}
-                        </div>
-                    )}
-                    {sidebarOpen && (
-                        <ActionSidebar
-                            title="Transferable Items"
-                            content={
-                                <Tabs defaultValue="employees" className="w-full">
-                                    <TabsList className="mb-4">
-                                        <TabsTrigger value="employees">Employees</TabsTrigger>
-                                        <TabsTrigger value="assets">Assets</TabsTrigger>
-                                    </TabsList>
-                                    <TabsContent value="employees">
-                                        <div className="mb-2 font-semibold">Employees</div>
-                                        <input
-                                            type="text"
-                                            placeholder="Search employees..."
-                                            className="border rounded px-2 py-1 w-full text-sm mb-2"
-                                            value={employeeSearch}
-                                            onChange={e => setEmployeeSearch(e.target.value)}
-                                        />
-                                        <ul className="space-y-0">
-                                            {supervised.flatMap((group) =>
-                                                (group.employee || [])
-                                                    .filter((emp: any) => {
-                                                        if (!employeeSearch) return true;
-                                                        const search = employeeSearch.toLowerCase();
-                                                        return (
-                                                            emp.full_name?.toLowerCase().includes(search) ||
-                                                            emp.ramco_id?.toLowerCase().includes(search) ||
-                                                            emp.email?.toLowerCase().includes(search) ||
-                                                            emp.department?.name?.toLowerCase().includes(search)
-                                                        );
-                                                    })
-                                                    .map((emp: any, idx: number, arr: any[]) => (
-                                                        <React.Fragment key={emp.ramco_id}>
-                                                            <div className="flex items-start gap-3 bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-700">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => { addSelectedItem(emp); }}
-                                                                    className="w-8 h-8 flex items-center justify-center rounded-full border border-blue-200 text-blue-500 hover:bg-blue-50"
-                                                                    aria-label={`Add ${emp.full_name}`}
-                                                                >
-                                                                    <CirclePlus className="w-4 h-4" />
-                                                                </button>
-                                                                <User className="w-6 h-6 text-cyan-600 mt-1" />
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="text-sm font-medium text-gray-800 dark:text-dark-light">
-                                                                            {emp.full_name} <span className="text-xs text-gray-500">({emp.ramco_id})</span>
+                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                    {/* Operational Reasons (combined groups) */}
+                                                                    <div>
+                                                                        <div className="font-semibold mb-2">Operational</div>
+                                                                        <div className="flex flex-col gap-2">
+                                                                            {REASONS_OPERATIONAL.map(reason => (
+                                                                                <Label key={reason.value} className="inline-flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemReasons[item.id]?.[reason.value]}
+                                                                                        onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+                                                                                    />
+                                                                                    {reason.label}
+                                                                                </Label>
+                                                                            ))}
                                                                         </div>
                                                                     </div>
-                                                                    {emp.position?.name && (
-                                                                        <div className="text-xs text-gray-500 mt-1">{emp.position?.name}</div>
-                                                                    )}
+
+                                                                    {/* Organizational Reasons */}
+                                                                    <div>
+                                                                        <div className="font-semibold mb-2">Organizational</div>
+                                                                        <div className="flex flex-col gap-2">
+                                                                            {REASONS_ORGANIZATIONAL.map(reason => (
+                                                                                <Label key={reason.value} className="inline-flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemReasons[item.id]?.[reason.value]}
+                                                                                        onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+                                                                                    />
+                                                                                    {reason.label}
+                                                                                </Label>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Condition Reasons */}
+                                                                    <div>
+                                                                        <div className="font-semibold mb-2">Condition</div>
+                                                                        <div className="flex flex-col gap-2">
+                                                                            {REASONS_CONDITION.map(reason => (
+                                                                                <Label key={reason.value} className="inline-flex items-center gap-2">
+                                                                                    <Checkbox
+                                                                                        checked={!!itemReasons[item.id]?.[reason.value]}
+                                                                                        onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+                                                                                    />
+                                                                                    {reason.label}
+                                                                                </Label>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                {form.reason.others && (
+                                                                    <div className="mt-2 px-2">
+                                                                        <Textarea
+                                                                            className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
+                                                                            placeholder="Please specify..."
+                                                                            value={form.reason.othersText}
+                                                                            onChange={e => handleInput('reason', 'othersText', e.target.value)}
+                                                                        />
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
+                                                                    <div className="flex-1">
+                                                                        <Label className="font-semibold mb-1">Other Reason</Label>
+                                                                        <Textarea className="w-full min-h-[60px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <Label className="font-semibold mb-1">Attachments</Label>
+                                                                        <div className="border-2 border-dashed rounded-md p-4 text-center bg-white">
+                                                                            <input
+                                                                                id={`attachment-${item.id}`}
+                                                                                type="file"
+                                                                                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                                                                className="hidden"
+                                                                                onChange={(e) => {
+                                                                                    const f = e.target.files?.[0] || null;
+                                                                                    handleItemAttachment(item.id, f);
+                                                                                    if (f) setItemAttachmentNames(prev => ({ ...prev, [item.id]: f.name }));
+                                                                                }}
+                                                                            />
+                                                                            <Label htmlFor={`attachment-${item.id}`} className="cursor-pointer inline-block w-full">
+                                                                                <div className="py-6">
+                                                                                    <div className="text-sm text-gray-600">Drag & drop a file here or click to browse</div>
+                                                                                    <div className="mt-2 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
+                                                                                </div>
+                                                                            </Label>
+                                                                            <div className="mt-2 text-sm text-gray-700">
+                                                                                {itemAttachments[item.id]?.name || itemAttachmentNames[item.id] || <span className="text-gray-400">No file chosen</span>}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                            {idx < arr.length - 1 && <hr className="my-2 border-gray-200" />}
-                                                        </React.Fragment>
-                                                    ))
-                                            )}
-                                        </ul>
-                                    </TabsContent>
-                                    {/*  Assets Tab Content */}
-                                    <TabsContent value="assets">
-                                        {(() => {
-                                            // Flatten all assets
-                                            const allAssets = supervised.flatMap((group) => group.assets || []);
-                                            // Only count types for assets that have a valid type name
-                                            const typeCounts: Record<string, number> = {};
-                                            allAssets.forEach(a => {
-                                                const type = a.type && typeof a.type.name === 'string' && a.type.name.trim() ? a.type.name : '(Unspecified)';
-                                                typeCounts[type] = (typeCounts[type] || 0) + 1;
-                                            });
-                                            const summary = Object.entries(typeCounts).map(([type, count]) => `${type}: ${count}`).join(' | ');
-                                            return (
-                                                <>
-                                                    <div className="mb-2 font-semibold flex flex-col gap-2">
-                                                        <span>Assets ({summary})</span>
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Search assets..."
-                                                            className="border rounded px-2 py-1 w-full text-sm"
-                                                            value={assetSearch}
-                                                            onChange={e => setAssetSearch(e.target.value)}
-                                                        />
-                                                    </div>
-                                                </>
-                                            );
-                                        })()}
-                                        <ul className="space-y-0">
-                                            {supervised.flatMap((group) =>
-                                                (group.assets || [])
-                                                    .filter((a: any) => {
-                                                        if (!assetSearch) return true;
-                                                        const search = assetSearch.toLowerCase();
-                                                        return (
-                                                            a.register_number?.toLowerCase().includes(search) ||
-                                                            a.asset_code?.toLowerCase().includes(search) ||
-                                                            a.category?.name?.toLowerCase().includes(search) ||
-                                                            a.brand?.name?.toLowerCase().includes(search) ||
-                                                            a.model?.name?.toLowerCase().includes(search)
-                                                        );
-                                                    })
-                                                    .map((a: any, j: any, arr: any) => {
-                                                        let typeIcon = null;
-                                                        if (a.type?.name?.toLowerCase().includes('motor')) {
-                                                            typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
-                                                        } else if (a.type?.name?.toLowerCase().includes('computer')) {
-                                                            typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
+
+                                                            {/* Comment before Attachments */}
+
+                                                        </div>
+                                                    </AccordionContent>
+                                                </AccordionItem>
+                                            </Accordion>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {sidebarOpen && (
+                                <ActionSidebar
+                                    title={applicationOption === 'resignation' ? "Select Owner (All Assets)" : "Select Assets"}
+                                    content={
+                                        <div className="w-full">
+                                            {(() => {
+                                                if (applicationOption === 'resignation') {
+                                                    // For resignation, group assets by owner
+                                                    const allAssets = Array.isArray(supervised) ? supervised : [];
+                                                    const ownerGroups: Record<string, any[]> = {};
+
+                                                    allAssets.forEach(a => {
+                                                        const ownerKey = a.owner?.ramco_id || 'unassigned';
+                                                        if (!ownerGroups[ownerKey]) {
+                                                            ownerGroups[ownerKey] = [];
                                                         }
-                                                        return (
-                                                            <React.Fragment key={a.id || a.register_number || j}>
-                                                                <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-0.5">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <CirclePlus className="text-blue-500 w-6 h-6 cursor-pointer" onClick={() => { addSelectedItem(a); }} />
-                                                                            {typeIcon && typeIcon}
-                                                                        </div>
-                                                                        <div>
-                                                                            <span className="font-medium dark:text-dark-light">{a.register_number || a.asset_code}</span> <span className="text-xs text-gray-500 dark:text-dark-light">({a.asset_code || a.id})</span>
-                                                                            <div className="text-xs text-gray-600  dark:text-dark-light mt-0.5">
-                                                                                {a.category?.name && <div>Category: {a.category.name}</div>}
-                                                                                {a.brand?.name && <div>Brand: {a.brand.name}</div>}
-                                                                                {a.model?.name && <div>Model: {a.model.name}</div>}
-                                                                                {a.owner?.full_name && (
-                                                                                    <div>Owner: {a.owner.full_name} <span className="text-gray-400">({a.owner.ramco_id})</span></div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </li>
-                                                                {j < arr.length - 1 && <hr className="my-2 border-gray-300" />}
-                                                            </React.Fragment>
-                                                        );
-                                                    })
-                                            )}
-                                        </ul>
-                                    </TabsContent>
-                                </Tabs>
-                            }
-                            onClose={() => setSidebarOpen(false)}
-                            size="sm"
-                        />
-                    )}
-                </fieldset>
-                <div className="flex justify-center gap-2 mt-4">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        className="bg-gray-300 hover:bg-gray-400 text-gray-800 hover:text-white"
-                        onClick={() => setOpenDraftDialog(true)}
-                    >
-                        Save Draft
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="default"
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => setOpenSubmitDialog(true)}
-                    >
-                        Submit
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="destructive"
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                        onClick={() => setOpenCancelDialog(true)}
-                    >
-                        Cancel
-                    </Button>
-                </div>
-                {/* 7. Workflow Section */}
-                <fieldset className="border rounded-lg p-4">
-                    <legend className="font-semibold text-lg">Workflow</legend>
-                    <div className="space-y-4">
-                        {/* Approved By */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">Approved By</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.approvedBy?.date ? new Date(workflow.approvedBy.date).toLocaleString() : '-'}</span>
+                                                        ownerGroups[ownerKey].push(a);
+                                                    });
+
+                                                    return (
+                                                        <>
+                                                            <div className="mb-4 font-semibold flex flex-col gap-2">
+                                                                <span>Owners ({Object.keys(ownerGroups).length})</span>
+                                                                <Input
+                                                                    type="text"
+                                                                    placeholder="Search owners..."
+                                                                    className="border rounded px-2 py-1 w-full text-sm"
+                                                                    value={assetSearch}
+                                                                    onChange={e => setAssetSearch(e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <ul className="space-y-3">
+                                                                {Object.entries(ownerGroups)
+                                                                    .filter(([ownerKey, assets]) => {
+                                                                        if (!assetSearch) return true;
+                                                                        const search = assetSearch.toLowerCase();
+                                                                        const firstAsset = assets[0];
+                                                                        return (
+                                                                            firstAsset.owner?.full_name?.toLowerCase().includes(search) ||
+                                                                            firstAsset.owner?.ramco_id?.toLowerCase().includes(search)
+                                                                        );
+                                                                    })
+                                                                    .map(([ownerKey, assets]) => {
+                                                                        const firstAsset = assets[0];
+                                                                        const ownerName = firstAsset.owner?.full_name || 'Unassigned';
+                                                                        const ownerRamcoId = firstAsset.owner?.ramco_id || '';
+
+                                                                        return (
+                                                                            <li key={ownerKey} className="bg-blue-50 dark:bg-gray-700 rounded-lg p-3 border border-blue-200">
+                                                                                <div className="flex items-center justify-between mb-2">
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <User className="w-5 h-5 text-blue-600" />
+                                                                                        <div>
+                                                                                            <div className="font-semibold text-blue-800 dark:text-blue-300">
+                                                                                                {ownerName}
+                                                                                            </div>
+                                                                                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                                                                                                {ownerRamcoId} • {assets.length} asset{assets.length !== 1 ? 's' : ''}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <Button
+                                                                                        size="sm"
+                                                                                        onClick={() => {
+                                                                                            // Add all assets for this owner
+                                                                                            assets.forEach(asset => addSelectedItem(asset));
+                                                                                        }}
+                                                                                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                                                                                    >
+                                                                                        Add All ({assets.length})
+                                                                                    </Button>
+                                                                                </div>
+                                                                                <div className="space-y-1 max-h-32 overflow-y-auto">
+                                                                                    {assets.map((asset, idx) => (
+                                                                                        <div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
+                                                                                            <div>
+                                                                                                <span className="font-medium">{asset.register_number}</span>
+                                                                                                <div className="text-gray-600 dark:text-gray-300">
+                                                                                                    {asset.types?.name} - {asset.categories?.name}
+                                                                                                </div>
+                                                                                                <div className="text-gray-500 dark:text-gray-400">
+                                                                                                    {asset.brands?.name} {asset.models?.name}
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <CirclePlus
+                                                                                                className="text-blue-500 w-4 h-4 cursor-pointer hover:text-blue-600"
+                                                                                                onClick={() => addSelectedItem(asset)}
+                                                                                            />
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </li>
+                                                                        );
+                                                                    })
+                                                                }
+                                                            </ul>
+                                                        </>
+                                                    );
+                                                } else {
+                                                    // Regular asset list for internal transfer
+                                                    const allAssets = Array.isArray(supervised) ? supervised : [];
+                                                    const typeCounts: Record<string, number> = {};
+                                                    allAssets.forEach(a => {
+                                                        const type = a.types && typeof a.types.name === 'string' && a.types.name.trim() ? a.types.name : '(Unspecified)';
+                                                        typeCounts[type] = (typeCounts[type] || 0) + 1;
+                                                    });
+                                                    const summary = Object.entries(typeCounts).map(([type, count]) => `${type}: ${count}`).join(' | ');
+
+                                                    return (
+                                                        <>
+                                                            <div className="mb-4 font-semibold flex flex-col gap-2">
+                                                                <span>Assets ({summary})</span>
+                                                                <Input
+                                                                    type="text"
+                                                                    placeholder="Search assets..."
+                                                                    className="border rounded px-2 py-1 w-full text-sm"
+                                                                    value={assetSearch}
+                                                                    onChange={e => setAssetSearch(e.target.value)}
+                                                                />
+                                                            </div>
+                                                            <ul className="space-y-2">
+                                                                {allAssets
+                                                                    .filter((a: any) => {
+                                                                        if (!assetSearch) return true;
+                                                                        const search = assetSearch.toLowerCase();
+                                                                        return (
+                                                                            a.register_number?.toLowerCase().includes(search) ||
+                                                                            a.entry_code?.toLowerCase().includes(search) ||
+                                                                            a.categories?.name?.toLowerCase().includes(search) ||
+                                                                            a.brands?.name?.toLowerCase().includes(search) ||
+                                                                            a.models?.name?.toLowerCase().includes(search) ||
+                                                                            a.types?.name?.toLowerCase().includes(search)
+                                                                        );
+                                                                    })
+                                                                    .map((a: any, j: any) => {
+                                                                        let typeIcon = null;
+                                                                        if (a.types?.name?.toLowerCase().includes('motor')) {
+                                                                            typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
+                                                                        } else if (a.types?.name?.toLowerCase().includes('computer')) {
+                                                                            typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
+                                                                        }
+                                                                        return (
+                                                                            <React.Fragment key={a.id || a.register_number || j}>
+                                                                                <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <CirclePlus className="text-blue-500 w-6 h-6 cursor-pointer hover:text-blue-600" onClick={() => { addSelectedItem(a); }} />
+                                                                                            {typeIcon && typeIcon}
+                                                                                        </div>
+                                                                                        <div>
+                                                                                            <div className="text-medium dark:text-dark-light">
+                                                                                                {a.owner?.full_name && (
+                                                                                                    <div className="font-medium dark:text-dark-light">{a.owner.full_name} <span className="text-gray-400">({a.owner.ramco_id})</span></div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <span className="font-medium dark:text-dark-light">{a.register_number}</span>
+                                                                                            <div className="text-xs text-gray-700 dark:text-dark-light mt-0.5">
+                                                                                                {a.types?.name && a.categories?.name && (
+                                                                                                    <div>{a.types.name} - {a.categories.name}</div>
+                                                                                                )}
+                                                                                                {a.types?.name && !a.categories?.name && <div>Type: {a.types.name}</div>}
+                                                                                                {!a.types?.name && a.categories?.name && <div>Category: {a.categories.name}</div>}
+                                                                                                {a.brands?.name && a.models?.name && (
+                                                                                                    <div>{a.brands.name} {a.models.name}</div>
+                                                                                                )}
+                                                                                                {a.brands?.name && !a.models?.name && <div>Brand: {a.brands.name}</div>}
+                                                                                                {!a.brands?.name && a.models?.name && <div>Model: {a.models.name}</div>}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </li>
+                                                                            </React.Fragment>
+                                                                        );
+                                                                    })
+                                                                }
+                                                            </ul>
+                                                        </>
+                                                    );
+                                                }
+                                            })()}
+                                        </div>
+                                    }
+                                    onClose={() => setSidebarOpen(false)}
+                                    size="sm"
+                                />
+                            )}
                         </div>
-                        {workflow.approvedBy?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.approvedBy.comment}</span>
-                            </div>
-                        )}
-                        {/* Accepted By */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-2 font-medium min-w-[120px]">Accepted By</label>
-                            <span className="w-full md:max-w-xs">{workflow.acceptedBy?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.acceptedBy?.date ? new Date(workflow.acceptedBy.date).toLocaleString() : '-'}</span>
+                        <div className="flex justify-center gap-2 mt-4">
+                            <Button type="button" onClick={() => setOpenSubmitDialog(true)}>Submit</Button>
+                            <Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)}>Cancel</Button>
                         </div>
-                        {workflow.acceptedBy?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.acceptedBy.comment}</span>
-                            </div>
-                        )}
-                        {/* QA Section */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">QA Section</label>
-                            <span className="w-full md:max-w-xs">{workflow.qaSection?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.qaSection?.date ? new Date(workflow.qaSection.date).toLocaleString() : '-'}</span>
-                        </div>
-                        {workflow.qaSection?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.qaSection.comment}</span>
-                            </div>
-                        )}
-                        {/* Asset Manager */}
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <label className="block my-1 font-medium min-w-[120px]">Asset Manager</label>
-                            <span className="w-full md:max-w-xs">{workflow.assetManager?.name || '-'}</span>
-                            <label className="my-1 text-gray-500 min-w-[80px] md:ml-4">Action Date</label>
-                            <span className="w-full md:max-w-xs">{workflow.assetManager?.date ? new Date(workflow.assetManager.date).toLocaleString() : '-'}</span>
-                        </div>
-                        {workflow.assetManager?.comment && (
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-2">
-                                <label className="block my-1 font-medium min-w-[120px]">Comment</label>
-                                <span className="w-full md:max-w-2xl">{workflow.assetManager.comment}</span>
-                            </div>
-                        )}
-                    </div>
-                </fieldset>
-            </form>
+                        {/* Workflow section removed as requested */}
+                    </form>
+                </CardContent>
+            </Card>
         </div>
     );
 };
