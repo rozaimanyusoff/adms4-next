@@ -421,7 +421,7 @@ const FuelConsumptionReport = () => {
     <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
       <div className="flex items-center space-x-2">
         <FileSpreadsheet className="h-5 w-5 text-green-600" />
-      <h2 className="text-2xl font-bold">Fuel Billing Report</h2>
+      <h2 className="text-2xl font-bold">Fuel Consumption Report</h2>
       </div>
       <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-3 my-2 rounded">
         <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.

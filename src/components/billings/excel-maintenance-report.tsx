@@ -24,8 +24,8 @@ interface YearDetail {
 }
 
 interface VehicleData {
-    asset_id: number;
-    register_number: string;
+    vehicle_id: number;
+    vehicle: string;
     category: { id: number; name: string };
     brand: { id: number; name: string };
     model: { id: number; name: string };
@@ -339,7 +339,7 @@ const MaintenanceReport = () => {
 
                                 worksheet.addRow([
                                     no++,
-                                    vehicle.register_number || '',
+                                    vehicle.vehicle || '',
                                     vehicle.category?.name || '',
                                     vehicle.brand?.name || '',
                                     vehicle.model?.name || '',
@@ -356,7 +356,7 @@ const MaintenanceReport = () => {
                                 ]);
 
                             } catch (vehicleError) {
-                                console.error(`Error processing vehicle ${vehicle.register_number}:`, vehicleError);
+                                console.error(`Error processing vehicle ${vehicle.vehicle}:`, vehicleError);
                             }
                         });
 
@@ -444,7 +444,7 @@ const MaintenanceReport = () => {
         <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
             <div className="flex items-center space-x-2">
                 <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                <h2 className="text-lg font-semibold">Vehicle Maintenance Excel Report</h2>
+                <h2 className="text-2xl font-bold">Maintenance Billing Report</h2>
             </div>
             <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-2 mb-4 rounded">
                 <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.
