@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CoreCategory from "./assetdata-categories";
 import CoreBrand from "./assetdata-brands";
 import CoreType from "./assetdata-types";
-import CoreModel from "./core-model";
+import CoreModel from "./assetdata-models";
 import CoreSoftware from "./core-software";
 import Link from "next/link";
 

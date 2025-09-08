@@ -66,10 +66,10 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.setFontSize(18);
         doc.text('M E M O', pageWidth / 15, 24, { align: 'left' });
         doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    // include the utilId(s) passed to the exporter; fall back to first bill id or 'N/A'
-    const refUtil = (Array.isArray(utilIds) && utilIds.length) ? String(utilIds[0]) : (bills[0]?.id ? String(bills[0].id) : 'N/A');
-    doc.text(`Our Ref : ${responseBeneficiary?.filing || 'Undefined reference'} (${refUtil})`, 15, 34);
+        doc.setFont('helvetica', 'normal');
+        // include the utilId(s) passed to the exporter; fall back to first bill id or 'N/A'
+        const refUtil = (Array.isArray(utilIds) && utilIds.length) ? String(utilIds[0]) : (bills[0]?.id ? String(bills[0].id) : 'N/A');
+        doc.text(`Our Ref : ${responseBeneficiary?.filing || 'Undefined reference'} (${refUtil})`, 15, 34);
         const currentDate = new Date();
         doc.text(`Date : ${formatDate(currentDate)}`, pageWidth - 70, 34, { align: 'right' });
         doc.text('To      : Head of Finance', 15, 44);
@@ -206,6 +206,37 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.text(grandTotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
         doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
         y += 10;
+
+        // ========================================================================
+        // PAGE BREAK CONTROL - MODIFICATION GUIDE
+        // ========================================================================
+        // This section handles automatic page breaks before the signatures section.
+        // You can modify the following parameters to control when page breaks occur:
+        
+        // 1. SIGNATURES HEIGHT: Adjust this value based on the actual content height
+        //    - Increase if you add more signature rows or content
+        //    - Decrease if you remove signature elements
+        const signaturesHeight = 60; // Current: 60 units (covers signatures + spacing)
+        
+        // 2. BOTTOM MARGIN: Space to leave at bottom of page before breaking
+        //    - Increase for more conservative page breaks (breaks earlier)
+        //    - Decrease to utilize more page space before breaking
+        const bottomMargin = 40; // Current: 40 units from page bottom
+        
+        // 3. NEW PAGE TOP MARGIN: Starting position when creating new page
+        //    - Adjust based on your preferred top spacing on new pages
+        const newPageTopMargin = 20; // Current: 20 units from page top
+        
+        // Check if we need a page break for the signatures section
+        const currentPageHeight = doc.internal.pageSize.getHeight();
+        
+        // PAGE BREAK LOGIC: If current position + signatures content > page height - margin
+        if (y + signaturesHeight > currentPageHeight - bottomMargin) {
+            doc.addPage();
+            y = newPageTopMargin; // Reset y position for new page
+        }
+        // ========================================================================
+
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         doc.text('Your cooperation on the above is highly appreciated.', 15, y);
@@ -377,10 +408,10 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
                 doc.addImage(base64, 'PNG', x, pageHeight - imgHeight - 2, imgWidth, imgHeight);
             } catch (e) { }
         }
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    doc.save(`telco-bill-summary-batch-${timestamp}.pdf`);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        doc.save(`telco-bill-summary-batch-${timestamp}.pdf`);
         toast.success('Batch PDF downloaded!');
     } catch (err) {
         toast.error('Failed to export batch PDF.');

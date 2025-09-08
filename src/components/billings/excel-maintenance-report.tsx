@@ -184,7 +184,9 @@ const MaintenanceReport = () => {
                         const url = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        link.download = `Vehicle-Maintenance-Report-CostCenter-${startDate}-to-${endDate}.xlsx`;
+                        const now = new Date();
+                        const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+                        link.download = `Vehicle-Maintenance-Report-CostCenter-${timestamp}.xlsx`;
                         link.click();
                         window.URL.revokeObjectURL(url);
                     }
@@ -419,7 +421,9 @@ const MaintenanceReport = () => {
                         const url = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');
                         link.href = url;
-                        link.download = `Vehicle-Maintenance-Report-${startDate}-to-${endDate}.xlsx`;
+                        const now = new Date();
+                        const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
+                        link.download = `Vehicle-Maintenance-Report-${timestamp}.xlsx`;
                         link.click();
                         window.URL.revokeObjectURL(url);
                     } else {
