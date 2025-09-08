@@ -191,11 +191,11 @@ const FuelConsumptionReport = () => {
             json.data.forEach((item: any) => {
               (item.details || []).forEach((detail: any) => {
                 const year = detail.year?.toString();
-                if (year && Array.isArray(detail.fuel)) {
+                if (year && Array.isArray(detail.monthly_expenses)) {
                   if (!yearMonthMap[year]) yearMonthMap[year] = new Set();
-                  detail.fuel.forEach((fuel: any) => {
-                    if (fuel.stmt_date) {
-                      const d = new Date(fuel.stmt_date);
+                  detail.monthly_expenses.forEach((expense: any) => {
+                    if (expense.stmt_date) {
+                      const d = new Date(expense.stmt_date);
                       yearMonthMap[year].add(d.getMonth() + 1);
                     }
                   });
@@ -214,7 +214,7 @@ const FuelConsumptionReport = () => {
             });
             const rows: Record<string, any> = {};
             json.data.forEach((item: any) => {
-              const key = `${item.vehicle}|${item.costcenter?.name}|${item.district?.code}`;
+              const key = `${item.vehicle}|${item.costcenter?.name}|${item.location?.name}`;
               if (!rows[key]) {
                 rows[key] = {
                   vehicle: item.vehicle || '',
@@ -224,7 +224,7 @@ const FuelConsumptionReport = () => {
                   fuel_type: item.fuel || '',
                   age: item.age || '',
                   costcenter: item.costcenter?.name || '',
-                  district: item.district?.code || '',
+                  location: item.location?.name || '',
                   model: item.model?.name || '',
                   owner: item.owner?.name || '',
                   classification: item.classification || '',
@@ -236,13 +236,13 @@ const FuelConsumptionReport = () => {
               }
               (item.details || []).forEach((detail: any) => {
                 const year = detail.year?.toString();
-                if (year && Array.isArray(detail.fuel)) {
-                  detail.fuel.forEach((fuel: any) => {
-                    if (fuel.stmt_date) {
-                      const d = new Date(fuel.stmt_date);
+                if (year && Array.isArray(detail.monthly_expenses)) {
+                  detail.monthly_expenses.forEach((expense: any) => {
+                    if (expense.stmt_date) {
+                      const d = new Date(expense.stmt_date);
                       const month = d.getMonth() + 1;
                       const colKey = `${year}-${month}`;
-                      rows[key].amounts[colKey] = fuel.amount ? Number(fuel.amount) : 0;
+                      rows[key].amounts[colKey] = expense.amount ? Number(expense.amount) : 0;
                     }
                   });
                 }
@@ -269,7 +269,7 @@ const FuelConsumptionReport = () => {
             worksheet.addRow([]);
 
             // Create headers
-            const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'District', 'Owner', 'Classification', 'Record Status'];
+            const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'Location', 'Owner', 'Classification', 'Record Status'];
             const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
 
             // Add year-month columns for amounts
@@ -291,7 +291,7 @@ const FuelConsumptionReport = () => {
             worksheet.addRow(header1);
             worksheet.addRow(header2);
             // Merge year cells for amounts
-            let col = 14; // Start after basic columns (No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, District, Owner, Classification, Record Status)
+            let col = 14; // Start after basic columns (No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, Location, Owner, Classification, Record Status)
             years.forEach(y => {
               const months = Array.from(yearMonthMap[y]);
               if (months.length > 1) {
@@ -329,7 +329,7 @@ const FuelConsumptionReport = () => {
                 row.fuel_type,
                 row.age,
                 row.costcenter,
-                row.district,
+                row.location,
                 row.owner,
                 row.classification,
                 row.record_status,
@@ -338,7 +338,7 @@ const FuelConsumptionReport = () => {
               ]);
             });
             // Format number columns
-            const basicColumnsCount = 13; // No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, District, Owner, Classification, Record Status
+            const basicColumnsCount = 13; // No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, Location, Owner, Classification, Record Status
             const amountStartCol = basicColumnsCount + 1;
             const amountEndCol = amountStartCol + columns.length - 1;
             const subTotalCol = amountEndCol + 1;
