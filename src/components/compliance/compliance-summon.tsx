@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Mail, Paperclip } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
 // dialog no longer used — use ActionSidebar on row double-click for edit
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
@@ -261,10 +261,46 @@ const ComplianceSummonList: React.FC = () => {
         { key: 'summon_stat' as any, header: 'Status', filter: 'singleSelect', render: (r: any) => r.summon_stat || '-' },
         { key: 'actions' as any, header: 'Actions', render: (r: any) => (
             <div className="flex items-center space-x-2">
-                {r.attachment_url ? <a className="text-sm text-blue-600" href={r.attachment_url} target="_blank" rel="noreferrer">Attachment</a> : null}
+                <NotifyButton smnId={r.smn_id} hasAttachment={!!(r.attachment_url || r.summon_upl)} />
+                {(r.attachment_url || r.summon_upl) ? (
+                    <a
+                        href={r.attachment_url || r.summon_upl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded hover:bg-gray-100"
+                        title="Open attachment"
+                    >
+                        <Paperclip className="h-5 w-5 text-green-600" />
+                    </a>
+                ) : null}
             </div>
         ) }
     ];
+
+    // Small component to send notification and show loading state
+    const NotifyButton: React.FC<{ smnId: number; hasAttachment?: boolean }> = ({ smnId, hasAttachment }) => {
+        const [notifying, setNotifying] = useState(false);
+        const handleNotify = async (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (notifying) return;
+            setNotifying(true);
+            try {
+                await authenticatedApi.post('/api/compliance/summon/notify', { smn_id: smnId });
+                toast.success('Notification sent');
+            } catch (err) {
+                console.error('Failed to send notification', err);
+                toast.error('Failed to send notification');
+            } finally {
+                setNotifying(false);
+            }
+        };
+        return (
+            <button onClick={handleNotify} title="Send notification" className="p-1 rounded hover:bg-gray-100" aria-label="notify">
+                <Mail className={`h-5 w-5 ${notifying ? 'animate-spin text-gray-400' : 'text-blue-600'}`} />
+            </button>
+        );
+    };
 
     return (
         <div>

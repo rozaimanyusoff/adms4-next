@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Paperclip } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -112,6 +113,18 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
 
     return (
         <div className="p-6 max-w-5xl mx-auto">
+            {/* Simple navbar/header */}
+            <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                    <button onClick={() => history.back()} className="p-2 rounded hover:bg-gray-100" title="Back">
+                        ←
+                    </button>
+                    <h1 className="text-lg font-semibold">Summon Portal</h1>
+                </div>
+                <div>
+                    <span className="text-sm text-gray-500">Summon ID: {smnId}</span>
+                </div>
+            </div>
             <Card>
                 <CardHeader>
                     <CardTitle>Summon Details</CardTitle>
@@ -139,16 +152,20 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
 
                                 <div className="mt-4">
                                     <strong>Summon Ticket</strong>
-                                    <div className="mt-2 bg-white border rounded p-3">
-                                        {/* derive attachment from record for rendering */}
+                                    <div className="mt-2">
                                         { (record?.attachment_url || record?.summon_upl) ? (
-                                            ((record.attachment_url || record.summon_upl).endsWith('.png') || (record.attachment_url || record.summon_upl).endsWith('.jpg') || (record.attachment_url || record.summon_upl).endsWith('.jpeg')) ? (
-                                                <img src={attachmentBlobUrl || (record.attachment_url || record.summon_upl)} alt="summon" className="w-full object-contain" />
-                                            ) : (
-                                                <object data={attachmentBlobUrl || (record.attachment_url || record.summon_upl)} type="application/pdf" width="100%" height="600">
-                                                    <a className="text-blue-600" href={record.attachment_url || record.summon_upl} target="_blank" rel="noreferrer">Open attachment</a>
-                                                </object>
-                                            )
+                                            <div className="flex items-center space-x-3">
+                                                <a
+                                                    href={attachmentBlobUrl || record.attachment_url || record.summon_upl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex items-center text-blue-600"
+                                                >
+                                                    <Paperclip className="h-5 w-5 mr-2" />
+                                                    <span className="underline">Open attachment</span>
+                                                </a>
+                                            </div>
                                         ) : (
                                             <div className="text-sm text-gray-500">No attachment provided.</div>
                                         )}
