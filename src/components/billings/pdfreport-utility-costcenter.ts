@@ -6,16 +6,18 @@ import { authenticatedApi } from '@/config/api';
 import { addHeaderFooter, ensurePageBreakForSignatures } from './pdf-helpers';
 
 
+// Shared small helpers
+function formatDate(dateInput: string | Date | undefined): string {
+    if (!dateInput) return '';
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1);
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+}
+
 export async function exportUtilityBillSummary(beneficiaryId: string | number | null, utilIds: number[]) {
     if (!utilIds || utilIds.length === 0) return;
-    function formatDate(dateInput: string | Date | undefined): string {
-        if (!dateInput) return '';
-        const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1);
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-    }
     try {
         // Fetch all bills in one request, optionally scoped by beneficiary
         const endpoint = `/api/bills/util/by-ids/${beneficiaryId}`;
