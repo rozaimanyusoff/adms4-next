@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Plus, Download, Loader2, ChevronRight, Search, X, Printer } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
+import { AuthContext } from '@store/AuthContext';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
 import { SingleSelect } from '@/components/ui/combobox';
@@ -163,6 +165,47 @@ const UtilityBill = () => {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const dropZoneRef = React.useRef<HTMLDivElement | null>(null);
   const router = useRouter();
+
+  // Delete bill authorizer - 2 usernames
+  const deleteBillAuthorizer = ['000712', '000277']; //must match username from session
+
+  // Get current user from AuthContext and read username (with localStorage fallback)
+  const user = React.useContext(AuthContext);
+  const username: string = user?.authData?.user?.username || (() => {
+    try {
+      return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  // Dialog state for delete confirmation
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Confirm delete handler (invoked from dialog)
+  const handleConfirmDelete = async () => {
+    // Double-check authorization before deleting
+    if (!deleteBillAuthorizer.includes(username)) {
+      toast.error('You are not authorized to delete bills');
+      setDeleteDialogOpen(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Delete each selected bill (no batch endpoint assumed)
+      await Promise.all(selectedRowIds.map(id => authenticatedApi.delete(`/api/bills/util/${id}`)));
+      toast.success('Selected bills deleted');
+      setSelectedRowIds([]);
+      fetchUtilityBills();
+    } catch (err) {
+      console.error('Failed to delete selected bills', err);
+      toast.error('Failed to delete selected bills');
+    } finally {
+      setLoading(false);
+      setDeleteDialogOpen(false);
+    }
+  };
 
   // Compute whether printing fields should be shown based on selected account or editing bill
   const showPrintingFields = useMemo(() => {
@@ -770,7 +813,7 @@ const UtilityBill = () => {
                 options={beneficiaryOptions}
                 value={beneficiaryFilter}
                 onValueChange={(v) => setBeneficiaryFilter(v)}
-                placeholder="Select beneficiary to print memo"
+                placeholder="Select beneficiary..."
                 clearable
                 searchPlaceholder="Search beneficiary..."
                 className="w-full py-0"
@@ -790,8 +833,16 @@ const UtilityBill = () => {
                     return;
                   }
 
-                  const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
-          await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
+                    // Determine whether any of the bills selected are printing-related
+                    const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
+                    const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
+                    if (anyPrinting) {
+                      const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
+                      await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
+                    } else {
+                      const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
+                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
+                    }
                 } catch (err) {
                   console.error('Failed to export utility PDF batch', err);
                   toast.error('Failed to export PDF.');
@@ -801,6 +852,35 @@ const UtilityBill = () => {
             >
         <Printer size={16} className="mr-1" /> Batch Bill Print
             </Button>
+            {/* Delete Selected: only show when beneficiary selected, at least one row selected, and user is authorized */}
+            {beneficiaryFilter && selectedRowIds && selectedRowIds.length > 0 && deleteBillAuthorizer.includes(username) && (
+              <>
+                <Button
+                  variant="destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  Delete Selected
+                </Button>
+
+                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Confirm delete</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2">
+                      Are you sure you want to delete {selectedRowIds.length} selected bill(s)? This cannot be undone.
+                    </div>
+                    <DialogFooter className="flex gap-2">
+                      <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+                      <Button variant="destructive" onClick={handleConfirmDelete}>
+                        {loading ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+                        Delete
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
             <div className="flex items-center">
               <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
                 <SelectTrigger className="w-28 h-9">

@@ -146,7 +146,7 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         const totalTaxValue = totalTax.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const roundLabel = 'Rounding (RM):';
         const roundValue = totalRounding.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const grandTotalLabel = 'Grand Total:';
+        const grandTotalLabel = 'Grand Total (RM):';
         const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const colWidths = [10, 28, 25, 38, 27, 26, 25];
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);

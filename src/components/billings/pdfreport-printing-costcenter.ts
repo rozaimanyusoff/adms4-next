@@ -18,7 +18,7 @@ function formatDate(dateInput: string | Date | undefined): string {
 export async function exportPrintingBillSummary(beneficiaryId: string | number | null, utilIds: number[]) {
     if (!utilIds || utilIds.length === 0) return;
     try {
-        const endpoint = `/api/bills/util/by-ids/${beneficiaryId}`;
+        const endpoint = `/api/bills/util/printing/by-ids/${beneficiaryId}`;
         const res = await authenticatedApi.post(endpoint,
             JSON.stringify({ ids: utilIds }),
             { headers: { 'Content-Type': 'application/json' } }
@@ -73,6 +73,10 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
         doc.text(`Date : ${formatDate(currentDate)}`, pageWidth - 70, 34, { align: 'right' });
         doc.text('To      : Head of Finance', 15, 44);
         doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 44, { align: 'left' });
+        doc.text('Copy  :', 15, 48);
+        doc.text('Of      :', pageWidth - 95, 48, { align: 'left' });
+        doc.text(`From  : Human Resource and Administration`, 15, 52);
+        doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 52, { align: 'left' });
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
         const now = new Date();
@@ -90,7 +94,7 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
 
         let y = 75;
         const tableHeaderRow = [
-            'No', 'Account', 'Date', 'Inv No', 'Cost Center', 'Location', 'Rental (RM)', 'Color (RM)', 'B/W (RM)', 'Sub-total (RM)'
+            'No', 'Account', 'Inv No', 'Cost Center', 'Location', 'Rental (RM)', 'Color (RM)', 'B/W (RM)', 'Sub-total (RM)'
         ];
         let rowNum = 1;
         const tableBody = [
@@ -99,7 +103,7 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
                 return [
                     String(rowNum++),
                     bill.account?.account || bill.account?.account_no || '',
-                    bill.ubill_date ? formatDate(bill.ubill_date) : '',
+                    //bill.ubill_date ? formatDate(bill.ubill_date) : '',
                     bill.ubill_no || '',
                     bill.account?.costcenter?.name || (bill.costcenter?.name || '-'),
                     bill.account?.location?.name || (bill.location?.name || '-'),
@@ -133,52 +137,55 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
                 }
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' },
-                1: { cellWidth: 30, halign: 'left' },
+                0: { cellWidth: 8, halign: 'center' },
+                1: { cellWidth: 20, halign: 'left' },
                 2: { cellWidth: 20, halign: 'center' },
-                3: { cellWidth: 25, halign: 'center' },
-                4: { cellWidth: 28, halign: 'left' },
-                5: { cellWidth: 28, halign: 'left' },
+                3: { cellWidth: 25, halign: 'left' },
+                4: { cellWidth: 25, halign: 'left' },
+                5: { cellWidth: 20, halign: 'right' },
                 6: { cellWidth: 20, halign: 'right' },
                 7: { cellWidth: 20, halign: 'right' },
-                8: { cellWidth: 20, halign: 'right' },
-                9: { cellWidth: 25, halign: 'right' },
+                8: { cellWidth: 25, halign: 'right' },
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
             theme: 'grid',
         });
 
-        y = (doc as any).lastAutoTable.finalY + 6;
+        y = (doc as any).lastAutoTable.finalY + 4;
 
-        // Totals for printing fields
+        // Totals for printing fields — render a boxed totals area on the right
         const totalRent = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_rent || 0), 0);
         const totalColor = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_color || 0), 0);
         const totalBw = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_bw || 0), 0);
         const grandTotal = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_gtotal || 0), 0);
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        const totalsLabelX = pageWidth - 14 - 90; // position totals block to right
-        const lineH = 6;
+        const totalRentLabel = 'Total Rental (RM):';
+        const totalColorLabel = 'Total Color (RM):';
+        const totalBwLabel = 'Total B/W (RM):';
+        const grandTotalLabel = 'Grand Total (RM):';
+        const totalRentValue = totalRent.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const totalColorValue = totalColor.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const totalBwValue = totalBw.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
+        const xStart = 14; // 14 margin + 140 box width
+        const rowHeight = 6; // Grand total box height
+        const colWidth = [8, 20, 20, 25, 25, 20, 20, 20, 25]; // widths for Rental, Color, B/W, Grand Total columns
+        const totalTableWidth = colWidth.reduce((a, b) => a + b, 0); // sum of all colWidths
         doc.setFillColor(255, 255, 255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
-        doc.rect(totalsLabelX, y - 4, 90, lineH * 4, 'FD');
-
-        doc.text('Totals', totalsLabelX + 6, y + 2);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Rental:`, totalsLabelX + 36, y + 2, { align: 'right' });
-        doc.text(totalRent.toLocaleString(undefined, { minimumFractionDigits: 2 }), totalsLabelX + 88, y + 2, { align: 'right' });
-        doc.text(`Color:`, totalsLabelX + 36, y + 2 + lineH, { align: 'right' });
-        doc.text(totalColor.toLocaleString(undefined, { minimumFractionDigits: 2 }), totalsLabelX + 88, y + 2 + lineH, { align: 'right' });
-        doc.text(`B/W:`, totalsLabelX + 36, y + 2 + lineH * 2, { align: 'right' });
-        doc.text(totalBw.toLocaleString(undefined, { minimumFractionDigits: 2 }), totalsLabelX + 88, y + 2 + lineH * 2, { align: 'right' });
+        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD'); // drawbox for Grand Total ('FD' = fill and draw)
         doc.setFont('helvetica', 'bold');
-        doc.text(`Grand Total:`, totalsLabelX + 36, y + 2 + lineH * 3, { align: 'right' });
-        doc.text(grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }), totalsLabelX + 88, y + 2 + lineH * 3, { align: 'right' });
-
-        y += lineH * 4 + 8;
+        doc.setFontSize(9);
+        //doc.text(totalRentLabel, xStart + totalTableWidth - 28, y, { align: 'right' }); // 1st line label
+        //doc.text(totalRentValue, xStart + totalTableWidth - 66, y, { align: 'right' }); // 1st line value
+        //doc.text(totalBwLabel, xStart + totalTableWidth - 28, y + 5, { align: 'right' });
+        //doc.text(totalBwValue, xStart + totalTableWidth - 46, y, { align: 'right' });
+        //doc.text(totalColorLabel, xStart + totalTableWidth - 28, y + 10, { align: 'right' });
+        //doc.text(totalColorValue, xStart + totalTableWidth - 26, y, { align: 'right' });
+        doc.text(grandTotalLabel, xStart + totalTableWidth - 26, y, { align: 'right' });
+        doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
+        y += 10; // line spacing below box
 
         // Signatures area (reuse helper)
         y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 });
