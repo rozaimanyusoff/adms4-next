@@ -4,6 +4,7 @@ import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import ExcelUtilityReport from './excel-utility-report';
+import PrintingExcelReport from './excel-printing-report';
 
 interface UtilityBill {
     util_id: number;
@@ -301,6 +302,7 @@ const UtilityDash: React.FC = () => {
                 </CardContent>
             </Card>
             <ExcelUtilityReport />
+            <PrintingExcelReport />
         </div>
     );
 };
