@@ -48,13 +48,11 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         setReceiptPreviewUrl(null);
     }, [receiptFile]);
 
-    if (loading) return <div className="p-4">Loading…</div>;
-    if (!record) return <div className="p-4">Summon not found.</div>;
-
-    const attachment = record.attachment_url || record.summon_upl || null;
+    // Attachment blob URL state (declare hooks at top-level to preserve hook order)
     const [attachmentBlobUrl, setAttachmentBlobUrl] = useState<string | null>(null);
 
     // Try to fetch the attachment through authenticatedApi as a blob and expose a blob URL for inline rendering.
+    // This effect depends on `record` (not on local derived `attachment`) so hooks order stays consistent.
     useEffect(() => {
         let mounted = true;
         // cleanup previous blob
@@ -62,6 +60,7 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
             URL.revokeObjectURL(attachmentBlobUrl);
             setAttachmentBlobUrl(null);
         }
+        const attachment = record?.attachment_url || record?.summon_upl || null;
         if (!attachment) return;
         const run = async () => {
             try {
@@ -79,7 +78,10 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         };
         run();
         return () => { mounted = false; if (attachmentBlobUrl) { URL.revokeObjectURL(attachmentBlobUrl); } };
-    }, [attachment]);
+    }, [record]);
+
+    if (loading) return <div className="p-4">Loading…</div>;
+    if (!record) return <div className="p-4">Summon not found.</div>;
 
     const submitReceipt = async () => {
         try {
@@ -135,22 +137,23 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                 <div className="mt-1 text-sm text-gray-700">{record.remark || record.notes || '-'}</div>
                             </div>
 
-                            <div className="mt-4">
-                                <strong>Summon Ticket</strong>
-                                <div className="mt-2 bg-white border rounded p-3">
-                                    {attachment ? (
-                                        (attachment.endsWith('.png') || attachment.endsWith('.jpg') || attachment.endsWith('.jpeg')) ? (
-                                            <img src={attachmentBlobUrl || attachment} alt="summon" className="w-full object-contain" />
+                                <div className="mt-4">
+                                    <strong>Summon Ticket</strong>
+                                    <div className="mt-2 bg-white border rounded p-3">
+                                        {/* derive attachment from record for rendering */}
+                                        { (record?.attachment_url || record?.summon_upl) ? (
+                                            ((record.attachment_url || record.summon_upl).endsWith('.png') || (record.attachment_url || record.summon_upl).endsWith('.jpg') || (record.attachment_url || record.summon_upl).endsWith('.jpeg')) ? (
+                                                <img src={attachmentBlobUrl || (record.attachment_url || record.summon_upl)} alt="summon" className="w-full object-contain" />
+                                            ) : (
+                                                <object data={attachmentBlobUrl || (record.attachment_url || record.summon_upl)} type="application/pdf" width="100%" height="600">
+                                                    <a className="text-blue-600" href={record.attachment_url || record.summon_upl} target="_blank" rel="noreferrer">Open attachment</a>
+                                                </object>
+                                            )
                                         ) : (
-                                            <object data={attachmentBlobUrl || attachment} type="application/pdf" width="100%" height="600">
-                                                <a className="text-blue-600" href={attachment} target="_blank" rel="noreferrer">Open attachment</a>
-                                            </object>
-                                        )
-                                    ) : (
-                                        <div className="text-sm text-gray-500">No attachment provided.</div>
-                                    )}
+                                            <div className="text-sm text-gray-500">No attachment provided.</div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
                         </div>
 
                         <div className="space-y-4">
