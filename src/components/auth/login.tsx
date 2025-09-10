@@ -65,7 +65,7 @@ const ComponentLogin = () => {
         // Redirect to lastNav if user is already authenticated
         if (authContext?.authData) {
             const lastNav = authContext.authData.user?.lastNav;
-            const redirectPath = lastNav && lastNav.startsWith('/') ? lastNav : '/analytics';
+            const redirectPath = lastNav && lastNav.startsWith('/') ? lastNav : '/users/profile';
             router.push(redirectPath);
         }
     }, [authContext, router]);
@@ -107,7 +107,7 @@ const ComponentLogin = () => {
                 }
 
                 // Safely access lastNav or fallback to /analytics
-                const redirectPath = response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/analytics';
+                const redirectPath = response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/users/profile';
                 router.push(redirectPath);
             }
         } catch (error: any) {

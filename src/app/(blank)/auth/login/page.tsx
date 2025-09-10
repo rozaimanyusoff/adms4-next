@@ -1,4 +1,4 @@
-import ComponentLogin from '@components/auth/c-login';
+import ComponentLogin from '@components/auth/login';
 import { Metadata } from 'next';
 import React from 'react';
 

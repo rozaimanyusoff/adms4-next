@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Accounts from "./c-acc";
+import Accounts from "./user-account";
 import Groups from "./c-group";
 import Navigations from "./c-nav";
 import Roles from "./c-role";

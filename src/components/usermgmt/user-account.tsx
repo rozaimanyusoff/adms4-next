@@ -8,9 +8,9 @@ import { Checkbox } from "@components/ui/checkbox";
 import { Card } from "@components/ui/card";
 import { Switch } from "@components/ui/switch";
 import { Input } from "@components/ui/input";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
+// Removed Select imports (no longer needed after removing individual invite form)
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+// Removed dropdown menu imports (no longer used after simplifying Invite button)
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, formatDistance, isToday, isFuture, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays } from 'date-fns';
@@ -90,10 +90,8 @@ const UserManagement = () => {
     const [pendingUsers, setPendingUsers] = useState<(PendingUser & { row_number: number })[]>([]);
     const [pendingLoading, setPendingLoading] = useState(false);
     // Invite User dialog state
-    const [showInviteDialog, setShowInviteDialog] = useState(false);
-    const [inviteForm, setInviteForm] = useState({ fullname: '', email: '', contact: '', user_type: 1 });
+    // Individual invite form & dialog removed; retain loading state for bulk invites only
     const [inviteLoading, setInviteLoading] = useState(false);
-    const [inviteError, setInviteError] = useState<string | null>(null);
     // Bulk Invite dialog state
     const [showBulkInviteDialog, setShowBulkInviteDialog] = useState(false);
     const [bulkEmployees, setBulkEmployees] = useState<any[]>([]);
@@ -103,7 +101,7 @@ const UserManagement = () => {
     const [bulkSearch, setBulkSearch] = useState("");
     const [bulkInviteFeedback, setBulkInviteFeedback] = useState<string | null>(null);
     // New states for sidebars
-    const [showInviteSidebar, setShowInviteSidebar] = useState(false);
+    // Removed showInviteSidebar (individual invite sidebar eliminated)
     const [showBulkInviteSidebar, setShowBulkInviteSidebar] = useState(false);
 
     useEffect(() => {
@@ -179,6 +177,27 @@ const UserManagement = () => {
                 });
         }
     }, [summaryFilter]);
+
+    // Initial fetch of pending users so the Pending card shows correct count without needing a click
+    useEffect(() => {
+        // Avoid refetch if already populated
+        if (pendingUsers.length > 0) return;
+        setPendingLoading(true);
+        authenticatedApi.get<PendingUsersApiResponse>("/api/users/pending")
+            .then(res => {
+                if (res.data.status === 'success') {
+                    setPendingUsers((res.data.data || []).map((row, idx) => ({ ...row, row_number: idx + 1 })));
+                } else {
+                    setPendingUsers([]);
+                }
+                setPendingLoading(false);
+            })
+            .catch(() => {
+                setPendingUsers([]);
+                setPendingLoading(false);
+            });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const sortedUsers = useMemo(() => {
         if (!sortConfig || !sortConfig.key) return users;
@@ -473,6 +492,11 @@ const UserManagement = () => {
     const [pendingSelectedRowKeys, setPendingSelectedRowKeys] = useState<Set<string | number>>(new Set());
     const [pendingSelectedUsers, setPendingSelectedUsers] = useState<(PendingUser & { row_number: number })[]>([]);
     const [showPendingSidebar, setShowPendingSidebar] = useState(false);
+    // Pending sidebar checkbox selection & delete handling
+    const [pendingSidebarCheckedIds, setPendingSidebarCheckedIds] = useState<number[]>([]);
+    const [showDeletePendingDialog, setShowDeletePendingDialog] = useState(false);
+    const [deletePendingLoading, setDeletePendingLoading] = useState(false);
+    const [deletePendingError, setDeletePendingError] = useState<string | null>(null);
 
     const pendingRowSelection = {
         enabled: true,
@@ -512,6 +536,42 @@ const UserManagement = () => {
     const handlePendingRowSelected = (selectedKeys: (string | number)[], selectedData: (PendingUser & { row_number: number })[]) => {
         setPendingSelectedUsers(selectedData);
         setShowPendingSidebar(selectedData.length > 0);
+    };
+
+    // Keep sidebar checkbox list in sync with selected pending users
+    useEffect(() => {
+        setPendingSidebarCheckedIds(pendingSelectedUsers.map(u => u.id));
+    }, [pendingSelectedUsers]);
+
+    const handleDeletePendingUsers = async () => {
+        // prefer explicit checked ids, otherwise delete currently selected pending users
+        const idsToDelete = (pendingSidebarCheckedIds && pendingSidebarCheckedIds.length > 0) ? pendingSidebarCheckedIds : pendingSelectedUsers.map(u => u.id);
+        if (!idsToDelete || idsToDelete.length === 0) return;
+        setDeletePendingLoading(true);
+        setDeletePendingError(null);
+        try {
+            const user_ids = idsToDelete.length === 1 ? idsToDelete[0] : idsToDelete;
+            await authenticatedApi.post('/api/auth/delete-pending-user', { user_ids });
+            toast.success('Pending user(s) deleted.');
+            const deletedSet = new Set(Array.isArray(user_ids) ? user_ids : [user_ids]);
+            setPendingSelectedUsers(prev => prev.filter(u => !deletedSet.has(u.id)));
+            setPendingSelectedRowKeys(prev => {
+                const next = new Set(Array.from(prev).filter(k => !deletedSet.has(Number(k))));
+                return next;
+            });
+            setPendingSidebarCheckedIds([]);
+            await refreshUsers();
+            if (pendingSelectedUsers.length - (Array.isArray(user_ids) ? user_ids.length : 1) <= 0) {
+                setShowPendingSidebar(false);
+            }
+            setShowDeletePendingDialog(false);
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || 'Failed to delete pending user(s).';
+            setDeletePendingError(msg);
+            toast.error(msg);
+        } finally {
+            setDeletePendingLoading(false);
+        }
     };
 
     // Utility to clear all pending user selections
@@ -610,20 +670,19 @@ const UserManagement = () => {
         } catch (error) {
             console.error("Error fetching users:", error);
         }
-        if (summaryFilter === 'pending') {
-            setPendingLoading(true);
-            try {
-                const res = await authenticatedApi.get<PendingUsersApiResponse>("/api/users/pending");
-                if (res.data.status === 'success') {
-                    setPendingUsers((res.data.data || []).map((row, idx) => ({ ...row, row_number: idx + 1 })));
-                } else {
-                    setPendingUsers([]);
-                }
-            } catch {
+        // Always refresh pending users so the summary card count stays updated
+        setPendingLoading(true);
+        try {
+            const res = await authenticatedApi.get<PendingUsersApiResponse>("/api/users/pending");
+            if (res.data.status === 'success') {
+                setPendingUsers((res.data.data || []).map((row, idx) => ({ ...row, row_number: idx + 1 })));
+            } else {
                 setPendingUsers([]);
-            } finally {
-                setPendingLoading(false);
             }
+        } catch {
+            setPendingUsers([]);
+        } finally {
+            setPendingLoading(false);
         }
     };
 
@@ -767,7 +826,6 @@ const UserManagement = () => {
     // Shared invite function
     const inviteUsers = async (users: any[], onSuccess?: (feedback?: string) => void) => {
         setInviteLoading(true);
-        setInviteError(null);
         try {
             const res = await authenticatedApi.post('/api/auth/invite-users', { users });
             const status = (res.data && typeof res.data === 'object' && 'status' in res.data) ? (res.data as any).status : undefined;
@@ -787,9 +845,13 @@ const UserManagement = () => {
                             return `Invite for ${r.email}: ${r.status}`;
                         }
                     }).join(' ');
-                    setInviteError(feedback); // Show as error for duplicate, or info for success
+                    // Show duplicates/info via toast
                     if (results.every((r: any) => r.status === 'success')) {
-                        toast.success('Invitation sent successfully.');
+                        toast.success('Invitation(s) sent successfully.');
+                    } else {
+                        toast.info(feedback);
+                    }
+                    if (results.every((r: any) => r.status === 'success')) {
                         if (onSuccess) await onSuccess(feedback);
                         await refreshUsers();
                     } else {
@@ -802,30 +864,18 @@ const UserManagement = () => {
                     await refreshUsers();
                 }
             } else {
-                setInviteError(message || 'Failed to send invitation.');
+                toast.error(message || 'Failed to send invitation.');
                 if (onSuccess) await onSuccess(message || 'Failed to send invitation.');
             }
         } catch (err: any) {
-            setInviteError(err?.response?.data?.message || 'Failed to send invitation.');
-            if (onSuccess) await onSuccess(err?.response?.data?.message || 'Failed to send invitation.');
+            const msg = err?.response?.data?.message || 'Failed to send invitation.';
+            toast.error(msg);
+            if (onSuccess) await onSuccess(msg);
         } finally {
             setInviteLoading(false);
         }
     };
-
-    const handleInviteUser = async () => {
-        await inviteUsers([
-            {
-                fullname: inviteForm.fullname,
-                email: inviteForm.email,
-                contact: inviteForm.contact,
-                user_type: inviteForm.user_type,
-            }
-        ], async () => {
-            setShowInviteDialog(false);
-            setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
-        });
-    };
+    // Removed handleInviteUser (individual invite no longer supported)
 
     // Handle Bulk Invite click
     const handleBulkInviteClick = () => {
@@ -947,139 +997,151 @@ const UserManagement = () => {
                         Show pending approval
                     </label>
                 </div>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="default" type="button">
-                            <Plus /> Invite
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setShowInviteSidebar(true)}>
-                            Individual
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setShowBulkInviteSidebar(true)}>
-                            Bulk
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                <Button variant="default" type="button" onClick={() => setShowBulkInviteSidebar(true)}>
+                    <Plus /> Invite
+                </Button>
             </div>
-            {/* Render the appropriate grid: default or pending approval */}
-            {summaryFilter === 'pending' ? (
-                <>
-                    <div className="mt-2">
-                        <CustomDataGrid
-                            data={pendingUsers}
-                            columns={pendingColumns}
-                            pageSize={10}
-                            pagination={true}
-                            inputFilter={false}
-                            theme={'sm'}
-                            rowSelection={pendingRowSelection}
-                            onRowSelected={handlePendingRowSelected}
-                            selectedRowKeys={pendingSelectedRowKeys}
-                            setSelectedRowKeys={setPendingSelectedRowKeys}
-                        />
-                    </div>
-                    {showPendingSidebar && pendingSelectedUsers.length > 0 && (
-                        <ActionSidebar
-                            title="User Maintenance"
-                            size="sm"
-                            content={
-                                <div className="flex flex-col gap-2">
-                                    <div className="text-sm text-danger font-semibold mb-0.5">
-                                        You can choose any action below for the selected users.
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {/* Approve User Dialog ONLY for pending users */}
-                                        <AlertDialog open={showSuspendDropdown} onOpenChange={setShowSuspendDropdown}>
-                                            <AlertDialogTrigger asChild>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="min-w-[120px] border-green-600 hover:bg-green-200"
-                                                    onClick={() => setShowSuspendDropdown(true)}
-                                                >
-                                                    Approve User
-                                                </Button>
-                                            </AlertDialogTrigger>
-                                            <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>Approve User(s)</AlertDialogTitle>
-                                                </AlertDialogHeader>
-                                                <div className="text-sm text-green-700 rounded-sm p-1 mb-2">
-                                                    Are you sure you want to approve and activate the selected user(s)?
-                                                </div>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel asChild>
-                                                        <Button variant="secondary" size="sm">Close</Button>
-                                                    </AlertDialogCancel>
-                                                    <AlertDialogAction asChild>
-                                                        <Button variant="default" size="sm" onClick={() => { setShowSuspendDropdown(false); setModalOpen('approve'); }}>Apply</Button>
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                            </AlertDialogContent>
-                                        </AlertDialog>
-                                    </div>
-                                    {/* Search and user list for pending users */}
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <input
-                                            className="form-input flex-grow"
-                                            placeholder="Search selected users..."
-                                            value={selectedUsersSearch}
-                                            onChange={e => setSelectedUsersSearch(e.target.value)}
-                                        />
+            {(() => {
+                const isPending = summaryFilter === 'pending';
+                const gridData = isPending ? pendingUsers : filteredUsersWithRowNumber;
+                const gridColumns = isPending ? pendingColumns : columns;
+                const selection = isPending ? pendingRowSelection : rowSelection;
+                const selectedKeys = isPending ? pendingSelectedRowKeys : selectedRowKeys;
+                const setSelectedKeys = isPending ? setPendingSelectedRowKeys : setSelectedRowKeys;
+                const onRowSel = isPending ? handlePendingRowSelected : handleRowSelected;
+                return (
+                    <CustomDataGrid<any>
+                        key={isPending ? 'pending-grid' : 'active-grid'}
+                        ref={gridRef}
+                        data={gridData as any[]}
+                        columns={gridColumns as any}
+                        pageSize={10}
+                        pagination={false}
+                        inputFilter={false}
+                        theme={'sm'}
+                        rowSelection={selection as any}
+                        onRowDoubleClick={isPending ? undefined : handleRowDoubleClick as any}
+                        onRowSelected={onRowSel as any}
+                        selectedRowKeys={selectedKeys as any}
+                        setSelectedRowKeys={setSelectedKeys as any}
+                    />
+                );
+            })()}
+            {/* Pending mode sidebar */}
+            {summaryFilter === 'pending' && showPendingSidebar && pendingSelectedUsers.length > 0 && (
+                <ActionSidebar
+                    title="User Maintenance"
+                    size="sm"
+                    content={
+                        <div className="flex flex-col gap-2">
+                            <div className="text-sm text-danger font-semibold mb-0.5">
+                                You can choose any action below for the selected users.
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <AlertDialog open={showSuspendDropdown} onOpenChange={setShowSuspendDropdown}>
+                                    <AlertDialogTrigger asChild>
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={clearPendingUserSelection}
+                                            className="min-w-[120px] border-green-600 hover:bg-green-200"
+                                            onClick={() => setShowSuspendDropdown(true)}
                                         >
-                                            <Trash2 className="text-red-600 hover:text-white-light" />
+                                            Approve User
                                         </Button>
-                                    </div>
-                                    <ul className="mt-1 text-sm max-h-72 overflow-y-auto divide-y">
-                                        {pendingSelectedUsers
-                                            .filter(user =>
-                                                !selectedUsersSearch ||
-                                                user.fname.toLowerCase().includes(selectedUsersSearch.toLowerCase())
-                                            )
-                                            .map((user) => (
-                                                <li className="flex items-center capitalize justify-between px-2 py-2" key={user.id}>
-                                                    <span>{user.fname} <span className="text-xs text-gray-400 ml-1">({user.email})</span></span>
-                                                    <MinusCircle className="text-red-500 hover:text-red-600 cursor-pointer ml-2 w-5 h-5" onClick={() => {
-                                                        setPendingSelectedUsers(prev => prev.filter(u => u.id !== user.id));
-                                                        setPendingSelectedRowKeys(prev => {
-                                                            const updated = new Set(prev);
-                                                            updated.delete(user.id);
-                                                            return updated;
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Approve User(s)</AlertDialogTitle>
+                                        </AlertDialogHeader>
+                                        <div className="text-sm text-green-700 rounded-sm p-1 mb-2">
+                                            Are you sure you want to approve and activate the selected user(s)?
+                                        </div>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel asChild>
+                                                <Button variant="secondary" size="sm">Close</Button>
+                                            </AlertDialogCancel>
+                                            <AlertDialogAction asChild>
+                                                <Button variant="default" size="sm" onClick={() => { setShowSuspendDropdown(false); setModalOpen('approve'); }}>Apply</Button>
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                                <Button size="sm" variant="destructive" onClick={() => setShowDeletePendingDialog(true)} disabled={pendingSelectedUsers.length === 0}>Delete User</Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={clearPendingUserSelection}
+                                >
+                                    <Trash2 className="text-red-600 hover:text-white-light" />
+                                </Button>
+                            </div>
+
+                            <div className="flex items-center gap-2 mb-2">
+                                <input
+                                    className="form-input flex-grow"
+                                    placeholder="Search selected users..."
+                                    value={selectedUsersSearch}
+                                    onChange={e => setSelectedUsersSearch(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <Checkbox
+                                        checked={pendingSelectedUsers.length > 0 && pendingSidebarCheckedIds.length === pendingSelectedUsers.length}
+                                        onCheckedChange={(checked: boolean) => {
+                                            if (checked) {
+                                                setPendingSidebarCheckedIds(pendingSelectedUsers.map(u => u.id));
+                                            } else {
+                                                setPendingSidebarCheckedIds([]);
+                                            }
+                                        }}
+                                        ref={el => {
+                                            const some = pendingSidebarCheckedIds.length > 0 && pendingSidebarCheckedIds.length < pendingSelectedUsers.length;
+                                            if (el && 'indeterminate' in el) (el as HTMLInputElement).indeterminate = some;
+                                        }}
+                                    />
+                                    <span className="text-sm">Select all</span>
+                                </label>
+                                <div className="text-sm mb-1.5">{pendingSidebarCheckedIds.length} selected</div>
+                            </div>
+                            <ul className="mt-1 text-sm max-h-72 overflow-y-auto divide-y">
+                                {pendingSelectedUsers
+                                    .filter(user => !selectedUsersSearch || user.fname.toLowerCase().includes(selectedUsersSearch.toLowerCase()) || user.email.toLowerCase().includes(selectedUsersSearch.toLowerCase()))
+                                    .map((user) => (
+                                        <li className="flex items-start justify-between py-2" key={user.id}>
+                                            <div className="flex items-start gap-2">
+                                                <Checkbox
+                                                    checked={pendingSidebarCheckedIds.includes(user.id)}
+                                                    onCheckedChange={(checked: boolean) => {
+                                                        setPendingSidebarCheckedIds(prev => {
+                                                            if (checked) return [...prev, user.id];
+                                                            return prev.filter(id => id !== user.id);
                                                         });
-                                                        if (pendingSelectedUsers.length <= 1) setShowPendingSidebar(false);
-                                                    }} />
-                                                </li>
-                                            ))}
-                                        {pendingSelectedUsers.length === 0 && <li className="text-gray-400 italic">No users selected</li>}
-                                    </ul>
-                                </div>
-                            }
-                            onClose={clearPendingUserSelection}
-                        />
-                    )}
-                </>
-            ) : (
-                <CustomDataGrid<User & { row_number: number }>
-                    ref={gridRef}
-                    data={filteredUsersWithRowNumber}
-                    columns={columns}
-                    pageSize={10}
-                    pagination={true}
-                    inputFilter={false}
-                    theme={'sm'}
-                    // Update onRowDoubleClick to set both selectedUser and selectedUserId
-                    rowSelection={rowSelection}
-                    onRowDoubleClick={handleRowDoubleClick}
-                    onRowSelected={handleRowSelected}
-                    // Pass selectedRowKeys and setSelectedRowKeys to sync selection
-                    selectedRowKeys={selectedRowKeys}
-                    setSelectedRowKeys={setSelectedRowKeys}
+                                                    }}
+                                                />
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold">{user.fname}</span>
+                                                    <span className="text-xs text-gray-400">{user.email}</span>
+                                                </div>
+                                            </div>
+                                            <MinusCircle className="text-red-500 hover:text-red-600 cursor-pointer ml-2 w-5 h-5" onClick={() => {
+                                                setPendingSelectedUsers(prev => prev.filter(u => u.id !== user.id));
+                                                setPendingSelectedRowKeys(prev => {
+                                                    const updated = new Set(prev);
+                                                    updated.delete(user.id);
+                                                    return updated;
+                                                });
+                                                setPendingSidebarCheckedIds(prev => prev.filter(id => id !== user.id));
+                                                if (pendingSelectedUsers.length <= 1) setShowPendingSidebar(false);
+                                            }} />
+                                        </li>
+                                    ))}
+                                {pendingSelectedUsers.length === 0 && <li className="text-gray-400 italic">No users selected</li>}
+                            </ul>
+
+                        </div>
+                    }
+                    onClose={clearPendingUserSelection}
                 />
             )}
             {showSidebar && selectedUsers.length > 0 && summaryFilter !== 'pending' && (
@@ -1276,83 +1338,6 @@ const UserManagement = () => {
                             setSelectedUsers([]);
                         }
                     }}
-                />
-            )}
-            {/* Invite New User Sidebar */}
-            {showInviteSidebar && (
-                <ActionSidebar
-                    title="Invite New User"
-                    size="sm"
-                    onClose={() => {
-                        setShowInviteSidebar(false);
-                        setInviteForm({ fullname: '', email: '', contact: '', user_type: 1 });
-                        setInviteError(null);
-                    }}
-                    content={
-                        <form
-                            onSubmit={e => {
-                                e.preventDefault();
-                                handleInviteUser();
-                            }}
-                            className="flex flex-col gap-3"
-                        >
-                            <div>
-                                <label className="block text-sm font-medium mb-1">User Type</label>
-                                <Select
-                                    value={String(inviteForm.user_type)}
-                                    onValueChange={val => setInviteForm(f => ({ ...f, user_type: Number(val) }))}
-                                    required
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select user type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="1">Employee</SelectItem>
-                                        <SelectItem value="2">Non-employee</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Full Name</label>
-                                <Input
-                                    type="text"
-                                    value={inviteForm.fullname}
-                                    onChange={e => setInviteForm(f => ({ ...f, fullname: e.target.value }))}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Email</label>
-                                <Input
-                                    type="email"
-                                    value={inviteForm.email}
-                                    onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Contact</label>
-                                <Input
-                                    type="text"
-                                    value={inviteForm.contact}
-                                    onChange={e => {
-                                        const val = e.target.value.replace(/\D/g, '');
-                                        setInviteForm(f => ({ ...f, contact: val }));
-                                    }}
-                                    required
-                                />
-                            </div>
-                            {inviteError && <div className="text-xs text-red-600">{inviteError}</div>}
-                            <div className="flex gap-2 mt-4">
-                                <Button variant="outline" type="button" onClick={() => setShowInviteSidebar(false)}>
-                                    Close
-                                </Button>
-                                <Button type="submit" variant="default" disabled={inviteLoading}>
-                                    {inviteLoading ? 'Inviting...' : 'Invite'}
-                                </Button>
-                            </div>
-                        </form>
-                    }
                 />
             )}
             {/* Bulk Invite Employees Sidebar */}
