@@ -130,15 +130,21 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
 
     const submitReceipt = async () => {
         try {
-            if (!receiptFile) { toast.error('Please select a receipt file (PDF or PNG).'); return; }
-            if (!receiptDate) { toast.error('Please enter receipt date.'); return; }
+            // validate required fields before attempting upload
+            const validateBeforeSubmit = () => {
+                if (!receiptFile) { toast.error('Please select a receipt file (PDF or PNG/JPEG).'); return false; }
+                if (!receiptDate) { toast.error('Please enter receipt date.'); return false; }
+                return true;
+            };
+            if (!validateBeforeSubmit()) return;
+            const file = receiptFile as File; // narrow type after validation
             const allowed = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
-            if (!allowed.includes(receiptFile.type)) { toast.error('Invalid file type. Only PDF/PNG/JPG/JPEG allowed.'); return; }
+            if (!allowed.includes(file.type)) { toast.error('Invalid file type. Only PDF/PNG/JPG/JPEG allowed.'); return; }
             const maxBytes = 10 * 1024 * 1024;
-            if (receiptFile.size > maxBytes) { toast.error('File too large. Max 10MB.'); return; }
+            if (file.size > maxBytes) { toast.error('File too large. Max 10MB.'); return; }
 
             const fd = new FormData();
-            fd.append('summon_receipt', receiptFile, receiptFile.name);
+            fd.append('summon_receipt', file, file.name);
             fd.append('receipt_date', receiptDate);
 
             await authenticatedApi.put(`/api/compliance/summon/${smnId}/payment`, fd, ({
@@ -304,7 +310,7 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                         </div>
                                     )}
                                     <div className="mt-3 flex flex-col gap-2">
-                                        <Button onClick={submitReceipt} variant="secondary" className='bg-green-600 text-white hover:bg-green-700'>Upload Receipt</Button>
+                                        <Button onClick={submitReceipt} variant="secondary" className='bg-green-600 text-white hover:bg-green-700' disabled={!receiptFile || !receiptDate || uploadProgress > 0}>Upload Receipt</Button>
                                         <Button onClick={() => { setReceiptFile(null); setReceiptDate(''); setReceiptPreviewUrl(null); }} variant="ghost" className='bg-gray-200 hover:bg-gray-300'>Clear</Button>
                                     </div>
                                 </div>
