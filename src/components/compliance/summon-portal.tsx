@@ -17,6 +17,7 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
     const [receiptDate, setReceiptDate] = useState<string>('');
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+    const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
@@ -45,10 +46,19 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         if (receiptFile.type === 'image/png' || receiptFile.type.startsWith('image/')) {
             const url = URL.createObjectURL(receiptFile);
             setReceiptPreviewUrl(url);
+            setImageDims(null);
             return () => URL.revokeObjectURL(url);
         }
         setReceiptPreviewUrl(null);
     }, [receiptFile]);
+
+    const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
 
     // Attachment blob URL state (declare hooks at top-level to preserve hook order)
     const [attachmentBlobUrl, setAttachmentBlobUrl] = useState<string | null>(null);
@@ -260,12 +270,19 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                     </div>
                                     {receiptPreviewUrl && (
                                         <div className="mt-2">
-                                            <img src={receiptPreviewUrl} alt="preview" className="max-h-40 w-full object-contain" />
+                                            <img src={receiptPreviewUrl} alt="preview" className="max-h-40 w-full object-contain" onLoad={(e) => {
+                                                const img = e.currentTarget as HTMLImageElement;
+                                                setImageDims({ width: img.naturalWidth, height: img.naturalHeight });
+                                            }} />
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                {receiptFile ? `${formatBytes(receiptFile.size)}•` : ''} {imageDims ? `${imageDims.width}×${imageDims.height}px` : ''}
+                                            </div>
                                         </div>
                                     )}
                                     {receiptFile && receiptFile.type === 'application/pdf' && (
                                         <div className="mt-2">
                                             <object data={URL.createObjectURL(receiptFile)} type="application/pdf" width="100%" height={240} />
+                                            <div className="text-xs text-gray-500 mt-1">{receiptFile ? formatBytes(receiptFile.size) : ''}</div>
                                         </div>
                                     )}
                                     {uploadProgress > 0 && (

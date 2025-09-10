@@ -277,12 +277,6 @@ const ComplianceSummonList: React.FC = () => {
         { key: 'actions' as any, header: 'Actions', render: (r: any) => (
             <div className="flex items-center space-x-2">
                 <NotifyButton smnId={r.smn_id} hasAttachment={!!(r.attachment_url || r.summon_upl)} />
-                {/* Paid indicator: show when receipt_date or summon_receipt exists */}
-                {(r.receipt_date || r.summon_receipt) ? (
-                    <span title="Payment received" className="p-1 rounded">
-                        <Check className="h-5 w-5 text-green-600" />
-                    </span>
-                ) : null}
                 {(r.attachment_url || r.summon_upl) ? (
                     <a
                         href={r.attachment_url || r.summon_upl}
@@ -294,6 +288,12 @@ const ComplianceSummonList: React.FC = () => {
                     >
                         <Paperclip className="h-5 w-5 text-green-600" />
                     </a>
+                ) : null}
+                {/* Paid indicator: show when receipt_date or summon_receipt exists */}
+                {(r.receipt_date || r.summon_receipt) ? (
+                    <span title="Payment received" className="p-1 rounded">
+                        <Check className="h-5 w-5 text-green-600" />
+                    </span>
                 ) : null}
             </div>
         ) }
