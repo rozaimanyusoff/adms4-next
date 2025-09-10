@@ -18,6 +18,7 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
 
     const fetchRecord = async () => {
         if (!smnId) return;
@@ -52,6 +53,16 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
     // Attachment blob URL state (declare hooks at top-level to preserve hook order)
     const [attachmentBlobUrl, setAttachmentBlobUrl] = useState<string | null>(null);
 
+    const formatDateDMY = (dateInput?: string | Date | null): string => {
+        if (!dateInput) return '';
+        const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+        if (!d || isNaN((d as Date).getTime())) return String(dateInput);
+        const day = String((d as Date).getDate());
+        const month = String((d as Date).getMonth() + 1);
+        const year = (d as Date).getFullYear();
+        return `${day}/${month}/${year}`;
+    };
+
     // Try to fetch the attachment through authenticatedApi as a blob and expose a blob URL for inline rendering.
     // This effect depends on `record` (not on local derived `attachment`) so hooks order stays consistent.
     useEffect(() => {
@@ -81,6 +92,16 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         return () => { mounted = false; if (attachmentBlobUrl) { URL.revokeObjectURL(attachmentBlobUrl); } };
     }, [record]);
 
+    // Determine payment status for badge display
+    const paymentStatusInfo = (() => {
+        const hasReceipt = !!record?.summon_receipt_url;
+        const stat = String(record?.summon_stat || '').toLowerCase();
+        if (hasReceipt) return { label: 'Receipt uploaded', bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
+        if (['paid', 'settled', 'closed'].includes(stat)) return { label: (record?.summon_stat || 'Paid'), bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
+        if (stat) return { label: (record?.summon_stat || 'Pending'), bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-200' };
+        return { label: 'Unpaid', bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' };
+    })();
+
     if (loading) return <div className="p-4">Loading…</div>;
     if (!record) return <div className="p-4">Summon not found.</div>;
 
@@ -97,9 +118,11 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
             fd.append('summon_receipt', receiptFile, receiptFile.name);
             fd.append('receipt_date', receiptDate);
 
-            await authenticatedApi.put(`/api/compliance/summon/${smnId}/payment`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
-                if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
-            } } as any));
+            await authenticatedApi.put(`/api/compliance/summon/${smnId}/payment`, fd, ({
+                headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                    if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+                }
+            } as any));
             toast.success('Receipt uploaded');
             setReceiptFile(null);
             setUploadProgress(0);
@@ -121,13 +144,14 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                     </button>
                     <h1 className="text-lg font-semibold">Summon Portal</h1>
                 </div>
-                <div>
+                <div className="flex items-center space-x-3">
                     <span className="text-sm text-gray-500">Summon ID: {smnId}</span>
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full border ${paymentStatusInfo.bg} ${paymentStatusInfo.text} ${paymentStatusInfo.border}`}>{paymentStatusInfo.label}</span>
                 </div>
             </div>
             <Card>
                 <CardHeader>
-                    <CardTitle>Summon Details</CardTitle>
+                    <CardTitle className='text-lg font-semibold'>Summon Details</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -135,12 +159,12 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div><strong>Summon No:</strong> <div className="text-sm">{record.summon_no || record.entry_code || '-'}</div></div>
                                 <div><strong>Amount (RM):</strong> <div className="text-sm">{record.summon_amt ? Number(record.summon_amt).toFixed(2) : '-'}</div></div>
-                                <div><strong>Date:</strong> <div className="text-sm">{record.summon_date || '-'}</div></div>
+                                <div><strong>Date:</strong> <div className="text-sm">{record.summon_date ? formatDateDMY(record.summon_date) : '-'}</div></div>
                                 <div><strong>Time:</strong> <div className="text-sm">{record.summon_time || '-'}</div></div>
                                 <div><strong>Vehicle / Reg No:</strong> <div className="text-sm">{record.asset?.register_number || record.vehicle_id || '-'}</div></div>
                                 <div><strong>Assigned Driver:</strong> <div className="text-sm">{record.employee?.full_name || record.ramco_id || '-'}</div></div>
                                 <div><strong>Location:</strong> <div className="text-sm">{record.summon_loc || '-'}</div></div>
-                                <div><strong>MyEG Date:</strong> <div className="text-sm">{record.myeg_date || '-'}</div></div>
+                                <div><strong>MyEG Date:</strong> <div className="text-sm">{record.myeg_date ? formatDateDMY(record.myeg_date) : '-'}</div></div>
                                 <div><strong>Type:</strong> <div className="text-sm">{record.type_of_summon || '-'}</div></div>
                                 <div><strong>Agency:</strong> <div className="text-sm">{record.summon_agency || '-'}</div></div>
                             </div>
@@ -150,31 +174,31 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                 <div className="mt-1 text-sm text-gray-700">{record.remark || record.notes || '-'}</div>
                             </div>
 
-                                <div className="mt-4">
-                                    <strong>Summon Ticket</strong>
-                                    <div className="mt-2">
-                                        { (record?.attachment_url || record?.summon_upl) ? (
-                                            <div className="flex items-center space-x-3">
-                                                <a
-                                                    href={attachmentBlobUrl || record.attachment_url || record.summon_upl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="flex items-center text-blue-600"
-                                                >
-                                                    <Paperclip className="h-5 w-5 mr-2" />
-                                                    <span className="underline">Open attachment</span>
-                                                </a>
-                                            </div>
-                                        ) : (
-                                            <div className="text-sm text-gray-500">No attachment provided.</div>
-                                        )}
-                                    </div>
+                            <div className="mt-4">
+                                <strong>Summon Ticket</strong>
+                                <div className="mt-2">
+                                    {(record?.attachment_url || record?.summon_upl) ? (
+                                        <div className="flex items-center space-x-3">
+                                            <a
+                                                href={attachmentBlobUrl || record.attachment_url || record.summon_upl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="flex items-center text-blue-600"
+                                            >
+                                                <Paperclip className="h-5 w-5 mr-2" />
+                                                <span className="underline">Open attachment</span>
+                                            </a>
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-gray-500">No attachment provided.</div>
+                                    )}
                                 </div>
+                            </div>
                         </div>
 
                         <div className="space-y-4">
-                            <div className="p-4 border rounded">
+                            <div className="p-4 border rounded-2xl bg-blue-50">
                                 <h4 className="font-semibold">Upload Payment Receipt</h4>
                                 <div className="mt-3">
                                     <Label>Receipt Date</Label>
@@ -183,7 +207,45 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                 <div className="mt-3">
                                     <Label>Receipt File (PDF/PNG/JPEG)</Label>
                                     <div className="mt-1">
-                                        <input ref={fileInputRef} type="file" accept="application/pdf,image/png,image/jpeg" onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) setReceiptFile(f); }} />
+                                        {/* Dropzone area: supports drag-drop and click to open file picker */}
+                                        <div
+                                            onClick={() => fileInputRef.current?.click()}
+                                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                                            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                                            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setIsDragging(false);
+                                                const f = e.dataTransfer?.files && e.dataTransfer.files[0];
+                                                if (!f) return;
+                                                const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
+                                                if (!allowed.includes(f.type)) {
+                                                    toast.error('Invalid file type. Only PDF/PNG/JPEG allowed.');
+                                                    return;
+                                                }
+                                                const maxBytes = 10 * 1024 * 1024;
+                                                if (f.size > maxBytes) {
+                                                    toast.error('File too large. Max 10MB.');
+                                                    return;
+                                                }
+                                                setReceiptFile(f);
+                                            }}
+                                            className={`w-full border-dashed rounded p-4 cursor-pointer flex items-center justify-center text-center ${isDragging ? 'border-2 border-blue-400 bg-blue-50' : 'border border-gray-200'}`}
+                                        >
+                                            <div>
+                                                <div className="text-sm text-gray-600">Drag & drop receipt here, or click to select file</div>
+                                                <div className="text-xs text-gray-400 mt-1">PDF, PNG, JPEG — max 10MB</div>
+                                            </div>
+                                        </div>
+                                        <input ref={fileInputRef} type="file" accept="application/pdf,image/png,image/jpeg" className="hidden" onChange={(e) => {
+                                            const f = e.target.files && e.target.files[0]; if (f) {
+                                                const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
+                                                if (!allowed.includes(f.type)) { toast.error('Invalid file type. Only PDF/PNG/JPEG allowed.'); return; }
+                                                const maxBytes = 10 * 1024 * 1024; if (f.size > maxBytes) { toast.error('File too large. Max 10MB.'); return; }
+                                                setReceiptFile(f);
+                                            }
+                                        }} />
                                     </div>
                                     {receiptPreviewUrl && (
                                         <div className="mt-2">
@@ -201,23 +263,9 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                         </div>
                                     )}
                                     <div className="mt-3 flex flex-col gap-2">
-                                        <Button onClick={submitReceipt} variant="secondary">Upload Receipt</Button>
-                                        <Button onClick={() => { setReceiptFile(null); setReceiptDate(''); setReceiptPreviewUrl(null); }} variant="ghost">Clear</Button>
+                                        <Button onClick={submitReceipt} variant="secondary" className='bg-green-600 text-white hover:bg-green-700'>Upload Receipt</Button>
+                                        <Button onClick={() => { setReceiptFile(null); setReceiptDate(''); setReceiptPreviewUrl(null); }} variant="ghost" className='bg-gray-200 hover:bg-gray-300'>Clear</Button>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div className="p-4 border rounded">
-                                <h4 className="font-semibold">Payment Status</h4>
-                                <div className="mt-2 text-sm">
-                                    {record.summon_receipt_url ? (
-                                        <div>
-                                            <div>Receipt uploaded on: {record.receipt_date || '-'}</div>
-                                            <a className="text-blue-600" href={record.summon_receipt_url} target="_blank" rel="noreferrer">View uploaded receipt</a>
-                                        </div>
-                                    ) : (
-                                        <div className="text-gray-500">No payment receipt uploaded yet.</div>
-                                    )}
                                 </div>
                             </div>
                         </div>

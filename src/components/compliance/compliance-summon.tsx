@@ -15,6 +15,17 @@ import { Label } from '@/components/ui/label';
 
 const fmtRM = (v: any) => Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Format date as d/m/yyyy (no leading zeros for day/month)
+const formatDateDMY = (dateInput?: string | Date | null): string => {
+    if (!dateInput) return '';
+    const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (!d || isNaN((d as Date).getTime())) return String(dateInput);
+    const day = String((d as Date).getDate());
+    const month = String((d as Date).getMonth() + 1);
+    const year = (d as Date).getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
 interface SummonRecord {
     smn_id: number;
     vehicle_id?: number;
@@ -59,7 +70,11 @@ const ComplianceSummonList: React.FC = () => {
         authenticatedApi.get('/api/compliance/summon')
             .then(res => {
                 const data = (res as any).data?.data || (res as any).data || [];
-                if (mounted) setRows(Array.isArray(data) ? data : []);
+                if (mounted) {
+                    const list = Array.isArray(data) ? data : [];
+                    // keep original date fields for editing; only display will format via helper
+                    setRows(list);
+                }
             })
             .catch(() => { if (mounted) setRows([]); })
             .then(() => { if (mounted) setLoading(false); });
@@ -253,7 +268,7 @@ const ComplianceSummonList: React.FC = () => {
 
     const columns: ColumnDef<SummonRecord>[] = [
         { key: 'summon_no' as any, header: 'Summon No', filter: 'input', sortable: true },
-        { key: 'summon_date' as any, header: 'Date', sortable: true, render: (r: any) => r.summon_date ? new Date(r.summon_date).toLocaleDateString() : '' },
+    { key: 'summon_date' as any, header: 'Date', sortable: true, render: (r: any) => r.summon_date ? formatDateDMY(r.summon_date) : '' },
         { key: 'asset' as any, header: 'Vehicle', filter: 'input', render: (r: any) => r.asset?.register_number || r.vehicle_id || '-' },
         { key: 'employee' as any, header: 'Driver', filter: 'input', render: (r: any) => r.employee?.full_name || r.ramco_id || '-' },
         { key: 'summon_loc' as any, header: 'Location', render: (r: any) => r.summon_loc || r.asset?.location?.code || '-' },
