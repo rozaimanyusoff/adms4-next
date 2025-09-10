@@ -132,8 +132,8 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         try {
             if (!receiptFile) { toast.error('Please select a receipt file (PDF or PNG).'); return; }
             if (!receiptDate) { toast.error('Please enter receipt date.'); return; }
-            const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
-            if (!allowed.includes(receiptFile.type)) { toast.error('Invalid file type. Only PDF/PNG/JPEG allowed.'); return; }
+            const allowed = ['application/pdf', 'image/png', 'image/jpg', 'image/jpeg'];
+            if (!allowed.includes(receiptFile.type)) { toast.error('Invalid file type. Only PDF/PNG/JPG/JPEG allowed.'); return; }
             const maxBytes = 10 * 1024 * 1024;
             if (receiptFile.size > maxBytes) { toast.error('File too large. Max 10MB.'); return; }
 
