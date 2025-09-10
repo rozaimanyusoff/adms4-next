@@ -123,7 +123,18 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                     if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
                 }
             } as any));
-            toast.success('Receipt uploaded');
+            const TOAST_DURATION = 4000; // ms - match sonner default (safe explicit duration)
+            toast.success('Receipt uploaded', { duration: TOAST_DURATION });
+            // Close the tab after the toast disappears. Note: window.close() only works reliably
+            // for windows opened by script; browsers may block closing user-opened tabs.
+            setTimeout(() => {
+                try {
+                    window.close();
+                } catch (e) {
+                    // ignore
+                }
+            }, TOAST_DURATION + 200);
+
             setReceiptFile(null);
             setUploadProgress(0);
             setReceiptPreviewUrl(null);
