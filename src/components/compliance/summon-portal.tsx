@@ -60,6 +60,19 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
+    const getFileExtension = (file?: File | null) => {
+        if (!file) return '';
+        const name = file.name || '';
+        const idx = name.lastIndexOf('.');
+        if (idx >= 0) return name.slice(idx).toLowerCase();
+        // fallback from mime
+        if (file.type) {
+            const mime = file.type.split('/').pop();
+            if (mime) return '.' + mime.toLowerCase();
+        }
+        return '';
+    };
+
     // Attachment blob URL state (declare hooks at top-level to preserve hook order)
     const [attachmentBlobUrl, setAttachmentBlobUrl] = useState<string | null>(null);
 
@@ -275,14 +288,14 @@ const SummonPortal: React.FC<SummonPortalProps> = ({ smnId }) => {
                                                 setImageDims({ width: img.naturalWidth, height: img.naturalHeight });
                                             }} />
                                             <div className="text-xs text-gray-500 mt-1">
-                                                {receiptFile ? `${formatBytes(receiptFile.size)}•` : ''} {imageDims ? `${imageDims.width}×${imageDims.height}px` : ''}
+                                                {receiptFile ? `${formatBytes(receiptFile.size)} ${getFileExtension(receiptFile)} •` : ''} {imageDims ? `${imageDims.width}×${imageDims.height}px` : ''}
                                             </div>
                                         </div>
                                     )}
                                     {receiptFile && receiptFile.type === 'application/pdf' && (
                                         <div className="mt-2">
                                             <object data={URL.createObjectURL(receiptFile)} type="application/pdf" width="100%" height={240} />
-                                            <div className="text-xs text-gray-500 mt-1">{receiptFile ? formatBytes(receiptFile.size) : ''}</div>
+                                            <div className="text-xs text-gray-500 mt-1">{receiptFile ? `${formatBytes(receiptFile.size)} ${getFileExtension(receiptFile)}` : ''}</div>
                                         </div>
                                     )}
                                     {uploadProgress > 0 && (
