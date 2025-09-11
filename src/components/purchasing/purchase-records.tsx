@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 // import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 // Removed Excel importer – creating records directly in-app
 
@@ -48,6 +49,14 @@ interface ApiPurchase {
   inv_no?: string;
   grn_date?: string;
   grn_no?: string;
+  deliveries?: Array<{
+    do_date?: string;
+    do_no?: string;
+    inv_date?: string;
+    inv_no?: string;
+    grn_date?: string;
+    grn_no?: string;
+  }>;
   handover_to?: string | null;
   handover_at?: string | null;
   created_at?: string | null;
@@ -77,6 +86,14 @@ interface PurchaseFormData {
   inv_no: string;              // Match API field name
   grn_date: string;
   grn_no: string;              // Match API field name
+  deliveries: Array<{
+    do_date: string;
+    do_no: string;
+    inv_date: string;
+    inv_no: string;
+    grn_date: string;
+    grn_no: string;
+  }>;
 }
 
 const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: string } }> = ({ filters }) => {
@@ -108,7 +125,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     inv_date: '',
     inv_no: '',
     grn_date: '',
-    grn_no: ''
+    grn_no: '',
+    deliveries: []
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -340,6 +358,27 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     return formData.qty * formData.unit_price;
   }, [formData.qty, formData.unit_price]);
 
+  // Delivery slots allowed: up to quantity, capped at 5
+  const maxDeliveries = useMemo(() => Math.min(Math.max(formData.qty || 0, 0), 5), [formData.qty]);
+
+  const [activeDeliveryTab, setActiveDeliveryTab] = useState<string>('delivery-0');
+
+  const updateDeliveryField = (index: number, field: 'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', value: string) => {
+    const deliveries = [...(formData.deliveries || [])];
+    deliveries[index] = { ...deliveries[index], [field]: field.endsWith('_no') ? String(value || '').toUpperCase() : value } as any;
+    const isLast = index === deliveries.length - 1;
+    setFormData(prev => ({
+      ...prev,
+      deliveries,
+      do_date: isLast && field === 'do_date' ? value : (isLast ? deliveries[index].do_date : prev.do_date),
+      do_no: isLast && field === 'do_no' ? String(value || '').toUpperCase() : (isLast ? deliveries[index].do_no : prev.do_no),
+      inv_date: isLast && field === 'inv_date' ? value : (isLast ? deliveries[index].inv_date : prev.inv_date),
+      inv_no: isLast && field === 'inv_no' ? String(value || '').toUpperCase() : (isLast ? deliveries[index].inv_no : prev.inv_no),
+      grn_date: isLast && field === 'grn_date' ? value : (isLast ? deliveries[index].grn_date : prev.grn_date),
+      grn_no: isLast && field === 'grn_no' ? String(value || '').toUpperCase() : (isLast ? deliveries[index].grn_no : prev.grn_no),
+    }));
+  };
+
   // Validate form
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
@@ -366,6 +405,12 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
     setLoading(true);
     try {
+      const allowedDeliveries = Math.min(Math.max(formData.qty || 0, 0), 5);
+      if ((formData.deliveries?.length || 0) > allowedDeliveries) {
+        toast.error(`Deliveries exceed allowed limit (${allowedDeliveries}). Remove extra deliveries or adjust quantity.`);
+        setLoading(false);
+        return;
+      }
       const jsonPayload: any = {
         ...formData,
         total_price: calculatedTotal.toString(),
@@ -375,6 +420,17 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         ramco_id: formData.pic,
         brand_id: formData.brand_id || undefined,
       };
+
+      if (Array.isArray(formData.deliveries) && formData.deliveries.length > 0) {
+        const last = formData.deliveries[formData.deliveries.length - 1];
+        jsonPayload.do_date = last.do_date;
+        jsonPayload.do_no = last.do_no;
+        jsonPayload.inv_date = last.inv_date;
+        jsonPayload.inv_no = last.inv_no;
+        jsonPayload.grn_date = last.grn_date;
+        jsonPayload.grn_no = last.grn_no;
+        jsonPayload.deliveries = formData.deliveries;
+      }
 
       // remove the old keys to avoid sending duplicate data
       delete jsonPayload.costcenter;
@@ -464,8 +520,10 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         inv_date: '',
         inv_no: '',
         grn_date: '',
-        grn_no: ''
+        grn_no: '',
+        deliveries: []
       });
+      setActiveDeliveryTab('delivery-0');
     } else if (mode === 'edit' && purchase) {
       // Map nested API objects into flat form values expected by the form
       const cc = typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.id ? String(purchase.costcenter.id) : (purchase.costcenter?.name || ''));
@@ -473,6 +531,25 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       const itemType = typeof purchase.type === 'string' ? purchase.type : (purchase.type?.name || '');
       const supplierId = typeof purchase.supplier === 'string' ? '' : (purchase.supplier as any)?.id ? String((purchase.supplier as any).id) : '';
       const brandId = typeof purchase.brand === 'string' ? '' : (purchase.brand as any)?.id ? String((purchase.brand as any).id) : '';
+
+      const deliveries = (purchase as any).deliveries && Array.isArray((purchase as any).deliveries) && (purchase as any).deliveries.length > 0
+        ? (purchase as any).deliveries.map((d: any) => ({
+            do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
+            do_no: d.do_no || '',
+            inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
+            inv_no: d.inv_no || '',
+            grn_date: d.grn_date ? String(d.grn_date).split('T')[0] : '',
+            grn_no: d.grn_no || '',
+          }))
+        : [{
+            do_date: purchase.do_date ? purchase.do_date.split('T')[0] : '',
+            do_no: purchase.do_no || '',
+            inv_date: purchase.inv_date ? purchase.inv_date.split('T')[0] : '',
+            inv_no: purchase.inv_no || '',
+            grn_date: purchase.grn_date ? purchase.grn_date.split('T')[0] : '',
+            grn_no: purchase.grn_no || ''
+          }];
+      const last = deliveries[deliveries.length - 1];
 
       setFormData({
         request_type: purchase.request_type || '',
@@ -488,13 +565,15 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         pr_no: purchase.pr_no || '',
         po_date: purchase.po_date ? purchase.po_date.split('T')[0] : '',
         po_no: purchase.po_no || '',
-        do_date: purchase.do_date ? purchase.do_date.split('T')[0] : '',
-        do_no: purchase.do_no || '',
-        inv_date: purchase.inv_date ? purchase.inv_date.split('T')[0] : '',
-        inv_no: purchase.inv_no || '',
-        grn_date: purchase.grn_date ? purchase.grn_date.split('T')[0] : '',
-        grn_no: purchase.grn_no || ''
+        do_date: last.do_date,
+        do_no: last.do_no,
+        inv_date: last.inv_date,
+        inv_no: last.inv_no,
+        grn_date: last.grn_date,
+        grn_no: last.grn_no,
+        deliveries
       });
+      setActiveDeliveryTab(`delivery-${deliveries.length - 1}`);
     }
 
     setSidebarOpen(true);
@@ -534,21 +613,22 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
   // Get status badge variant
   const getStatusVariant = (purchase: ApiPurchase) => {
-    if (purchase.grn_date && purchase.grn_no) return 'success';
-    if (purchase.inv_date && purchase.inv_no) return 'secondary';
-    if (purchase.do_date && purchase.do_no) return 'outline';
+    const ds = (purchase as any).deliveries as any[] | undefined;
+    const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
+    if ((latest?.grn_date && latest?.grn_no) || (purchase.grn_date && purchase.grn_no)) return 'success';
+    if ((latest?.inv_date && latest?.inv_no) || (purchase.inv_date && purchase.inv_no)) return 'secondary';
+    if ((latest?.do_date && latest?.do_no) || (purchase.do_date && purchase.do_no)) return 'outline';
     if (purchase.po_date && purchase.po_no) return 'default';
     return 'destructive';
   };
 
   // Get status text
   const getStatusText = (purchase: ApiPurchase) => {
-    // Completed when GRN is recorded
-    if (purchase.grn_date && purchase.grn_no) return 'Completed';
-    // Handover ONLY when handover fields populated by Asset Registry
+    const ds = (purchase as any).deliveries as any[] | undefined;
+    const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
+    if ((latest?.grn_date && latest?.grn_no) || (purchase.grn_date && purchase.grn_no)) return 'Completed';
     if ((purchase as any).handover_at || (purchase as any).handover_to) return 'Handover';
-    // Otherwise still in logistics/procurement flow
-    if (purchase.do_date && purchase.do_no) return 'Delivered';
+    if ((latest?.do_date && latest?.do_no) || (purchase.do_date && purchase.do_no)) return 'Delivered';
     if (purchase.po_date && purchase.po_no) return 'Ordered';
     return 'Requested';
   };
@@ -624,21 +704,60 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     {
       key: 'do_date',
       header: 'DO Date',
-      render: (row: any) => row.do_date ? new Date(row.do_date).toLocaleDateString('en-GB') : ''
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.do_date : row.do_date;
+        return d ? new Date(d).toLocaleDateString('en-GB') : '';
+      }
     },
-    { key: 'do_no', header: 'DO Number', filter: 'input' },
+    {
+      key: 'do_no',
+      header: 'DO Number',
+      filter: 'input',
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.do_no : row.do_no;
+        return d || '';
+      }
+    },
     {
       key: 'inv_date',
       header: 'Handover Date',
-      render: (row: any) => row.inv_date ? new Date(row.inv_date).toLocaleDateString('en-GB') : ''
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.inv_date : row.inv_date;
+        return d ? new Date(d).toLocaleDateString('en-GB') : '';
+      }
     },
-    { key: 'inv_no', header: 'Handover Number', filter: 'input' },
+    {
+      key: 'inv_no',
+      header: 'Handover Number',
+      filter: 'input',
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.inv_no : row.inv_no;
+        return d || '';
+      }
+    },
     {
       key: 'grn_date',
       header: 'GRN Date',
-      render: (row: any) => row.grn_date ? new Date(row.grn_date).toLocaleDateString('en-GB') : ''
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.grn_date : row.grn_date;
+        return d ? new Date(d).toLocaleDateString('en-GB') : '';
+      }
     },
-    { key: 'grn_no', header: 'GRN Number', filter: 'input' },
+    {
+      key: 'grn_no',
+      header: 'GRN Number',
+      filter: 'input',
+      render: (row: any) => {
+        const ds = (row as any).deliveries as any[] | undefined;
+        const d = ds && ds.length ? ds[ds.length - 1]?.grn_no : row.grn_no;
+        return d || '';
+      }
+    },
     {
       key: 'status',
       header: 'Status',
@@ -978,103 +1097,151 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       {/* Purchase Order & Delivery Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <Truck className="mr-2 h-5 w-5" />
-            Delivery Information
+          <CardTitle className="text-lg flex items-center justify-between">
+            <span className="flex items-center"><Truck className="mr-2 h-5 w-5" />Delivery Information</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const nextIdx = (formData.deliveries?.length || 0);
+                if (nextIdx >= maxDeliveries) {
+                  toast.error(`Cannot add more than ${maxDeliveries} deliveries for quantity ${formData.qty}.`);
+                  return;
+                }
+                setFormData(prev => ({
+                  ...prev,
+                  deliveries: [
+                    ...(prev.deliveries || []),
+                    { do_date: '', do_no: '', inv_date: '', inv_no: '', grn_date: '', grn_no: '' }
+                  ]
+                }));
+                setActiveDeliveryTab(`delivery-${nextIdx}`);
+              }}
+              className="gap-2"
+              disabled={(formData.deliveries?.length || 0) >= maxDeliveries || maxDeliveries === 0}
+            >
+              <Plus className="h-4 w-4" /> Add Delivery
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="do_date">DO Date</Label>
-              <Input
-                id="do_date"
-                type="date"
-                value={formData.do_date}
-                onChange={(e) => handleInputChange('do_date', e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="do_no">DO Number</Label>
-              <Input
-                id="do_no"
-                value={formData.do_no}
-                onChange={(e) => handleInputChange('do_no', e.target.value)}
-                placeholder="Enter DO number"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="inv_date">Invoice Date</Label>
-              <Input
-                id="inv_date"
-                type="date"
-                value={formData.inv_date}
-                onChange={(e) => handleInputChange('inv_date', e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="inv_no">Invoice Number</Label>
-              <Input
-                id="inv_no"
-                value={formData.inv_no}
-                onChange={(e) => handleInputChange('inv_no', e.target.value)}
-                placeholder="Enter invoice number"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="grn_date">GRN Date</Label>
-              <Input
-                id="grn_date"
-                type="date"
-                value={formData.grn_date}
-                onChange={(e) => handleInputChange('grn_date', e.target.value)}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="grn_no">GRN Number</Label>
-              <Input
-                id="grn_no"
-                value={formData.grn_no}
-                onChange={(e) => handleInputChange('grn_no', e.target.value)}
-                placeholder="Enter GRN number"
-              />
-            </div>
-
-            {/* PDF upload drop area */}
-            <div>
-              <Label>Attach PDF (optional)</Label>
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={onFileDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-2 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-md h-28 cursor-pointer bg-gray-50"
-              >
-                {!uploadFile ? (
-                  <div className="text-center text-sm text-gray-600">
-                    Drop PDF here or click to select
-                    <div className="text-xs text-gray-400">Only .pdf files accepted</div>
+          <div className="mb-3 text-xs text-gray-500">
+            {(formData.deliveries?.length || 0)} of {maxDeliveries} deliveries used (max 5)
+          </div>
+          <Tabs value={activeDeliveryTab} onValueChange={setActiveDeliveryTab}>
+            <TabsList className="flex flex-wrap">
+              {(formData.deliveries || []).map((_, idx) => (
+                <TabsTrigger key={`delivery-tab-${idx}`} value={`delivery-${idx}`}>Delivery {idx + 1}</TabsTrigger>
+              ))}
+            </TabsList>
+            {(formData.deliveries || []).map((d, idx) => (
+              <TabsContent key={`delivery-content-${idx}`} value={`delivery-${idx}`} className="mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor={`do_date_${idx}`}>DO Date</Label>
+                    <Input
+                      id={`do_date_${idx}`}
+                      type="date"
+                      value={d.do_date}
+                      onChange={(e) => updateDeliveryField(idx, 'do_date', e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between w-full px-4">
-                    <div className="truncate">{uploadFile.name}</div>
-                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); removeUploadFile(); }}>
-                      Remove
+                  <div>
+                    <Label htmlFor={`do_no_${idx}`}>DO Number</Label>
+                    <Input
+                      id={`do_no_${idx}`}
+                      value={d.do_no}
+                      onChange={(e) => updateDeliveryField(idx, 'do_no', e.target.value)}
+                      placeholder="Enter DO number"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`inv_date_${idx}`}>Invoice Date</Label>
+                    <Input
+                      id={`inv_date_${idx}`}
+                      type="date"
+                      value={d.inv_date}
+                      onChange={(e) => updateDeliveryField(idx, 'inv_date', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`inv_no_${idx}`}>Invoice Number</Label>
+                    <Input
+                      id={`inv_no_${idx}`}
+                      value={d.inv_no}
+                      onChange={(e) => updateDeliveryField(idx, 'inv_no', e.target.value)}
+                      placeholder="Enter invoice number"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`grn_date_${idx}`}>GRN Date</Label>
+                    <Input
+                      id={`grn_date_${idx}`}
+                      type="date"
+                      value={d.grn_date}
+                      onChange={(e) => updateDeliveryField(idx, 'grn_date', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`grn_no_${idx}`}>GRN Number</Label>
+                    <Input
+                      id={`grn_no_${idx}`}
+                      value={d.grn_no}
+                      onChange={(e) => updateDeliveryField(idx, 'grn_no', e.target.value)}
+                      placeholder="Enter GRN number"
+                    />
+                  </div>
+                </div>
+                {idx > 0 && (
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        const arr = [...(formData.deliveries || [])];
+                        arr.splice(idx, 1);
+                        setFormData(prev => ({ ...prev, deliveries: arr }));
+                        const newIdx = Math.max(0, idx - 1);
+                        setActiveDeliveryTab(`delivery-${newIdx}`);
+                      }}
+                    >
+                      Remove Delivery
                     </Button>
                   </div>
                 )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={onFileSelect}
-                />
-              </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+
+          <div className="mt-6">
+            <Label>Attach PDF (optional)</Label>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={onFileDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className="mt-2 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-md h-28 cursor-pointer bg-gray-50"
+            >
+              {!uploadFile ? (
+                <div className="text-center text-sm text-gray-600">
+                  Drop PDF here or click to select
+                  <div className="text-xs text-gray-400">Only .pdf files accepted</div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between w-full px-4">
+                  <div className="truncate">{uploadFile.name}</div>
+                  <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); removeUploadFile(); }}>
+                    Remove
+                  </Button>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={onFileSelect}
+              />
             </div>
           </div>
         </CardContent>
@@ -1172,57 +1339,114 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             <CardTitle className="text-lg">Purchase Process Timeline</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {selectedPurchase.pr_date && (
-                <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Request Date</p>
-                    <p className="text-sm text-gray-600">PR: {selectedPurchase.pr_no || 'N/A'}</p>
+            {Array.isArray((selectedPurchase as any).deliveries) && (selectedPurchase as any).deliveries.length > 1 ? (
+              <Tabs defaultValue={`vdelivery-0`}>
+                <TabsList className="flex flex-wrap">
+                  {((selectedPurchase as any).deliveries as any[]).map((_: any, idx: number) => (
+                    <TabsTrigger key={`vdelivery-tab-${idx}`} value={`vdelivery-${idx}`}>Delivery {idx + 1}</TabsTrigger>
+                  ))}
+                </TabsList>
+                {((selectedPurchase as any).deliveries as any[]).map((d: any, idx: number) => (
+                  <TabsContent key={`vdelivery-content-${idx}`} value={`vdelivery-${idx}`} className="mt-4">
+                    <div className="space-y-4">
+                      {selectedPurchase.pr_date && (
+                        <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">Request Date</p>
+                            <p className="text-sm text-gray-600">PR: {selectedPurchase.pr_no || 'N/A'}</p>
+                          </div>
+                          <p className="font-medium">{new Date(selectedPurchase.pr_date).toLocaleDateString('en-GB')}</p>
+                        </div>
+                      )}
+                      {selectedPurchase.po_date && (
+                        <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">Purchase Order</p>
+                            <p className="text-sm text-gray-600">PO: {selectedPurchase.po_no || 'N/A'}</p>
+                          </div>
+                          <p className="font-medium">{new Date(selectedPurchase.po_date).toLocaleDateString('en-GB')}</p>
+                        </div>
+                      )}
+                      {(d?.do_date || d?.do_no) && (
+                        <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">Delivery Order</p>
+                            <p className="text-sm text-gray-600">DO: {d?.do_no || 'N/A'}</p>
+                          </div>
+                          <p className="font-medium">{d?.do_date ? new Date(d.do_date).toLocaleDateString('en-GB') : ''}</p>
+                        </div>
+                      )}
+                      {(d?.inv_date || d?.inv_no) && (
+                        <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">Handover</p>
+                            <p className="text-sm text-gray-600">Handover: {d?.inv_no || 'N/A'}</p>
+                          </div>
+                          <p className="font-medium">{d?.inv_date ? new Date(d.inv_date).toLocaleDateString('en-GB') : ''}</p>
+                        </div>
+                      )}
+                      {(d?.grn_date || d?.grn_no) && (
+                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                          <div>
+                            <p className="font-medium">Goods Receipt Note</p>
+                            <p className="text-sm text-gray-600">GRN: {d?.grn_no || 'N/A'}</p>
+                          </div>
+                          <p className="font-medium">{d?.grn_date ? new Date(d.grn_date).toLocaleDateString('en-GB') : ''}</p>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            ) : (
+              <div className="space-y-4">
+                {selectedPurchase.pr_date && (
+                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Request Date</p>
+                      <p className="text-sm text-gray-600">PR: {selectedPurchase.pr_no || 'N/A'}</p>
+                    </div>
+                    <p className="font-medium">{new Date(selectedPurchase.pr_date).toLocaleDateString('en-GB')}</p>
                   </div>
-                  <p className="font-medium">{new Date(selectedPurchase.pr_date).toLocaleDateString('en-GB')}</p>
-                </div>
-              )}
-
-              {selectedPurchase.po_date && (
-                <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Purchase Order</p>
-                    <p className="text-sm text-gray-600">PO: {selectedPurchase.po_no || 'N/A'}</p>
+                )}
+                {selectedPurchase.po_date && (
+                  <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Purchase Order</p>
+                      <p className="text-sm text-gray-600">PO: {selectedPurchase.po_no || 'N/A'}</p>
+                    </div>
+                    <p className="font-medium">{new Date(selectedPurchase.po_date).toLocaleDateString('en-GB')}</p>
                   </div>
-                  <p className="font-medium">{new Date(selectedPurchase.po_date).toLocaleDateString('en-GB')}</p>
-                </div>
-              )}
-
-              {selectedPurchase.do_date && (
-                <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Delivery Order</p>
-                    <p className="text-sm text-gray-600">DO: {selectedPurchase.do_no || 'N/A'}</p>
+                )}
+                {selectedPurchase.do_date && (
+                  <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Delivery Order</p>
+                      <p className="text-sm text-gray-600">DO: {selectedPurchase.do_no || 'N/A'}</p>
+                    </div>
+                    <p className="font-medium">{new Date(selectedPurchase.do_date).toLocaleDateString('en-GB')}</p>
                   </div>
-                  <p className="font-medium">{new Date(selectedPurchase.do_date).toLocaleDateString('en-GB')}</p>
-                </div>
-              )}
-
-              {selectedPurchase.inv_date && (
-                <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Handover</p>
-                    <p className="text-sm text-gray-600">Handover: {selectedPurchase.inv_no || 'N/A'}</p>
+                )}
+                {selectedPurchase.inv_date && (
+                  <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Handover</p>
+                      <p className="text-sm text-gray-600">Handover: {selectedPurchase.inv_no || 'N/A'}</p>
+                    </div>
+                    <p className="font-medium">{new Date(selectedPurchase.inv_date).toLocaleDateString('en-GB')}</p>
                   </div>
-                  <p className="font-medium">{new Date(selectedPurchase.inv_date).toLocaleDateString('en-GB')}</p>
-                </div>
-              )}
-
-              {selectedPurchase.grn_date && (
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">Goods Receipt Note</p>
-                    <p className="text-sm text-gray-600">GRN: {selectedPurchase.grn_no || 'N/A'}</p>
+                )}
+                {selectedPurchase.grn_date && (
+                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Goods Receipt Note</p>
+                      <p className="text-sm text-gray-600">GRN: {selectedPurchase.grn_no || 'N/A'}</p>
+                    </div>
+                    <p className="font-medium">{new Date(selectedPurchase.grn_date).toLocaleDateString('en-GB')}</p>
                   </div>
-                  <p className="font-medium">{new Date(selectedPurchase.grn_date).toLocaleDateString('en-GB')}</p>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1454,3 +1678,47 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 };
 
 export default PurchaseRecords;
+
+/* 
+{
+"request_type": "CAPEX",
+"costcenter_id": "12",
+"ramco_id": "EMP123",
+"type_id": "7",
+"items": "Laptop 14"",
+"supplier_id": "45",
+"brand_id": "3",
+"qty": 2,
+"unit_price": "3500",
+"total_price": "7000",
+"pr_date": "2025-09-01",
+"pr_no": "PR-001",
+"po_date": "2025-09-05",
+"po_no": "PO-100",
+"do_date": "2025-09-20",
+"do_no": "DO-002",
+"inv_date": "2025-09-22",
+"inv_no": "INV-002",
+"grn_date": "2025-09-24",
+"grn_no": "GRN-002",
+"deliveries": [
+{
+"do_date": "2025-09-10",
+"do_no": "DO-001",
+"inv_date": "2025-09-12",
+"inv_no": "INV-001",
+"grn_date": "2025-09-14",
+"grn_no": "GRN-001"
+},
+{
+"do_date": "2025-09-20",
+"do_no": "DO-002",
+"inv_date": "2025-09-22",
+"inv_no": "INV-002",
+"grn_date": "2025-09-24",
+"grn_no": "GRN-002"
+}
+]
+}
+
+*/
