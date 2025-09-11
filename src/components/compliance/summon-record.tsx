@@ -102,6 +102,31 @@ const ComplianceSummonList: React.FC = () => {
         return () => { mounted = false; };
     }, []);
 
+    // Load summon types and agencies for selects
+    const [summonTypes, setSummonTypes] = useState<{ id?: number; name?: string; description?: string }[]>([]);
+    const [summonAgencies, setSummonAgencies] = useState<{ id?: number; name?: string; code?: string }[]>([]);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadMeta = async () => {
+            try {
+                const [tRes, aRes] = await Promise.all([
+                    authenticatedApi.get('/api/compliance/summon/type'),
+                    authenticatedApi.get('/api/compliance/summon/agency')
+                ]);
+                const tData = (tRes as any).data?.data || (tRes as any).data || [];
+                const aData = (aRes as any).data?.data || (aRes as any).data || [];
+                if (!mounted) return;
+                setSummonTypes(Array.isArray(tData) ? tData : []);
+                setSummonAgencies(Array.isArray(aData) ? aData : []);
+            } catch (err) {
+                console.error('Failed to load summon types/agencies', err);
+            }
+        };
+        loadMeta();
+        return () => { mounted = false; };
+    }, []);
+
     // Preload assets for Registration No select from manager=2
     useEffect(() => {
         let mounted = true;
@@ -220,18 +245,18 @@ const ComplianceSummonList: React.FC = () => {
             };
 
             // Validate file type if present
-                if (summonFile) {
-                    const allowed = ['application/pdf', 'image/png'];
-                    if (!allowed.includes(summonFile.type)) {
-                        toast.error('Invalid file type. Only PDF and PNG are allowed.');
-                        return;
-                    }
-                    const maxBytes = 10 * 1024 * 1024; // 10MB
-                    if (summonFile.size > maxBytes) {
-                        toast.error('File too large. Maximum allowed size is 10MB.');
-                        return;
-                    }
+            if (summonFile) {
+                const allowed = ['application/pdf', 'image/png'];
+                if (!allowed.includes(summonFile.type)) {
+                    toast.error('Invalid file type. Only PDF and PNG are allowed.');
+                    return;
                 }
+                const maxBytes = 10 * 1024 * 1024; // 10MB
+                if (summonFile.size > maxBytes) {
+                    toast.error('File too large. Maximum allowed size is 10MB.');
+                    return;
+                }
+            }
 
             // Mapped values
             const mapped = {
@@ -277,9 +302,11 @@ const ComplianceSummonList: React.FC = () => {
                         const fd = new FormData();
                         Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
                         fd.append('summon_upl', summonFile, summonFile.name);
-                        await authenticatedApi.put(`/api/compliance/summon/${id}`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
-                            if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
-                        } } as any));
+                        await authenticatedApi.put(`/api/compliance/summon/${id}`, fd, ({
+                            headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                                if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+                            }
+                        } as any));
                     } else {
                         await authenticatedApi.put(`/api/compliance/summon/${id}`, mapped);
                     }
@@ -299,9 +326,11 @@ const ComplianceSummonList: React.FC = () => {
                     const fd = new FormData();
                     Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
                     fd.append('summon_upl', summonFile, summonFile.name);
-                    await authenticatedApi.post('/api/compliance/summon', fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
-                        if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
-                    } } as any));
+                    await authenticatedApi.post('/api/compliance/summon', fd, ({
+                        headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                            if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+                        }
+                    } as any));
                 } else {
                     await authenticatedApi.post('/api/compliance/summons', mapped);
                 }
@@ -403,59 +432,65 @@ const ComplianceSummonList: React.FC = () => {
 
     const columns: ColumnDef<SummonRecord>[] = [
         { key: 'summon_no' as any, header: 'Summon No', filter: 'input', sortable: true },
-    { key: 'summon_date_time' as any, header: 'Summon Date/Time', sortable: true, render: (r: any) => {
-            const date = r.summon_date ? formatDateDMY(r.summon_date) : '';
-            let time = '';
-            if (r.summon_time) {
-                // normalize time to HH:MM
-                const t = String(r.summon_time);
-                time = t.length >= 5 ? t.slice(0,5) : t;
+        {
+            key: 'summon_date_time' as any, header: 'Summon Date/Time', sortable: true, render: (r: any) => {
+                const date = r.summon_date ? formatDateDMY(r.summon_date) : '';
+                let time = '';
+                if (r.summon_time) {
+                    // normalize time to HH:MM
+                    const t = String(r.summon_time);
+                    time = t.length >= 5 ? t.slice(0, 5) : t;
+                }
+                return date ? (time ? `${date} ${time}` : date) : (time || '-');
             }
-            return date ? (time ? `${date} ${time}` : date) : (time || '-');
-        } },
-    { key: 'summon_agency' as any, header: 'Agency', sortable: false, render: (r: any) => r.summon_agency || '-' },
+        },
+        { key: 'summon_agency' as any, header: 'Agency', sortable: false, render: (r: any) => r.summon_agency || '-' },
         { key: 'asset' as any, header: 'Vehicle', filter: 'input', render: (r: any) => r.asset?.register_number || r.vehicle_id || '-' },
         { key: 'employee' as any, header: 'Driver', filter: 'input', render: (r: any) => r.employee?.full_name || r.ramco_id || '-' },
         { key: 'summon_loc' as any, header: 'Location', render: (r: any) => r.summon_loc || r.asset?.location?.code || '-' },
-        { key: 'summon_amt' as any, header: 'Amount (RM)', render: (r: any) => r.summon_amt ? `RM ${fmtRM(r.summon_amt)}` : '-' , colClass: 'text-right'},
-        { key: 'summon_stat' as any, header: 'Status', filter: 'singleSelect', render: (r: any) => {
-            const paid = !!(r.receipt_date);
-            return (
+        { key: 'summon_amt' as any, header: 'Amount (RM)', render: (r: any) => r.summon_amt ? `RM ${fmtRM(r.summon_amt)}` : '-', colClass: 'text-right' },
+        {
+            key: 'summon_stat' as any, header: 'Status', filter: 'singleSelect', render: (r: any) => {
+                const paid = !!(r.receipt_date);
+                return (
+                    <div className="flex items-center space-x-2">
+                        <span className={`${paid ? 'text-green-600' : 'text-yellow-600'} font-medium`}>{paid ? 'Paid' : 'Pending'}</span>
+                        {r.summon_receipt ? (
+                            <a
+                                href={r.summon_receipt}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1 rounded hover:bg-gray-100"
+                                title="Preview receipt"
+                            >
+                                <Paperclip className="h-5 w-5 text-blue-600" />
+                            </a>
+                        ) : null}
+                    </div>
+                );
+            }
+        },
+        {
+            key: 'actions' as any, header: 'Actions', render: (r: any) => (
                 <div className="flex items-center space-x-2">
-                    <span className={`${paid ? 'text-green-600' : 'text-yellow-600'} font-medium`}>{paid ? 'Paid' : 'Pending'}</span>
-                    {r.summon_receipt ? (
+                    <NotifyButton smnId={r.smn_id} hasAttachment={!!(r.attachment_url || r.summon_upl)} />
+                    {(r.attachment_url || r.summon_upl) ? (
                         <a
-                            href={r.summon_receipt}
+                            href={r.attachment_url || r.summon_upl}
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
                             className="p-1 rounded hover:bg-gray-100"
-                            title="Preview receipt"
+                            title="Open attachment"
                         >
-                            <Paperclip className="h-5 w-5 text-blue-600" />
+                            <Paperclip className="h-5 w-5 text-green-600" />
                         </a>
                     ) : null}
+                    {/* Paid indicator removed; status column now shows Paid/Pending */}
                 </div>
-            );
-        } },
-        { key: 'actions' as any, header: 'Actions', render: (r: any) => (
-            <div className="flex items-center space-x-2">
-                <NotifyButton smnId={r.smn_id} hasAttachment={!!(r.attachment_url || r.summon_upl)} />
-                {(r.attachment_url || r.summon_upl) ? (
-                    <a
-                        href={r.attachment_url || r.summon_upl}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1 rounded hover:bg-gray-100"
-                        title="Open attachment"
-                    >
-                        <Paperclip className="h-5 w-5 text-green-600" />
-                    </a>
-                ) : null}
-                {/* Paid indicator removed; status column now shows Paid/Pending */}
-            </div>
-        ) }
+            )
+        }
     ];
 
     // Small component to send notification and show loading state
@@ -555,19 +590,7 @@ const ComplianceSummonList: React.FC = () => {
                             <div>
                                 <Label>Type of Summon:</Label>
                                 <SingleSelect
-                                    options={[
-                                        { value: '', label: 'Please select..' },
-                                        { value: 'Melebihi had laju', label: 'Melebihi had laju' },
-                                        { value: 'Memotong barisan secara berbahaya', label: 'Memotong barisan secara berbahaya' },
-                                        { value: 'Memandu di lorong kecemasan', label: 'Memandu di lorong kecemasan' },
-                                        { value: 'Kesalahan lampu merah', label: 'Kesalahan lampu merah' },
-                                        { value: 'Halangan lalulintas', label: 'Halangan lalulintas' },
-                                        { value: 'Membuat pusingan U di tempat yang tidak dibenarkan', label: 'Membuat pusingan U di tempat yang tidak dibenarkan' },
-                                        { value: 'Tiada lesen kenderaan/motor', label: 'Tiada lesen kenderaan/motor' },
-                                        { value: 'Memandu sambil menggunakan alat komunikasi', label: 'Memandu sambil menggunakan alat komunikasi' },
-                                        { value: 'Membawa barang di dalam kenderaan yang tidak bersesuaian', label: 'Membawa barang di dalam kenderaan yang tidak bersesuaian' },
-                                        { value: 'Abai Isyarat Lalulintas', label: 'Abai Isyarat Lalulintas' }
-                                    ]}
+                                    options={[{ value: '', label: 'Please select...' }, ...(summonTypes || []).map(t => ({ value: String(t.name || t.id || ''), label: String(t.name || t.description || t.id) }))]}
                                     value={formData.type_of_summon}
                                     onValueChange={(v) => setFormData((s: any) => ({ ...s, type_of_summon: v }))}
                                 />
@@ -578,11 +601,7 @@ const ComplianceSummonList: React.FC = () => {
                             <div>
                                 <Label>Agensi:</Label>
                                 <SingleSelect
-                                    options={[
-                                        { value: 'PDRM', label: 'PDRM' },
-                                        { value: 'JPJ', label: 'JPJ' },
-                                        { value: 'PBT', label: 'PBT' }
-                                    ]}
+                                    options={[{ value: '', label: 'Please select...' }, ...(summonAgencies || []).map(a => ({ value: String(a.code || a.id || a.name), label: String(a.name || a.code || a.id) }))]}
                                     value={formData.summon_agency}
                                     className={formErrors.summon_agency ? 'ring-2 ring-red-500' : ''}
                                     onValueChange={(v) => setFormData((s: any) => ({ ...s, summon_agency: v }))}
@@ -600,7 +619,7 @@ const ComplianceSummonList: React.FC = () => {
                                         const v = e.target.value.replace(/[^0-9.]/g, '');
                                         // prevent multiple dots
                                         const parts = v.split('.');
-                                        const safe = parts.length <= 1 ? parts[0] : `${parts[0]}.${parts.slice(1).join('').slice(0,2)}`;
+                                        const safe = parts.length <= 1 ? parts[0] : `${parts[0]}.${parts.slice(1).join('').slice(0, 2)}`;
                                         setFormData((s: any) => ({ ...s, summon_amt: safe }));
                                     }}
                                     onBlur={() => {
@@ -653,158 +672,118 @@ const ComplianceSummonList: React.FC = () => {
 
                         <div className="pt-4 flex justify-end space-x-2">
                             <Button variant="secondary" onClick={() => setSidebarOpen(false)}>Cancel</Button>
-                                                        {formData.smn_id && deleteAuthorizer.includes(username) ? (
-                                                                <>
-                                                                        <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>Delete</Button>
-                                                                        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                                                                            <DialogContent>
-                                                                                <DialogHeader>
-                                                                                    <DialogTitle>Confirm delete</DialogTitle>
-                                                                                </DialogHeader>
-                                                                                <div className="py-2">Delete this summon? This action cannot be undone.</div>
-                                                                                <DialogFooter className="flex gap-2">
-                                                                                    <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
-                                                                                    <Button variant="destructive" onClick={async () => {
-                                                                                            setConfirmLoading(true);
-                                                                                            try {
-                                                                                                    await authenticatedApi.delete(`/api/compliance/summon/${formData.smn_id}`);
-                                                                                                    toast.success('Summon deleted');
-                                                                                                    const res = await authenticatedApi.get('/api/compliance/summon');
-                                                                                                    const data = (res as any).data?.data || (res as any).data || [];
-                                                                                                    setRows(Array.isArray(data) ? data : []);
-                                                                                                    setSidebarOpen(false);
-                                                                                            } catch (err) {
-                                                                                                    console.error('Failed delete', err);
-                                                                                                    toast.error('Failed to delete summon');
-                                                                                            } finally {
-                                                                                                    setConfirmLoading(false);
-                                                                                                    setShowDeleteDialog(false);
-                                                                                            }
-                                                                                    }}>
-                                                                                        {confirmLoading ? 'Deleting...' : 'Delete'}
-                                                                                    </Button>
-                                                                                </DialogFooter>
-                                                                            </DialogContent>
-                                                                        </Dialog>
-                                                                </>
-                                                        ) : null}
-                                                        <Button onClick={() => setShowSaveConfirm(true)}>Save</Button>
-                                                        <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
-                                                            <DialogContent>
-                                                                <DialogHeader>
-                                                                    <DialogTitle>Confirm submission</DialogTitle>
-                                                                </DialogHeader>
-                                                                <div className="py-2">Submit this summon record? Please confirm to proceed.</div>
-                                                                <DialogFooter className="flex gap-2">
-                                                                    <Button variant="outline" onClick={() => setShowSaveConfirm(false)}>Cancel</Button>
-                                                                    <Button onClick={async () => { setConfirmLoading(true); try { await submitForm(); } finally { setConfirmLoading(false); setShowSaveConfirm(false); } }}>{confirmLoading ? 'Saving...' : 'Submit'}</Button>
-                                                                </DialogFooter>
-                                                            </DialogContent>
-                                                        </Dialog>
+                            {formData.smn_id && deleteAuthorizer.includes(username) ? (
+                                <>
+                                    <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>Delete</Button>
+                                    <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Confirm delete</DialogTitle>
+                                            </DialogHeader>
+                                            <div className="py-2">Delete this summon? This action cannot be undone.</div>
+                                            <DialogFooter className="flex gap-2">
+                                                <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+                                                <Button variant="destructive" onClick={async () => {
+                                                    setConfirmLoading(true);
+                                                    try {
+                                                        await authenticatedApi.delete(`/api/compliance/summon/${formData.smn_id}`);
+                                                        toast.success('Summon deleted');
+                                                        const res = await authenticatedApi.get('/api/compliance/summon');
+                                                        const data = (res as any).data?.data || (res as any).data || [];
+                                                        setRows(Array.isArray(data) ? data : []);
+                                                        setSidebarOpen(false);
+                                                    } catch (err) {
+                                                        console.error('Failed delete', err);
+                                                        toast.error('Failed to delete summon');
+                                                    } finally {
+                                                        setConfirmLoading(false);
+                                                        setShowDeleteDialog(false);
+                                                    }
+                                                }}>
+                                                    {confirmLoading ? 'Deleting...' : 'Delete'}
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </>
+                            ) : null}
+                            <Button onClick={() => setShowSaveConfirm(true)}>Save</Button>
+                            <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Confirm submission</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="py-2">Submit this summon record? Please confirm to proceed.</div>
+                                    <DialogFooter className="flex gap-2">
+                                        <Button variant="outline" onClick={() => setShowSaveConfirm(false)}>Cancel</Button>
+                                        <Button onClick={async () => { setConfirmLoading(true); try { await submitForm(); } finally { setConfirmLoading(false); setShowSaveConfirm(false); } }}>{confirmLoading ? 'Saving...' : 'Submit'}</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </div>
                     </div>
                 }
             />
-            <div className="mt-4 flex gap-4 items-stretch">
-                <Card className="flex-1 flex flex-col">
-                    <CardHeader className="py-2">
-                        <CardTitle>Monthly Summons (Open vs Closed)</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-2 h-44">
-                        <div className="w-full h-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={annualSummary} margin={{ right: 16 }}>
-                                    <XAxis dataKey="year" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Legend />
-                                    <Bar dataKey="open" stackId="a" name={`Open (${annualTotals.open || 0})`} fill="#f59e0b" />
-                                    <Bar dataKey="closed" stackId="a" name={`Closed (${annualTotals.closed || 0})`} fill="#10b981" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="flex-1 flex flex-col">
-                    <CardHeader className="py-2">
-                        <CardTitle>Cases by Year (stacked by Agency)</CardTitle>
-                    </CardHeader>
-                    <CardContent className="h-44 p-2">
-                        <div className="w-full h-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={casesByYearAgency}>
-                                    <XAxis dataKey="year" />
-                                    <YAxis />
-                                    <Tooltip />
-                                    <Legend />
-                                    {agencyList.map((a, idx) => (
-                                        <Bar key={a} dataKey={a} stackId="a" name={`${a} (${agencyTotals[a] || 0})`} fill={['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'][idx % 5]} />
-                                    ))}
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-            <div className='flex items-center justify-between my-4'>
+            {/* Summary moved to `summon-summary` component. Include that component in the parent tab view. */}
+            <div className='flex items-center justify-between'>
                 <h2 className='text-lg font-semibold'>Summon Management</h2>
                 <div className="flex items-center space-x-2">
-                                         {deleteAuthorizer.includes(username) ? (
-                                         <>
-                                         <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="text-red-600"
-                                                disabled={selectedRowsData.length === 0}
-                                                onClick={(e) => { e.stopPropagation(); if (!selectedRowsData.length) return; setShowBulkDeleteDialog(true); }}
-                                         ><Trash className="w-4 h-4" /></Button>
+                    {deleteAuthorizer.includes(username) ? (
+                        <>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-red-600"
+                                disabled={selectedRowsData.length === 0}
+                                onClick={(e) => { e.stopPropagation(); if (!selectedRowsData.length) return; setShowBulkDeleteDialog(true); }}
+                            ><Trash className="w-4 h-4" /></Button>
 
-                                         <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-                                             <DialogContent>
-                                                 <DialogHeader>
-                                                     <DialogTitle>Confirm delete</DialogTitle>
-                                                 </DialogHeader>
-                                                 <div className="py-2">Delete {selectedRowsData.length} selected summons? This cannot be undone.</div>
-                                                 <DialogFooter className="flex gap-2">
-                                                     <Button variant="outline" onClick={() => setShowBulkDeleteDialog(false)}>Cancel</Button>
-                                                     <Button variant="destructive" onClick={async () => {
-                                                             setConfirmLoading(true);
-                                                             try {
-                                                                     await Promise.all(selectedRowsData.map(r => authenticatedApi.delete(`/api/compliance/summon/${r.smn_id}`)));
-                                                                     toast.success('Selected summons deleted');
-                                                                     // refresh
-                                                                     const res = await authenticatedApi.get('/api/compliance/summon');
-                                                                     const data = (res as any).data?.data || (res as any).data || [];
-                                                                     setRows(Array.isArray(data) ? data : []);
-                                                                     // clear selection
-                                                                     setSelectedRowKeys(new Set());
-                                                                     setSelectedRowsData([]);
-                                                                     if (dataGridRef.current?.clearSelectedRows) dataGridRef.current.clearSelectedRows();
-                                                             } catch (err) {
-                                                                     console.error('Failed delete selected', err);
-                                                                     toast.error('Failed to delete selected summons');
-                                                             } finally {
-                                                                     setConfirmLoading(false);
-                                                                     setShowBulkDeleteDialog(false);
-                                                             }
-                                                     }}>{confirmLoading ? 'Deleting...' : 'Delete'}</Button>
-                                                 </DialogFooter>
-                                             </DialogContent>
-                                         </Dialog>
-                                         </>
-                                         ) : null}
-                <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' });
-                    // clear any existing preview
-                    if (createdPreviewUrl) { URL.revokeObjectURL(createdPreviewUrl); setCreatedPreviewUrl(null); }
-                    setFilePreviewUrl(null);
-                    setSummonFile(null);
-                    setSidebarOpen(true);
-                 }}>
-                    <Plus className="w-4 h-4" />
-                </Button>
-                 
-                 </div>
+                            <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Confirm delete</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="py-2">Delete {selectedRowsData.length} selected summons? This cannot be undone.</div>
+                                    <DialogFooter className="flex gap-2">
+                                        <Button variant="outline" onClick={() => setShowBulkDeleteDialog(false)}>Cancel</Button>
+                                        <Button variant="destructive" onClick={async () => {
+                                            setConfirmLoading(true);
+                                            try {
+                                                await Promise.all(selectedRowsData.map(r => authenticatedApi.delete(`/api/compliance/summon/${r.smn_id}`)));
+                                                toast.success('Selected summons deleted');
+                                                // refresh
+                                                const res = await authenticatedApi.get('/api/compliance/summon');
+                                                const data = (res as any).data?.data || (res as any).data || [];
+                                                setRows(Array.isArray(data) ? data : []);
+                                                // clear selection
+                                                setSelectedRowKeys(new Set());
+                                                setSelectedRowsData([]);
+                                                if (dataGridRef.current?.clearSelectedRows) dataGridRef.current.clearSelectedRows();
+                                            } catch (err) {
+                                                console.error('Failed delete selected', err);
+                                                toast.error('Failed to delete selected summons');
+                                            } finally {
+                                                setConfirmLoading(false);
+                                                setShowBulkDeleteDialog(false);
+                                            }
+                                        }}>{confirmLoading ? 'Deleting...' : 'Delete'}</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        </>
+                    ) : null}
+                    <Button onClick={() => {
+                        setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' });
+                        // clear any existing preview
+                        if (createdPreviewUrl) { URL.revokeObjectURL(createdPreviewUrl); setCreatedPreviewUrl(null); }
+                        setFilePreviewUrl(null);
+                        setSummonFile(null);
+                        setSidebarOpen(true);
+                    }}>
+                        <Plus className="w-4 h-4" />
+                    </Button>
+
+                </div>
             </div>
             <div className="mt-4">
                 <CustomDataGrid
@@ -814,10 +793,12 @@ const ComplianceSummonList: React.FC = () => {
                     pagination={false}
                     pageSize={10}
                     inputFilter={false}
-                    rowSelection={{ enabled: true, getRowId: (r: any) => r.smn_id, onSelect: (keys: (string | number)[], selected: any[]) => {
-                        setSelectedRowKeys(new Set(keys));
-                        setSelectedRowsData(selected || []);
-                    } }}
+                    rowSelection={{
+                        enabled: true, getRowId: (r: any) => r.smn_id, onSelect: (keys: (string | number)[], selected: any[]) => {
+                            setSelectedRowKeys(new Set(keys));
+                            setSelectedRowsData(selected || []);
+                        }
+                    }}
                     onRowSelected={(keys, selected) => { setSelectedRowKeys(new Set(keys)); setSelectedRowsData(selected); }}
                     rowClass={(r: any) => {
                         // highlight open/unpaid/pending cases

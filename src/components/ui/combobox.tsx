@@ -244,12 +244,22 @@ export function Combobox(props: ComboboxProps) {
                       isSelected && "bg-accent"
                     )}
                   >
-                    <Check
-                      className={cn(
-                        "h-4 w-4 font-bold transition-all duration-200",
-                        isSelected ? "opacity-100 text-primary scale-100" : "opacity-0 scale-75"
-                      )}
-                    />
+                    {isMultiple ? (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        readOnly
+                        aria-hidden
+                        className="mr-2 w-4 h-4 rounded border-gray-300"
+                      />
+                    ) : (
+                      <Check
+                        className={cn(
+                          "h-4 w-4 font-bold transition-all duration-200",
+                          isSelected ? "opacity-100 text-primary scale-100" : "opacity-0 scale-75"
+                        )}
+                      />
+                    )}
                     <span className="flex-1">{option.label}</span>
                     {isMultiple && isSelected && (
                       <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />

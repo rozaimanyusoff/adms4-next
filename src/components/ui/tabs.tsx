@@ -49,7 +49,7 @@ function Tabs({
   return (
     <TabsPrimitive.Root
       data-slot="tabs"
-      className={cn("flex flex-col gap-3 w-full px-3", className)}
+      className={cn("flex flex-col gap-3 w-full", className)}
       defaultValue={defaultValue || autoDefaultValue}
       {...props}
     >
