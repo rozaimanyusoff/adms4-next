@@ -8,7 +8,7 @@ import { authenticatedApi } from '@/config/api';
 // dialog no longer used — use ActionSidebar on row double-click for edit
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Combobox, SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -62,6 +62,7 @@ const ComplianceSummonList: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+    const [createdPreviewUrl, setCreatedPreviewUrl] = useState<string | null>(null);
     const [formErrors, setFormErrors] = useState<{ asset_id?: boolean; ramco_id?: boolean; summon_no?: boolean; summon_date?: boolean; summon_time?: boolean; summon_loc?: boolean; myeg_date?: boolean; type_of_summon?: boolean; summon_agency?: boolean; summon_amt?: boolean; summon_upl?: boolean }>({});
 
     useEffect(() => {
@@ -139,6 +140,48 @@ const ComplianceSummonList: React.FC = () => {
         setFilePreviewUrl(null);
     }, [summonFile]);
 
+    // Helper to fetch attachment as blob and set preview if it's an image
+    const fetchAttachmentPreview = async (attachmentUrl?: string | null) => {
+        // cleanup previous created preview first
+        if (!attachmentUrl) {
+            if (createdPreviewUrl) {
+                URL.revokeObjectURL(createdPreviewUrl);
+                setCreatedPreviewUrl(null);
+            }
+            setFilePreviewUrl(null);
+            return;
+        }
+        try {
+            const res = await authenticatedApi.get(attachmentUrl, { responseType: 'blob' } as any);
+            const blob = (res as any).data || res;
+            if (!blob) {
+                setFilePreviewUrl(null);
+                return;
+            }
+            if (blob.type && blob.type.startsWith('image/')) {
+                // revoke old
+                if (createdPreviewUrl) {
+                    URL.revokeObjectURL(createdPreviewUrl);
+                }
+                const url = URL.createObjectURL(blob);
+                setFilePreviewUrl(url);
+                setCreatedPreviewUrl(url);
+                return;
+            }
+            // not an image
+            setFilePreviewUrl(null);
+            if (createdPreviewUrl) {
+                URL.revokeObjectURL(createdPreviewUrl);
+                setCreatedPreviewUrl(null);
+            }
+        } catch (err) {
+            // fallback: if attachmentUrl looks like an image path, set directly
+            const isImg = !!String(attachmentUrl).match(/\.(png|jpe?g|gif|webp)$/i);
+            if (isImg) setFilePreviewUrl(attachmentUrl as string);
+            else setFilePreviewUrl(null);
+        }
+    };
+
     const submitForm = async () => {
         try {
             // Prepare mapped payload fields
@@ -207,17 +250,51 @@ const ComplianceSummonList: React.FC = () => {
             // If editing (smn_id present) perform update, else create
             if (formData.smn_id) {
                 const id = formData.smn_id;
-                if (summonFile) {
-                    const fd = new FormData();
-                    Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
-                    fd.append('summon_upl', summonFile, summonFile.name);
-                    await authenticatedApi.put(`/api/compliance/summon/${id}`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
-                        if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
-                    } } as any));
-                } else {
-                    await authenticatedApi.put(`/api/compliance/summon/${id}`, mapped);
+                // try PUT first; if backend doesn't support PUT (404/405) fall back to POST (include smn_id)
+                const tryUpdate = async () => {
+                    if (summonFile) {
+                        const fd = new FormData();
+                        Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
+                        fd.append('summon_upl', summonFile, summonFile.name);
+                        await authenticatedApi.put(`/api/compliance/summon/${id}`, fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                            if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+                        } } as any));
+                    } else {
+                        await authenticatedApi.put(`/api/compliance/summon/${id}`, mapped);
+                    }
+                };
+
+                try {
+                    await tryUpdate();
+                    toast.success('Summon updated');
+                } catch (err: any) {
+                    const status = err?.response?.status;
+                    const msg = String(err?.message || '');
+                    // If PUT not available on server, try POST fallback
+                    if (status === 404 || status === 405 || msg.includes('405') || msg.includes('404') || msg.includes('Method Not Allowed')) {
+                        try {
+                            if (summonFile) {
+                                const fd = new FormData();
+                                Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
+                                fd.append('summon_upl', summonFile, summonFile.name);
+                                // include smn_id so backend can detect update intent
+                                fd.append('smn_id', String(id));
+                                await authenticatedApi.post('/api/compliance/summon', fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
+                                    if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
+                                } } as any));
+                            } else {
+                                await authenticatedApi.post('/api/compliance/summon', { ...mapped, smn_id: id });
+                            }
+                            toast.success('Summon updated');
+                        } catch (err2) {
+                            console.error('Update failed (PUT fallback);', err2);
+                            throw err2;
+                        }
+                    } else {
+                        // rethrow other errors
+                        throw err;
+                    }
                 }
-                toast.success('Summon updated');
             } else {
                 if (summonFile) {
                     const fd = new FormData();
@@ -266,14 +343,102 @@ const ComplianceSummonList: React.FC = () => {
         return Object.entries(counts).map(([year, count]) => ({ year, count })).sort((a, b) => a.year.localeCompare(b.year));
     }, [rows]);
 
+    // Annual summary: group by YYYY and count open vs closed (closed if receipt_date exists)
+    const annualSummary = useMemo(() => {
+        const map: Record<string, { year: string; open: number; closed: number }> = {};
+        rows.forEach(r => {
+            let key = 'Unknown';
+            if (r.summon_date) {
+                const d = new Date(r.summon_date);
+                if (!isNaN(d.getTime())) {
+                    key = String(d.getFullYear());
+                }
+            }
+            if (!map[key]) map[key] = { year: key, open: 0, closed: 0 };
+            const closed = !!r.receipt_date;
+            if (closed) map[key].closed += 1; else map[key].open += 1;
+        });
+        return Object.values(map).sort((a, b) => a.year.localeCompare(b.year));
+    }, [rows]);
+
+    // Cases by year stacked by agency
+    const agencyList = useMemo(() => {
+        const s = new Set<string>();
+        rows.forEach(r => { if (r.summon_agency) s.add(r.summon_agency); else s.add('Unknown'); });
+        return Array.from(s).sort();
+    }, [rows]);
+
+    const casesByYearAgency = useMemo(() => {
+        const map: Record<string, any> = {};
+        rows.forEach(r => {
+            const d = r.summon_date ? new Date(r.summon_date) : null;
+            const year = (d && !isNaN(d.getTime())) ? String(d.getFullYear()) : 'Unknown';
+            if (!map[year]) map[year] = { year };
+            const agency = r.summon_agency || 'Unknown';
+            map[year][agency] = (map[year][agency] || 0) + 1;
+        });
+        // ensure each agency key exists on every year object (0 if missing)
+        const years = Object.keys(map).sort();
+        return years.map(y => {
+            const obj = { year: y } as any;
+            agencyList.forEach(a => { obj[a] = map[y][a] || 0; });
+            return obj;
+        });
+    }, [rows, agencyList]);
+
+    // totals for legend counters
+    const annualTotals = useMemo(() => {
+        let open = 0;
+        let closed = 0;
+        (annualSummary || []).forEach((s: any) => { open += s.open || 0; closed += s.closed || 0; });
+        return { open, closed };
+    }, [annualSummary]);
+
+    const agencyTotals = useMemo(() => {
+        const totals: Record<string, number> = {};
+        (casesByYearAgency || []).forEach((row: any) => {
+            agencyList.forEach(a => { totals[a] = (totals[a] || 0) + (row[a] || 0); });
+        });
+        return totals;
+    }, [casesByYearAgency, agencyList]);
+
     const columns: ColumnDef<SummonRecord>[] = [
         { key: 'summon_no' as any, header: 'Summon No', filter: 'input', sortable: true },
-    { key: 'summon_date' as any, header: 'Date', sortable: true, render: (r: any) => r.summon_date ? formatDateDMY(r.summon_date) : '' },
+    { key: 'summon_date_time' as any, header: 'Summon Date/Time', sortable: true, render: (r: any) => {
+            const date = r.summon_date ? formatDateDMY(r.summon_date) : '';
+            let time = '';
+            if (r.summon_time) {
+                // normalize time to HH:MM
+                const t = String(r.summon_time);
+                time = t.length >= 5 ? t.slice(0,5) : t;
+            }
+            return date ? (time ? `${date} ${time}` : date) : (time || '-');
+        } },
+    { key: 'summon_agency' as any, header: 'Agency', sortable: false, render: (r: any) => r.summon_agency || '-' },
         { key: 'asset' as any, header: 'Vehicle', filter: 'input', render: (r: any) => r.asset?.register_number || r.vehicle_id || '-' },
         { key: 'employee' as any, header: 'Driver', filter: 'input', render: (r: any) => r.employee?.full_name || r.ramco_id || '-' },
         { key: 'summon_loc' as any, header: 'Location', render: (r: any) => r.summon_loc || r.asset?.location?.code || '-' },
         { key: 'summon_amt' as any, header: 'Amount (RM)', render: (r: any) => r.summon_amt ? `RM ${fmtRM(r.summon_amt)}` : '-' , colClass: 'text-right'},
-        { key: 'summon_stat' as any, header: 'Status', filter: 'singleSelect', render: (r: any) => r.summon_stat || '-' },
+        { key: 'summon_stat' as any, header: 'Status', filter: 'singleSelect', render: (r: any) => {
+            const paid = !!(r.receipt_date);
+            return (
+                <div className="flex items-center space-x-2">
+                    <span className={`${paid ? 'text-green-600' : 'text-yellow-600'} font-medium`}>{paid ? 'Paid' : 'Pending'}</span>
+                    {r.summon_receipt ? (
+                        <a
+                            href={r.summon_receipt}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1 rounded hover:bg-gray-100"
+                            title="Preview receipt"
+                        >
+                            <Paperclip className="h-5 w-5 text-blue-600" />
+                        </a>
+                    ) : null}
+                </div>
+            );
+        } },
         { key: 'actions' as any, header: 'Actions', render: (r: any) => (
             <div className="flex items-center space-x-2">
                 <NotifyButton smnId={r.smn_id} hasAttachment={!!(r.attachment_url || r.summon_upl)} />
@@ -289,12 +454,7 @@ const ComplianceSummonList: React.FC = () => {
                         <Paperclip className="h-5 w-5 text-green-600" />
                     </a>
                 ) : null}
-                {/* Paid indicator: show when receipt_date or summon_receipt exists */}
-                {(r.receipt_date || r.summon_receipt) ? (
-                    <span title="Payment received" className="p-1 rounded">
-                        <Check className="h-5 w-5 text-green-600" />
-                    </span>
-                ) : null}
+                {/* Paid indicator removed; status column now shows Paid/Pending */}
             </div>
         ) }
     ];
@@ -501,35 +661,40 @@ const ComplianceSummonList: React.FC = () => {
             />
             <div className="mt-4 flex gap-4 items-stretch">
                 <Card className="flex-1 flex flex-col">
-                    <CardHeader className="flex items-center justify-between">
-                        <CardTitle>Summons Summary</CardTitle>
+                    <CardHeader className="py-2">
+                        <CardTitle>Monthly Summons (Open vs Closed)</CardTitle>
                     </CardHeader>
-                    <CardContent className="flex-1">
-                        <div className="flex flex-row flex-nowrap items-center gap-12 overflow-x-auto h-full">
-                            <div className="flex flex-col w-40 min-w-[8rem]">
-                                <div className="text-sm font-medium text-gray-600">Open</div>
-                                <div className="text-2xl font-semibold">{openCount}</div>
-                            </div>
-                            <div className="flex flex-col w-40 min-w-[8rem]">
-                                <div className="text-sm font-medium text-gray-600">Closed / Paid</div>
-                                <div className="text-2xl font-semibold">{closedCount}</div>
-                            </div>
+                    <CardContent className="flex-1 p-2 h-44">
+                        <div className="w-full h-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={annualSummary} margin={{ right: 16 }}>
+                                    <XAxis dataKey="year" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Legend />
+                                    <Bar dataKey="open" stackId="a" name={`Open (${annualTotals.open || 0})`} fill="#f59e0b" />
+                                    <Bar dataKey="closed" stackId="a" name={`Closed (${annualTotals.closed || 0})`} fill="#10b981" />
+                                </BarChart>
+                            </ResponsiveContainer>
                         </div>
                     </CardContent>
                 </Card>
 
                 <Card className="flex-1 flex flex-col">
-                    <CardHeader>
-                        <CardTitle>Cases by Year</CardTitle>
+                    <CardHeader className="py-2">
+                        <CardTitle>Cases by Year (stacked by Agency)</CardTitle>
                     </CardHeader>
-                    <CardContent className="h-56">
+                    <CardContent className="h-44 p-2">
                         <div className="w-full h-full">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={yearlyData}>
+                                <BarChart data={casesByYearAgency}>
                                     <XAxis dataKey="year" />
                                     <YAxis />
                                     <Tooltip />
-                                    <Bar dataKey="count" fill="#3b82f6" />
+                                    <Legend />
+                                    {agencyList.map((a, idx) => (
+                                        <Bar key={a} dataKey={a} stackId="a" name={`${a} (${agencyTotals[a] || 0})`} fill={['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6'][idx % 5]} />
+                                    ))}
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -538,7 +703,13 @@ const ComplianceSummonList: React.FC = () => {
             </div>
             <div className='flex items-center justify-between my-4'>
                 <h2 className='text-lg font-semibold'>Summon Management</h2>
-                <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' }); setSidebarOpen(true); }}>
+                <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' });
+                    // clear any existing preview
+                    if (createdPreviewUrl) { URL.revokeObjectURL(createdPreviewUrl); setCreatedPreviewUrl(null); }
+                    setFilePreviewUrl(null);
+                    setSummonFile(null);
+                    setSidebarOpen(true);
+                 }}>
                     <Plus className="w-4 h-4 mr-2" />Register Summon
                 </Button>
             </div>
@@ -582,6 +753,8 @@ const ComplianceSummonList: React.FC = () => {
                         } else {
                             setDriverOptions([]);
                         }
+                        // fetch preview for existing attachment if present
+                        fetchAttachmentPreview(r.attachment_url || r.summon_upl);
                         setSidebarOpen(true);
                     }}
                 />
