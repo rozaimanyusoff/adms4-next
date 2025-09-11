@@ -3,8 +3,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Mail, Paperclip, Check } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Plus, Mail, Paperclip, Check, Trash } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
+import { AuthContext } from '@/store/AuthContext';
 // dialog no longer used — use ActionSidebar on row double-click for edit
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
@@ -63,7 +65,25 @@ const ComplianceSummonList: React.FC = () => {
     const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
     const [createdPreviewUrl, setCreatedPreviewUrl] = useState<string | null>(null);
+    const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string | number>>(new Set());
+    const [selectedRowsData, setSelectedRowsData] = useState<SummonRecord[]>([]);
     const [formErrors, setFormErrors] = useState<{ asset_id?: boolean; ramco_id?: boolean; summon_no?: boolean; summon_date?: boolean; summon_time?: boolean; summon_loc?: boolean; myeg_date?: boolean; type_of_summon?: boolean; summon_agency?: boolean; summon_amt?: boolean; summon_upl?: boolean }>({});
+    const dataGridRef = useRef<any>(null);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+    const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+    const [confirmLoading, setConfirmLoading] = useState(false);
+
+    const deleteAuthorizer = ['000712', '000277'];
+    // get username from auth context or localStorage fallback
+    const authCtx = React.useContext(AuthContext as any) as { authData?: any } | undefined;
+    const username: string = authCtx?.authData?.user?.username || (() => {
+        try {
+            return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || '';
+        } catch {
+            return '';
+        }
+    })();
 
     useEffect(() => {
         let mounted = true;
@@ -229,14 +249,15 @@ const ComplianceSummonList: React.FC = () => {
 
             // Basic client-side validation for required fields
             const errs: any = {};
-            // require all fields
+            const isCreate = !formData.smn_id;
+            // require all fields except `myeg_date` when creating a new summon
             if (!mapped.asset_id) errs.asset_id = true;
             if (!mapped.ramco_id) errs.ramco_id = true;
             if (!mapped.summon_no) errs.summon_no = true;
             if (!mapped.summon_date) errs.summon_date = true;
             if (!mapped.summon_time) errs.summon_time = true;
             if (!mapped.summon_loc) errs.summon_loc = true;
-            if (!mapped.myeg_date) errs.myeg_date = true;
+            if (!isCreate && !mapped.myeg_date) errs.myeg_date = true; // myeg_date optional on create
             if (!mapped.type_of_summon) errs.type_of_summon = true;
             if (!mapped.summon_agency) errs.summon_agency = true;
             if (!mapped.summon_amt && mapped.summon_amt !== 0) errs.summon_amt = true;
@@ -268,32 +289,10 @@ const ComplianceSummonList: React.FC = () => {
                     await tryUpdate();
                     toast.success('Summon updated');
                 } catch (err: any) {
-                    const status = err?.response?.status;
-                    const msg = String(err?.message || '');
-                    // If PUT not available on server, try POST fallback
-                    if (status === 404 || status === 405 || msg.includes('405') || msg.includes('404') || msg.includes('Method Not Allowed')) {
-                        try {
-                            if (summonFile) {
-                                const fd = new FormData();
-                                Object.entries(mapped).forEach(([k, v]) => fd.append(k, String(v ?? '')));
-                                fd.append('summon_upl', summonFile, summonFile.name);
-                                // include smn_id so backend can detect update intent
-                                fd.append('smn_id', String(id));
-                                await authenticatedApi.post('/api/compliance/summon', fd, ({ headers: { 'Content-Type': 'multipart/form-data' }, onUploadProgress: (e: any) => {
-                                    if (e.total) setUploadProgress(Math.round((e.loaded * 100) / e.total));
-                                } } as any));
-                            } else {
-                                await authenticatedApi.post('/api/compliance/summon', { ...mapped, smn_id: id });
-                            }
-                            toast.success('Summon updated');
-                        } catch (err2) {
-                            console.error('Update failed (PUT fallback);', err2);
-                            throw err2;
-                        }
-                    } else {
-                        // rethrow other errors
-                        throw err;
-                    }
+                    console.error('Update failed (PUT);', err);
+                    // Surface a clear error to the user; do not fallback to POST to avoid accidental creates
+                    toast.error('Failed to update summon. Server error or PUT not supported.');
+                    throw err;
                 }
             } else {
                 if (summonFile) {
@@ -654,7 +653,54 @@ const ComplianceSummonList: React.FC = () => {
 
                         <div className="pt-4 flex justify-end space-x-2">
                             <Button variant="secondary" onClick={() => setSidebarOpen(false)}>Cancel</Button>
-                            <Button onClick={submitForm}>Save</Button>
+                                                        {formData.smn_id && deleteAuthorizer.includes(username) ? (
+                                                                <>
+                                                                        <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>Delete</Button>
+                                                                        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+                                                                            <DialogContent>
+                                                                                <DialogHeader>
+                                                                                    <DialogTitle>Confirm delete</DialogTitle>
+                                                                                </DialogHeader>
+                                                                                <div className="py-2">Delete this summon? This action cannot be undone.</div>
+                                                                                <DialogFooter className="flex gap-2">
+                                                                                    <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+                                                                                    <Button variant="destructive" onClick={async () => {
+                                                                                            setConfirmLoading(true);
+                                                                                            try {
+                                                                                                    await authenticatedApi.delete(`/api/compliance/summon/${formData.smn_id}`);
+                                                                                                    toast.success('Summon deleted');
+                                                                                                    const res = await authenticatedApi.get('/api/compliance/summon');
+                                                                                                    const data = (res as any).data?.data || (res as any).data || [];
+                                                                                                    setRows(Array.isArray(data) ? data : []);
+                                                                                                    setSidebarOpen(false);
+                                                                                            } catch (err) {
+                                                                                                    console.error('Failed delete', err);
+                                                                                                    toast.error('Failed to delete summon');
+                                                                                            } finally {
+                                                                                                    setConfirmLoading(false);
+                                                                                                    setShowDeleteDialog(false);
+                                                                                            }
+                                                                                    }}>
+                                                                                        {confirmLoading ? 'Deleting...' : 'Delete'}
+                                                                                    </Button>
+                                                                                </DialogFooter>
+                                                                            </DialogContent>
+                                                                        </Dialog>
+                                                                </>
+                                                        ) : null}
+                                                        <Button onClick={() => setShowSaveConfirm(true)}>Save</Button>
+                                                        <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+                                                            <DialogContent>
+                                                                <DialogHeader>
+                                                                    <DialogTitle>Confirm submission</DialogTitle>
+                                                                </DialogHeader>
+                                                                <div className="py-2">Submit this summon record? Please confirm to proceed.</div>
+                                                                <DialogFooter className="flex gap-2">
+                                                                    <Button variant="outline" onClick={() => setShowSaveConfirm(false)}>Cancel</Button>
+                                                                    <Button onClick={async () => { setConfirmLoading(true); try { await submitForm(); } finally { setConfirmLoading(false); setShowSaveConfirm(false); } }}>{confirmLoading ? 'Saving...' : 'Submit'}</Button>
+                                                                </DialogFooter>
+                                                            </DialogContent>
+                                                        </Dialog>
                         </div>
                     </div>
                 }
@@ -703,6 +749,51 @@ const ComplianceSummonList: React.FC = () => {
             </div>
             <div className='flex items-center justify-between my-4'>
                 <h2 className='text-lg font-semibold'>Summon Management</h2>
+                <div className="flex items-center space-x-2">
+                                         {deleteAuthorizer.includes(username) ? (
+                                         <>
+                                         <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="text-red-600"
+                                                disabled={selectedRowsData.length === 0}
+                                                onClick={(e) => { e.stopPropagation(); if (!selectedRowsData.length) return; setShowBulkDeleteDialog(true); }}
+                                         ><Trash className="w-4 h-4" /></Button>
+
+                                         <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+                                             <DialogContent>
+                                                 <DialogHeader>
+                                                     <DialogTitle>Confirm delete</DialogTitle>
+                                                 </DialogHeader>
+                                                 <div className="py-2">Delete {selectedRowsData.length} selected summons? This cannot be undone.</div>
+                                                 <DialogFooter className="flex gap-2">
+                                                     <Button variant="outline" onClick={() => setShowBulkDeleteDialog(false)}>Cancel</Button>
+                                                     <Button variant="destructive" onClick={async () => {
+                                                             setConfirmLoading(true);
+                                                             try {
+                                                                     await Promise.all(selectedRowsData.map(r => authenticatedApi.delete(`/api/compliance/summon/${r.smn_id}`)));
+                                                                     toast.success('Selected summons deleted');
+                                                                     // refresh
+                                                                     const res = await authenticatedApi.get('/api/compliance/summon');
+                                                                     const data = (res as any).data?.data || (res as any).data || [];
+                                                                     setRows(Array.isArray(data) ? data : []);
+                                                                     // clear selection
+                                                                     setSelectedRowKeys(new Set());
+                                                                     setSelectedRowsData([]);
+                                                                     if (dataGridRef.current?.clearSelectedRows) dataGridRef.current.clearSelectedRows();
+                                                             } catch (err) {
+                                                                     console.error('Failed delete selected', err);
+                                                                     toast.error('Failed to delete selected summons');
+                                                             } finally {
+                                                                     setConfirmLoading(false);
+                                                                     setShowBulkDeleteDialog(false);
+                                                             }
+                                                     }}>{confirmLoading ? 'Deleting...' : 'Delete'}</Button>
+                                                 </DialogFooter>
+                                             </DialogContent>
+                                         </Dialog>
+                                         </>
+                                         ) : null}
                 <Button onClick={() => { setFormData({ register_number: '', assigned_driver: '', summon_no: '', summon_date: '', summon_time: '', summon_loc: '', myeg_date: '', type_of_summon: '', summon_amt: '0.00', summon_agency: 'PDRM' });
                     // clear any existing preview
                     if (createdPreviewUrl) { URL.revokeObjectURL(createdPreviewUrl); setCreatedPreviewUrl(null); }
@@ -710,17 +801,24 @@ const ComplianceSummonList: React.FC = () => {
                     setSummonFile(null);
                     setSidebarOpen(true);
                  }}>
-                    <Plus className="w-4 h-4 mr-2" />Register Summon
+                    <Plus className="w-4 h-4" />
                 </Button>
+                 
+                 </div>
             </div>
             <div className="mt-4">
                 <CustomDataGrid
+                    ref={dataGridRef}
                     data={rows}
                     columns={columns}
                     pagination={false}
                     pageSize={10}
                     inputFilter={false}
-                    rowSelection={{ enabled: true, getRowId: (r: any) => r.smn_id }}
+                    rowSelection={{ enabled: true, getRowId: (r: any) => r.smn_id, onSelect: (keys: (string | number)[], selected: any[]) => {
+                        setSelectedRowKeys(new Set(keys));
+                        setSelectedRowsData(selected || []);
+                    } }}
+                    onRowSelected={(keys, selected) => { setSelectedRowKeys(new Set(keys)); setSelectedRowsData(selected); }}
                     rowClass={(r: any) => {
                         // highlight open/unpaid/pending cases
                         const s = String(r.summon_stat || '').toLowerCase();
