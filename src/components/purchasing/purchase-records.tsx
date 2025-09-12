@@ -18,6 +18,16 @@ import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 // import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 // Removed Excel importer – creating records directly in-app
 
@@ -147,6 +157,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [deliveryErrors, setDeliveryErrors] = useState<Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>>>([]);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
   // Per-delivery file uploads
   const [deliveryFiles, setDeliveryFiles] = useState<Array<File | null>>([]);
@@ -445,6 +456,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       const hasINV = !!(d.inv_date || d.inv_no);
       const hasGRN = !!(d.grn_date || d.grn_no);
       const hasAny = hasDO || hasINV || hasGRN || !!deliveryFiles[i];
+      // If the delivery slot exists but is completely empty (no fields and no file), flag it as an error
+      if (!hasAny) {
+        // mark a visible field (do_no) with message so user sees the error under DO Number
+        e.do_no = 'Empty delivery entry — remove or fill required fields';
+        errs[i] = e;
+        ok = false;
+        return; // continue to next
+      }
       // If user started this delivery (or attached file), require pairs accordingly
       if (hasAny) {
         if (hasDO) {
@@ -1424,10 +1443,30 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         <Button variant="outline" onClick={closeSidebar}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={loading}>
+        <Button onClick={() => setShowSubmitConfirm(true)} disabled={loading}>
           {loading ? 'Saving...' : sidebarMode === 'edit' ? 'Update Purchase' : 'Create Purchase'}
         </Button>
       </div>
+
+      {/* Confirmation dialog before form submit */}
+      <AlertDialog open={showSubmitConfirm} onOpenChange={open => { if (!open) setShowSubmitConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{sidebarMode === 'edit' ? 'Confirm Update' : 'Confirm Create'}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            <div className="text-sm">Are you sure you want to {sidebarMode === 'edit' ? 'update' : 'create'} this purchase record? Please confirm.</div>
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="secondary" size="sm">Cancel</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="default" size="sm" onClick={async () => { setShowSubmitConfirm(false); await handleSubmit(); }}>Confirm</Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 
