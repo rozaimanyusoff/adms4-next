@@ -13,34 +13,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-interface ApiPurchase {
-  id: number;
-  request_type: string;
-  requestor?: { ramco_id: string; full_name: string } | string;
-  costcenter?: { id: number; name: string } | string;
-  type?: { id: number; name: string } | string;
-  items: string;
-  supplier?: { id: number; name: string } | string;
-  brand?: { id: number; name: string } | string;
-  qty: number;
-  unit_price: string;
-  total_price?: string;
-  pr_date?: string;
-  pr_no?: string;
-  po_date?: string;
-  po_no?: string;
-  do_date?: string;
-  do_no?: string;
-  inv_date?: string;
-  inv_no?: string;
-  grn_date?: string;
-  grn_no?: string;
-  handover_to?: string | null;
-  handover_at?: string | null;
-}
-
 interface PurchaseCardProps {
-  purchase: ApiPurchase;
+  purchase: any;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -53,7 +27,7 @@ const fmtRM = (value: number) => {
 
 // Get status based on available data
 // Completed is set when Handover (inv_date/inv_no) is registered by Asset Manager.
-const getStatusType = (purchase: ApiPurchase): string => {
+const getStatusType = (purchase: any): string => {
   // Procurement 'Handover' indicates transfer to Asset Manager (handover_at/handover_to)
   if (purchase.handover_at || purchase.handover_to) return 'handover';
   if (purchase.grn_date && purchase.grn_no) return 'delivered';
@@ -63,7 +37,7 @@ const getStatusType = (purchase: ApiPurchase): string => {
   return 'draft';
 };
 
-const getPurchaseStatus = (purchase: ApiPurchase): string => {
+const getPurchaseStatus = (purchase: any): string => {
   return getStatusType(purchase);
 };
 
@@ -120,7 +94,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg font-semibold line-clamp-2">
-              {purchase.items}
+              {purchase.description || purchase.items}
             </CardTitle>
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <span>#{purchase.id}</span>
@@ -140,12 +114,12 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-gray-600">Cost Center</p>
-            <p className="font-medium">{typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || '')}</p>
+            <p className="font-medium">{purchase.request?.costcenter?.name || (typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || ''))}</p>
           </div>
           <div>
             <p className="text-gray-600">Type</p>
             <Badge variant="outline" className="text-xs">
-              {purchase.request_type}
+              {purchase.request?.request_type || purchase.request_type}
             </Badge>
           </div>
           <div>

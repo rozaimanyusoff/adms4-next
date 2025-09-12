@@ -4,7 +4,7 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
 // PurchaseSummary is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
-import { Plus, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle } from 'lucide-react';
+import { Plus, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle, FileText } from 'lucide-react';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,27 +28,37 @@ const fmtRM = (value: number) => {
 
 interface ApiPurchase {
   id: number;
-  request_type: string;
+  request_type?: string; // legacy
+  request?: {
+    id: number;
+    pr_no?: string;
+    pr_date?: string;
+    request_type?: string;
+    requested_by?: { ramco_id: string; full_name: string };
+    costcenter?: { id: number; name: string };
+  };
   // API now returns nested objects for some fields. Keep unions so older records still work.
-  requestor?: { ramco_id: string; full_name: string } | string;
-  costcenter?: { id: number; name: string } | string;
+  requestor?: { ramco_id: string; full_name: string } | string; // legacy
+  costcenter?: { id: number; name: string } | string; // legacy
   type?: { id: number; name: string } | string; // maps to item_type in form
-  items: string;
+  category?: { id: number; name: string } | string | null;
+  description?: string; // new field replaces items
+  items?: string; // legacy
   supplier?: { id: number; name: string } | string;
   brand?: { id: number; name: string } | string;
   qty: number;
   unit_price: string;          // API returns as string
   total_price?: string;        // API returns as string
-  pr_date?: string;
-  pr_no?: string;
+  pr_date?: string; // legacy
+  pr_no?: string;   // legacy
   po_date?: string;
   po_no?: string;
-  do_date?: string;
-  do_no?: string;
-  inv_date?: string;
-  inv_no?: string;
-  grn_date?: string;
-  grn_no?: string;
+  do_date?: string; // legacy
+  do_no?: string;   // legacy
+  inv_date?: string; // legacy
+  inv_no?: string;   // legacy
+  grn_date?: string; // legacy
+  grn_no?: string;   // legacy
   deliveries?: Array<{
     do_date?: string;
     do_no?: string;
@@ -56,6 +66,8 @@ interface ApiPurchase {
     inv_no?: string;
     grn_date?: string;
     grn_no?: string;
+    upload_path?: string | null;
+    upload_url?: string | null;
   }>;
   handover_to?: string | null;
   handover_at?: string | null;
@@ -71,7 +83,9 @@ interface PurchaseFormData {
   costcenter: string;          // Match API field name
   pic: string;                 // Person in charge  
   type_id: string;             // maps to purchase.type.id
+  category_id?: string;        // category linked to type
   items: string;               // Match API field name
+  purpose?: string;            // additional purpose/remarks
   supplier_id: string;
   brand_id: string;            // send brand_id instead of brand name
   qty: number;
@@ -93,6 +107,7 @@ interface PurchaseFormData {
     inv_no: string;
     grn_date: string;
     grn_no: string;
+    upload_url?: string | null;
   }>;
 }
 
@@ -111,7 +126,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     costcenter: '',
     pic: '',
     type_id: '',
+    category_id: '',
     items: '',
+    purpose: '',
     supplier_id: '',
     brand_id: '',
     qty: 0,
@@ -129,11 +146,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     deliveries: []
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [deliveryErrors, setDeliveryErrors] = useState<Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>>>([]);
 
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  // Per-delivery file uploads
+  const [deliveryFiles, setDeliveryFiles] = useState<Array<File | null>>([]);
+  const fileInputRefs = React.useRef<Array<HTMLInputElement | null>>([]);
 
-  const onFileDrop = (e: React.DragEvent) => {
+  const onDeliveryFileDrop = (index: number, e: React.DragEvent) => {
     e.preventDefault();
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
@@ -142,24 +161,37 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         toast.error('Only PDF files are allowed');
         return;
       }
-      setUploadFile(f);
+      setDeliveryFiles(prev => {
+        const arr = [...prev];
+        arr[index] = f;
+        return arr;
+      });
     }
   };
 
-  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onDeliveryFileSelect = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files && e.target.files[0];
     if (f) {
       if (!f.type.includes('pdf') && !f.name.toLowerCase().endsWith('.pdf')) {
         toast.error('Only PDF files are allowed');
         return;
       }
-      setUploadFile(f);
+      setDeliveryFiles(prev => {
+        const arr = [...prev];
+        arr[index] = f;
+        return arr;
+      });
     }
   };
 
-  const removeUploadFile = () => {
-    setUploadFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  const removeDeliveryFile = (index: number) => {
+    setDeliveryFiles(prev => {
+      const arr = [...prev];
+      arr[index] = null;
+      return arr;
+    });
+    const input = fileInputRefs.current[index];
+    if (input) input.value = '';
   };
 
   // Combobox data for PIC (employees) and Cost Centers
@@ -178,6 +210,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const [brands, setBrands] = useState<Array<{ id: number | string; name: string }>>([]);
   const [brandOptions, setBrandOptions] = useState<ComboboxOption[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
+  const [categories, setCategories] = useState<Array<{ id: number | string; name: string }>>([]);
+  const [categoryOptions, setCategoryOptions] = useState<ComboboxOption[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
   // Quick-create state
   const [newSupplierName, setNewSupplierName] = useState('');
   const [creatingSupplier, setCreatingSupplier] = useState(false);
@@ -237,22 +272,34 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       if (!formData.type_id) {
         setBrands([]);
         setBrandOptions([]);
+        setCategories([]);
+        setCategoryOptions([]);
         return;
       }
 
       try {
         setBrandsLoading(true);
-        const res = await authenticatedApi.get(`/api/assets/brands?type=${formData.type_id}`);
-        const data = (res as any).data?.data || (res as any).data || [];
-        setBrands(data);
+        setCategoriesLoading(true);
+        const [resBrands, resCats] = await Promise.all([
+          authenticatedApi.get(`/api/assets/brands?type=${formData.type_id}`),
+          authenticatedApi.get(`/api/assets/categories?type=${formData.type_id}`)
+        ]);
+        const dataBrands = (resBrands as any).data?.data || (resBrands as any).data || [];
+        const dataCats = (resCats as any).data?.data || (resCats as any).data || [];
+        setBrands(dataBrands);
         // use brand id as value
-        setBrandOptions(data.map((b: any) => ({ value: String(b.id ?? b.code ?? b.name), label: b.name })));
+        setBrandOptions(dataBrands.map((b: any) => ({ value: String(b.id ?? b.code ?? b.name), label: b.name })));
+        setCategories(dataCats);
+        setCategoryOptions(dataCats.map((c: any) => ({ value: String(c.id ?? c.code ?? c.name), label: c.name })));
       } catch (err) {
-        console.error('Failed to load brands for type', formData.type_id, err);
+        console.error('Failed to load brands/categories for type', formData.type_id, err);
         setBrands([]);
         setBrandOptions([]);
+        setCategories([]);
+        setCategoryOptions([]);
       } finally {
         setBrandsLoading(false);
+        setCategoriesLoading(false);
       }
     };
 
@@ -290,7 +337,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       });
     }
     if (filters?.request_type) {
-      filtered = filtered.filter(p => p.request_type === filters.request_type);
+      filtered = filtered.filter(p => (p.request?.request_type || p.request_type) === filters.request_type);
     }
 
     // Apply search filter
@@ -298,12 +345,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(purchase => {
         const supplier = typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '');
-        const cc = typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.name || '');
+        const cc = purchase.request?.costcenter?.name || (typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter as any)?.name || '');
         const brand = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
-        const prNo = purchase.pr_no ? String(purchase.pr_no) : '';
+        const prNo = purchase.request?.pr_no ? String(purchase.request.pr_no) : (purchase.pr_no ? String(purchase.pr_no) : '');
         const poNo = purchase.po_no ? String(purchase.po_no) : '';
+        const desc = purchase.description || purchase.items || '';
         return (
-          (purchase.items || '').toLowerCase().includes(q) ||
+          desc.toLowerCase().includes(q) ||
           supplier.toLowerCase().includes(q) ||
           cc.toLowerCase().includes(q) ||
           brand.toLowerCase().includes(q) ||
@@ -377,6 +425,46 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       grn_date: isLast && field === 'grn_date' ? value : (isLast ? deliveries[index].grn_date : prev.grn_date),
       grn_no: isLast && field === 'grn_no' ? String(value || '').toUpperCase() : (isLast ? deliveries[index].grn_no : prev.grn_no),
     }));
+
+    // Clear error for this field on change
+    setDeliveryErrors(prev => {
+      const arr = [...prev];
+      const e = { ...(arr[index] || {}) } as any;
+      delete e[field];
+      arr[index] = e;
+      return arr;
+    });
+  };
+
+  const validateDeliveries = (): boolean => {
+    const errs: Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>> = [];
+    let ok = true;
+    (formData.deliveries || []).forEach((d, i) => {
+      const e: any = {};
+      const hasDO = !!(d.do_date || d.do_no);
+      const hasINV = !!(d.inv_date || d.inv_no);
+      const hasGRN = !!(d.grn_date || d.grn_no);
+      const hasAny = hasDO || hasINV || hasGRN || !!deliveryFiles[i];
+      // If user started this delivery (or attached file), require pairs accordingly
+      if (hasAny) {
+        if (hasDO) {
+          if (!d.do_date) e.do_date = 'DO date is required';
+          if (!d.do_no) e.do_no = 'DO number is required';
+        }
+        if (hasINV) {
+          if (!d.inv_date) e.inv_date = 'Invoice date is required';
+          if (!d.inv_no) e.inv_no = 'Invoice number is required';
+        }
+        if (hasGRN) {
+          if (!d.grn_date) e.grn_date = 'GRN date is required';
+          if (!d.grn_no) e.grn_no = 'GRN number is required';
+        }
+      }
+      errs[i] = e;
+      if (Object.keys(e).length > 0) ok = false;
+    });
+    setDeliveryErrors(errs);
+    return ok;
   };
 
   // Validate form
@@ -395,8 +483,10 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     if (!formData.qty || formData.qty <= 0) errors.qty = 'Quantity must be greater than 0';
     if (!formData.unit_price || formData.unit_price <= 0) errors.unit_price = 'Unit price must be greater than 0';
 
+    const baseOk = Object.keys(errors).length === 0;
+    const deliveriesOk = validateDeliveries();
     setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return baseOk && deliveriesOk;
   };
 
   // Handle form submission
@@ -405,8 +495,18 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
     setLoading(true);
     try {
+      const rawDeliveries = formData.deliveries || [];
+      const deliveriesWithIndex = rawDeliveries
+        .map((d, i) => ({ d, i }))
+        .filter(({ d, i }) => {
+          const hasVals = [d.do_date, d.do_no, d.inv_date, d.inv_no, d.grn_date, d.grn_no]
+            .some(v => !!(v && String(v).trim() !== ''));
+          const hasFile = !!deliveryFiles[i];
+          return hasVals || hasFile;
+        });
+      const cleanDeliveries = deliveriesWithIndex.map(x => x.d);
       const allowedDeliveries = Math.min(Math.max(formData.qty || 0, 0), 5);
-      if ((formData.deliveries?.length || 0) > allowedDeliveries) {
+      if (cleanDeliveries.length > allowedDeliveries) {
         toast.error(`Deliveries exceed allowed limit (${allowedDeliveries}). Remove extra deliveries or adjust quantity.`);
         setLoading(false);
         return;
@@ -419,32 +519,67 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         costcenter_id: formData.costcenter,
         ramco_id: formData.pic,
         brand_id: formData.brand_id || undefined,
+        category_id: formData.category_id || undefined,
+        purpose: formData.purpose || undefined,
+        description: formData.items,
       };
 
-      if (Array.isArray(formData.deliveries) && formData.deliveries.length > 0) {
-        const last = formData.deliveries[formData.deliveries.length - 1];
-        jsonPayload.do_date = last.do_date;
-        jsonPayload.do_no = last.do_no;
-        jsonPayload.inv_date = last.inv_date;
-        jsonPayload.inv_no = last.inv_no;
-        jsonPayload.grn_date = last.grn_date;
-        jsonPayload.grn_no = last.grn_no;
-        jsonPayload.deliveries = formData.deliveries;
+      // remove top-level logistics fields to avoid duplication (kept only in deliveries)
+      delete jsonPayload.do_date;
+      delete jsonPayload.do_no;
+      delete jsonPayload.inv_date;
+      delete jsonPayload.inv_no;
+      delete jsonPayload.grn_date;
+      delete jsonPayload.grn_no;
+
+      // include deliveries only; use cleaned subset
+      if (cleanDeliveries.length > 0) {
+        jsonPayload.deliveries = cleanDeliveries.map((d) => ({
+          do_date: d.do_date || '',
+          do_no: d.do_no || '',
+          inv_date: d.inv_date || '',
+          inv_no: d.inv_no || '',
+          grn_date: d.grn_date || '',
+          grn_no: d.grn_no || '',
+          // include key for stability; real file goes in multipart branch
+          upload_path: ''
+        }));
       }
 
       // remove the old keys to avoid sending duplicate data
       delete jsonPayload.costcenter;
       delete jsonPayload.pic;
+      delete jsonPayload.items;
       // Do not send brand name field
       delete jsonPayload.brand;
 
-      // If a file was attached, send multipart/form-data and include the file under `upload_path`.
-      if (uploadFile) {
+      // If any delivery has a file, send multipart/form-data and include files under deliveries[i][upload_path]
+      const selectedIndexes = deliveriesWithIndex.map(x => x.i);
+      const hasDeliveryFiles = selectedIndexes.some(idx => !!deliveryFiles[idx]);
+      if (hasDeliveryFiles) {
         const fd = new FormData();
+        // append scalar fields
         Object.entries(jsonPayload).forEach(([k, v]) => {
-          if (v !== undefined && v !== null) fd.append(k, String(v));
+          if (v === undefined || v === null) return;
+          if (k === 'deliveries') return; // append deliveries individually
+          fd.append(k, String(v));
         });
-        fd.append('upload_path', uploadFile, uploadFile.name);
+        // append deliveries fields and files
+        deliveriesWithIndex.forEach(({ d, i }, idx) => {
+          // use a compact delivery index (idx) for the form payload
+          fd.append(`deliveries[${idx}][do_date]`, d.do_date || '');
+          fd.append(`deliveries[${idx}][do_no]`, d.do_no || '');
+          fd.append(`deliveries[${idx}][inv_date]`, d.inv_date || '');
+          fd.append(`deliveries[${idx}][inv_no]`, d.inv_no || '');
+          fd.append(`deliveries[${idx}][grn_date]`, d.grn_date || '');
+          fd.append(`deliveries[${idx}][grn_no]`, d.grn_no || '');
+          const f = deliveryFiles[i];
+          if (f) {
+            fd.append(`deliveries[${idx}][upload_path]`, f, f.name);
+          } else {
+            fd.append(`deliveries[${idx}][upload_path]`, '');
+          }
+        });
 
         if (sidebarMode === 'edit' && selectedPurchase) {
           await authenticatedApi.put(`/api/purchases/${selectedPurchase.id}`, fd, {
@@ -506,7 +641,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         costcenter: '',
         pic: '',
         type_id: '',
+        category_id: '',
         items: '',
+        purpose: '',
         supplier_id: '',
         brand_id: '',
         qty: 0,
@@ -524,56 +661,66 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         deliveries: []
       });
       setActiveDeliveryTab('delivery-0');
-    } else if (mode === 'edit' && purchase) {
-      // Map nested API objects into flat form values expected by the form
-      const cc = typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter?.id ? String(purchase.costcenter.id) : (purchase.costcenter?.name || ''));
-      const picVal = typeof purchase.requestor === 'string' ? purchase.requestor : (purchase.requestor?.ramco_id || '');
-      const itemType = typeof purchase.type === 'string' ? purchase.type : (purchase.type?.name || '');
-      const supplierId = typeof purchase.supplier === 'string' ? '' : (purchase.supplier as any)?.id ? String((purchase.supplier as any).id) : '';
-      const brandId = typeof purchase.brand === 'string' ? '' : (purchase.brand as any)?.id ? String((purchase.brand as any).id) : '';
+      setDeliveryFiles([]);
+    } else if ((mode === 'edit' || mode === 'view') && purchase) {
+      // Always hydrate latest data by id (list payload may not include nested fields)
+      (async () => {
+        let p: any = purchase;
+        try {
+          const res = await authenticatedApi.get(`/api/purchases/${purchase.id}`);
+          p = (res as any).data?.data || (res as any).data || purchase;
+          setSelectedPurchase(p);
+        } catch {
+          // fall back to provided purchase
+        }
 
-      const deliveries = (purchase as any).deliveries && Array.isArray((purchase as any).deliveries) && (purchase as any).deliveries.length > 0
-        ? (purchase as any).deliveries.map((d: any) => ({
-            do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
-            do_no: d.do_no || '',
-            inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
-            inv_no: d.inv_no || '',
-            grn_date: d.grn_date ? String(d.grn_date).split('T')[0] : '',
-            grn_no: d.grn_no || '',
-          }))
-        : [{
-            do_date: purchase.do_date ? purchase.do_date.split('T')[0] : '',
-            do_no: purchase.do_no || '',
-            inv_date: purchase.inv_date ? purchase.inv_date.split('T')[0] : '',
-            inv_no: purchase.inv_no || '',
-            grn_date: purchase.grn_date ? purchase.grn_date.split('T')[0] : '',
-            grn_no: purchase.grn_no || ''
-          }];
-      const last = deliveries[deliveries.length - 1];
+        const ccId = p.request?.costcenter?.id ? String(p.request.costcenter.id) : (typeof p.costcenter === 'string' ? p.costcenter : (p.costcenter?.name || ''));
+        const picVal = p.request?.requested_by?.ramco_id || (typeof p.requestor === 'string' ? p.requestor : (p.requestor?.ramco_id || ''));
+        const supplierId = typeof p.supplier === 'string' || !p.supplier ? '' : (p.supplier?.id ? String(p.supplier.id) : '');
+        const brandId = typeof p.brand === 'string' || !p.brand ? '' : (p.brand?.id ? String(p.brand.id) : '');
+        const typeId = typeof p.type !== 'string' && p.type?.id ? String(p.type.id) : (typeof p.type === 'string' ? p.type : '');
+        const categoryId = typeof p.category !== 'string' && p.category?.id ? String(p.category.id) : '';
 
-      setFormData({
-        request_type: purchase.request_type || '',
-        costcenter: cc || '',
-        pic: picVal || '',
-        type_id: purchase.type && typeof purchase.type !== 'string' && purchase.type.id ? String(purchase.type.id) : (itemType || ''),
-        items: purchase.items || '',
-        supplier_id: supplierId,
-        brand_id: brandId,
-        qty: purchase.qty || 0,
-        unit_price: parseFloat(purchase.unit_price || '0'),
-        pr_date: purchase.pr_date ? purchase.pr_date.split('T')[0] : '',
-        pr_no: purchase.pr_no || '',
-        po_date: purchase.po_date ? purchase.po_date.split('T')[0] : '',
-        po_no: purchase.po_no || '',
-        do_date: last.do_date,
-        do_no: last.do_no,
-        inv_date: last.inv_date,
-        inv_no: last.inv_no,
-        grn_date: last.grn_date,
-        grn_no: last.grn_no,
-        deliveries
-      });
-      setActiveDeliveryTab(`delivery-${deliveries.length - 1}`);
+        const deliveries = Array.isArray(p.deliveries)
+          ? p.deliveries.map((d: any) => ({
+              do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
+              do_no: d.do_no || '',
+              inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
+              inv_no: d.inv_no || '',
+              grn_date: d.grn_date ? String(d.grn_date).split('T')[0] : '',
+              grn_no: d.grn_no || '',
+              upload_url: d.upload_url || d.upload_path || null,
+            }))
+          : [];
+        const last = deliveries[deliveries.length - 1];
+
+        setFormData({
+          request_type: p.request?.request_type || p.request_type || '',
+          costcenter: ccId || '',
+          pic: picVal || '',
+          type_id: typeId || '',
+          category_id: categoryId || '',
+          items: p.description || p.items || '',
+          purpose: p.purpose || '',
+          supplier_id: supplierId,
+          brand_id: brandId,
+          qty: p.qty || 0,
+          unit_price: parseFloat(p.unit_price || '0'),
+          pr_date: p.request?.pr_date ? String(p.request.pr_date).split('T')[0] : (p.pr_date ? String(p.pr_date).split('T')[0] : ''),
+          pr_no: p.request?.pr_no || p.pr_no || '',
+          po_date: p.po_date ? String(p.po_date).split('T')[0] : '',
+          po_no: p.po_no || '',
+          do_date: last ? last.do_date : '',
+          do_no: last ? last.do_no : '',
+          inv_date: last ? last.inv_date : '',
+          inv_no: last ? last.inv_no : '',
+          grn_date: last ? last.grn_date : '',
+          grn_no: last ? last.grn_no : '',
+          deliveries
+        });
+        setActiveDeliveryTab(`delivery-${Math.max(0, deliveries.length - 1)}`);
+        setDeliveryFiles(new Array(deliveries.length).fill(null));
+      })();
     }
 
     setSidebarOpen(true);
@@ -645,11 +792,17 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const columns: ColumnDef<any>[] = [
     { key: 'id', header: 'No' },
     {
+      key: 'pr_date',
+      header: 'PR Date',
+      render: (row: any) => (row.request?.pr_date ? new Date(row.request.pr_date).toLocaleDateString('en-GB') : (row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : ''))
+    },
+    { key: 'pr_no', header: 'PR Number', filter: 'input', render: (row: any) => row.request?.pr_no || row.pr_no || '' },
+    {
       key: 'request_type',
       header: 'Request Type',
       render: (row: any) => (
-        <span className={getRequestTypeBadgeClass(row.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
-          {row.request_type}
+        <span className={getRequestTypeBadgeClass(row.request?.request_type || row.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
+          {row.request?.request_type || row.request_type}
         </span>
       ),
       filter: 'singleSelect'
@@ -658,23 +811,24 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       key: 'costcenter',
       header: 'Cost Center',
       filter: 'singleSelect',
-      render: (row: any) => typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || '')
+      render: (row: any) => row.request?.costcenter?.name || (typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || ''))
     },
     {
       key: 'pic',
-      header: 'PIC',
+      header: 'Requested By',
       filter: 'input',
-      render: (row: any) => typeof row.requestor === 'string' ? row.requestor : (row.requestor?.full_name || '')
+      render: (row: any) => row.request?.requested_by?.full_name || (typeof row.requestor === 'string' ? row.requestor : (row.requestor?.full_name || ''))
     },
     { key: 'item_type', header: 'Item Type', filter: 'singleSelect', render: (row: any) => typeof row.type === 'string' ? row.type : (row.type?.name || row.item_type || '') },
     {
-      key: 'items',
-      header: 'Item Description',
-      filter: 'input'
+      key: 'description',
+      header: 'Description',
+      filter: 'input',
+      render: (row: any) => row.description || row.items || ''
     },
+    { key: 'qty', header: 'Qty' },
     { key: 'supplier', header: 'Supplier', filter: 'singleSelect', render: (row: any) => typeof row.supplier === 'string' ? row.supplier : (row.supplier?.name || '') },
     { key: 'brand', header: 'Brand', filter: 'singleSelect', render: (row: any) => typeof row.brand === 'string' ? row.brand : (row.brand?.name || '') },
-    { key: 'qty', header: 'Qty' },
     {
       key: 'unit_price',
       header: 'Unit Price (RM)',
@@ -690,74 +844,12 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       }
     },
     {
-      key: 'pr_date',
-      header: 'PR Date',
-      render: (row: any) => row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : ''
-    },
-    { key: 'pr_no', header: 'PR Number', filter: 'input' },
-    {
       key: 'po_date',
       header: 'PO Date',
       render: (row: any) => row.po_date ? new Date(row.po_date).toLocaleDateString('en-GB') : ''
     },
     { key: 'po_no', header: 'PO Number', filter: 'input' },
-    {
-      key: 'do_date',
-      header: 'DO Date',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.do_date : row.do_date;
-        return d ? new Date(d).toLocaleDateString('en-GB') : '';
-      }
-    },
-    {
-      key: 'do_no',
-      header: 'DO Number',
-      filter: 'input',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.do_no : row.do_no;
-        return d || '';
-      }
-    },
-    {
-      key: 'inv_date',
-      header: 'Handover Date',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.inv_date : row.inv_date;
-        return d ? new Date(d).toLocaleDateString('en-GB') : '';
-      }
-    },
-    {
-      key: 'inv_no',
-      header: 'Handover Number',
-      filter: 'input',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.inv_no : row.inv_no;
-        return d || '';
-      }
-    },
-    {
-      key: 'grn_date',
-      header: 'GRN Date',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.grn_date : row.grn_date;
-        return d ? new Date(d).toLocaleDateString('en-GB') : '';
-      }
-    },
-    {
-      key: 'grn_no',
-      header: 'GRN Number',
-      filter: 'input',
-      render: (row: any) => {
-        const ds = (row as any).deliveries as any[] | undefined;
-        const d = ds && ds.length ? ds[ds.length - 1]?.grn_no : row.grn_no;
-        return d || '';
-      }
-    },
+    // Exclude deliveries columns for now; /api/purchases list does not include them
     {
       key: 'status',
       header: 'Status',
@@ -783,35 +875,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* PR fields moved above Request Type (readonly in edit mode) */}
-            <div>
-              <Label htmlFor="pr_no">PR Number *</Label>
-              <Input
-                id="pr_no"
-                value={formData.pr_no}
-                onChange={(e) => handleInputChange('pr_no', e.target.value)}
-                placeholder="Enter PR number"
-                readOnly={sidebarMode === 'edit'}
-              />
-              {validationErrors.pr_no && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="pr_date">PR Date *</Label>
-              <Input
-                id="pr_date"
-                type="date"
-                value={formData.pr_date}
-                onChange={(e) => handleInputChange('pr_date', e.target.value)}
-                readOnly={sidebarMode === 'edit'}
-              />
-              {validationErrors.pr_date && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
-              )}
-            </div>
-
             <div>
               <Label htmlFor="request_type">Request Type *</Label>
               <Select
@@ -829,6 +892,33 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               </Select>
               {validationErrors.request_type && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.request_type}</p>
+              )}
+            </div>
+            {/* PR fields moved above Request Type (readonly in edit mode) */}
+            <div>
+              <Label htmlFor="pr_date">Request Date *</Label>
+              <Input
+                id="pr_date"
+                type="date"
+                value={formData.pr_date}
+                onChange={(e) => handleInputChange('pr_date', e.target.value)}
+                readOnly={sidebarMode === 'edit'}
+              />
+              {validationErrors.pr_date && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="pr_no">Request Number *</Label>
+              <Input
+                id="pr_no"
+                value={formData.pr_no}
+                onChange={(e) => handleInputChange('pr_no', e.target.value)}
+                placeholder="Enter PR number"
+                readOnly={sidebarMode === 'edit'}
+              />
+              {validationErrors.pr_no && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
               )}
             </div>
 
@@ -849,7 +939,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </div>
 
             <div>
-              <Label htmlFor="pic">PIC *</Label>
+              <Label htmlFor="pic">Requester *</Label>
               <Combobox
                 options={employeeOptions}
                 value={formData.pic}
@@ -881,7 +971,20 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </div>
 
             <div>
-              <Label htmlFor="items">Items *</Label>
+              <Label htmlFor="category_id">Category</Label>
+              <Combobox
+                options={categoryOptions}
+                value={formData.category_id || ''}
+                onValueChange={(val) => handleInputChange('category_id', val)}
+                placeholder={formData.type_id ? 'Select category' : 'Select item type first'}
+                emptyMessage={formData.type_id ? 'No categories found' : 'Select item type first'}
+                disabled={categoriesLoading || !formData.type_id}
+                clearable={true}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="items">Description *</Label>
               <Textarea
                 id="items"
                 value={formData.items}
@@ -894,65 +997,18 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               )}
             </div>
 
-            {/* Supplier moved to Pricing Information card */}
-
             <div>
-              <Label htmlFor="brand">Brand</Label>
-              <Combobox
-                options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
-                value={formData.brand_id}
-                onValueChange={(val) => {
-                  if (val === '__add_brand__') { setAddingBrand(true); return; }
-                  setAddingBrand(false);
-                  handleInputChange('brand_id', val);
-                }}
-                placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
-                emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
-                disabled={brandsLoading || !formData.type_id}
-                clearable={true}
+              <Label htmlFor="purpose">Purpose</Label>
+              <Textarea
+                id="purpose"
+                value={formData.purpose || ''}
+                onChange={(e) => handleInputChange('purpose', e.target.value)}
+                placeholder="Enter purpose/remarks"
+                rows={2}
               />
-              {addingBrand && (
-                <div className="relative mt-2">
-                  <Input
-                    value={newBrandName}
-                    onChange={(e) => setNewBrandName(e.target.value)}
-                    placeholder="Enter new brand name"
-                    disabled={!formData.type_id || creatingBrand}
-                    className="pr-10"
-                  />
-                  <Button
-                    size="icon"
-                    type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                    onClick={async () => {
-                      if (!formData.type_id) { toast.error('Select item type first'); return; }
-                      const name = newBrandName.trim();
-                      if (!name) { toast.error('Brand name is required'); return; }
-                      try {
-                        setCreatingBrand(true);
-                        const res = await authenticatedApi.post('/api/assets/brands', { name, type_id: Number(formData.type_id) });
-                        const created: any = (res as any).data || {};
-                        const newId = created.id || created.data?.id || created.code || name;
-                        const option = { value: String(newId), label: name };
-                        setBrands(prev => [...prev, { id: newId, name }]);
-                        setBrandOptions(prev => [...prev, option]);
-                        setFormData(prev => ({ ...prev, brand_id: String(newId) }));
-                        setNewBrandName('');
-                        setAddingBrand(false);
-                        toast.success('Brand created');
-                      } catch (err) {
-                        toast.error('Failed to create brand');
-                        console.error('Create brand error', err);
-                      } finally {
-                        setCreatingBrand(false);
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
             </div>
+
+            {/* Brand moved to Pricing & Order Information card */}
           </CardContent>
         </Card>
 
@@ -1065,6 +1121,64 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </div>
 
             <div>
+              <Label htmlFor="brand">Brand</Label>
+              <Combobox
+                options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
+                value={formData.brand_id}
+                onValueChange={(val) => {
+                  if (val === '__add_brand__') { setAddingBrand(true); return; }
+                  setAddingBrand(false);
+                  handleInputChange('brand_id', val);
+                }}
+                placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
+                emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
+                disabled={brandsLoading || !formData.type_id}
+                clearable={true}
+              />
+              {addingBrand && (
+                <div className="relative mt-2">
+                  <Input
+                    value={newBrandName}
+                    onChange={(e) => setNewBrandName(e.target.value)}
+                    placeholder="Enter new brand name"
+                    disabled={!formData.type_id || creatingBrand}
+                    className="pr-10"
+                  />
+                  <Button
+                    size="icon"
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={async () => {
+                      if (!formData.type_id) { toast.error('Select item type first'); return; }
+                      const name = newBrandName.trim();
+                      if (!name) { toast.error('Brand name is required'); return; }
+                      try {
+                        setCreatingBrand(true);
+                        const res = await authenticatedApi.post('/api/assets/brands', { name, type_id: Number(formData.type_id) });
+                        const created: any = (res as any).data || {};
+                        const newId = created.id || created.data?.id || created.code || name;
+                        const option = { value: String(newId), label: name };
+                        setBrands(prev => [...prev, { id: newId, name }]);
+                        setBrandOptions(prev => [...prev, option]);
+                        setFormData(prev => ({ ...prev, brand_id: String(newId) }));
+                        setNewBrandName('');
+                        setAddingBrand(false);
+                        toast.success('Brand created');
+                      } catch (err) {
+                        toast.error('Failed to create brand');
+                        console.error('Create brand error', err);
+                      } finally {
+                        setCreatingBrand(false);
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div>
               <Label htmlFor="po_no">PO Number *</Label>
               <Input
                 id="po_no"
@@ -1104,6 +1218,20 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               variant="outline"
               onClick={() => {
                 const nextIdx = (formData.deliveries?.length || 0);
+                // Validate the current last delivery before adding a new one
+                if (nextIdx > 0) {
+                  const last = formData.deliveries![nextIdx - 1];
+                  const started = !!(last.do_date || last.do_no || last.inv_date || last.inv_no || last.grn_date || last.grn_no || deliveryFiles[nextIdx - 1]);
+                  if (started && (!last.do_date || !last.do_no)) {
+                    setDeliveryErrors(prev => {
+                      const arr = [...prev];
+                      arr[nextIdx - 1] = { ...(arr[nextIdx - 1] || {}), do_date: (!last.do_date ? 'DO date is required' : undefined) as any, do_no: (!last.do_no ? 'DO number is required' : undefined) as any };
+                      return arr;
+                    });
+                    toast.error('Complete DO date and number for current delivery before adding another.');
+                    return;
+                  }
+                }
                 if (nextIdx >= maxDeliveries) {
                   toast.error(`Cannot add more than ${maxDeliveries} deliveries for quantity ${formData.qty}.`);
                   return;
@@ -1115,6 +1243,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                     { do_date: '', do_no: '', inv_date: '', inv_no: '', grn_date: '', grn_no: '' }
                   ]
                 }));
+                setDeliveryErrors(prev => ([...prev, {}]));
+                setDeliveryFiles(prev => ([...prev, null]));
                 setActiveDeliveryTab(`delivery-${nextIdx}`);
               }}
               className="gap-2"
@@ -1145,6 +1275,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       value={d.do_date}
                       onChange={(e) => updateDeliveryField(idx, 'do_date', e.target.value)}
                     />
+                    {deliveryErrors[idx]?.do_date && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.do_date}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`do_no_${idx}`}>DO Number</Label>
@@ -1154,6 +1287,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       onChange={(e) => updateDeliveryField(idx, 'do_no', e.target.value)}
                       placeholder="Enter DO number"
                     />
+                    {deliveryErrors[idx]?.do_no && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.do_no}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`inv_date_${idx}`}>Invoice Date</Label>
@@ -1163,6 +1299,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       value={d.inv_date}
                       onChange={(e) => updateDeliveryField(idx, 'inv_date', e.target.value)}
                     />
+                    {deliveryErrors[idx]?.inv_date && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.inv_date}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`inv_no_${idx}`}>Invoice Number</Label>
@@ -1172,6 +1311,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       onChange={(e) => updateDeliveryField(idx, 'inv_no', e.target.value)}
                       placeholder="Enter invoice number"
                     />
+                    {deliveryErrors[idx]?.inv_no && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.inv_no}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`grn_date_${idx}`}>GRN Date</Label>
@@ -1181,6 +1323,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       value={d.grn_date}
                       onChange={(e) => updateDeliveryField(idx, 'grn_date', e.target.value)}
                     />
+                    {deliveryErrors[idx]?.grn_date && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.grn_date}</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor={`grn_no_${idx}`}>GRN Number</Label>
@@ -1189,6 +1334,62 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                       value={d.grn_no}
                       onChange={(e) => updateDeliveryField(idx, 'grn_no', e.target.value)}
                       placeholder="Enter GRN number"
+                    />
+                    {deliveryErrors[idx]?.grn_no && (
+                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.grn_no}</p>
+                    )}
+                  </div>
+                </div>
+                {/* PDF upload area for this delivery */}
+                <div className="md:col-span-2">
+                  {/* Existing uploaded document preview */}
+                  {((formData.deliveries?.[idx]?.upload_url) && !deliveryFiles[idx]) && (
+                    <div className="mb-3 flex items-center justify-between rounded border bg-gray-50 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded bg-red-100 text-red-600">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">Uploaded document</div>
+                          <a
+                            href={String(formData.deliveries[idx].upload_url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            {String(formData.deliveries[idx].upload_url)}
+                          </a>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">PDF</div>
+                    </div>
+                  )}
+                  <Label>Attach PDF (optional)</Label>
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => onDeliveryFileDrop(idx, e)}
+                    onClick={() => fileInputRefs.current[idx]?.click()}
+                    className="mt-2 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-md h-28 cursor-pointer bg-gray-50"
+                  >
+                    {!deliveryFiles[idx] ? (
+                      <div className="text-center text-sm text-gray-600">
+                        Drop PDF here or click to select
+                        <div className="text-xs text-gray-400">Only .pdf files accepted</div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between w-full px-4">
+                        <div className="truncate">{deliveryFiles[idx]?.name}</div>
+                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); removeDeliveryFile(idx); }}>
+                          Remove
+                        </Button>
+                      </div>
+                    )}
+                    <input
+                      ref={(el) => { fileInputRefs.current[idx] = el; }}
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={(e) => onDeliveryFileSelect(idx, e)}
                     />
                   </div>
                 </div>
@@ -1202,6 +1403,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                         const arr = [...(formData.deliveries || [])];
                         arr.splice(idx, 1);
                         setFormData(prev => ({ ...prev, deliveries: arr }));
+                        setDeliveryFiles(prev => { const nf = [...prev]; nf.splice(idx, 1); return nf; });
                         const newIdx = Math.max(0, idx - 1);
                         setActiveDeliveryTab(`delivery-${newIdx}`);
                       }}
@@ -1213,37 +1415,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               </TabsContent>
             ))}
           </Tabs>
-
-          <div className="mt-6">
-            <Label>Attach PDF (optional)</Label>
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={onFileDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-2 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-md h-28 cursor-pointer bg-gray-50"
-            >
-              {!uploadFile ? (
-                <div className="text-center text-sm text-gray-600">
-                  Drop PDF here or click to select
-                  <div className="text-xs text-gray-400">Only .pdf files accepted</div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between w-full px-4">
-                  <div className="truncate">{uploadFile.name}</div>
-                  <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); removeUploadFile(); }}>
-                    Remove
-                  </Button>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={onFileSelect}
-              />
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -1268,7 +1439,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-semibold">{selectedPurchase.items}</h3>
+            <h3 className="text-xl font-semibold">{selectedPurchase.description || selectedPurchase.items}</h3>
             <p className="text-gray-600">Purchase Record #{selectedPurchase.id}</p>
           </div>
           <Badge variant={getStatusVariant(selectedPurchase) as any} className="text-sm">
@@ -1285,18 +1456,18 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               <div>
                 <Label className="text-sm font-medium text-gray-600">Request Type</Label>
                 <div className="mt-1">
-                  <span className={getRequestTypeBadgeClass(selectedPurchase.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
-                    {selectedPurchase.request_type}
+                  <span className={getRequestTypeBadgeClass(selectedPurchase.request?.request_type || selectedPurchase.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
+                    {selectedPurchase.request?.request_type || selectedPurchase.request_type}
                   </span>
                 </div>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
-                <p className="font-medium">{typeof selectedPurchase.costcenter === 'string' ? selectedPurchase.costcenter : (selectedPurchase.costcenter?.name || '')}</p>
+                <p className="font-medium">{selectedPurchase.request?.costcenter?.name || (typeof selectedPurchase.costcenter === 'string' ? selectedPurchase.costcenter : (selectedPurchase.costcenter as any)?.name || '')}</p>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">PIC</Label>
-                <p className="font-medium">{typeof selectedPurchase.requestor === 'string' ? selectedPurchase.requestor : (selectedPurchase.requestor?.full_name || '')}</p>
+                <p className="font-medium">{selectedPurchase.request?.requested_by?.full_name || (typeof selectedPurchase.requestor === 'string' ? selectedPurchase.requestor : (selectedPurchase.requestor as any)?.full_name || '')}</p>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Item Type</Label>
@@ -1349,13 +1520,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 {((selectedPurchase as any).deliveries as any[]).map((d: any, idx: number) => (
                   <TabsContent key={`vdelivery-content-${idx}`} value={`vdelivery-${idx}`} className="mt-4">
                     <div className="space-y-4">
-                      {selectedPurchase.pr_date && (
+                      {(selectedPurchase.request?.pr_date || selectedPurchase.pr_date) && (
                         <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                           <div>
                             <p className="font-medium">Request Date</p>
-                            <p className="text-sm text-gray-600">PR: {selectedPurchase.pr_no || 'N/A'}</p>
+                            <p className="text-sm text-gray-600">PR: {selectedPurchase.request?.pr_no || selectedPurchase.pr_no || 'N/A'}</p>
                           </div>
-                          <p className="font-medium">{new Date(selectedPurchase.pr_date).toLocaleDateString('en-GB')}</p>
+                          <p className="font-medium">{new Date(selectedPurchase.request?.pr_date || selectedPurchase.pr_date as any).toLocaleDateString('en-GB')}</p>
                         </div>
                       )}
                       {selectedPurchase.po_date && (
@@ -1400,13 +1571,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               </Tabs>
             ) : (
               <div className="space-y-4">
-                {selectedPurchase.pr_date && (
+                {(selectedPurchase.request?.pr_date || selectedPurchase.pr_date) && (
                   <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
                     <div>
                       <p className="font-medium">Request Date</p>
-                      <p className="text-sm text-gray-600">PR: {selectedPurchase.pr_no || 'N/A'}</p>
+                      <p className="text-sm text-gray-600">PR: {selectedPurchase.request?.pr_no || selectedPurchase.pr_no || 'N/A'}</p>
                     </div>
-                    <p className="font-medium">{new Date(selectedPurchase.pr_date).toLocaleDateString('en-GB')}</p>
+                    <p className="font-medium">{new Date(selectedPurchase.request?.pr_date || selectedPurchase.pr_date as any).toLocaleDateString('en-GB')}</p>
                   </div>
                 )}
                 {selectedPurchase.po_date && (
@@ -1573,8 +1744,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 data={filteredPurchases}
                 columns={columns}
                 pagination={true}
-                inputFilter={true}
-                columnsVisibleOption={true}
+                inputFilter={false}
+                columnsVisibleOption={false}
                 dataExport={true}
                 rowExpandable={{
                   enabled: true,
