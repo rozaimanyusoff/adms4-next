@@ -12,7 +12,7 @@ import {
   Clock,
   AlertTriangle
 } from 'lucide-react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 // Format number for RM display: thousand separators + 2 decimals
 const fmtRM = (value: number) => {
@@ -43,11 +43,17 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     // Calculate status counts by deriving per-purchase procurement status (match PurchaseCard logic)
     type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'closed' | 'draft';
     const deriveStatus = (p: any): ProcStatus => {
-      if ((p as any).handover_at || (p as any).handover_to) return 'handover';
-      if (p.grn_date && p.grn_no) return 'delivered';
-      if (p.do_date && p.do_no) return 'delivered';
+      const ds = (p as any).deliveries as any[] | undefined;
+      const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
+      const qty = Number(p.qty || 0);
+      if ((latest?.grn_date && latest?.grn_no) || (p.grn_date && p.grn_no)) return 'closed';
+      const assetRegistry = String((p as any).asset_registry || '').toLowerCase();
+      if (assetRegistry === 'completed') return 'handover';
+      const deliveredCount = Array.isArray(ds) ? ds.length : 0;
+      const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!p.do_date && !!p.do_no);
+      if (allDelivered) return 'delivered';
       if (p.po_date && p.po_no) return 'ordered';
-      if (p.pr_date && p.pr_no) return 'requested';
+      if ((p.request && p.request.pr_date) || p.pr_date) return 'requested';
       return 'draft';
     };
 
@@ -64,9 +70,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     const completed = counts.closed;
 
     // Request type breakdown
-    const capex = purchases.filter(p => p.request_type === 'CAPEX').length;
-    const opex = purchases.filter(p => p.request_type === 'OPEX').length;
-    const services = purchases.filter(p => p.request_type === 'SERVICES').length;
+    const capex = purchases.filter(p => (p.request?.request_type || p.request_type) === 'CAPEX').length;
+    const opex = purchases.filter(p => (p.request?.request_type || p.request_type) === 'OPEX').length;
+    const services = purchases.filter(p => (p.request?.request_type || p.request_type) === 'SERVICES').length;
 
     // Highest / lowest purchase amounts (replace avg)
     const highest = amounts.length > 0 ? Math.max(...amounts) : 0;
@@ -75,9 +81,10 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     // Recent activity (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentRequests = purchases.filter(p =>
-      p.pr_date && new Date(p.pr_date) >= thirtyDaysAgo
-    ).length;
+    const recentRequests = purchases.filter(p => {
+      const d = p.request?.pr_date || p.pr_date;
+      return d && new Date(d) >= thirtyDaysAgo;
+    }).length;
 
     return {
       total,
@@ -102,8 +109,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
   const yearly = useMemo(() => {
     const buckets: Record<string, { count: number; total: number; highest: number; lowest: number }> = {};
     purchases.forEach(p => {
-      if (!p.pr_date) return;
-      const d = new Date(p.pr_date);
+      const pd = p.request?.pr_date || p.pr_date;
+      if (!pd) return;
+      const d = new Date(pd);
       if (isNaN(d.getTime())) return;
       const year = String(d.getFullYear());
 
@@ -150,11 +158,17 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     const rows: Array<{ type: string; requested: number; ordered: number; delivered: number; handover: number; total: number }> = [];
     const map: Record<string, { requested: number; ordered: number; delivered: number; handover: number; total: number }> = {};
     const derive = (p: any): ProcStatus => {
-      if (p.handover_at || p.handover_to || (p.inv_date && p.inv_no)) return 'handover';
-      if (p.grn_date && p.grn_no) return 'delivered';
-      if (p.do_date && p.do_no) return 'delivered';
+      const ds = (p as any).deliveries as any[] | undefined;
+      const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
+      const qty = Number(p.qty || 0);
+      const assetRegistry = String((p as any).asset_registry || '').toLowerCase();
+      if (assetRegistry === 'completed') return 'handover';
+      if ((latest?.grn_date && latest?.grn_no) || (p.grn_date && p.grn_no)) return 'delivered';
+      const deliveredCount = Array.isArray(ds) ? ds.length : 0;
+      const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!p.do_date && !!p.do_no);
+      if (allDelivered) return 'delivered';
       if (p.po_date && p.po_no) return 'ordered';
-      if (p.pr_date && p.pr_no) return 'requested';
+      if ((p.request && p.request.pr_date) || p.pr_date) return 'requested';
       return 'draft';
     };
     purchases.forEach(p => {
@@ -177,8 +191,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     purchases.forEach(p => {
       // determine year (if any)
       let year: string | null = null;
-      if (p.pr_date) {
-        const d = new Date(p.pr_date);
+      const pd = p.request?.pr_date || p.pr_date;
+      if (pd) {
+        const d = new Date(pd);
         if (!isNaN(d.getTime())) year = String(d.getFullYear());
       }
 
@@ -203,12 +218,30 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     return { years, rows };
   }, [purchases]);
 
-  // Chart data for purchases overview (by year)
+  // Chart data for purchases overview (by year) with stacked CAPEX + OPEX amounts
   const chartData = useMemo(() => {
-    // ensure ascending year order for chart
-    const rows = (yearly || []).slice().sort((a, b) => Number(a.year) - Number(b.year));
-    return rows.map(r => ({ year: r.year, count: r.count, total: Number(r.total || 0) }));
-  }, [yearly]);
+    const map: Record<string, { count: number; capex: number; opex: number; total: number }> = {};
+    purchases.forEach(p => {
+      const pd = p.request?.pr_date || p.pr_date;
+      if (!pd) return;
+      const d = new Date(pd);
+      if (isNaN(d.getTime())) return;
+      const year = String(d.getFullYear());
+      const type = (p.request?.request_type || p.request_type || '').toUpperCase();
+      const totalPrice = Number((p as any).total_price ?? NaN);
+      const amount = Number.isFinite(totalPrice)
+        ? totalPrice
+        : ((Number((p as any).qty) || 0) * (Number((p as any).unit_price ?? 0) || 0));
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      if (!map[year]) map[year] = { count: 0, capex: 0, opex: 0, total: 0 };
+      map[year].count += 1;
+      if (type === 'CAPEX') map[year].capex += amount;
+      if (type === 'OPEX') map[year].opex += amount;
+      map[year].total += amount;
+    });
+    const years = Object.keys(map).sort((a, b) => Number(a) - Number(b));
+    return years.map(y => ({ year: y, ...map[y] }));
+  }, [purchases]);
 
   // Request Type totals per year (CAPEX/OPEX/SERVICES)
   const requestTypeYearRows = useMemo(() => {
@@ -218,12 +251,13 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
     purchases.forEach(p => {
       let year: string | null = null;
-      if (p.pr_date) {
-        const d = new Date(p.pr_date);
+      const pd = p.request?.pr_date || p.pr_date;
+      if (pd) {
+        const d = new Date(pd);
         if (!isNaN(d.getTime())) year = String(d.getFullYear());
       }
 
-      const t = p.request_type || 'OTHER';
+      const t = p.request?.request_type || p.request_type || 'OTHER';
       const totalPrice = Number((p as any).total_price ?? NaN);
       const amount = Number.isFinite(totalPrice)
         ? totalPrice
@@ -283,6 +317,14 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
 
   const pick = (i: number) => shuffledPalettes[i % shuffledPalettes.length];
 
+  // Totals to date for titles
+  const totalByItemTypes = useMemo(() => {
+    return byType.reduce((sum, row) => sum + (Number((row as any).total) || 0), 0);
+  }, [byType]);
+  const totalByRequestTypes = useMemo(() => {
+    return requestTypeYearRows.rows.reduce((sum, row) => sum + (Number((row as any).total) || 0), 0);
+  }, [requestTypeYearRows]);
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {/* Purchases summary (count + value) */}
@@ -299,9 +341,20 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                 <XAxis dataKey="year" />
                 <YAxis yAxisId="left" orientation="left" />
                 <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `RM ${fmtRM(Number(v))}`} />
-                <Tooltip formatter={(value: any, name: string) => (name === 'total' ? `RM ${fmtRM(Number(value))}` : value)} />
-                <Bar yAxisId="right" dataKey="total" fill="#60a5fa" barSize={20} />
-                <Line yAxisId="left" type="monotone" dataKey="count" stroke="#10b981" strokeWidth={2} />
+                <Tooltip formatter={(value: any, name: string) => {
+                  if (['capex','opex','total'].includes(String(name))) return `RM ${fmtRM(Number(value))}`;
+                  return value;
+                }} />
+                <Legend
+                  verticalAlign="top"
+                  align="center"
+                  wrapperStyle={{ fontSize: '12px', textAlign: 'center' }}
+                />
+                {/* Stacked bars for CAPEX and OPEX with wider bar size */}
+                <Bar yAxisId="right" dataKey="capex" stackId="amount" fill="#60a5fa" barSize={100} name="capex" />
+                <Bar yAxisId="right" dataKey="opex" stackId="amount" fill="#34d399" barSize={100} name="opex" />
+                {/* Count line */}
+                <Line yAxisId="left" type="monotone" dataKey="count" stroke="#243c5a" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -311,7 +364,10 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       {/* Request by Item Types (table with per-year breakdown) */}
       <Card className={`md:col-span-2 ${pick(1).border}`}>
         <CardHeader>
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Request by Item Types</CardTitle>
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">
+            Request by Item Types
+            <span className="ml-2 text-gray-500 text-[length:var(--text-size-small)]">• Total to date: RM {fmtRM(totalByItemTypes)}</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {typeYearRows.rows.length === 0 ? (
@@ -458,7 +514,10 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       {/* Request Type Breakdown */}
       <Card className={`md:col-span-2 ${pick(3).border}`}>
         <CardHeader>
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Request Types</CardTitle>
+          <CardTitle className="text-[length:var(--text-size-base)] font-medium">
+            Request Types
+            <span className="ml-2 text-gray-500 text-[length:var(--text-size-small)]">• Total to date: RM {fmtRM(totalByRequestTypes)}</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {requestTypeYearRows.years.length > 0 ? (

@@ -2,10 +2,11 @@ import React from "react";
 import { cva, VariantProps } from "class-variance-authority";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTimes } from "@fortawesome/free-solid-svg-icons";
+import { X } from "lucide-react";
 
 const actionSidebarVariants = cva(
     // Fixed, full-viewport height; internal layout handles scrolling
-    "fixed top-0 right-0 h-screen bg-stone-50 dark:bg-gray-800 border-gray-300 dark:border-gray-500 z-50 shadow-2xl rounded-tl-xl overflow-hidden",
+    "fixed top-13 pb-20 right-0 h-screen bg-stone-50 dark:bg-gray-800 border-gray-300 dark:border-gray-500 z-50 shadow-2xl rounded-tl-xl overflow-hidden",
     {
         variants: {
             size: {
@@ -32,18 +33,18 @@ const ActionSidebar: React.FC<ActionSidebarProps> = ({ title, content, onClose, 
     
     return (
         <div className={actionSidebarVariants({ size })}>
-            <div className="flex h-full flex-col p-4">
-                <div className="flex justify-between items-center mb-2 shrink-0">
-                    <h2 className="text-lg font-semibold mr-4 truncate">{title}</h2>
+            <div className="flex h-full flex-col">
+                <div className="flex justify-between items-center shrink-0 bg-gray-200 py-1 px-4">
+                    <h2 className="font-semibold truncate">{title}</h2>
                     <button
-                        className="text-red-500 text-2xl font-bold hover:text-red-700"
+                        className="text-red-500 font-bold hover:text-red-700"
                         data-sidebar-close onClick={onClose}
                         aria-label="Close sidebar"
                     >
-                        <FontAwesomeIcon icon={faTimes} />
+                        <X className="h-5.5 w-5.5" />
                     </button>
                 </div>
-                <div className="text-sm whitespace-pre-wrap break-words overflow-auto pr-1 flex-1">
+                <div className="text-sm whitespace-pre-wrap break-words overflow-auto pr-1 flex-1 p-4">
                     {content}
                 </div>
             </div>

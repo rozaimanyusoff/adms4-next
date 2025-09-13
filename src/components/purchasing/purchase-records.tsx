@@ -38,15 +38,19 @@ const fmtRM = (value: number) => {
 
 interface ApiPurchase {
   id: number;
-  request_type?: string; // legacy
+  request_id?: number;
+  asset_registry?: string;
   request?: {
     id: number;
     pr_no?: string;
     pr_date?: string;
     request_type?: string;
-    requested_by?: { ramco_id: string; full_name: string };
-    costcenter?: { id: number; name: string };
-  };
+    requested_by?: { ramco_id: string; full_name: string } | null;
+    costcenter?: { id: number; name: string } | null;
+    department?: any;
+    created_at?: string | null;
+    updated_at?: string | null;
+  } | null;
   // API now returns nested objects for some fields. Keep unions so older records still work.
   requestor?: { ramco_id: string; full_name: string } | string; // legacy
   costcenter?: { id: number; name: string } | string; // legacy
@@ -54,6 +58,7 @@ interface ApiPurchase {
   category?: { id: number; name: string } | string | null;
   description?: string; // new field replaces items
   items?: string; // legacy
+  purpose?: string | null;
   supplier?: { id: number; name: string } | string;
   brand?: { id: number; name: string } | string;
   qty: number;
@@ -76,8 +81,13 @@ interface ApiPurchase {
     inv_no?: string;
     grn_date?: string;
     grn_no?: string;
+    id?: number;
+    purchase_id?: number;
+    request_id?: number;
     upload_path?: string | null;
     upload_url?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
   }>;
   handover_to?: string | null;
   handover_at?: string | null;
@@ -348,7 +358,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       });
     }
     if (filters?.request_type) {
-      filtered = filtered.filter(p => (p.request?.request_type || p.request_type) === filters.request_type);
+      filtered = filtered.filter(p => (p.request?.request_type || (p as any).request_type) === filters.request_type);
     }
 
     // Apply search filter
@@ -792,9 +802,21 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const getStatusText = (purchase: ApiPurchase) => {
     const ds = (purchase as any).deliveries as any[] | undefined;
     const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
+    const qty = Number(purchase.qty || 0);
+
+    // Completed when GRN recorded
     if ((latest?.grn_date && latest?.grn_no) || (purchase.grn_date && purchase.grn_no)) return 'Completed';
-    if ((purchase as any).handover_at || (purchase as any).handover_to) return 'Handover';
-    if ((latest?.do_date && latest?.do_no) || (purchase.do_date && purchase.do_no)) return 'Delivered';
+
+    // Handover when assets have been registered
+    const assetRegistry = String((purchase as any).asset_registry || '').toLowerCase();
+    if (assetRegistry === 'completed') return 'Handover';
+
+    // Delivered only when all purchased items have been delivered
+    const deliveredCount = Array.isArray(ds) ? ds.length : 0;
+    const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!purchase.do_date && !!purchase.do_no);
+    if (allDelivered) return 'Delivered';
+
+    // Otherwise, still ordered
     if (purchase.po_date && purchase.po_no) return 'Ordered';
     return 'Requested';
   };
@@ -802,7 +824,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   // Badge class for request type: CAPEX -> green, OPEX -> blue, others -> amber
   const getRequestTypeBadgeClass = (type?: string) => {
     const t = (type || '').toString().toUpperCase();
-    if (t === 'CAPEX') return 'bg-green-600 text-white text-xs';
+    if (t === 'CAPEX') return 'bg-cyan-600 text-white text-xs';
     if (t === 'OPEX') return 'bg-blue-600 text-white text-xs';
     return 'bg-amber-600 text-white text-xs';
   };
@@ -810,12 +832,35 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   // Define columns for DataGrid
   const columns: ColumnDef<any>[] = [
     { key: 'id', header: 'No' },
+        // Exclude deliveries columns for now; /api/purchases list does not include them
     {
-      key: 'pr_date',
-      header: 'PR Date',
-      render: (row: any) => (row.request?.pr_date ? new Date(row.request.pr_date).toLocaleDateString('en-GB') : (row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : ''))
+      key: 'status',
+      header: 'Status',
+      render: (row: any) => {
+        const typeId = typeof row.type === 'string' ? '' : (row.type?.id || '');
+        const isRegCompleted = String((row as any).asset_registry || '').toLowerCase() === 'completed';
+        return (
+          <div className="flex items-center gap-2">
+            <Badge variant={getStatusVariant(row) as any}>
+              {getStatusText(row)}
+            </Badge>
+            <Button
+              size="sm"
+              variant={isRegCompleted ? 'default' : 'outline'}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(`/purchase/asset/${row.id}?type=${typeId}`, '_blank');
+              }}
+              className={`h-6 px-2 ${isRegCompleted ? 'bg-green-600 hover:bg-green-700 text-white border-0' : 'text-blue-600 hover:text-blue-700'}`}
+              title="Open Asset Manager"
+            >
+              <PlusCircle className="h-4 w-4 mr-1" /> Assets
+            </Button>
+          </div>
+        );
+      },
+      filter: 'singleSelect'
     },
-    { key: 'pr_no', header: 'PR Number', filter: 'input', render: (row: any) => row.request?.pr_no || row.pr_no || '' },
     {
       key: 'request_type',
       header: 'Request Type',
@@ -827,16 +872,22 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       filter: 'singleSelect'
     },
     {
-      key: 'costcenter',
-      header: 'Cost Center',
-      filter: 'singleSelect',
-      render: (row: any) => row.request?.costcenter?.name || (typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || ''))
+      key: 'pr_date',
+      header: 'PR Date',
+      render: (row: any) => (row.request?.pr_date ? new Date(row.request.pr_date).toLocaleDateString('en-GB') : (row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : ''))
     },
+    { key: 'pr_no', header: 'PR Number', filter: 'input', render: (row: any) => row.request?.pr_no || row.pr_no || '' },
     {
       key: 'pic',
       header: 'Requested By',
       filter: 'input',
       render: (row: any) => row.request?.requested_by?.full_name || (typeof row.requestor === 'string' ? row.requestor : (row.requestor?.full_name || ''))
+    },
+    {
+      key: 'costcenter',
+      header: 'Cost Center',
+      filter: 'singleSelect',
+      render: (row: any) => row.request?.costcenter?.name || (typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || ''))
     },
     { key: 'item_type', header: 'Item Type', filter: 'singleSelect', render: (row: any) => typeof row.type === 'string' ? row.type : (row.type?.name || row.item_type || '') },
     {
@@ -868,17 +919,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       render: (row: any) => row.po_date ? new Date(row.po_date).toLocaleDateString('en-GB') : ''
     },
     { key: 'po_no', header: 'PO Number', filter: 'input' },
-    // Exclude deliveries columns for now; /api/purchases list does not include them
-    {
-      key: 'status',
-      header: 'Status',
-      render: (row: any) => (
-        <Badge variant={getStatusVariant(row) as any}>
-          {getStatusText(row)}
-        </Badge>
-      ),
-      filter: 'singleSelect'
-    }
+
   ];
 
   // Render form content
@@ -1495,8 +1536,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               <div>
                 <Label className="text-sm font-medium text-gray-600">Request Type</Label>
                 <div className="mt-1">
-                  <span className={getRequestTypeBadgeClass(selectedPurchase.request?.request_type || selectedPurchase.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
-                    {selectedPurchase.request?.request_type || selectedPurchase.request_type}
+                  <span className={getRequestTypeBadgeClass(selectedPurchase.request?.request_type || (selectedPurchase as any).request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
+                            {selectedPurchase.request?.request_type || (selectedPurchase as any).request_type}
                   </span>
                 </div>
               </div>
@@ -1761,9 +1802,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           </div>
 
           {/* Add Purchase */}
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => openSidebar('create')}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Purchase
+          <Button variant={'default'} onClick={() => openSidebar('create')}>
+            <Plus className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -1782,58 +1822,11 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               <CustomDataGrid
                 data={filteredPurchases}
                 columns={columns}
-                pagination={true}
+                pagination={false}
                 inputFilter={false}
                 columnsVisibleOption={false}
                 dataExport={true}
-                rowExpandable={{
-                  enabled: true,
-                  render: (row: any) => (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openSidebar('view', row)}
-                          className="flex items-center space-x-2"
-                        >
-                          <Eye className="h-4 w-4" />
-                          <span>View Details</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openSidebar('edit', row)}
-                          className="flex items-center space-x-2"
-                        >
-                          <Edit className="h-4 w-4" />
-                          <span>Edit</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const typeId = typeof row.type === 'string' ? '' : (row.type?.id || '');
-                            window.open(`/purchase/asset/${row.id}?type_id=${typeId}`, '_blank');
-                          }}
-                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
-                        >
-                          <PlusCircle className="h-4 w-4" />
-                          <span>Register Asset</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(row.id)}
-                          className="flex items-center space-x-2 text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span>Delete</span>
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                }}
+                onRowDoubleClick={(row: any) => openSidebar('edit', row)}
               />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1841,9 +1834,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                   <PurchaseCard
                     key={purchase.id}
                     purchase={purchase}
-                    onView={() => openSidebar('view', purchase)}
                     onEdit={() => openSidebar('edit', purchase)}
-                    onDelete={() => handleDelete(purchase.id)}
                   />
                 ))}
               </div>

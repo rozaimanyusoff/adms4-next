@@ -15,9 +15,9 @@ import {
 
 interface PurchaseCardProps {
   purchase: any;
-  onView: () => void;
   onEdit: () => void;
-  onDelete: () => void;
+  onView?: () => void;
+  onDelete?: () => void;
 }
 
 // Format number for RM display: thousand separators + 2 decimals
@@ -203,15 +203,19 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
 
         {/* Actions */}
         <div className="flex space-x-2 pt-2 border-t">
-          <Button size="sm" variant="outline" onClick={onView} className="flex-1">
-            View Details
-          </Button>
-          <Button size="sm" variant="outline" onClick={onEdit}>
+          <Button size="sm" variant="outline" onClick={onEdit} className="flex-1">
             Edit
           </Button>
-          <Button size="sm" variant="outline" onClick={onDelete} className="text-red-600 hover:text-red-700">
-            Delete
-          </Button>
+          {onView && (
+            <Button size="sm" variant="outline" onClick={onView}>
+              View
+            </Button>
+          )}
+          {onDelete && (
+            <Button size="sm" variant="outline" onClick={onDelete} className="text-red-600 hover:text-red-700">
+              Delete
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

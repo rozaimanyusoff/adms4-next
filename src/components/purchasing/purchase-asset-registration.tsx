@@ -20,8 +20,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
+
 interface PurchaseData {
   id: number;
+  request_id?: number;
   items: string;
   items_details?: string;
   request_type: string;
@@ -68,6 +70,7 @@ interface AssetFormData {
 
 interface AssetItem extends AssetFormData {
   id: string;
+  registered?: boolean;
 }
 
 interface ModelOption {
@@ -102,8 +105,8 @@ interface CategoryOption {
 const PurchaseAssetRegistration: React.FC = () => {
   const params = useParams();
   const searchParams = useSearchParams();
-  const pr_id = params?.pr_id as string;
-  const type_id = searchParams?.get('type_id') || '';
+  const purchaseId = params?.pr as string;
+  const typeId = searchParams?.get('type') || '';
 
   const [purchase, setPurchase] = useState<PurchaseData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,40 +141,150 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [existingAssets, setExistingAssets] = useState<any[]>([]);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  // Tabs: active pane
+  const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
+  // Registry assets loaded from backend (if any)
+  const [registryAssets, setRegistryAssets] = useState<any[] | null>(null);
   const auth = React.useContext(AuthContext);
 
   useEffect(() => {
-    if (pr_id) {
+    if (purchaseId) {
       fetchPurchaseData();
     }
-  }, [pr_id]);
+  }, [purchaseId]);
 
   useEffect(() => {
-    if (purchase && purchase.qty > 0) {
+    if (purchase && purchase.qty > 0 && !(registryAssets && registryAssets.length > 0)) {
       initializeAssetItems();
-      // Set initial visible count based on quantity
       setVisibleAssetCount(Math.min(purchase.qty, 2));
     }
-  }, [purchase, sameModel]);
+  }, [purchase, sameModel, registryAssets]);
 
   useEffect(() => {
-    if (type_id) {
+    if (typeId) {
       fetchBrandOptions();
       fetchCategoryOptions();
     }
     fetchCostCenterOptions();
     fetchLocationOptions();
-  }, [type_id]);
+  }, [typeId]);
+
+  // Fetch registry assets for this purchase id
+  useEffect(() => {
+    if (!purchaseId) return;
+    const load = async () => {
+      try {
+        const res = await authenticatedApi.get(`/api/purchases/registry?pr=${purchaseId}`);
+        const data = (res as any).data?.data || (res as any).data || [];
+        setRegistryAssets(Array.isArray(data) && data.length > 0 ? data : []);
+      } catch (e) {
+        console.warn('Failed to load purchase registry', e);
+        setRegistryAssets([]);
+      }
+    };
+    load();
+  }, [purchaseId]);
+
+  // Map registry assets to UI items once options are available
+  useEffect(() => {
+    if (!purchase) return;
+    if (!registryAssets || registryAssets.length === 0) return;
+
+    const mapIdToName = <T extends { id: number; name: string }>(options: T[], id?: number | null): string => {
+      if (!id) return '';
+      const found = options.find(o => Number(o.id) === Number(id));
+      return found ? found.name : '';
+    };
+
+    let items: AssetItem[] = registryAssets.map((a: any, idx: number) => ({
+      id: `asset_${idx + 1}`,
+      register_number: a.register_number || '',
+      model: a.model || '',
+      brand: mapIdToName(brandOptions as any, a.brand_id) || (typeof (purchase as any).brand === 'string' ? (purchase as any).brand : ((purchase as any).brand?.name || '')),
+      category: mapIdToName(categoryOptions as any, a.category_id) || (typeof (purchase as any).category === 'string' ? (purchase as any).category : ((purchase as any).category?.name || '')),
+      costcenter: mapIdToName(costCenterOptions as any, a.costcenter_id) || (() => { const cc: any = (purchase as any).costcenter ?? (purchase as any).request?.costcenter; return typeof cc === 'string' ? cc : (cc?.name || ''); })(),
+      description: a.description || (purchase as any).items || (purchase as any).description || '',
+      location: mapIdToName(locationOptions as any, a.location_id) || getDefaultLocationName() || '',
+      condition: a.item_condition || 'new',
+      classification: a.classification || 'Asset',
+      warranty_period: '',
+      notes: '',
+      registered: true
+    }));
+
+    // Append blank items if purchase quantity is larger than registry count
+    const remaining = Math.max(0, (purchase.qty || 0) - items.length);
+    if (remaining > 0) {
+      const defaultModel = (
+        (purchase as any).items || (purchase as any).description ||
+        (typeof (purchase as any).category === 'string' ? (purchase as any).category : (purchase as any).category?.name) ||
+        (typeof (purchase as any).brand === 'string' ? (purchase as any).brand : (purchase as any).brand?.name || '')
+      );
+      const defaultCategory = (() => {
+        const cat: any = (purchase as any).category;
+        return typeof cat === 'string' ? cat : (cat?.name || '');
+      })();
+      const purchaseCostcenter = (() => {
+        const cc: any = (purchase as any).costcenter ?? (purchase as any).request?.costcenter;
+        if (typeof cc === 'string') return cc;
+        return cc?.name || '';
+      })();
+      for (let i = 0; i < remaining; i++) {
+        items.push({
+          id: `asset_${items.length + 1}`,
+          register_number: '',
+          model: defaultModel,
+          brand: typeof (purchase as any).brand === 'string' ? (purchase as any).brand : ((purchase as any).brand?.name || ''),
+          category: defaultCategory,
+          costcenter: purchaseCostcenter,
+          description: (purchase as any).items || (purchase as any).description || '',
+          location: '',
+          condition: 'new',
+          classification: 'Asset',
+          warranty_period: '',
+          notes: '',
+          registered: false
+        });
+      }
+    }
+
+    if (items.length > 0) {
+      setAssetItems(items);
+      setVisibleAssetCount(Math.min(items.length, 2));
+      setActiveTab(items[0].id);
+      // Also set bulk defaults based on first item
+      const first = items[0];
+      setBulkFormData(prev => ({
+        ...prev,
+        model: first.model,
+        brand: first.brand,
+        category: first.category,
+        costcenter: first.costcenter,
+        description: first.description,
+        location: first.location,
+        condition: first.condition,
+        classification: first.classification,
+      }));
+    }
+  }, [registryAssets, brandOptions, categoryOptions, costCenterOptions, locationOptions, purchase]);
+
+  // After locations load, set default location for bulk and any asset missing location
+  useEffect(() => {
+    const def = getDefaultLocationName();
+    if (!def) return;
+    setBulkFormData(prev => prev.location ? prev : { ...prev, location: def });
+    setAssetItems(prev => prev.map(it => it.location ? it : { ...it, location: def }));
+  }, [locationOptions]);
 
   // Fetch existing active assets when sidebar opens or dependencies change
   useEffect(() => {
     if (showSidebar) fetchExistingAssets();
-  }, [type_id, showSidebar, purchase]);
+  }, [typeId, showSidebar, purchase]);
 
   const fetchPurchaseData = async () => {
     setLoading(true);
     try {
-      const response = await authenticatedApi.get(`/api/purchases/${pr_id}`);
+      const response = await authenticatedApi.get(`/api/purchases/${purchaseId}`);
       const data = (response as any).data?.data || (response as any).data;
       // Normalize API differences: map costcenter_detail(s) -> costcenter
       const normalized: any = { ...data };
@@ -188,6 +301,10 @@ const PurchaseAssetRegistration: React.FC = () => {
         // cost center
         if (!normalized.costcenter && normalized.request.costcenter) {
           normalized.costcenter = normalized.request.costcenter;
+        }
+        // request id
+        if (!normalized.request_id && normalized.request.id) {
+          normalized.request_id = normalized.request.id;
         }
         // pr meta
         if (!normalized.pr_no && normalized.request.pr_no) normalized.pr_no = normalized.request.pr_no;
@@ -215,8 +332,8 @@ const PurchaseAssetRegistration: React.FC = () => {
     setLoadingAssets(true);
     try {
       const qs = new URLSearchParams({ status: 'active' });
-      // Prefer query param type_id; fallback to purchase.type_detail.id or purchase.type.id
-      const tId = type_id
+      // Prefer query param typeId; fallback to purchase.type_detail.id or purchase.type.id
+      const tId = typeId
         || (purchase && typeof (purchase as any).type_detail === 'object' ? String((purchase as any).type_detail.id || '') : '')
         || (purchase && typeof (purchase as any).type === 'object' ? String((purchase as any).type.id || '') : '');
       if (tId) qs.set('manager', String(tId));
@@ -248,11 +365,11 @@ const PurchaseAssetRegistration: React.FC = () => {
   };
 
   const fetchBrandOptions = async () => {
-    if (!type_id) return;
+    if (!typeId) return;
 
     setLoadingBrands(true);
     try {
-      const response = await authenticatedApi.get(`/api/assets/brands?type=${type_id}`);
+      const response = await authenticatedApi.get(`/api/assets/brands?type=${typeId}`);
       const data = (response as any).data?.data || (response as any).data || [];
       setBrandOptions(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -292,10 +409,10 @@ const PurchaseAssetRegistration: React.FC = () => {
   };
 
   const fetchCategoryOptions = async () => {
-    if (!type_id) return;
+    if (!typeId) return;
     setLoadingCategories(true);
     try {
-      const response = await authenticatedApi.get(`/api/assets/categories?type=${type_id}`);
+      const response = await authenticatedApi.get(`/api/assets/categories?type=${typeId}`);
       const data = (response as any).data?.data || (response as any).data || [];
       setCategoryOptions(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -304,6 +421,12 @@ const PurchaseAssetRegistration: React.FC = () => {
     } finally {
       setLoadingCategories(false);
     }
+  };
+
+  // Default location name resolved from options for id=2
+  const getDefaultLocationName = (): string => {
+    const loc = locationOptions.find((l: any) => Number(l.id) === 2);
+    return loc ? loc.name : '';
   };
 
   const initializeAssetItems = () => {
@@ -333,7 +456,7 @@ const PurchaseAssetRegistration: React.FC = () => {
       category: defaultCategory,
       costcenter: purchaseCostcenter,
       description: (purchase as any).items || (purchase as any).description || '',
-      location: '',
+      location: getDefaultLocationName() || '',
       condition: 'new',
       classification: 'Asset',
       warranty_period: '',
@@ -349,19 +472,28 @@ const PurchaseAssetRegistration: React.FC = () => {
         category: defaultCategory,
         costcenter: purchaseCostcenter,
         description: (purchase as any).items || (purchase as any).description || '',
-        location: '',
+        location: getDefaultLocationName() || '',
         condition: 'new',
         classification: 'Asset',
         warranty_period: '',
-        notes: ''
+        notes: '',
+        registered: false
       });
     }
     setAssetItems(items);
+    // Ensure first tab active on load
+    if (items.length > 0) setActiveTab(items[0].id);
   };
 
   const handleAssetChange = (id: string, field: keyof AssetFormData, value: string) => {
+    let next = value;
+    if (field === 'register_number') {
+      next = (value || '').toUpperCase();
+    } else if (field === 'warranty_period') {
+      next = (value || '').replace(/\D+/g, '');
+    }
     setAssetItems(prev => prev.map(item =>
-      item.id === id ? { ...item, [field]: value } : item
+      item.id === id ? { ...item, [field]: next } : item
     ));
   };
 
@@ -405,6 +537,8 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   // Scroll to specific asset form
   const scrollToAsset = (assetId: string) => {
+    // Switch to corresponding tab first
+    setActiveTab(assetId);
     const element = document.getElementById(`asset-card-${assetId}`);
     if (element) {
       element.scrollIntoView({
@@ -452,7 +586,7 @@ const PurchaseAssetRegistration: React.FC = () => {
    * Submit registered assets
    * Endpoint: POST `/api/purchases/registry`
    * Payload: {
-   *   pr_id: number,          // parent purchase id (integer)
+   *   purchaseId: number,          // parent purchase id (integer)
    *   assets: Array<{
    *     register_number: string,
    *     classification: string,
@@ -487,23 +621,38 @@ const PurchaseAssetRegistration: React.FC = () => {
       const locationIdByName = (name: string) => locationOptions.find(l => l.name === name)?.id;
       const categoryIdByName = (name: string) => categoryOptions.find(c => c.name === name)?.id;
 
-      const payload = assetItems.map(item => ({
-        register_number: item.register_number,
+      // Ensure numeric IDs in payload
+      const resolvedTypeId: number | null = (() => {
+        if (typeId) return Number(typeId);
+        const t: any = (purchase as any)?.type_detail || (purchase as any)?.type;
+        return (t && typeof t === 'object' && typeof t.id !== 'undefined') ? Number(t.id) : null;
+      })();
+
+      const payload = assetItems.filter(a => !a.registered).map(item => ({
+        register_number: (item.register_number || '').toUpperCase(),
         classification: item.classification,
-        type_id: type_id,
+        type_id: resolvedTypeId,
         category_id: categoryIdByName(item.category) ?? null,
-        brand_id: brandIdByName(item.brand) ?? null,
+        brand_id: ((): number | null => {
+          const id = brandIdByName(item.brand);
+          return typeof id === 'number' ? id : (typeof id === 'string' ? Number(id) : null);
+        })(),
         model: item.model,
+        warranty_period: item.warranty_period ? Number(item.warranty_period) : null,
         costcenter_id: costCenterIdByName(item.costcenter) ?? null,
         location_id: locationIdByName(item.location) ?? null,
         item_condition: item.condition,
         description: item.description,
       }));
 
-      // Include link to parent purchase/pr for backend association (integer pr_id)
+      // Include link to parent purchase/pr for backend association (integer purchaseId)
       const requestBody: any = {
         assets: payload,
-        pr_id: Number(pr_id),
+        purchase_id: Number(purchaseId),
+        request_id: (() => {
+          const rid = (purchase as any)?.request_id ?? (purchase as any)?.request?.id;
+          return typeof rid === 'number' ? rid : (rid ? Number(rid) : undefined);
+        })(),
         created_by: (auth?.authData?.user?.username) || (() => {
           try { return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || ''; } catch { return ''; }
         })(),
@@ -639,7 +788,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Purchase Information (Read-only) */}
-          <Card className="lg:col-span-1">
+          <Card className="lg:col-span-1 bg-gradient-to-b from-sky-100 to-white">
             <CardHeader>
               <CardTitle className="text-lg flex items-center">
                 <FileText className="mr-2 h-5 w-5" />
@@ -768,7 +917,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                         const isImg = typeof d.upload_url === 'string' && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(d.upload_url);
                         const fmt = (x?: string) => x ? new Date(x).toLocaleDateString('en-GB') : '';
                         return (
-                          <div key={d.id || idx} className="flex items-center gap-3 rounded-md border p-3 bg-white border-blue-400">
+                          <div key={d.id || idx} className="flex items-center gap-3 rounded-md border p-3 bg-transparent border-blue-400">
                             <a
                               href={d.upload_url ? String(d.upload_url) : undefined}
                               target={d.upload_url ? "_blank" : undefined}
@@ -818,7 +967,7 @@ const PurchaseAssetRegistration: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
             {/* Bulk Options - no Card wrapper */}
             {purchase.qty > 1 && (
-              <div className="border bg-white rounded-md p-4 space-y-4">
+              <div className="rounded-md space-y-4 p-4 bg-white">
                 <div className="text-lg flex items-center justify-between">
                   <div className="flex items-center">
                     <Package className="mr-2 h-5 w-5" />
@@ -963,7 +1112,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                 <h3 className="text-lg font-medium">Individual Assets ({assetItems.length})</h3>
               </div>
 
-              <Tabs className="w-full" defaultValue={assetItems[0]?.id}>
+              <Tabs className="w-full" value={activeTab} onValueChange={(v) => setActiveTab(v)}>
                 <TabsList className="max-w-full w-full overflow-x-auto">
                   {assetItems.map((asset, index) => {
                     const label = asset.register_number?.trim() ? asset.register_number : `Asset #${index + 1}`;
@@ -979,6 +1128,9 @@ const PurchaseAssetRegistration: React.FC = () => {
                             title="Incomplete"
                             aria-label="Incomplete"
                           />
+                        )}
+                        {asset.registered && (
+                          <Badge className="ml-2 bg-green-600 hover:bg-green-600">Registered</Badge>
                         )}
                       </TabsTrigger>
                     );
@@ -1049,7 +1201,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                               onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
                               placeholder="e.g., AST001234"
                               required
-                              className={`h-10 ${getFieldRingClass(asset.register_number)}`}
+                              className={`uppercase h-10 ${getFieldRingClass(asset.register_number)} placeholder:normal-case`}
                             />
                             {((asset.category || '').toLowerCase() === 'software') && (
                               <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
@@ -1245,17 +1397,20 @@ const PurchaseAssetRegistration: React.FC = () => {
           {/* Right Pane - Register Number Overview */}
           <div className="lg:col-span-1 space-y-4">
             <Card className="sticky top-4">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Package className="mr-2 h-5 w-5" />
-                    Asset Registration Status
-                  </div>
-                  <div className="text-sm font-normal text-gray-500">
-                    {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
-                  </div>
-                </CardTitle>
-              </CardHeader>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center justify-between">
+                        <div className="flex items-center">
+                          <Package className="mr-2 h-5 w-5" />
+                          Asset Registration Status
+                        </div>
+                        <div className="text-sm font-normal text-gray-500 flex items-center gap-2">
+                          {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
+                          {purchase && registryAssets && registryAssets.length >= (purchase.qty || 0) && assetItems.every(a => a.registered) && (
+                            <Badge className="bg-green-600 hover:bg-green-600">Completed</Badge>
+                          )}
+                        </div>
+                      </CardTitle>
+                    </CardHeader>
               <CardContent className="space-y-3">
                 {/* Summary Stats */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
@@ -1306,12 +1461,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
-                        disabled={
-                          saving || assetItems.some(item => {
+                        disabled={(() => {
+                          if (saving) return true;
+                          const newItems = assetItems.filter(a => !a.registered);
+                          if (newItems.length === 0) return true; // nothing new to submit
+                          return newItems.some(item => {
                             const isSoftware = (item.category || '').toLowerCase() === 'software';
-                            return !isSoftware && !item.register_number?.trim();
-                          })
-                        }
+                            const missingRegister = !isSoftware && !item.register_number?.trim();
+                            const missingDesc = !item.description?.trim();
+                            return missingRegister || missingDesc;
+                          });
+                        })()}
                         className="w-full bg-green-600 hover:bg-green-700 text-white"
                       >
                         <Save className="mr-2 h-4 w-4" />
@@ -1379,7 +1539,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                   value={assetSearch}
                   onChange={(e) => setAssetSearch(e.target.value)}
                   placeholder="Search by register number or brand..."
-                  className="pl-8 h-9"
+                  className="pl-8 h-9 uppercase"
                 />
               </div>
               <Button variant="outline" size="icon" className="h-9 w-9" onClick={fetchExistingAssets} disabled={loadingAssets}>
