@@ -17,6 +17,7 @@ import { AuthContext } from '@/store/AuthContext';
 import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info, Search, RefreshCcw, Link2 } from 'lucide-react';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 interface PurchaseData {
@@ -39,6 +40,16 @@ interface PurchaseData {
   do_date?: string;
   inv_no?: string;
   inv_date?: string;
+  deliveries?: Array<{
+    id: number;
+    do_no?: string;
+    do_date?: string;
+    inv_no?: string;
+    inv_date?: string;
+    grn_no?: string;
+    grn_date?: string;
+    upload_url?: string;
+  }>;
 }
 
 interface AssetFormData {
@@ -164,9 +175,32 @@ const PurchaseAssetRegistration: React.FC = () => {
       const data = (response as any).data?.data || (response as any).data;
       // Normalize API differences: map costcenter_detail(s) -> costcenter
       const normalized: any = { ...data };
+      // Newer payloads may nest request info
+      if (normalized.request) {
+        // request type
+        if (!normalized.request_type && normalized.request.request_type) {
+          normalized.request_type = normalized.request.request_type;
+        }
+        // requestor
+        if (!normalized.requestor && normalized.request.requested_by) {
+          normalized.requestor = normalized.request.requested_by;
+        }
+        // cost center
+        if (!normalized.costcenter && normalized.request.costcenter) {
+          normalized.costcenter = normalized.request.costcenter;
+        }
+        // pr meta
+        if (!normalized.pr_no && normalized.request.pr_no) normalized.pr_no = normalized.request.pr_no;
+        if (!normalized.pr_date && normalized.request.pr_date) normalized.pr_date = normalized.request.pr_date;
+      }
+      // Legacy variants
       if (!normalized.costcenter) {
         const cc = normalized.costcenter_detail ?? normalized.costcenter_details;
         if (cc) normalized.costcenter = cc;
+      }
+      // Item/description mapping
+      if (!normalized.items && normalized.description) {
+        normalized.items = normalized.description;
       }
       setPurchase(normalized);
     } catch (error) {
@@ -181,8 +215,10 @@ const PurchaseAssetRegistration: React.FC = () => {
     setLoadingAssets(true);
     try {
       const qs = new URLSearchParams({ status: 'active' });
-      // Prefer query param type_id; fallback to purchase.type_detail.id
-      const tId = type_id || (purchase && typeof (purchase as any).type_detail === 'object' ? String((purchase as any).type_detail.id || '') : '');
+      // Prefer query param type_id; fallback to purchase.type_detail.id or purchase.type.id
+      const tId = type_id
+        || (purchase && typeof (purchase as any).type_detail === 'object' ? String((purchase as any).type_detail.id || '') : '')
+        || (purchase && typeof (purchase as any).type === 'object' ? String((purchase as any).type.id || '') : '');
       if (tId) qs.set('manager', String(tId));
       // If brand id available on purchase, include it to filter
       const bId = (purchase && typeof (purchase as any).brand === 'object' && (purchase as any).brand?.id) ? String((purchase as any).brand.id) : '';
@@ -274,7 +310,16 @@ const PurchaseAssetRegistration: React.FC = () => {
     if (!purchase) return;
 
     const items: AssetItem[] = [];
-    const defaultModel = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
+    // Prefer item/description text for model; fall back to category name; last resort brand name
+    const defaultModel = (
+      (purchase as any).items || (purchase as any).description ||
+      (typeof (purchase as any).category === 'string' ? (purchase as any).category : (purchase as any).category?.name) ||
+      (typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''))
+    );
+    const defaultCategory = (() => {
+      const cat: any = (purchase as any).category;
+      return typeof cat === 'string' ? cat : (cat?.name || '');
+    })();
     const purchaseCostcenter = (() => {
       const cc: any = (purchase as any).costcenter ?? (purchase as any).costcenter_detail ?? (purchase as any).costcenter_details;
       if (typeof cc === 'string') return cc;
@@ -285,9 +330,9 @@ const PurchaseAssetRegistration: React.FC = () => {
     setBulkFormData({
       model: defaultModel,
       brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
-      category: '',
+      category: defaultCategory,
       costcenter: purchaseCostcenter,
-      description: purchase.items || '',
+      description: (purchase as any).items || (purchase as any).description || '',
       location: '',
       condition: 'new',
       classification: 'Asset',
@@ -301,9 +346,9 @@ const PurchaseAssetRegistration: React.FC = () => {
         register_number: '',
         model: defaultModel,
         brand: typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''),
-        category: '',
+        category: defaultCategory,
         costcenter: purchaseCostcenter,
-        description: purchase.items || '',
+        description: (purchase as any).items || (purchase as any).description || '',
         location: '',
         condition: 'new',
         classification: 'Asset',
@@ -568,7 +613,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                   <ChevronRight className="h-4 w-4 mx-1" />
                   <span>Asset Registration</span>
                   <ChevronRight className="h-4 w-4 mx-1" />
-                  <span>PR #{purchase.id}</span>
+                  <span>PR #{(purchase as any).pr_no || purchase.id}</span>
                 </div>
               </div>
             </div>
@@ -614,8 +659,40 @@ const PurchaseAssetRegistration: React.FC = () => {
                   );
                 })()}
               </div>
+              {/* Request Number and Date */}
               <div>
-                <Label className="text-sm font-medium text-gray-600">Asset Type</Label>
+                <Label className="text-sm font-medium text-gray-600">Request Number</Label>
+                <p className="font-medium text-sm">
+                  {((purchase as any).pr_no || (purchase as any).request?.pr_no || 'N/A')}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Request Date</Label>
+                <p className="font-medium text-sm">
+                  {(() => {
+                    const d = (purchase as any).pr_date || (purchase as any).request?.pr_date;
+                    return d ? new Date(d).toLocaleDateString() : 'N/A';
+                  })()}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Requestor</Label>
+                <p className="font-medium text-sm">
+                  {typeof purchase.requestor === 'string' ? purchase.requestor : (purchase.requestor?.full_name || 'N/A')}
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
+                <p className="font-medium text-sm">
+                  {(() => {
+                    const cc: any = (purchase as any).costcenter ?? (purchase as any).costcenter_detail ?? (purchase as any).costcenter_details;
+                    return typeof cc === 'string' ? cc : (cc?.name || 'N/A');
+                  })()}
+                </p>
+              </div>
+              <Separator className="my-2" />
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Item Type</Label>
                 <p className="font-medium text-sm">
                   {(() => {
                     const td = purchase.type_detail as any;
@@ -640,21 +717,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                   <p className="font-medium text-sm text-gray-800 whitespace-pre-wrap">{purchase.items_details}</p>
                 </div>
               )}
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
-                <p className="font-medium text-sm">
-                  {(() => {
-                    const cc: any = (purchase as any).costcenter ?? (purchase as any).costcenter_detail ?? (purchase as any).costcenter_details;
-                    return typeof cc === 'string' ? cc : (cc?.name || 'N/A');
-                  })()}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Requestor</Label>
-                <p className="font-medium text-sm">
-                  {typeof purchase.requestor === 'string' ? purchase.requestor : (purchase.requestor?.full_name || 'N/A')}
-                </p>
-              </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Quantity</Label>
                 <p className="font-medium text-sm text-blue-600">{purchase.qty} items</p>
@@ -696,63 +758,113 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </p>
                 </div>
               )}
+              {Array.isArray((purchase as any).deliveries) && (purchase as any).deliveries.length > 0 && (
+                <>
+                  <Separator className="my-2" />
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Deliveries</Label>
+                    <div className="mt-2 grid grid-cols-1 gap-3">
+                      {((purchase as any).deliveries as any[]).map((d: any, idx: number) => {
+                        const isImg = typeof d.upload_url === 'string' && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(d.upload_url);
+                        const fmt = (x?: string) => x ? new Date(x).toLocaleDateString('en-GB') : '';
+                        return (
+                          <div key={d.id || idx} className="flex items-center gap-3 rounded-md border p-3 bg-white border-blue-400">
+                            <a
+                              href={d.upload_url ? String(d.upload_url) : undefined}
+                              target={d.upload_url ? "_blank" : undefined}
+                              rel={d.upload_url ? "noreferrer" : undefined}
+                              className="shrink-0"
+                              title={d.upload_url ? 'Open file in new tab' : undefined}
+                            >
+                              {d.upload_url ? (
+                                isImg ? (
+                                  <img src={String(d.upload_url)} alt={`Delivery ${idx + 1}`} className="h-12 w-12 object-cover rounded border" />
+                                ) : (
+                                  <div className="h-12 w-12 rounded border flex items-center justify-center bg-gray-50">
+                                    <FileText className="h-6 w-6 text-gray-500" />
+                                  </div>
+                                )
+                              ) : (
+                                <div className="h-12 w-12 rounded border flex items-center justify-center bg-gray-50">
+                                  <FileText className="h-6 w-6 text-gray-500" />
+                                </div>
+                              )}
+                            </a>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium">Delivery {idx + 1}</div>
+                              <div className="text-xs text-gray-700 space-y-1">
+                                {(d.do_no || d.do_date) && (
+                                  <div className='flex justify-between text-xs text-blue-500'>DO: {d.do_no || '—'} {d.do_date && (<span>{fmt(d.do_date)}</span>)}</div>
+                                )}
+                                {(d.inv_no || d.inv_date) && (
+                                  <div className='flex justify-between text-xs text-blue-500'>INV: {d.inv_no || '—'} {d.inv_date && (<span>{fmt(d.inv_date)}</span>)}</div>
+                                )}
+                                {(d.grn_no || d.grn_date) && (
+                                  <div className='flex justify-between text-xs text-blue-500'>GRN: {d.grn_no || '—'} {d.grn_date && (<span>{fmt(d.grn_date)}</span>)}</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
           {/* Asset Registration Forms */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Bulk Options */}
+            {/* Bulk Options - no Card wrapper */}
             {purchase.qty > 1 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Package className="mr-2 h-5 w-5" />
-                      Bulk Configuration
+              <div className="border bg-white rounded-md p-4 space-y-4">
+                <div className="text-lg flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Package className="mr-2 h-5 w-5" />
+                    Bulk Configuration
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="same-model"
+                        checked={sameModel}
+                        onCheckedChange={setSameModel}
+                      />
+                      <Label htmlFor="same-model" className="text-sm">Same model for all</Label>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          id="same-model"
-                          checked={sameModel}
-                          onCheckedChange={setSameModel}
-                        />
-                        <Label htmlFor="same-model" className="text-sm">Same model for all</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={generateRegisterNumbers}
+                      disabled={!bulkFormData.description}
+                    >
+                      Generate Register Numbers
+                    </Button>
+                  </div>
+                </div>
+                {purchase.qty > 1 && (<>
+                  {/* Row 1: Condition (justify-end) */}
+                  <div className="flex justify-end">
+                    <div className="w-full md:w-1/3">
+                      <div className="flex items-center space-x-1 justify-between">
+                        <Label htmlFor="bulk-condition">Condition</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('condition')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={generateRegisterNumbers}
-                        disabled={!bulkFormData.description}
-                      >
-                        Generate Register Numbers
-                      </Button>
+                      <SingleSelect
+                        options={[{ value: 'new', label: 'New' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'poor', label: 'Poor' }]}
+                        value={bulkFormData.condition}
+                        onValueChange={(value) => handleBulkChange('condition', value)}
+                        placeholder="Select condition"
+                        className="h-10"
+                      />
                     </div>
-                  </CardTitle>
-                </CardHeader>
-                {purchase.qty > 1 && (
-                  <CardContent className="space-y-4">
-                    {/* Row 1: Condition (justify-end) */}
-                    <div className="flex justify-end">
-                      <div className="w-full md:w-1/3">
-                        <div className="flex items-center space-x-1 justify-between">
-                          <Label htmlFor="bulk-condition">Condition</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('condition')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <SingleSelect
-                          options={[{ value: 'new', label: 'New' }, { value: 'good', label: 'Good' }, { value: 'fair', label: 'Fair' }, { value: 'poor', label: 'Poor' }]}
-                          value={bulkFormData.condition}
-                          onValueChange={(value) => handleBulkChange('condition', value)}
-                          placeholder="Select condition"
-                          className="h-10"
-                        />
-                      </div>
-                    </div>
+                  </div>
 
-                    {/* Row 2: Category, Brand, Model */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Row 2: Category, Brand, Model */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <div className="flex items-center space-x-1">
                           <Label htmlFor="bulk-category">Category</Label>
@@ -839,60 +951,73 @@ const PurchaseAssetRegistration: React.FC = () => {
                       </div>
                       <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
                     </div>
-                  </CardContent>
-                )}
-              </Card>
+                </>)}
+              </div>
             )}
 
-            {/* Individual Asset Forms */}
-            <div className="space-y-4">
+            <Separator className="my-2" />
+
+            {/* Individual Asset Forms - Tabs */}
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">Individual Assets ({visibleAssetCount} of {assetItems.length})</h3>
-                {assetItems.length > 10 && (
-                  <Badge variant="secondary">
-                    {visibleAssetCount < assetItems.length ? 'Load more forms as needed' : 'All forms loaded'}
-                  </Badge>
-                )}
+                <h3 className="text-lg font-medium">Individual Assets ({assetItems.length})</h3>
               </div>
 
-              <div className="max-h-[500px] auto-hide-scroll pr-2 space-y-4">
-                {assetItems.slice(0, visibleAssetCount).map((asset, index) => {
+              <Tabs className="w-full" defaultValue={assetItems[0]?.id}>
+                <TabsList className="max-w-full w-full overflow-x-auto">
+                  {assetItems.map((asset, index) => {
+                    const label = asset.register_number?.trim() ? asset.register_number : `Asset #${index + 1}`;
+                    const isComplete = isAssetFormComplete(asset);
+                    return (
+                      <TabsTrigger key={asset.id} value={asset.id} className="mr-1">
+                        <span className="truncate max-w-[180px]">{label}</span>
+                        {isComplete ? (
+                          <CheckCircle className="ml-1 text-green-500 data-[state=active]:text-white" />
+                        ) : (
+                          <span
+                            className="ml-2 inline-block w-2 h-2 rounded-full bg-red-500"
+                            title="Incomplete"
+                            aria-label="Incomplete"
+                          />
+                        )}
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+
+                {assetItems.map((asset, index) => {
                   const isComplete = isAssetFormComplete(asset);
-
                   return (
-                    <Card
-                      key={asset.id}
-                      id={`asset-card-${asset.id}`}
-                      className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}
-                    >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <CardTitle className="text-base">Asset #{index + 1}</CardTitle>
-                            {isComplete && (
-                              <CheckCircle className="h-5 w-5 text-green-600" />
+                    <TabsContent key={`content-${asset.id}`} value={asset.id}>
+                      <Card id={`asset-card-${asset.id}`} className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <CardTitle className="text-base">{asset.register_number?.trim() || `Asset #${index + 1}`}</CardTitle>
+                              {isComplete && (
+                                <CheckCircle className="h-5 w-5 text-green-600" />
+                              )}
+                            </div>
+                            {assetItems.length > 1 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeAsset(asset.id)}
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                title="Remove this asset"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             )}
-                            {/* Collapse removed */}
                           </div>
-                          {assetItems.length > 1 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeAsset(asset.id)}
-                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </CardHeader>
+                        </CardHeader>
 
-                      <CardContent className="space-y-4">
-                        {/* Row 1: Register Number, Warranty (years), Condition */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
+                        <CardContent className="space-y-4">
+                          {/* Row 1: Register Number, Warranty (years), Condition */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
                               <button
                                 type="button"
                                 className="text-blue-600 hover:underline text-xs"
@@ -1103,31 +1228,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                             placeholder="Enter asset description"
                             rows={2}
                             required
-                            className={`${getFieldRingClass(asset.description)}`}
+                              className={`${getFieldRingClass(asset.description)}`}
                           />
                         </div>
 
                         {/* Notes removed per requirement */}
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
                   );
                 })}
-              </div>
-
-              {/* Add More Button */}
-              {visibleAssetCount < assetItems.length && (
-                <div className="flex justify-center pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addMoreAssets}
-                    className="flex items-center space-x-2"
-                  >
-                    <Package className="h-4 w-4" />
-                    <span>Add More Assets ({assetItems.length - visibleAssetCount} remaining)</span>
-                  </Button>
-                </div>
-              )}
+              </Tabs>
             </div>
           </div>
 
@@ -1138,7 +1249,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                 <CardTitle className="text-lg flex items-center justify-between">
                   <div className="flex items-center">
                     <Package className="mr-2 h-5 w-5" />
-                    Asset Overview
+                    Asset Registration Status
                   </div>
                   <div className="text-sm font-normal text-gray-500">
                     {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
