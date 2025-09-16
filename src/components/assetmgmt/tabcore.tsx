@@ -7,6 +7,7 @@ import CoreBrand from "./assetdata-brands";
 import CoreType from "./assetdata-types";
 import CoreModel from "./assetdata-models";
 import CoreSoftware from "./core-software";
+import SpecPropertiesManager from "./spec-properties";
 import Link from "next/link";
 
 const TabCore: React.FC = () => {
@@ -14,12 +15,14 @@ const TabCore: React.FC = () => {
     { value: "types", label: "Types & Categories" },
     { value: "brands", label: "Brands" },
     { value: "models", label: "Models" },
+    { value: "specs", label: "Specifications" },
   ];
 
   const tabComponents: Record<string, React.ReactNode> = {
     types: <CoreType />,
     brands: <CoreBrand />,
     models: <CoreModel />,
+    specs: <SpecPropertiesManager />,
   };
 
   const [activeTab, setActiveTab] = useState<string>(() => {
