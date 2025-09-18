@@ -1,0 +1,830 @@
+"use client";
+
+import React, { useEffect, useState, useContext } from "react";
+import { AuthContext } from '@/store/AuthContext';
+import { authenticatedApi } from "@/config/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SingleSelect } from "@/components/ui/combobox";
+import { Textarea } from '@/components/ui/textarea';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { Star } from "lucide-react";
+
+interface CriteriaItem {
+    qset_id: number;
+    qset_quesno: number;
+    qset_desc: string;
+    qset_type: "NCR" | "Rating" | "Selection";
+    qset_order: number;
+    // selection options could be added later
+}
+
+interface Vehicle {
+    id: number;
+    register_number: string;
+    owner?: {
+        full_name: string;
+    };
+    location?: {
+        id: number;
+        name: string;
+    };
+    // add other vehicle properties as needed
+}
+
+interface Location {
+    id: number;
+    name: string;
+    // add other location properties as needed
+}
+
+const PAGE_SIZE = 10;
+
+const AssessmentForm: React.FC = () => {
+    const [items, setItems] = useState<CriteriaItem[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [page, setPage] = useState(0);
+    const [answers, setAnswers] = useState<Record<string, any>>({});
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [dragOverId, setDragOverId] = useState<number | null>(null);
+    
+    // Dialog states
+    const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+
+    // Header section state
+    const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [selectedVehicle, setSelectedVehicle] = useState<string>('');
+    const [selectedLocation, setSelectedLocation] = useState<string>('');
+    const [vehicleImages, setVehicleImages] = useState<File[]>([]);
+    const [vehicleImageUrls, setVehicleImageUrls] = useState<string[]>([]);
+    const [vehicleImageDragOver, setVehicleImageDragOver] = useState(false);
+
+    const auth = useContext(AuthContext);
+
+    useEffect(() => {
+        fetchCriteria();
+        fetchVehicles();
+        fetchLocations();
+    }, []);
+
+    const fetchCriteria = async () => {
+        setLoading(true);
+        try {
+            const resp: any = await authenticatedApi.get('/api/compliance/assessment-criteria', { params: { status: 'active' } });
+            const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
+            // Normalize and sort by order
+            const normalized = arr.map((r: any) => ({
+                qset_id: r.qset_id,
+                qset_quesno: r.qset_quesno,
+                qset_desc: r.qset_desc,
+                qset_type: r.qset_type,
+                qset_order: r.qset_order,
+            })).sort((a: any, b: any) => a.qset_order - b.qset_order);
+            setItems(normalized);
+            // initialize defaults
+            const initial: Record<string, any> = {};
+            normalized.forEach((it: CriteriaItem) => {
+                const key = String(it.qset_id);
+                if (it.qset_type === 'Rating') initial[key] = 1; // default 1 star
+                else if (it.qset_type === 'NCR') initial[key] = 'Comply';
+                else initial[key] = null;
+            });
+            setAnswers(initial);
+        } catch (e) {
+            toast.error('Failed to fetch criteria');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchVehicles = async () => {
+        try {
+            const resp: any = await authenticatedApi.get('/api/assets', { 
+                params: { 
+                    type: 2, 
+                    classification: 'asset', 
+                    status: 'active' 
+                } 
+            });
+            const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
+            const normalized = arr.map((v: any) => ({
+                id: v.id,
+                register_number: v.register_number || `Asset ${v.id}`,
+                owner: v.owner ? {
+                    full_name: v.owner.full_name
+                } : undefined,
+                location: v.location ? {
+                    id: v.location.id,
+                    name: v.location.name
+                } : undefined
+            }));
+            setVehicles(normalized);
+            // Auto-populate location from selected vehicle if needed
+            if (normalized.length > 0 && !selectedLocation && normalized[0].location) {
+                // Don't auto-select, just keep it available
+            }
+        } catch (e) {
+            toast.error('Failed to fetch vehicles');
+        }
+    };
+
+    const fetchLocations = async () => {
+        try {
+            const resp: any = await authenticatedApi.get('/api/assets/locations', {
+                params: {
+                    classification: 'asset',
+                    status: 'active'
+                }
+            });
+            const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
+            const normalized = arr.map((l: any) => ({
+                id: l.id || l.location_id,
+                name: l.name || l.location_name || l.description || `Location ${l.id || l.location_id}`,
+            }));
+            setLocations(normalized);
+        } catch (e) {
+            toast.error('Failed to fetch locations');
+        }
+    };
+
+    const totalPages = Math.ceil(items.length / PAGE_SIZE);
+    const start = page * PAGE_SIZE;
+    const pageItems = items.slice(start, start + PAGE_SIZE);
+
+    const setAnswer = (id: number | string, value: any) => {
+        const key = String(id);
+        setAnswers(prev => ({ ...prev, [key]: value }));
+    };
+
+    const setProofFile = (id: number, file: File | null) => {
+        const fileKey = `file-${id}`;
+        const urlKey = `fileUrl-${id}`;
+        // Revoke previous URL if exists
+        const prevUrl = answers[urlKey];
+        if (prevUrl) URL.revokeObjectURL(prevUrl);
+        if (file) {
+            const url = URL.createObjectURL(file);
+            setAnswers(prev => ({ ...prev, [fileKey]: file, [urlKey]: url }));
+            // clear file error if any
+            setErrors(prev => ({ ...prev, [fileKey]: '' }));
+        } else {
+            setAnswers(prev => {
+                const next = { ...prev } as Record<string, any>;
+                delete next[fileKey];
+                delete next[urlKey];
+                return next;
+            });
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, id: number) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverId(null);
+        const dt = e.dataTransfer;
+        if (!dt?.files?.length) return;
+        const file = dt.files[0];
+        if (!file) return;
+        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+        if (!isImage) {
+            setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
+            toast.error('Only PNG or JPG images are allowed.');
+            return;
+        }
+        setProofFile(id, file);
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+        const file = e.target.files?.[0] || null;
+        if (!file) { setProofFile(id, null); return; }
+        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+        if (!isImage) {
+            setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
+            toast.error('Only PNG or JPG images are allowed.');
+            return;
+        }
+        setProofFile(id, file);
+    };
+
+    const handleVehicleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setVehicleImageDragOver(false);
+        const dt = e.dataTransfer;
+        if (!dt?.files?.length) return;
+
+        const newFiles: File[] = [];
+        const newUrls: string[] = [];
+
+        Array.from(dt.files).forEach(file => {
+            const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+            if (isImage) {
+                newFiles.push(file);
+                newUrls.push(URL.createObjectURL(file));
+            }
+        });
+
+        if (newFiles.length > 0) {
+            setVehicleImages(prev => [...prev, ...newFiles]);
+            setVehicleImageUrls(prev => [...prev, ...newUrls]);
+        }
+
+        if (newFiles.length !== dt.files.length) {
+            toast.error('Some files were skipped. Only PNG/JPG images are allowed.');
+        }
+    };
+
+    const handleVehicleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files?.length) return;
+
+        const newFiles: File[] = [];
+        const newUrls: string[] = [];
+
+        Array.from(files).forEach(file => {
+            const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+            if (isImage) {
+                newFiles.push(file);
+                newUrls.push(URL.createObjectURL(file));
+            }
+        });
+
+        if (newFiles.length > 0) {
+            setVehicleImages(prev => [...prev, ...newFiles]);
+            setVehicleImageUrls(prev => [...prev, ...newUrls]);
+        }
+
+        if (newFiles.length !== files.length) {
+            toast.error('Some files were skipped. Only PNG/JPG images are allowed.');
+        }
+
+        // Reset input
+        e.target.value = '';
+    };
+
+    const removeVehicleImage = (index: number) => {
+        // Revoke URL to prevent memory leak
+        URL.revokeObjectURL(vehicleImageUrls[index]);
+        setVehicleImages(prev => prev.filter((_, i) => i !== index));
+        setVehicleImageUrls(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Calculate criteria summary
+    const getCriteriaSummary = () => {
+        const summary = {
+            ncr: { comply: 0, notComply: 0, unanswered: 0 },
+            rating: { answered: 0, unanswered: 0, averageRating: 0, totalRating: 0 },
+            selection: { equipped: 0, missing: 0, unanswered: 0 }
+        };
+
+        items.forEach(item => {
+            const answer = answers[item.qset_id];
+
+            if (item.qset_type === 'NCR') {
+                if (answer === 'Comply') summary.ncr.comply++;
+                else if (answer === 'Not-comply') summary.ncr.notComply++;
+                else summary.ncr.unanswered++;
+            } else if (item.qset_type === 'Rating') {
+                if (typeof answer === 'number' && answer >= 1) {
+                    summary.rating.answered++;
+                    summary.rating.totalRating += answer;
+                } else {
+                    summary.rating.unanswered++;
+                }
+            } else if (item.qset_type === 'Selection') {
+                if (answer === 'Equipped') summary.selection.equipped++;
+                else if (answer === 'Missing') summary.selection.missing++;
+                else summary.selection.unanswered++;
+            }
+        });
+
+        if (summary.rating.answered > 0) {
+            summary.rating.averageRating = summary.rating.totalRating / summary.rating.answered;
+        }
+
+        return summary;
+    };
+
+    // Check if all criteria are properly answered
+    const isAssessmentComplete = () => {
+        if (items.length === 0) return false;
+
+        for (const item of items) {
+            const answer = answers[item.qset_id];
+
+            // Check if answer is provided
+            if (item.qset_type === 'NCR') {
+                if (answer !== 'Comply' && answer !== 'Not-comply') return false;
+            } else if (item.qset_type === 'Rating') {
+                if (typeof answer !== 'number' || answer < 1 || answer > 5) return false;
+            } else if (item.qset_type === 'Selection') {
+                // Fix: Selection starts with null, not a default value
+                if (answer !== 'Equipped' && answer !== 'Missing') return false;
+            }
+
+            // Check if evidence is required and provided
+            const needsEvidence = (
+                item.qset_type === 'NCR' && answer === 'Not-comply'
+            ) || (
+                    item.qset_type === 'Rating' && typeof answer === 'number' && answer < 2
+                ) || (
+                    item.qset_type === 'Selection' && answer === 'Missing'
+                );
+
+            if (needsEvidence) {
+                const comment = answers[`comment-${item.qset_id}`];
+                const file = answers[`file-${item.qset_id}`];
+                if (!comment || String(comment).trim().length === 0 || !file) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    };
+
+    const handleCancel = () => {
+        setShowCancelDialog(true);
+    };
+    
+    const confirmCancel = () => {
+        setShowCancelDialog(false);
+        window.close();
+    };
+
+    const handleNext = () => { if (page < totalPages - 1) setPage(p => p + 1); };
+    const handlePrev = () => { if (page > 0) setPage(p => p - 1); };
+
+    const handleSubmit = async () => {
+        // Final validation check
+        if (!isAssessmentComplete()) {
+            toast.error('Please complete all criteria before submitting.');
+            return;
+        }
+
+        // Validate required comment & file when triggered
+        const newErrors: Record<string, string> = {};
+        let firstInvalidIndex = -1;
+        items.forEach((it, idx) => {
+            const ans = answers[it.qset_id];
+            const needs = (
+                it.qset_type === 'NCR' && ans === 'Not-comply'
+            ) || (
+                    it.qset_type === 'Rating' && typeof ans === 'number' && ans < 2
+                ) || (
+                    it.qset_type === 'Selection' && ans === 'Missing'
+                );
+            if (needs) {
+                const cid = `comment-${it.qset_id}`;
+                const fid = `file-${it.qset_id}`;
+                if (!answers[cid] || String(answers[cid]).trim().length === 0) {
+                    newErrors[cid] = 'Comment is required.';
+                    if (firstInvalidIndex === -1) firstInvalidIndex = idx;
+                }
+                if (!answers[fid]) {
+                    newErrors[fid] = 'Proof image is required.';
+                    if (firstInvalidIndex === -1) firstInvalidIndex = idx;
+                }
+            }
+        });
+
+        if (Object.keys(newErrors).length) {
+            setErrors(newErrors);
+            // Jump to the page that contains the first invalid item
+            if (firstInvalidIndex !== -1) {
+                const newPage = Math.floor(firstInvalidIndex / PAGE_SIZE);
+                setPage(newPage);
+            }
+            toast.error('Please complete required comment and proof for highlighted items.');
+            return;
+        }
+
+        // For now just log answers and show success dialog
+        console.log('submit', {
+            vehicle: selectedVehicle,
+            location: selectedLocation,
+            vehicleImages: vehicleImages.map(f => f.name),
+            answers
+        });
+        setShowSuccessDialog(true);
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-6">
+            <h2 className="text-xl font-semibold">Assessment Form</h2>
+
+            {/* Header Section - Vehicle, Location, Images */}
+            <div className="p-6 border rounded-lg bg-gray-50 space-y-4">
+                <h3 className="text-lg font-medium text-gray-900">Assessment Details</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
+                        <SingleSelect
+                            options={vehicles.map(v => ({
+                                value: String(v.id),
+                                label: v.register_number + (v.owner?.full_name ? ` - ${v.owner.full_name}` : '')
+                            }))}
+                            value={selectedVehicle}
+                            onValueChange={(value) => {
+                                setSelectedVehicle(value);
+                                // Auto-populate location from selected vehicle
+                                const vehicle = vehicles.find(v => String(v.id) === value);
+                                if (vehicle?.location && !selectedLocation) {
+                                    setSelectedLocation(String(vehicle.location.id));
+                                }
+                            }}
+                            placeholder="Select vehicle"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                        <SingleSelect
+                            options={locations.map(l => ({ value: String(l.id), label: l.name }))}
+                            value={selectedLocation}
+                            onValueChange={setSelectedLocation}
+                            placeholder="Select location"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Images</label>
+                    <div
+                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${vehicleImageDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                            }`}
+                        onDragOver={(e) => { e.preventDefault(); setVehicleImageDragOver(true); }}
+                        onDragLeave={(e) => { e.preventDefault(); setVehicleImageDragOver(false); }}
+                        onDrop={handleVehicleImageDrop}
+                    >
+                        <input
+                            id="vehicle-images"
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            multiple
+                            className="hidden"
+                            onChange={handleVehicleImageSelect}
+                        />
+                        <label htmlFor="vehicle-images" className="cursor-pointer">
+                            <div className="space-y-2">
+                                <div className="text-gray-600">
+                                    <svg className="mx-auto h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                    <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
+                                </div>
+                                <div className="text-xs text-gray-500">PNG, JPG up to 10MB each</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    {vehicleImages.length > 0 && (
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {vehicleImages.map((file, index) => (
+                                <div key={index} className="relative group">
+                                    <img
+                                        src={vehicleImageUrls[index]}
+                                        alt={`Vehicle ${index + 1}`}
+                                        className="w-full h-24 object-cover rounded border"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => removeVehicleImage(index)}
+                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">
+                                        {file.name}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Assessment Progress */}
+                {items.length > 0 && (() => {
+                    const summary = getCriteriaSummary();
+                    const totalItems = items.length;
+                    const answeredItems = summary.ncr.comply + summary.ncr.notComply + summary.rating.answered + summary.selection.equipped + summary.selection.missing;
+                    const progressPercentage = totalItems > 0 ? Math.round((answeredItems / totalItems) * 100) : 0;
+
+                    return (
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-md font-medium text-blue-900">Assessment Progress</h4>
+                                <div className="text-sm text-blue-700">
+                                    {answeredItems}/{totalItems} completed ({progressPercentage}%)
+                                </div>
+                            </div>
+
+                            <div className="w-full bg-blue-200 rounded-full h-2 mb-3">
+                                <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${progressPercentage}%` }}
+                                ></div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                {/* NCR Summary */}
+                                {(summary.ncr.comply + summary.ncr.notComply + summary.ncr.unanswered) > 0 && (
+                                    <div className="bg-white p-2 rounded border">
+                                        <div className="font-medium text-gray-700 mb-1">Compliance</div>
+                                        <div className="space-y-1 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-green-600">Comply:</span>
+                                                <span className="font-medium">{summary.ncr.comply}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-red-600">Not-comply:</span>
+                                                <span className="font-medium">{summary.ncr.notComply}</span>
+                                            </div>
+                                            {summary.ncr.unanswered > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">Unanswered:</span>
+                                                    <span className="font-medium">{summary.ncr.unanswered}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Rating Summary */}
+                                {(summary.rating.answered + summary.rating.unanswered) > 0 && (
+                                    <div className="bg-white p-2 rounded border">
+                                        <div className="font-medium text-gray-700 mb-1">Ratings</div>
+                                        <div className="space-y-1 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-blue-600">Answered:</span>
+                                                <span className="font-medium">{summary.rating.answered}</span>
+                                            </div>
+                                            {summary.rating.answered > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-yellow-600">Avg Rating:</span>
+                                                    <span className="font-medium">{summary.rating.averageRating.toFixed(1)} ⭐</span>
+                                                </div>
+                                            )}
+                                            {summary.rating.unanswered > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">Unanswered:</span>
+                                                    <span className="font-medium">{summary.rating.unanswered}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Selection Summary */}
+                                {(summary.selection.equipped + summary.selection.missing + summary.selection.unanswered) > 0 && (
+                                    <div className="bg-white p-2 rounded border">
+                                        <div className="font-medium text-gray-700 mb-1">Equipment</div>
+                                        <div className="space-y-1 text-xs">
+                                            <div className="flex justify-between">
+                                                <span className="text-green-600">Equipped:</span>
+                                                <span className="font-medium">{summary.selection.equipped}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-red-600">Missing:</span>
+                                                <span className="font-medium">{summary.selection.missing}</span>
+                                            </div>
+                                            {summary.selection.unanswered > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-gray-500">Unanswered:</span>
+                                                    <span className="font-medium">{summary.selection.unanswered}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                    <Button
+                        onClick={handleCancel}
+                        variant="outline"
+                        className="px-6"
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={handleSubmit}
+                        disabled={!isAssessmentComplete()}
+                        className={`px-6 ${isAssessmentComplete() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                    >
+                        {isAssessmentComplete() ? 'Submit Assessment' : 'Complete All Criteria'}
+                    </Button>
+                </div>
+            </div>
+
+            {/* Separator */}
+            <hr className="border-gray-300" />
+
+            {/* Assessment Criteria Section */}
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-gray-900">Assessment Criteria</h3>
+                    {totalPages > 1 && (
+                        <div className="text-sm text-gray-600">
+                            Page {page + 1} of {totalPages}
+                        </div>
+                    )}
+                </div>
+                {loading && <div className="text-center py-8 text-gray-500">Loading criteria...</div>}
+                {!loading && pageItems.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">No criteria found.</div>
+                )}
+                {!loading && pageItems.map((it, idx) => {
+                    const currentAnswer = answers[it.qset_id];
+                    const needsCommentOrFile = (
+                        it.qset_type === 'NCR' && currentAnswer === 'Not-comply'
+                    ) || (
+                            it.qset_type === 'Rating' && typeof currentAnswer === 'number' && currentAnswer < 2
+                        ) || (
+                            it.qset_type === 'Selection' && currentAnswer === 'Missing'
+                        );
+
+                    return (
+                        <div key={it.qset_id} className="p-4 border rounded bg-white shadow-sm">
+                            <div className="font-medium mb-2">{start + idx + 1}. {it.qset_desc}</div>
+                            <div>
+                                {it.qset_type === 'NCR' && (
+                                    <div className="flex gap-4">
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Comply'} onChange={() => setAnswer(it.qset_id, 'Comply')} />
+                                            <span>Comply</span>
+                                        </label>
+                                        <label className="flex items-center gap-2">
+                                            <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Not-comply'} onChange={() => setAnswer(it.qset_id, 'Not-comply')} />
+                                            <span>Not-comply</span>
+                                        </label>
+                                    </div>
+                                )}
+
+                                {it.qset_type === 'Rating' && (
+                                    <div className="flex items-center gap-1">
+                                        {[1, 2, 3, 4, 5].map(n => (
+                                            <button key={n} type="button" className={`${answers[it.qset_id] >= n ? 'text-yellow-500' : 'text-gray-300'}`} onClick={() => setAnswer(it.qset_id, n)} aria-label={`${n} star`}>
+                                                <Star className="w-6 h-6" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {it.qset_type === 'Selection' && (
+                                    <SingleSelect
+                                        options={[{ value: 'Equipped', label: 'Equipped' }, { value: 'Missing', label: 'Missing' }]}
+                                        value={answers[it.qset_id] || ''}
+                                        onValueChange={(v: any) => setAnswer(it.qset_id, v)}
+                                        placeholder="Select"
+                                    />
+                                )}
+
+                                {needsCommentOrFile && (
+                                    <div className="mt-3 space-y-2">
+                                        <label className="block text-sm font-medium">Comment (required)</label>
+                                        <Textarea
+                                            rows={3}
+                                            value={answers[`comment-${it.qset_id}`] || ''}
+                                            onChange={e => {
+                                                const key = `comment-${it.qset_id}`;
+                                                const val = e.target.value;
+                                                setAnswers(prev => ({ ...prev, [key]: val }));
+                                                // clear error on input
+                                                if (val && errors[key]) setErrors(prev => ({ ...prev, [key]: '' }));
+                                            }}
+                                        />
+                                        {errors[`comment-${it.qset_id}`] && (
+                                            <p className="text-xs text-red-600">{errors[`comment-${it.qset_id}`]}</p>
+                                        )}
+                                        <div>
+                                            <label className="block text-sm font-medium">Upload proof (png, jpg, jpeg) (required)</label>
+                                            <div
+                                                className={`mt-1 flex flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm text-gray-600 transition-colors ${dragOverId === it.qset_id ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+                                                onDragOver={(e) => { e.preventDefault(); setDragOverId(it.qset_id); }}
+                                                onDragLeave={(e) => { e.preventDefault(); if (dragOverId === it.qset_id) setDragOverId(null); }}
+                                                onDrop={(e) => handleDrop(e, it.qset_id)}
+                                            >
+                                                <input
+                                                    id={`file-${it.qset_id}`}
+                                                    type="file"
+                                                    accept="image/png,image/jpeg"
+                                                    className="hidden"
+                                                    onChange={(e) => handleFileSelect(e, it.qset_id)}
+                                                />
+                                                <label htmlFor={`file-${it.qset_id}`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
+                                                    Browse
+                                                </label>
+                                                <span className="mt-1">or drag & drop</span>
+                                                {answers[`fileUrl-${it.qset_id}`] && (
+                                                    <img src={answers[`fileUrl-${it.qset_id}`]} alt="Proof preview" className="mt-3 h-24 w-auto rounded border object-cover" />
+                                                )}
+                                                {answers[`file-${it.qset_id}`] && (
+                                                    <>
+                                                        <div className="mt-1 text-xs text-gray-500">{(answers[`file-${it.qset_id}`] as File).name}</div>
+                                                        <button type="button" className="mt-2 text-xs text-red-600 underline" onClick={() => setProofFile(it.qset_id, null)}>Remove</button>
+                                                    </>
+                                                )}
+                                            </div>
+                                            {errors[`file-${it.qset_id}`] && (
+                                                <p className="mt-1 text-xs text-red-600">{errors[`file-${it.qset_id}`]}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <div>
+                        <Button onClick={handlePrev} disabled={page === 0} variant="outline">
+                            Previous
+                        </Button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-sm text-gray-600">
+                            Page {page + 1} of {totalPages}
+                        </div>
+                        {page < totalPages - 1 && (
+                            <Button onClick={handleNext}>Next</Button>
+                        )}
+                    </div>
+                </div>
+            )}
+            
+            {/* Cancel Confirmation Dialog */}
+            <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Assessment</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to cancel? All unsaved changes will be lost.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Continue Working</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={confirmCancel}
+                            className="bg-red-600 hover:bg-red-700"
+                        >
+                            Yes, Cancel
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+            {/* Success Dialog */}
+            <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Assessment Submitted</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Your assessment has been submitted successfully! The tab will close automatically.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction 
+                            onClick={() => {
+                                setShowSuccessDialog(false);
+                                toast.success('Assessment submitted successfully!');
+                                // Close tab after a short delay
+                                setTimeout(() => window.close(), 1000);
+                            }}
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            Close
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+    );
+};
+
+export default AssessmentForm;
