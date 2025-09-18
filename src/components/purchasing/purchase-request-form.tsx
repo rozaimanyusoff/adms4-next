@@ -246,9 +246,9 @@ const PurchaseRequestForm: React.FC = () => {
                 <Label className="text-sm">Ramco ID</Label>
                 <Input
                   className="h-10"
-                  value={positionOptions.find(o => o.value === formData.position_id)?.label || ''}
+                  value={requesterRamcoId}
                   disabled
-                  placeholder="Position"
+                  placeholder="Ramco ID"
                 />
               </div>
             </div>
