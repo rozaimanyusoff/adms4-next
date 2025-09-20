@@ -10,6 +10,7 @@ const actionSidebarVariants = cva(
     {
         variants: {
             size: {
+                xl: "md:w-4/5 w-full max-w-[1200px]",
                 lg: "md:w-3/5 w-full max-w-[960px]",
                 md: "md:w-1/2 w-full max-w-[768px]",
                 sm: "md:w-1/3 w-full max-w-[480px]",
