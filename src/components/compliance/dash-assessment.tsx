@@ -52,9 +52,17 @@ const getAssessmentDate = (item: Assessment): Date | null => {
 };
 
 const rateTrendConfig = {
-  rate: {
-    label: "Assessment Rate",
-    color: "hsl(var(--primary))",
+  low: {
+    label: "0-30%",
+    color: "#ef4444", // Red for poor performance
+  },
+  medium: {
+    label: "31-70%",
+    color: "#f59e0b", // Orange/Amber for medium performance
+  },
+  high: {
+    label: "70%+",
+    color: "#22c55e", // Green for good performance
   },
 } satisfies ChartConfig;
 
@@ -66,8 +74,8 @@ const locationConfig = {
 } satisfies ChartConfig;
 
 const ncrTrendConfig = {
-  ncr: {
-    label: "NCR",
+  totalNcr: {
+    label: "NCR Count",
     color: "hsl(var(--chart-3))",
   },
 } satisfies ChartConfig;
@@ -235,6 +243,62 @@ const DashAssessment: React.FC = () => {
       }));
   }, [filteredData]);
 
+  const rateYearlyTrend = useMemo(() => {
+    const yearlyData: Record<string, { low: number; medium: number; high: number }> = {};
+
+    filteredData.forEach((item) => {
+      const date = getAssessmentDate(item);
+      if (!date) return;
+      
+      const year = date.getFullYear().toString();
+      const rate = numericRate(item.a_rate);
+      
+      if (rate === null) return;
+      
+      if (!yearlyData[year]) {
+        yearlyData[year] = { low: 0, medium: 0, high: 0 };
+      }
+      
+      if (rate <= 30) {
+        yearlyData[year].low += 1;
+      } else if (rate <= 70) {
+        yearlyData[year].medium += 1;
+      } else {
+        yearlyData[year].high += 1;
+      }
+    });
+
+    return Object.entries(yearlyData)
+      .map(([year, { low, medium, high }]) => ({
+        year,
+        low: low,
+        medium: medium,
+        high: high,
+      }))
+      .sort((a, b) => parseInt(a.year) - parseInt(b.year));
+  }, [filteredData]);
+
+  const ncrYearlyTrend = useMemo(() => {
+    const yearlyData: Record<string, number> = {};
+
+    filteredData.forEach((item) => {
+      const date = getAssessmentDate(item);
+      if (!date) return;
+      
+      const year = date.getFullYear().toString();
+      const ncr = item.a_ncr ?? 0;
+      
+      yearlyData[year] = (yearlyData[year] || 0) + ncr;
+    });
+
+    return Object.entries(yearlyData)
+      .map(([year, totalNcr]) => ({
+        year,
+        totalNcr,
+      }))
+      .sort((a, b) => parseInt(a.year) - parseInt(b.year));
+  }, [filteredData]);
+
   const locationBreakdown = useMemo(() => {
     const counts: Record<string, { count: number; avgRateSum: number; avgRateCount: number }> = {};
 
@@ -351,8 +415,8 @@ const DashAssessment: React.FC = () => {
           </Card>
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="md:col-span-2 lg:col-span-2">
           <CardHeader>
             <Skeleton className="h-5 w-40" />
           </CardHeader>
@@ -360,7 +424,7 @@ const DashAssessment: React.FC = () => {
             <Skeleton className="h-48 w-full" />
           </CardContent>
         </Card>
-        <Card>
+        <Card className="md:col-span-2 lg:col-span-1">
           <CardHeader>
             <Skeleton className="h-5 w-32" />
           </CardHeader>
@@ -553,36 +617,27 @@ const DashAssessment: React.FC = () => {
 
       {hasFilteredData ? (
         <>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="md:col-span-2 lg:col-span-2">
               <CardHeader>
-                <CardTitle>Assessment Rate Trend</CardTitle>
+                <CardTitle>Assessment Rate Distribution by Year</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChartContainer config={rateTrendConfig} className="h-72">
-                  <LineChart data={rateTrend} margin={{ left: 12, right: 12 }}>
+                  <BarChart data={rateYearlyTrend} margin={{ left: 12, right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="dateLabel" />
-                    <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                    <ChartTooltip
-                      content={<ChartTooltipContent />}
-                      formatter={(value: number, name: string) => [`${value.toFixed(2)}%`, name]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="rate"
-                      stroke="var(--color-rate)"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                      connectNulls
-                    />
-                  </LineChart>
+                    <XAxis dataKey="year" />
+                    <YAxis allowDecimals={false} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="low" stackId="rate" fill="#ef4444" radius={[0, 0, 0, 0]} name="0-30%" />
+                    <Bar dataKey="medium" stackId="rate" fill="#f59e0b" radius={[0, 0, 0, 0]} name="31-70%" />
+                    <Bar dataKey="high" stackId="rate" fill="#22c55e" radius={[4, 4, 0, 0]} name="70%+" />
+                  </BarChart>
                 </ChartContainer>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="md:col-span-2 lg:col-span-2">
               <CardHeader>
                 <CardTitle>Assessments by Location</CardTitle>
               </CardHeader>
@@ -606,37 +661,28 @@ const DashAssessment: React.FC = () => {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+            <Card className="md:col-span-2 lg:col-span-2">
               <CardHeader>
-                <CardTitle>NCR Trend</CardTitle>
+                <CardTitle>NCR Count by Year</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChartContainer config={ncrTrendConfig} className="h-72">
-                  <AreaChart data={rateTrend} margin={{ left: 12, right: 12 }}>
-                    <defs>
-                      <linearGradient id="ncrGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--color-ncr)" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="var(--color-ncr)" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
+                  <BarChart data={ncrYearlyTrend} margin={{ left: 12, right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="dateLabel" />
+                    <XAxis dataKey="year" />
                     <YAxis allowDecimals={false} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area
-                      type="monotone"
-                      dataKey="ncr"
-                      stroke="var(--color-ncr)"
-                      fillOpacity={1}
-                      fill="url(#ncrGradient)"
+                    <ChartTooltip 
+                      content={<ChartTooltipContent />}
+                      formatter={(value: number) => [`${value} NCR Cases`, "NCR Count"]}
                     />
-                  </AreaChart>
+                    <Bar dataKey="totalNcr" fill="var(--color-totalNcr)" radius={[4, 4, 0, 0]} name="NCR Count" />
+                  </BarChart>
                 </ChartContainer>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="md:col-span-2 lg:col-span-2">
               <CardHeader>
                 <CardTitle>Top Assessors / Owners</CardTitle>
               </CardHeader>

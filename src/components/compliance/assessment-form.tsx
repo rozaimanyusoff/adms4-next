@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Star } from "lucide-react";
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface CriteriaItem {
     qset_id: number;
@@ -27,6 +28,54 @@ interface CriteriaItem {
     qset_type: "NCR" | "Rating" | "Selection";
     qset_order: number;
     // selection options could be added later
+}
+
+interface AssessmentDetail {
+    adt_id: number;
+    assess_id: number;
+    adt_item: string;
+    adt_ncr: number;
+    adt_rate: string;
+    adt_rate2: number;
+    adt_rem: string;
+    qset_desc: string | null;
+    qset_type: string | null;
+}
+
+interface AssessmentData {
+    assess_id: number;
+    a_date: string;
+    a_ncr: number;
+    a_rate: string;
+    a_upload: string | null;
+    a_upload2: string | null;
+    a_upload3: string | null;
+    a_upload4: string | null;
+    a_remark: string;
+    a_dt: string;
+    asset: {
+        id: number;
+        register_number: string;
+        purchase_date: string;
+        age: number;
+        costcenter: {
+            id: number;
+            name: string;
+        };
+        location: {
+            id: number;
+            code: string;
+        };
+        owner: {
+            ramco_id: string;
+            full_name: string;
+        };
+    };
+    assessment_location: {
+        id: number;
+        code: string;
+    };
+    details: AssessmentDetail[];
 }
 
 interface Vehicle {
@@ -57,10 +106,15 @@ const AssessmentForm: React.FC = () => {
     const [answers, setAnswers] = useState<Record<string, any>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [dragOverId, setDragOverId] = useState<number | null>(null);
-    
+
     // Dialog states
     const [showCancelDialog, setShowCancelDialog] = useState(false);
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+
+    // Editing states
+    const [isEditing, setIsEditing] = useState(false);
+    const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+    const [loadingAssessment, setLoadingAssessment] = useState(false);
 
     // Header section state
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -72,17 +126,26 @@ const AssessmentForm: React.FC = () => {
     const [vehicleImageDragOver, setVehicleImageDragOver] = useState(false);
 
     const auth = useContext(AuthContext);
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const assessmentId = searchParams?.get('id') || null;
 
     useEffect(() => {
         fetchCriteria();
         fetchVehicles();
         fetchLocations();
-    }, []);
+
+        // Check if editing mode
+        if (assessmentId) {
+            setIsEditing(true);
+            fetchAssessmentData(assessmentId);
+        }
+    }, [assessmentId]);
 
     const fetchCriteria = async () => {
         setLoading(true);
         try {
-            const resp: any = await authenticatedApi.get('/api/compliance/assessment-criteria', { params: { status: 'active' } });
+            const resp: any = await authenticatedApi.get('/api/compliance/assessments/criteria', { params: { status: 'active' } });
             const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
             // Normalize and sort by order
             const normalized = arr.map((r: any) => ({
@@ -93,13 +156,11 @@ const AssessmentForm: React.FC = () => {
                 qset_order: r.qset_order,
             })).sort((a: any, b: any) => a.qset_order - b.qset_order);
             setItems(normalized);
-            // initialize defaults
+            // initialize with no defaults - all criteria start unanswered
             const initial: Record<string, any> = {};
             normalized.forEach((it: CriteriaItem) => {
                 const key = String(it.qset_id);
-                if (it.qset_type === 'Rating') initial[key] = 1; // default 1 star
-                else if (it.qset_type === 'NCR') initial[key] = 'Comply';
-                else initial[key] = null;
+                initial[key] = null; // No default values for any criteria type
             });
             setAnswers(initial);
         } catch (e) {
@@ -111,12 +172,12 @@ const AssessmentForm: React.FC = () => {
 
     const fetchVehicles = async () => {
         try {
-            const resp: any = await authenticatedApi.get('/api/assets', { 
-                params: { 
-                    type: 2, 
-                    classification: 'asset', 
-                    status: 'active' 
-                } 
+            const resp: any = await authenticatedApi.get('/api/assets', {
+                params: {
+                    type: 2,
+                    classification: 'asset',
+                    status: 'active'
+                }
             });
             const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
             const normalized = arr.map((v: any) => ({
@@ -156,6 +217,58 @@ const AssessmentForm: React.FC = () => {
             setLocations(normalized);
         } catch (e) {
             toast.error('Failed to fetch locations');
+        }
+    };
+
+    const fetchAssessmentData = async (id: string) => {
+        setLoadingAssessment(true);
+        try {
+            const resp: any = await authenticatedApi.get(`/api/compliance/assessments/${id}`);
+            const data = resp.data?.data;
+
+            if (data) {
+                setAssessmentData(data);
+
+                // Populate form fields
+                setSelectedVehicle(String(data.asset?.id || ''));
+                setSelectedLocation(String(data.assessment_location?.id || ''));
+
+                // Populate answers from details
+                const populatedAnswers: Record<string, any> = {};
+
+                data.details.forEach((detail: AssessmentDetail) => {
+                    const itemId = detail.adt_item;
+                    const rate = parseFloat(detail.adt_rate);
+
+                    // Set the main answer
+                    if (detail.qset_type === 'NCR') {
+                        populatedAnswers[itemId] = rate > 0 ? 'Comply' : 'Not-comply';
+                    } else if (detail.qset_type === 'Rating') {
+                        populatedAnswers[itemId] = rate;
+                    } else {
+                        populatedAnswers[itemId] = rate;
+                    }
+
+                    // Set comment if exists
+                    if (detail.adt_rem) {
+                        populatedAnswers[`comment-${itemId}`] = detail.adt_rem;
+                    }
+                });
+
+                setAnswers(prev => ({ ...prev, ...populatedAnswers }));
+
+                // Handle existing images if needed
+                if (data.a_upload) {
+                    const imageNames = data.a_upload.split(',').filter(Boolean);
+                    // Note: You might want to fetch actual image URLs here
+                    console.log('Existing images:', imageNames);
+                }
+            }
+        } catch (e) {
+            toast.error('Failed to load assessment data');
+            console.error('Error fetching assessment:', e);
+        } finally {
+            setLoadingAssessment(false);
         }
     };
 
@@ -358,10 +471,10 @@ const AssessmentForm: React.FC = () => {
     const handleCancel = () => {
         setShowCancelDialog(true);
     };
-    
+
     const confirmCancel = () => {
         setShowCancelDialog(false);
-        window.close();
+        router.push('/compliance/assessment');
     };
 
     const handleNext = () => { if (page < totalPages - 1) setPage(p => p + 1); };
@@ -411,19 +524,108 @@ const AssessmentForm: React.FC = () => {
             return;
         }
 
-        // For now just log answers and show success dialog
-        console.log('submit', {
-            vehicle: selectedVehicle,
-            location: selectedLocation,
-            vehicleImages: vehicleImages.map(f => f.name),
-            answers
+        // Prepare assessment details
+        const details = items.map((item) => {
+            const answer = answers[item.qset_id];
+            const comment = answers[`comment-${item.qset_id}`] || '';
+            const proofFile = answers[`file-${item.qset_id}`];
+            
+            let rate = '0';
+            let ncr = 0;
+            
+            if (item.qset_type === 'NCR') {
+                rate = answer === 'Comply' ? '5' : '0';
+                ncr = answer === 'Not-comply' ? 1 : 0;
+            } else if (item.qset_type === 'Rating') {
+                rate = String(answer || 1);
+                ncr = (answer && answer < 2) ? 1 : 0;
+            } else {
+                rate = String(answer || 0);
+                ncr = answer === 'Missing' ? 1 : 0;
+            }
+            
+            return {
+                adt_item: parseInt(String(item.qset_id)),
+                adt_rate: rate,
+                adt_rate2: 0,
+                adt_rem: comment,
+                adt_ncr: ncr,
+                adt_image: proofFile instanceof File ? proofFile.name : ''
+            };
         });
-        setShowSuccessDialog(true);
+
+        // Calculate overall assessment rate and NCR count
+        const totalCriteria = details.length;
+        const totalNCR = details.reduce((sum, detail) => sum + detail.adt_ncr, 0);
+        const totalRate = details.reduce((sum, detail) => sum + parseFloat(detail.adt_rate), 0);
+        const overallRate = totalCriteria > 0 ? ((totalRate / (totalCriteria * 5)) * 100).toFixed(2) : '0.00';
+
+        // Prepare FormData payload
+        const formData = new FormData();
+        
+        // Header information
+        formData.append('asset_id', selectedVehicle);
+        formData.append('location_id', selectedLocation);
+        formData.append('a_date', new Date().toISOString());
+        formData.append('a_remark', ''); // General remark if needed
+        formData.append('a_rate', overallRate);
+        formData.append('a_ncr', String(totalNCR));
+        
+        // Vehicle images
+        vehicleImages.forEach((file) => {
+            formData.append('vehicle_images[]', file);
+        });
+        
+        formData.append('details', JSON.stringify(details));
+
+        try {
+            // Submit the form data
+            const endpoint = isEditing ? `/api/compliance/assessment/${assessmentData?.assess_id}` : '/api/compliance/assessments';
+            const method = isEditing ? 'PUT' : 'POST';
+            
+            const response = await authenticatedApi.request({
+                method,
+                url: endpoint,
+                data: formData,
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            console.log('Assessment submitted successfully:', response);
+            setShowSuccessDialog(true);
+            
+        } catch (error) {
+            console.error('Error submitting assessment:', error);
+            toast.error('Failed to submit assessment. Please try again.');
+        }
     };
+
+    if (loadingAssessment) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p>Loading assessment data...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
-            <h2 className="text-xl font-semibold">Assessment Form</h2>
+            <div>
+                <h2 className="text-xl font-semibold">
+                    {isEditing ? `Edit Assessment #${assessmentData?.assess_id || assessmentId}` : 'Assessment Form'}
+                </h2>
+                {isEditing && assessmentData && (
+                    <div className="text-sm text-gray-600 mt-2">
+                        <p>Asset: {assessmentData.asset?.register_number}</p>
+                        <p>Date: {new Date(assessmentData.a_date).toLocaleString()}</p>
+                        <p>Current Rate: {assessmentData.a_rate}%</p>
+                    </div>
+                )}
+            </div>
 
             {/* Header Section - Vehicle, Location, Images */}
             <div className="p-6 border rounded-lg bg-gray-50 space-y-4">
@@ -527,6 +729,14 @@ const AssessmentForm: React.FC = () => {
                     const answeredItems = summary.ncr.comply + summary.ncr.notComply + summary.rating.answered + summary.selection.equipped + summary.selection.missing;
                     const progressPercentage = totalItems > 0 ? Math.round((answeredItems / totalItems) * 100) : 0;
 
+                    // Calculate totals for each criteria type
+                    const ncrTotal = summary.ncr.comply + summary.ncr.notComply + summary.ncr.unanswered;
+                    const ncrAnswered = summary.ncr.comply + summary.ncr.notComply;
+                    const ratingTotal = summary.rating.answered + summary.rating.unanswered;
+                    const ratingAnswered = summary.rating.answered;
+                    const selectionTotal = summary.selection.equipped + summary.selection.missing + summary.selection.unanswered;
+                    const selectionAnswered = summary.selection.equipped + summary.selection.missing;
+
                     return (
                         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                             <div className="flex items-center justify-between mb-3">
@@ -543,74 +753,62 @@ const AssessmentForm: React.FC = () => {
                                 ></div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                                {/* NCR Summary */}
-                                {(summary.ncr.comply + summary.ncr.notComply + summary.ncr.unanswered) > 0 && (
-                                    <div className="bg-white p-2 rounded border">
-                                        <div className="font-medium text-gray-700 mb-1">Compliance</div>
-                                        <div className="space-y-1 text-xs">
-                                            <div className="flex justify-between">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                {/* Compliance Summary */}
+                                {ncrTotal > 0 && (
+                                    <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                                        <div className="font-semibold text-gray-900 mb-3">Compliance</div>
+                                        <div className="space-y-0">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-gray-700">Total:</span>
+                                                <span className="font-semibold">{ncrAnswered}/{ncrTotal}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-green-600">Comply:</span>
-                                                <span className="font-medium">{summary.ncr.comply}</span>
+                                                <span className="font-semibold">{summary.ncr.comply}</span>
                                             </div>
-                                            <div className="flex justify-between">
+                                            <div className="flex justify-between items-center text-sm">
                                                 <span className="text-red-600">Not-comply:</span>
-                                                <span className="font-medium">{summary.ncr.notComply}</span>
+                                                <span className="font-semibold">{summary.ncr.notComply}</span>
                                             </div>
-                                            {summary.ncr.unanswered > 0 && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">Unanswered:</span>
-                                                    <span className="font-medium">{summary.ncr.unanswered}</span>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Rating Summary */}
-                                {(summary.rating.answered + summary.rating.unanswered) > 0 && (
-                                    <div className="bg-white p-2 rounded border">
-                                        <div className="font-medium text-gray-700 mb-1">Ratings</div>
-                                        <div className="space-y-1 text-xs">
-                                            <div className="flex justify-between">
-                                                <span className="text-blue-600">Answered:</span>
-                                                <span className="font-medium">{summary.rating.answered}</span>
+                                {/* Ratings Summary */}
+                                {ratingTotal > 0 && (
+                                    <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                                        <div className="font-semibold text-gray-900 mb-3">Ratings</div>
+                                        <div className="space-y-0">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-gray-700">Total:</span>
+                                                <span className="font-semibold">{ratingAnswered}/{ratingTotal}</span>
                                             </div>
-                                            {summary.rating.answered > 0 && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-yellow-600">Avg Rating:</span>
-                                                    <span className="font-medium">{summary.rating.averageRating.toFixed(1)} ⭐</span>
-                                                </div>
-                                            )}
-                                            {summary.rating.unanswered > 0 && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">Unanswered:</span>
-                                                    <span className="font-medium">{summary.rating.unanswered}</span>
-                                                </div>
-                                            )}
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-blue-600">Avg Rating:</span>
+                                                <span className="font-semibold">{summary.rating.answered > 0 ? summary.rating.averageRating.toFixed(1) : '0.0'}</span>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Selection Summary */}
-                                {(summary.selection.equipped + summary.selection.missing + summary.selection.unanswered) > 0 && (
-                                    <div className="bg-white p-2 rounded border">
-                                        <div className="font-medium text-gray-700 mb-1">Equipment</div>
-                                        <div className="space-y-1 text-xs">
-                                            <div className="flex justify-between">
+                                {/* Selections Summary */}
+                                {selectionTotal > 0 && (
+                                    <div className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                                        <div className="font-semibold text-gray-900 mb-3">Selections</div>
+                                        <div className="space-y-0">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-gray-700">Total:</span>
+                                                <span className="font-semibold">{selectionAnswered}/{selectionTotal}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
                                                 <span className="text-green-600">Equipped:</span>
-                                                <span className="font-medium">{summary.selection.equipped}</span>
+                                                <span className="font-semibold">{summary.selection.equipped}</span>
                                             </div>
-                                            <div className="flex justify-between">
+                                            <div className="flex justify-between items-center">
                                                 <span className="text-red-600">Missing:</span>
-                                                <span className="font-medium">{summary.selection.missing}</span>
+                                                <span className="font-semibold">{summary.selection.missing}</span>
                                             </div>
-                                            {summary.selection.unanswered > 0 && (
-                                                <div className="flex justify-between">
-                                                    <span className="text-gray-500">Unanswered:</span>
-                                                    <span className="font-medium">{summary.selection.unanswered}</span>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -633,7 +831,7 @@ const AssessmentForm: React.FC = () => {
                         disabled={!isAssessmentComplete()}
                         className={`px-6 ${isAssessmentComplete() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
                     >
-                        {isAssessmentComplete() ? 'Submit Assessment' : 'Complete All Criteria'}
+                        {isAssessmentComplete() ? (isEditing ? 'Update Assessment' : 'Submit Assessment') : 'Complete All Criteria'}
                     </Button>
                 </div>
             </div>
@@ -777,7 +975,7 @@ const AssessmentForm: React.FC = () => {
                     </div>
                 </div>
             )}
-            
+
             {/* Cancel Confirmation Dialog */}
             <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
                 <AlertDialogContent>
@@ -789,7 +987,7 @@ const AssessmentForm: React.FC = () => {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Continue Working</AlertDialogCancel>
-                        <AlertDialogAction 
+                        <AlertDialogAction
                             onClick={confirmCancel}
                             className="bg-red-600 hover:bg-red-700"
                         >
@@ -798,27 +996,28 @@ const AssessmentForm: React.FC = () => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-            
+
             {/* Success Dialog */}
             <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Assessment Submitted</AlertDialogTitle>
+                        <AlertDialogTitle>
+                            {isEditing ? 'Assessment Updated' : 'Assessment Submitted'}
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Your assessment has been submitted successfully! The tab will close automatically.
+                            Your assessment has been {isEditing ? 'updated' : 'submitted'} successfully!
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction 
+                        <AlertDialogAction
                             onClick={() => {
                                 setShowSuccessDialog(false);
-                                toast.success('Assessment submitted successfully!');
-                                // Close tab after a short delay
-                                setTimeout(() => window.close(), 1000);
+                                toast.success(`Assessment ${isEditing ? 'updated' : 'submitted'} successfully!`);
+                                router.push('/compliance/assessment');
                             }}
                             className="bg-green-600 hover:bg-green-700"
                         >
-                            Close
+                            Back to List
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

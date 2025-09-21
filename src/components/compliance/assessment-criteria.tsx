@@ -48,7 +48,7 @@ const AssessmentCriteriaGrid: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const resp: any = await authenticatedApi.get('/api/compliance/assessment-criteria');
+            const resp: any = await authenticatedApi.get('/api/compliance/assessments/criteria');
             const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
             setData(arr);
         } catch (e) {
@@ -81,12 +81,12 @@ const AssessmentCriteriaGrid: React.FC = () => {
             if (adding) {
                 // Create
                 const payload = { ...editRow, created_by: username };
-                await authenticatedApi.post('/api/compliance/assessment-criteria', payload);
+                await authenticatedApi.post('/api/compliance/assessments/criteria', payload);
                 toast.success('Assessment criteria created');
             } else {
                 // Update
                 const payload = { ...editRow, updated_by: username };
-                await authenticatedApi.put(`/api/compliance/assessment-criteria/${editRow.qset_id}`, payload);
+                await authenticatedApi.put(`/api/compliance/assessments/criteria/${editRow.qset_id}`, payload);
                 toast.success('Assessment criteria updated');
             }
             handleCancel();
@@ -121,7 +121,7 @@ const AssessmentCriteriaGrid: React.FC = () => {
         // Calculate new order for this item
         const newOrder = data[swapIdx].qset_order;
         try {
-            await authenticatedApi.put(`/api/compliance/assessment-criteria/${qset_id}/reorder`, {
+            await authenticatedApi.put(`/api/compliance/assessments/criteria/${qset_id}/reorder`, {
                 direction,
                 qset_order: newOrder,
                 updated_by: username
@@ -135,7 +135,7 @@ const AssessmentCriteriaGrid: React.FC = () => {
 
     const handleStatusToggle = async (row: AssessmentCriteria) => {
         try {
-            await authenticatedApi.put(`/api/compliance/assessment-criteria/${row.qset_id}`, {
+            await authenticatedApi.put(`/api/compliance/assessments/criteria/${row.qset_id}`, {
                 qset_stat: row.qset_stat === 'Active' ? 'Inactive' : 'Active',
                 updated_by: username
             });

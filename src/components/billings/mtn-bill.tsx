@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import clsx from 'clsx';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { downloadMaintenanceReport } from './pdfreport-mtn';
 
 // Interface for the maintenance bill data based on the provided structure
@@ -43,6 +44,7 @@ interface MaintenanceBill {
 	inv_total: string;
 	inv_stat: string | null;
 	inv_remarks?: string | null;
+	upload_url?: string | null;
 	running_no: number;
 	// Additional fields for grid convenience
 	rowNumber?: number;
@@ -84,6 +86,14 @@ const MaintenanceBill: React.FC = () => {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
+	// Invoice validation state
+	const [isInvoiceValid, setIsInvoiceValid] = useState(false);
+	const [isValidatingInvoice, setIsValidatingInvoice] = useState(false);
+	const [validationMessage, setValidationMessage] = useState('');
+
+	// Chart data state
+	const [chartData, setChartData] = useState<Array<{ month: string, invoiced: number, draft: number }>>([]);
+
 	// Load more parts when search term changes (to ensure we have enough data for filtering)
 	useEffect(() => {
 		if (partSearch && partSearch.trim().length >= 2) {
@@ -105,6 +115,88 @@ const MaintenanceBill: React.FC = () => {
 	// showLatest controls whether we fetch only the current year's records
 	const [showLatest, setShowLatest] = useState(true);
 	const router = useRouter();
+
+	// Invoice number validation
+	const validateInvoiceNumber = async (invNo: string) => {
+		if (!invNo || invNo.trim() === '') {
+			setIsInvoiceValid(false);
+			setValidationMessage('');
+			return;
+		}
+
+		setIsValidatingInvoice(true);
+		try {
+			const res = await authenticatedApi.get(`/api/bills/mtn/check-invno?inv_no=${encodeURIComponent(invNo.trim())}`);
+			const result = res.data as { available: boolean; message?: string };
+
+			if (result.available) {
+				setIsInvoiceValid(true);
+				setValidationMessage(result.message || 'Invoice number is available');
+				toast.success(result.message || 'Invoice number is available');
+			} else {
+				setIsInvoiceValid(false);
+				setValidationMessage(result.message || 'Invoice number already exists');
+				toast.error(result.message || 'Invoice number already exists');
+			}
+		} catch (error) {
+			console.error('Error validating invoice number:', error);
+			setIsInvoiceValid(false);
+			setValidationMessage('Error validating invoice number');
+			toast.error('Error validating invoice number');
+		} finally {
+			setIsValidatingInvoice(false);
+		}
+	};
+
+	// Fetch chart data for monthly bill status
+	const fetchChartData = async () => {
+		try {
+			const currentYear = new Date().getFullYear();
+			// Fetch all bills for the current year to calculate stats based on inv_stat
+			const res = await authenticatedApi.get(`/api/bills/mtn?year=${currentYear}`);
+			const response = res.data as { data?: MaintenanceBill[] };
+			const bills = response.data || [];
+
+			// Create chart data for all months from January to current month
+			const currentMonth = new Date().getMonth() + 1;
+			const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+			const chartData = [];
+			for (let month = 1; month <= currentMonth; month++) {
+				// Filter bills for this month and calculate counts based on inv_stat
+				const monthBills = bills.filter(bill => {
+					if (!bill.inv_date) return false;
+					const billMonth = new Date(bill.inv_date).getMonth() + 1;
+					return billMonth === month;
+				});
+
+				const invoiced = monthBills.filter(bill => bill.inv_stat === '1').length;
+				const draft = monthBills.filter(bill => bill.inv_stat !== '1').length;
+
+				chartData.push({
+					month: monthNames[month - 1],
+					invoiced: invoiced,
+					draft: draft
+				});
+			}
+
+			setChartData(chartData);
+		} catch (error) {
+			console.error('Error fetching chart data:', error);
+			// Set empty chart data for current months if API fails
+			const currentMonth = new Date().getMonth() + 1;
+			const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+			const fallbackData = [];
+			for (let month = 1; month <= currentMonth; month++) {
+				fallbackData.push({
+					month: monthNames[month - 1],
+					invoiced: 0,
+					draft: 0
+				});
+			}
+			setChartData(fallbackData);
+		}
+	};
 
 	// Format currency
 	const formatCurrency = (amount: string | number) => {
@@ -155,8 +247,32 @@ const MaintenanceBill: React.FC = () => {
 		}
 	};
 
+	// Debounced invoice validation
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			// Only validate invoice number for draft entries (not yet invoiced)
+			if (selectedRow?.inv_stat !== '1' && formData.inv_no && formData.inv_no.trim() !== '') {
+				validateInvoiceNumber(formData.inv_no);
+			} else {
+				// For already invoiced entries or empty invoice numbers, skip validation
+				if (selectedRow?.inv_stat === '1') {
+					// Already invoiced, no validation needed
+					setIsInvoiceValid(true);
+					setValidationMessage('Already invoiced');
+				} else {
+					// Empty invoice number for draft
+					setIsInvoiceValid(false);
+					setValidationMessage('');
+				}
+			}
+		}, 800); // 800ms debounce
+
+		return () => clearTimeout(timer);
+	}, [formData.inv_no, selectedRow?.inv_stat]);
+
 	useEffect(() => {
 		fetchMaintenanceBills();
+		fetchChartData();
 	}, []);
 
 	useEffect(() => {
@@ -327,6 +443,9 @@ const MaintenanceBill: React.FC = () => {
 		setSelectedRow(null);
 		setSelectedParts([]);
 		setAttachmentFile(null); // Reset attachment
+		// Reset validation state
+		setIsInvoiceValid(false);
+		setValidationMessage('');
 		// Reset form data
 		setFormData({
 			inv_no: '',
@@ -447,7 +566,7 @@ const MaintenanceBill: React.FC = () => {
 				// Use FormData when there's a file attachment
 				console.log('Creating FormData payload...');
 				payload = new FormData();
-				
+
 				// Append all form fields
 				payload.append('inv_no', data.inv_no);
 				payload.append('inv_date', data.inv_date);
@@ -456,20 +575,20 @@ const MaintenanceBill: React.FC = () => {
 				payload.append('inv_remarks', data.inv_remarks || '');
 				payload.append('inv_total', data.inv_total);
 				payload.append('inv_stat', data.inv_stat);
-				
+
 				// Append the file
 				payload.append('attachment', attachmentFile);
-				
+
 				// Append parts as JSON string
 				payload.append('parts', JSON.stringify(data.parts));
-				
+
 				// IMPORTANT: Delete Content-Type to let browser set multipart/form-data
 				config = {
 					headers: {
 						'Content-Type': undefined
 					}
 				};
-				
+
 				console.log('FormData created with file:', attachmentFile.name);
 			} else {
 				// Use JSON payload when no file attachment
@@ -516,9 +635,9 @@ const MaintenanceBill: React.FC = () => {
 								<span
 									className="p-1 hover:bg-stone-300 rounded cursor-pointer"
 									aria-label="Print Report"
-									onClick={() => {
+									onClick={async () => {
 										try {
-											downloadMaintenanceReport(row.inv_id);
+											await downloadMaintenanceReport(row.inv_id);
 											toast.success('PDF report downloaded successfully');
 										} catch (error) {
 											console.error('Error downloading PDF:', error);
@@ -606,7 +725,44 @@ const MaintenanceBill: React.FC = () => {
 	];
 
 	return (
-		<div className="space-y-6">
+		<div>
+			{/* Monthly Bills Status Chart */}
+			{chartData.length > 0 && (
+				<div className="mb-6 p-4 bg-white rounded-lg border border-gray-200">
+					<h3 className="text-lg font-semibold mb-4 text-gray-800">Monthly Bills Status ({new Date().getFullYear()})</h3>
+					<div className="h-64">
+						<ResponsiveContainer width="100%" height="100%">
+							<BarChart
+								data={chartData}
+								margin={{
+									top: 20,
+									right: 30,
+									left: 20,
+									bottom: 5,
+								}}
+							>
+								<CartesianGrid strokeDasharray="3 3" />
+								<XAxis dataKey="month" />
+								<YAxis />
+								<RechartsTooltip />
+								<Legend />
+								<Bar
+									dataKey="invoiced"
+									stackId="a"
+									fill="#10b981"
+									name="Invoiced"
+								/>
+								<Bar
+									dataKey="draft"
+									stackId="a"
+									fill="#f59e0b"
+									name="Draft"
+								/>
+							</BarChart>
+						</ResponsiveContainer>
+					</div>
+				</div>
+			)}
 			<div className="flex justify-between items-center">
 				<h2 className="text-xl font-semibold">Vehicle Maintenance Bills</h2>
 				<div className="flex items-center gap-4">
@@ -618,6 +774,8 @@ const MaintenanceBill: React.FC = () => {
 			</div>
 
 			<div className="min-h-[400px]">
+
+
 				{loading ? (
 					<div className="p-6 text-center text-sm text-gray-500">
 						<Loader2 className="inline-block h-5 w-5 animate-spin mr-2" />
@@ -651,12 +809,49 @@ const MaintenanceBill: React.FC = () => {
 															<div className="mt-1 text-sm font-medium">{selectedRow?.workshop?.name || 'N/A'}</div>
 														</div>
 														<div>
-															<label className="block text-sm font-medium text-gray-700">Invoice No</label>
-															<Input
-																type="text"
-																value={formData.inv_no}
-																onChange={(e) => setFormData(prev => ({ ...prev, inv_no: e.target.value }))}
-															/>
+															<label className="block text-sm font-medium text-gray-700">
+																Invoice No
+																{selectedRow?.inv_stat === '1' && (
+																	<span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+																		Already Invoiced
+																	</span>
+																)}
+															</label>
+															<div className="relative">
+																<Input
+																	type="text"
+																	value={formData.inv_no}
+																	onChange={(e) => setFormData(prev => ({ ...prev, inv_no: e.target.value }))}
+																	className={`pr-10 ${
+																		selectedRow?.inv_stat === '1' ? 'bg-gray-50' : 
+																		formData.inv_no.trim() === '' ? '' :
+																		isInvoiceValid ? 'border-green-500 focus:border-green-500' :
+																		'border-red-500 focus:border-red-500'
+																	}`}
+																	placeholder="Enter invoice number"
+																	disabled={selectedRow?.inv_stat === '1'}
+																/>
+																{selectedRow?.inv_stat !== '1' && isValidatingInvoice && (
+																	<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+																		<Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+																	</div>
+																)}
+																{selectedRow?.inv_stat !== '1' && !isValidatingInvoice && formData.inv_no.trim() !== '' && (
+																	<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+																		{isInvoiceValid ? (
+																			<span className="text-green-500">✓</span>
+																		) : (
+																			<span className="text-red-500">✗</span>
+																		)}
+																	</div>
+																)}
+															</div>
+															{selectedRow?.inv_stat !== '1' && validationMessage && (
+																<p className={`mt-1 text-xs ${isInvoiceValid ? 'text-green-600' : 'text-red-600'
+																	}`}>
+																	{validationMessage}
+																</p>
+															)}
 														</div>
 														<div>
 															<label className="block text-sm font-medium text-gray-700">Invoice Date</label>
@@ -692,50 +887,92 @@ const MaintenanceBill: React.FC = () => {
 															/>
 														</div>
 
-											{/* Attachment field */}
-											<div>
-												<label className="block text-sm font-medium text-gray-700">Upload Invoice</label>
-												{!attachmentFile ? (
-													<div className="mt-2">
-														<input
-															type="file"
-															accept=".pdf,application/pdf"
-															onChange={(e) => {
-																const file = e.target.files?.[0];
-																if (file) {
-																	if (file.type === 'application/pdf') {
-																		setAttachmentFile(file);
-																		toast.success(`PDF attached: ${file.name}`);
-																	} else {
-																		toast.error('Please upload a PDF file only');
-																	}
-																	// Clear the input value to allow re-selecting the same file
-																	e.target.value = '';
-																}
-															}}
-															className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-														/>
-														<p className="mt-1 text-xs text-gray-500">PDF files only, max 10MB</p>
-													</div>
-												) : (
-													<div className="mt-2 flex items-center justify-between text-sm text-green-600 bg-green-50 p-4 rounded border-2 border-dashed border-green-300">
-														<span>📄 {attachmentFile.name}</span>
-														<button
-															type="button"
-															onClick={() => {
-																setAttachmentFile(null);
-																toast.info('PDF attachment removed');
-															}}
-															className="text-red-500 hover:text-red-700 ml-2 font-bold"
-														>
-															✕
-														</button>
-													</div>
-												)}
-											</div>
-														
-											<div className="pt-4">
-															<Button type="submit" disabled={isSubmitting}>
+														{/* Attachment field */}
+														<div>
+															<label className="block text-sm font-medium text-gray-700">Upload Invoice</label>
+
+															{/* Show existing attachment if available */}
+															{selectedRow?.upload_url && (
+																<div className="mt-2 mb-2">
+																	<a
+																		href={selectedRow.upload_url}
+																		target="_blank"
+																		rel="noopener noreferrer"
+																		className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+																	>
+																		📄 View Current Attachment
+																	</a>
+																</div>
+															)}
+
+															{!attachmentFile ? (
+																<div
+																	className="mt-2 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors cursor-pointer"
+																	onClick={() => document.getElementById('file-upload')?.click()}
+																	onDragOver={(e) => {
+																		e.preventDefault();
+																		e.currentTarget.classList.add('border-blue-400', 'bg-blue-50');
+																	}}
+																	onDragLeave={(e) => {
+																		e.preventDefault();
+																		e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+																	}}
+																	onDrop={(e) => {
+																		e.preventDefault();
+																		e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+																		const files = e.dataTransfer.files;
+																		if (files.length > 0) {
+																			const file = files[0];
+																			if (file.type === 'application/pdf') {
+																				setAttachmentFile(file);
+																				toast.success(`PDF attached: ${file.name}`);
+																			} else {
+																				toast.error('Please upload a PDF file only');
+																			}
+																		}
+																	}}
+																>
+																	<div className="text-3xl mb-2">📄</div>
+																	<p className="text-sm text-gray-600 mb-1">Click to upload or drag and drop</p>
+																	<p className="text-xs text-gray-500">PDF files only, max 10MB</p>
+																	<input
+																		id="file-upload"
+																		type="file"
+																		accept=".pdf,application/pdf"
+																		className="hidden"
+																		onChange={(e) => {
+																			const file = e.target.files?.[0];
+																			if (file) {
+																				if (file.type === 'application/pdf') {
+																					setAttachmentFile(file);
+																					toast.success(`PDF attached: ${file.name}`);
+																				} else {
+																					toast.error('Please upload a PDF file only');
+																				}
+																				e.target.value = '';
+																			}
+																		}}
+																	/>
+																</div>
+															) : (
+																<div className="mt-2 flex items-center justify-between text-sm text-green-600 bg-green-50 p-4 rounded border-2 border-dashed border-green-300">
+																	<span>📄 {attachmentFile.name}</span>
+																	<button
+																		type="button"
+																		onClick={() => {
+																			setAttachmentFile(null);
+																			toast.info('PDF attachment removed');
+																		}}
+																		className="text-red-500 hover:text-red-700 ml-2 font-bold"
+																	>
+																		✕
+																	</button>
+																</div>
+															)}
+														</div>
+
+														<div className="pt-4">
+															<Button type="submit" disabled={isSubmitting || (selectedRow?.inv_stat !== '1' && (formData.inv_no.trim() === '' || !isInvoiceValid || isValidatingInvoice))}>
 																{isSubmitting ? (
 																	<>
 																		<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -823,7 +1060,7 @@ const MaintenanceBill: React.FC = () => {
 																						</td>
 																						<td className="px-2 py-2 text-end">
 																							<span className="text-xs font-medium text-gray-900">
-																								RM {amount.toFixed(2)}
+																								{formatCurrency(amount)}
 																							</span>
 																						</td>
 																						<td className="px-2 py-2 text-center">
@@ -848,11 +1085,11 @@ const MaintenanceBill: React.FC = () => {
 																				</td>
 																				<td className="px-2 py-2 text-end">
 																					<span className="text-xs font-bold text-green-600">
-																						RM {selectedParts.reduce((total, p) => {
+																						{formatCurrency(selectedParts.reduce((total, p) => {
 																							const unitPrice = parseFloat(p.part_uprice || '0');
 																							const qty = p.qty || 1;
 																							return total + (unitPrice * qty);
-																						}, 0).toFixed(2)}
+																						}, 0))}
 																					</span>
 																				</td>
 																				<td></td>

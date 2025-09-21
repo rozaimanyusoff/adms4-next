@@ -532,6 +532,16 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         return Boolean(hasValidOdo || hasValidLitre || hasValidAmount);
     };
 
+    // Check if required row fields are filled to enable numerical inputs
+    const isRowRequiredFieldsFilled = (detail: FuelDetail): boolean => {
+        return Boolean(
+            detail.asset?.register_number &&
+            detail.asset?.costcenter?.name &&
+            detail.asset?.fuel_type &&
+            detail.asset?.purpose
+        );
+    };
+
     // Filtered details based on search (asset reg no or fleet card) and empty row filter
     const filteredDetails = editableDetails.filter(detail => {
         const q = search.toLowerCase();
@@ -860,20 +870,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         )}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             <div className="flex flex-col">
-                                <TooltipProvider>
-                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !selectedVendor}>
-                                        <TooltipTrigger asChild>
-                                            <label className={`font-medium mb-1 cursor-help ${errors.vendor ? 'text-red-500' : 'text-gray-800'}`}>
-                                                Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
-                                            </label>
-                                        </TooltipTrigger>
-                                        {(!currentStmtId || currentStmtId === 0) && (
-                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={-7}>
-                                                <p>Select the fuel vendor (e.g., Petronas, Shell, BHP). This field is required.</p>
-                                            </TooltipContent>
-                                        )}
-                                    </Tooltip>
-                                </TooltipProvider>
+                                <label className={`font-medium mb-1 ${errors.vendor ? 'text-red-500' : 'text-gray-800'}`}>
+                                    Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                </label>
                                 <div className="flex items-center gap-3">
                                     <Select value={selectedVendor} onValueChange={handleVendorChange}>
                                         <SelectTrigger className={`w-full bg-gray-100 border-0 rounded-none ${(!currentStmtId || currentStmtId === 0) && !selectedVendor ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
@@ -901,20 +900,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 </div>
                             </div>
                             <div className="flex flex-col">
-                                <TooltipProvider>
-                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim()}>
-                                        <TooltipTrigger asChild>
-                                            <label htmlFor="stmt_no" className={`font-medium mb-1 cursor-help ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>
-                                                Statement No {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
-                                            </label>
-                                        </TooltipTrigger>
-                                        {(!currentStmtId || currentStmtId === 0) && (
-                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={-5}>
-                                                <p>Enter the unique statement number from your fuel bill. This field is required and will be converted to uppercase.</p>
-                                            </TooltipContent>
-                                        )}
-                                    </Tooltip>
-                                </TooltipProvider>
+                                <label htmlFor="stmt_no" className={`font-medium mb-1 ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>
+                                    Statement No {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                </label>
                                 <Input
                                     id="stmt_no"
                                     type="text"
@@ -925,20 +913,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                             </div>
 
                             <div className="flex flex-col">
-                                <TooltipProvider>
-                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim()}>
-                                        <TooltipTrigger asChild>
-                                            <label htmlFor="stmt_date" className={`font-medium mb-1 cursor-help ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>
-                                                Statement Date {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
-                                            </label>
-                                        </TooltipTrigger>
-                                        {(!currentStmtId || currentStmtId === 0) && (
-                                            <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={2}>
-                                                <p>Select the date of the fuel statement. This is the date shown on your fuel bill and is required.</p>
-                                            </TooltipContent>
-                                        )}
-                                    </Tooltip>
-                                </TooltipProvider>
+                                <label htmlFor="stmt_date" className={`font-medium mb-1 ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>
+                                    Statement Date {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+                                </label>
                                 <Input
                                     id="stmt_date"
                                     type="date"
@@ -1065,33 +1042,19 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
 
                         <div className="flex justify-center gap-2 mt-6">
                             {(!currentStmtId || currentStmtId === 0) ? (
-                                <TooltipProvider>
-                                    <Tooltip open={(!currentStmtId || currentStmtId === 0) && !isRequiredFieldsFilled()}>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                type="button"
-                                                variant={isRequiredFieldsFilled() ? "default" : "outline"}
-                                                onClick={handleSave}
-                                                disabled={saving}
-                                                className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
-                                            >
-                                                {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
-                                                {saving
-                                                    ? "Submitting..."
-                                                    : (isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application")
-                                                }
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top" className="bg-black/80 border border-black text-white max-w-xs z-50" sideOffset={4}>
-                                            <p>
-                                                {isRequiredFieldsFilled()
-                                                    ? "All required fields are completed. Submit your fuel billing application."
-                                                    : "Please fill in all required fields (Issuer, Statement No, and Statement Date) before submitting. You can also submit incomplete and complete later."
-                                                }
-                                            </p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+                                <Button
+                                    type="button"
+                                    variant={isRequiredFieldsFilled() ? "default" : "outline"}
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className={isRequiredFieldsFilled() ? "bg-green-600 hover:bg-green-700" : "ring-2 ring-yellow-300 ring-opacity-50 animate-pulse"}
+                                >
+                                    {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
+                                    {saving
+                                        ? "Submitting..."
+                                        : (isRequiredFieldsFilled() ? "✓ Submit Application" : "Submit Incomplete Application")
+                                    }
+                                </Button>
                             ) : (
                                 <Button type="button" variant="default" onClick={handleSave} disabled={saving}>
                                     {saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
@@ -1238,22 +1201,54 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                 <td className="border px-2">{detail.asset?.fuel_type || ''}</td>
                                                 <td className="border px-2">{detail.asset?.purpose || ''}</td>
                                                 <td className="border text-right">
-                                                    <Input
-                                                        type="text"
-                                                        value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
-                                                        onKeyDown={handleNumericInput}
-                                                        onChange={e => handleDetailChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                    />
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Input
+                                                                    type="text"
+                                                                    value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
+                                                                    onKeyDown={handleNumericInput}
+                                                                    onChange={e => handleDetailChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
+                                                                    readOnly={!isRowRequiredFieldsFilled(detail)}
+                                                                    className={`w-full text-right border-0 rounded-none ${
+                                                                        !isRowRequiredFieldsFilled(detail) 
+                                                                            ? 'bg-gray-200 cursor-not-allowed' 
+                                                                            : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
+                                                                    }`}
+                                                                />
+                                                            </TooltipTrigger>
+                                                            {!isRowRequiredFieldsFilled(detail) && (
+                                                                <TooltipContent>
+                                                                    <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
+                                                                </TooltipContent>
+                                                            )}
+                                                        </Tooltip>
+                                                    </TooltipProvider>
                                                 </td>
                                                 <td className="border text-right">
-                                                    <Input
-                                                        type="text"
-                                                        value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
-                                                        onKeyDown={handleNumericInput}
-                                                        onChange={e => handleDetailChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                    />
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Input
+                                                                    type="text"
+                                                                    value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
+                                                                    onKeyDown={handleNumericInput}
+                                                                    onChange={e => handleDetailChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
+                                                                    readOnly={!isRowRequiredFieldsFilled(detail)}
+                                                                    className={`w-full text-right border-0 rounded-none ${
+                                                                        !isRowRequiredFieldsFilled(detail) 
+                                                                            ? 'bg-gray-200 cursor-not-allowed' 
+                                                                            : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
+                                                                    }`}
+                                                                />
+                                                            </TooltipTrigger>
+                                                            {!isRowRequiredFieldsFilled(detail) && (
+                                                                <TooltipContent>
+                                                                    <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
+                                                                </TooltipContent>
+                                                            )}
+                                                        </Tooltip>
+                                                    </TooltipProvider>
                                                 </td>
                                                 <td className="border text-right">
                                                     <Input
@@ -1265,13 +1260,29 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     />
                                                 </td>
                                                 <td className="border text-right">
-                                                    <Input
-                                                        type="text"
-                                                        value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
-                                                        onKeyDown={handleNumericInput}
-                                                        onChange={e => handleDetailChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                    />
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Input
+                                                                    type="text"
+                                                                    value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
+                                                                    onKeyDown={handleNumericInput}
+                                                                    onChange={e => handleDetailChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
+                                                                    readOnly={!isRowRequiredFieldsFilled(detail)}
+                                                                    className={`w-full text-right border-0 rounded-none ${
+                                                                        !isRowRequiredFieldsFilled(detail) 
+                                                                            ? 'bg-gray-200 cursor-not-allowed' 
+                                                                            : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
+                                                                    }`}
+                                                                />
+                                                            </TooltipTrigger>
+                                                            {!isRowRequiredFieldsFilled(detail) && (
+                                                                <TooltipContent>
+                                                                    <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
+                                                                </TooltipContent>
+                                                            )}
+                                                        </Tooltip>
+                                                    </TooltipProvider>
                                                 </td>
                                                 <td className="border text-right">
                                                     <Input
@@ -1287,13 +1298,29 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     />
                                                 </td>
                                                 <td className="border text-right">
-                                                    <Input
-                                                        type="text"
-                                                        value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
-                                                        onKeyDown={handleNumericInput}
-                                                        onChange={e => handleDetailChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100 focus:bg-blue-200 focus:ring-0"
-                                                    />
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Input
+                                                                    type="text"
+                                                                    value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
+                                                                    onKeyDown={handleNumericInput}
+                                                                    onChange={e => handleDetailChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
+                                                                    readOnly={!isRowRequiredFieldsFilled(detail)}
+                                                                    className={`w-full text-right border-0 rounded-none ${
+                                                                        !isRowRequiredFieldsFilled(detail) 
+                                                                            ? 'bg-gray-200 cursor-not-allowed' 
+                                                                            : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
+                                                                    }`}
+                                                                />
+                                                            </TooltipTrigger>
+                                                            {!isRowRequiredFieldsFilled(detail) && (
+                                                                <TooltipContent>
+                                                                    <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
+                                                                </TooltipContent>
+                                                            )}
+                                                        </Tooltip>
+                                                    </TooltipProvider>
                                                 </td>
                                             </tr>
                                         );
