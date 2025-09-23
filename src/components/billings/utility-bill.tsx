@@ -164,9 +164,7 @@ const UtilityBill = () => {
   const [isFormLoading, setIsFormLoading] = useState(false); // Loading state for account switching
   
   // Invoice validation state
-  const [isInvoiceValid, setIsInvoiceValid] = useState(false);
-  const [isValidatingInvoice, setIsValidatingInvoice] = useState(false);
-  const [validationMessage, setValidationMessage] = useState('');
+  // Invoice validation state removed per request
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const dropZoneRef = React.useRef<HTMLDivElement | null>(null);
   const router = useRouter();
@@ -389,42 +387,7 @@ const UtilityBill = () => {
     }
   };
 
-  // Invoice number validation
-  const validateInvoiceNumber = async (ubillNo: string, billId?: number) => {
-    if (!ubillNo || ubillNo.trim() === '') {
-      setIsInvoiceValid(false);
-      setValidationMessage('');
-      return;
-    }
-
-    setIsValidatingInvoice(true);
-    try {
-      const params = new URLSearchParams({ inv_no: ubillNo.trim() });
-      if (billId) {
-        params.append('bill_id', billId.toString());
-      }
-      
-      const res = await authenticatedApi.get(`/api/bills/mtn/check-invno?${params.toString()}`);
-      const result = res.data as { available: boolean; message?: string };
-      
-      if (result.available) {
-        setIsInvoiceValid(true);
-        setValidationMessage(result.message || 'Bill number is available');
-        toast.success(result.message || 'Bill number is available');
-      } else {
-        setIsInvoiceValid(false);
-        setValidationMessage(result.message || 'Bill number already exists');
-        toast.error(result.message || 'Bill number already exists');
-      }
-    } catch (error) {
-      console.error('Error validating bill number:', error);
-      setIsInvoiceValid(false);
-      setValidationMessage('Error validating bill number');
-      toast.error('Error validating bill number');
-    } finally {
-      setIsValidatingInvoice(false);
-    }
-  };
+  // Invoice number validation removed
 
   // Handle numeric input for financial fields
   const handleNumericInputChange = (field: keyof UtilityBillForm, value: string) => {
@@ -603,9 +566,7 @@ const UtilityBill = () => {
     setSidebarSize('sm');
     setPaymentRefFile(null);
     setPaymentRefPreview(null);
-    // Reset validation state
-    setIsInvoiceValid(false);
-    setValidationMessage('');
+  // Invoice validation removed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -653,9 +614,7 @@ const UtilityBill = () => {
     // Clear file upload state when editing existing bill
     setPaymentRefFile(null);
     setPaymentRefPreview(null);
-    // For editing existing bills, set validation as valid since the bill number already exists
-    setIsInvoiceValid(true);
-    setValidationMessage('Existing bill number');
+  // Invoice validation removed
   };
 
   const handleSave = async () => {
@@ -807,16 +766,8 @@ const UtilityBill = () => {
 
   // Debounced invoice validation
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (formData.ubill_no && formData.ubill_no.trim() !== '') {
-        validateInvoiceNumber(formData.ubill_no, formData.bill_id);
-      } else {
-        setIsInvoiceValid(false);
-        setValidationMessage('');
-      }
-    }, 800); // 800ms debounce
-
-    return () => clearTimeout(timer);
+    // Invoice validation removed; no-op effect retained for future hooks if needed
+    return () => {};
   }, [formData.ubill_no, formData.bill_id]);
 
   const columns: ColumnDef<UtilityBill & { rowNumber: number }>[] = [
@@ -1140,36 +1091,12 @@ const UtilityBill = () => {
                         type="text"
                         value={formData.ubill_no}
                         onChange={(e) => handleInputChange('ubill_no', e.target.value)}
-                        className={`pr-10 ${
-                          formData.ubill_no.trim() === '' ? '' : 
-                          isInvoiceValid ? 'border-green-500 focus:border-green-500' : 
-                          'border-red-500 focus:border-red-500'
-                        }`}
+                        className={`pr-3`}
                         placeholder="Enter bill number"
                         required
                       />
-                      {isValidatingInvoice && (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                          <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                        </div>
-                      )}
-                      {!isValidatingInvoice && formData.ubill_no.trim() !== '' && (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                          {isInvoiceValid ? (
-                            <span className="text-green-500">✓</span>
-                          ) : (
-                            <span className="text-red-500">✗</span>
-                          )}
-                        </div>
-                      )}
                     </div>
-                    {validationMessage && (
-                      <p className={`mt-1 text-xs ${
-                        isInvoiceValid ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {validationMessage}
-                      </p>
-                    )}
+                    {/* Invoice validation removed */}
                   </div>
 
                   {/* Cost Center */}
@@ -1435,7 +1362,7 @@ const UtilityBill = () => {
                 <div className="flex gap-2 pt-4 border-t">
                   <Button
                     onClick={handleSave}
-                    disabled={saving || formData.ubill_no.trim() === '' || !isInvoiceValid || isValidatingInvoice}
+                    disabled={saving || formData.ubill_no.trim() === ''}
                     className="flex-1"
                   >
                     {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
