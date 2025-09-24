@@ -2,7 +2,7 @@
 module.exports = {
   apps: [
     {
-      name: 'adms4-next-app',
+      name: 'adms4-next',
       script: 'npm',
       args: 'start',
       instances: 1,
@@ -28,7 +28,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         SOCKET_PORT: 4000,
-        ALLOWED_ORIGINS: 'http://localhost:3033,https://your-domain.com',
+        ALLOWED_ORIGINS: 'http://localhost:3033,https://adms4.ranhilltechnologies.com.my',
         NOTIFICATION_INTERVAL: 30000,
         SERVER_ID: 'socket-server-prod'
       },
