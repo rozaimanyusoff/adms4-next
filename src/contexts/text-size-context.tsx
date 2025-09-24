@@ -31,8 +31,8 @@ interface TextSizeProviderProps {
 }
 
 export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) => {
-  // Default smaller base to avoid oversized UI on first load
-  const [textSize, setTextSize] = useState<TextSize>('sm')
+  // Default to 'md' for comfortable reading experience
+  const [textSize, setTextSize] = useState<TextSize>('md')
   const [mounted, setMounted] = useState(false)
 
   // Load saved text size from localStorage
@@ -40,7 +40,17 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
     try {
       const saved = localStorage.getItem('text-size')
       if (saved && ['xs', 'sm', 'md', 'lg', 'xl'].includes(saved)) {
-        setTextSize(saved as TextSize)
+        // Migration: If user had 'sm' as default, upgrade to 'md' for better readability
+        if (saved === 'sm') {
+          setTextSize('md')
+          localStorage.setItem('text-size', 'md')
+        } else {
+          setTextSize(saved as TextSize)
+        }
+      } else {
+        // If no saved preference or invalid value, set default to 'md' and save it
+        setTextSize('md')
+        localStorage.setItem('text-size', 'md')
       }
     } catch (error) {
       console.error('Error loading text size from localStorage:', error)
@@ -139,9 +149,9 @@ export const TextSizeProvider: React.FC<TextSizeProviderProps> = ({ children }) 
   if (!mounted) {
     return (
       <TextSizeContext.Provider value={{
-        textSize: 'sm',
+        textSize: 'md',
         setTextSize: () => {},
-        textSizeClasses: textSizeClasses.sm
+        textSizeClasses: textSizeClasses.md
       }}>
         {children}
       </TextSizeContext.Provider>

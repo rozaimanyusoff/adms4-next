@@ -166,12 +166,27 @@ const Header = () => {
     };
 
     const handleLogout = async () => {
+        console.log('🚪 Starting logout process...');
         try {
             await authenticatedApi.post('/api/auth/logout');
         } catch (e) {
             // Optionally handle error
         }
+        
+        // Preserve remembered credentials if they exist
+        const rememberedCredentials = localStorage.getItem('rememberedCredentials');
+        console.log('💾 Preserving remembered credentials:', rememberedCredentials ? 'Yes' : 'No');
+        
+        // Clear all localStorage
         localStorage.clear();
+        console.log('🧹 localStorage cleared');
+        
+        // Restore remembered credentials if they existed
+        if (rememberedCredentials) {
+            localStorage.setItem('rememberedCredentials', rememberedCredentials);
+            console.log('✅ Remembered credentials restored');
+        }
+        
         window.location.href = '/auth/login';
     };
 

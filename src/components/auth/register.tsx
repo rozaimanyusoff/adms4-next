@@ -9,6 +9,7 @@ import { Button } from '@components/ui/button';
 import AuthTemplate from './AuthTemplate';
 import Footer from '@components/layouts/footer';
 import { api } from '@/config/api';
+import SliderPuzzleCaptcha from './SliderPuzzleCaptcha';
 import { Eye, EyeOff } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@components/ui/tooltip';
@@ -27,7 +28,9 @@ const ComponentRegister = () => {
         email: '',
         contact: '',
         userType: '',
+        ramco_id: '',
     });
+    const [sliderVerified, setSliderVerified] = useState(false);
 
     const handleChange = (e: { target: { id: string; value: string } }) => {
         const { id, value } = e.target;
@@ -46,7 +49,7 @@ const ComponentRegister = () => {
 
     const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const { name, email, contact, userType } = formData;
+        const { name, email, contact, userType, ramco_id } = formData;
         let errors: typeof fieldErrors = {};
         if (!name.trim()) errors.name = 'Please enter your full name.';
         if (!/^[a-zA-Z\s'.-]+$/.test(name)) errors.name = 'Use a valid full name.';
@@ -55,11 +58,15 @@ const ComponentRegister = () => {
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'Enter a valid email address.';
         if (!contact.trim()) errors.contact = 'Please enter your contact number.';
         if (!/^[0-9]{8,12}$/.test(contact)) errors.contact = 'Contact must be 8-12 digits.';
+        // Optionally, require Ramco ID for Employee
+        // if (userType === '1' && !ramco_id.trim()) errors.ramco_id = 'Please provide your Ramco ID.';
         setFieldErrors(errors);
         if (Object.keys(errors).length > 0) return;
 
         try {
-            const response = await api.post<RegisterResponse>('/api/auth/register', { name, email, contact, userType });
+            const payload: any = { name, email, contact, userType };
+            if (userType === '1') payload.ramco_id = ramco_id;
+            const response = await api.post<RegisterResponse>('/api/auth/register', payload);
             if (response.data.message) {
                 setResponseMessage('Registration successful! Please log in.');
                 setTimeout(() => router.push('/auth/login'), 2000); // Redirect to login page after 2 seconds
@@ -89,7 +96,14 @@ const ComponentRegister = () => {
                 <div>
                     <Tooltip open={nameTooltipOpen} onOpenChange={setNameTooltipOpen} delayDuration={0}>
                         <TooltipTrigger asChild>
-                            <Input id="name" name="name" type="text" required value={formData.name} onChange={handleChange} placeholder="Enter your full name"
+                            <Input
+                                id="name"
+                                name="name"
+                                type="text"
+                                required
+                                value={formData.name}
+                                onChange={handleChange}
+                                placeholder="Enter your full name"
                                 onFocus={() => setNameTooltipOpen(true)}
                                 onBlur={() => setNameTooltipOpen(false)}
                             />
@@ -103,9 +117,17 @@ const ComponentRegister = () => {
                 <div>
                     <Tooltip open={emailTooltipOpen} onOpenChange={setEmailTooltipOpen} delayDuration={0}>
                         <TooltipTrigger asChild>
-                            <Input id="email" name="email" type="email" required value={formData.email} onChange={handleChange} placeholder="Enter your email"
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                required
+                                value={formData.email}
+                                onChange={handleChange}
+                                placeholder="Enter your email"
                                 onFocus={() => setEmailTooltipOpen(true)}
                                 onBlur={() => setEmailTooltipOpen(false)}
+                                disabled={!formData.name.trim()}
                             />
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs text-wrap">
@@ -130,6 +152,7 @@ const ComponentRegister = () => {
                                 onKeyPress={handleKeyPress}
                                 onFocus={() => setContactTooltipOpen(true)}
                                 onBlur={() => setContactTooltipOpen(false)}
+                                disabled={!formData.email.trim()}
                             />
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs text-wrap">
@@ -142,7 +165,11 @@ const ComponentRegister = () => {
                     <Tooltip open={userTypeTooltipOpen} onOpenChange={setUserTypeTooltipOpen} delayDuration={0}>
                         <TooltipTrigger asChild>
                             <div tabIndex={0} onFocus={() => setUserTypeTooltipOpen(true)} onBlur={() => setUserTypeTooltipOpen(false)}>
-                                <Select value={formData.userType} onValueChange={value => setFormData(prev => ({ ...prev, userType: value }))}>
+                                <Select
+                                    value={formData.userType}
+                                    onValueChange={value => setFormData(prev => ({ ...prev, userType: value }))}
+                                    disabled={!formData.contact.trim()}
+                                >
                                     <SelectTrigger id="userType" name="userType" className="w-full">
                                         <SelectValue placeholder="Select user type" />
                                     </SelectTrigger>
@@ -158,7 +185,43 @@ const ComponentRegister = () => {
                         </TooltipContent>
                     </Tooltip>
                 </div>
-                <Button type="submit" size="default" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Register</Button>
+                {formData.userType === '1' && (
+                    <div>
+                        <Input
+                            id="ramco_id"
+                            name="ramco_id"
+                            type="text"
+                            value={formData.ramco_id}
+                            onChange={handleChange}
+                            placeholder="Ramco ID"
+                            disabled={!formData.userType}
+                        />
+                        <div className="text-xs text-red-600 font-semibold mt-1">*Provide your Ramco ID</div>
+                    </div>
+                )}
+                {/* Show slider only when all required fields are filled */}
+                {(
+                    formData.name.trim() &&
+                    formData.email.trim() &&
+                    formData.contact.trim() &&
+                    formData.userType &&
+                    (formData.userType !== '1' || formData.ramco_id.trim())
+                ) ? (
+                    <>
+                        <div className="flex justify-center items-center w-full my-4">
+                            <SliderPuzzleCaptcha onSuccess={() => setSliderVerified(true)} />
+                        </div>
+                        <div className="text-center text-xs text-gray-500 mb-2">Slide the handle to join the word <b>RTSB</b> and verify you are not a robot.</div>
+                    </>
+                ) : null}
+                <Button
+                    type="submit"
+                    size="default"
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition"
+                    disabled={!(sliderVerified)}
+                >
+                    Register
+                </Button>
                 <div className="text-center mt-4">
                     <Link href="/auth/login" className="text-blue-600 hover:underline">Already have an account? Login</Link>
                 </div>

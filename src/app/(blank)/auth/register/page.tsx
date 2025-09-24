@@ -1,4 +1,4 @@
-import ComponentRegister from '@components/auth/c-register';
+import ComponentRegister from '@components/auth/register';
 import { Metadata } from 'next';
 import React from 'react';
 
