@@ -39,7 +39,17 @@ const AssessmentRecord: React.FC = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        fetchData();
+        // Listen for reload event from assessment form submission
+        const reloadHandler = () => fetchData();
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'assessment-record-reload') reloadHandler();
+        });
+        return () => {
+            window.removeEventListener('storage', reloadHandler);
+        };
+    }, []);
 
     const columns: ColumnDef<Assessment>[] = [
         { key: 'assess_id' as any, header: 'ID', sortable: true },

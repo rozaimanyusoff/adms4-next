@@ -100,6 +100,95 @@ interface Location {
 const PAGE_SIZE = 10;
 
 const AssessmentForm: React.FC = () => {
+    // Track asset IDs already assessed this year
+    const [assessedAssetIds, setAssessedAssetIds] = useState<number[]>([]);
+    // Fetch assessment records for the current year, then fetch vehicles after assessedAssetIds is set
+    useEffect(() => {
+        const fetchAssessedAssetsAndVehicles = async () => {
+            try {
+                const year = new Date().getFullYear();
+                const resp: any = await authenticatedApi.get(`/api/compliance/assessments`, { params: { year } });
+                const arr = Array.isArray(resp.data?.data) ? resp.data.data : [];
+                const ids = arr
+                    .filter((rec: any) => rec.asset && typeof rec.asset.id === 'number')
+                    .map((rec: any) => rec.asset.id);
+                setAssessedAssetIds(ids);
+                // Now fetch vehicles
+                try {
+                    const vresp: any = await authenticatedApi.get('/api/assets', {
+                        params: {
+                            type: 2,
+                            classification: 'asset',
+                            status: 'active'
+                        }
+                    });
+                    const varr = Array.isArray(vresp.data) ? vresp.data : (vresp.data?.data || []);
+                    const normalized = varr.map((v: any) => ({
+                        id: v.id,
+                        register_number: v.register_number || `Asset ${v.id}`,
+                        owner: v.owner ? {
+                            full_name: v.owner.full_name
+                        } : undefined,
+                        location: v.location ? {
+                            id: v.location.id,
+                            name: v.location.name
+                        } : undefined
+                    }));
+                    setVehicles(normalized);
+                } catch (e) {
+                    toast.error('Failed to fetch vehicles');
+                }
+            } catch (e) {
+                // Fail silently, fallback to showing all vehicles
+            }
+        };
+        fetchAssessedAssetsAndVehicles();
+    }, []);
+    // Handles drag-and-drop for vehicle images (limit 4)
+    const handleVehicleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setVehicleImageDragOver && setVehicleImageDragOver(false);
+        const dt = e.dataTransfer;
+        if (!dt?.files?.length) return;
+        const files = dt.files;
+        const maxImages = 4;
+        const currentCount = vehicleImages.length;
+        const newFiles: File[] = [];
+        const newUrls: string[] = [];
+        Array.from(files).forEach(file => {
+            const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+            if (isImage) {
+                if (currentCount + newFiles.length < maxImages) {
+                    newFiles.push(file);
+                    newUrls.push(URL.createObjectURL(file));
+                }
+            }
+        });
+        if (currentCount + newFiles.length > maxImages) {
+            toast.error('Maximum 4 vehicle images allowed.');
+        }
+        if (newFiles.length > 0) {
+            setVehicleImages(prev => [...prev, ...newFiles].slice(0, maxImages));
+            setVehicleImageUrls(prev => [...prev, ...newUrls].slice(0, maxImages));
+        }
+        if (newFiles.length !== files.length) {
+            toast.error('Some files were skipped. Only PNG/JPG images are allowed.');
+        }
+    };
+
+    // Handles file selection for individual criteria proof upload
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+        const file = e.target.files?.[0] || null;
+        if (!file) { setProofFile(id, null); return; }
+        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+        if (!isImage) {
+            setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
+            toast.error('Only PNG or JPG images are allowed.');
+            return;
+        }
+        setProofFile(id, file);
+    };
     const [items, setItems] = useState<CriteriaItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(0);
@@ -131,9 +220,8 @@ const AssessmentForm: React.FC = () => {
     const assessmentId = searchParams?.get('id') || null;
 
     useEffect(() => {
-        fetchCriteria();
-        fetchVehicles();
-        fetchLocations();
+    fetchCriteria();
+    fetchLocations();
 
         // Check if editing mode
         if (assessmentId) {
@@ -170,36 +258,7 @@ const AssessmentForm: React.FC = () => {
         }
     };
 
-    const fetchVehicles = async () => {
-        try {
-            const resp: any = await authenticatedApi.get('/api/assets', {
-                params: {
-                    type: 2,
-                    classification: 'asset',
-                    status: 'active'
-                }
-            });
-            const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
-            const normalized = arr.map((v: any) => ({
-                id: v.id,
-                register_number: v.register_number || `Asset ${v.id}`,
-                owner: v.owner ? {
-                    full_name: v.owner.full_name
-                } : undefined,
-                location: v.location ? {
-                    id: v.location.id,
-                    name: v.location.name
-                } : undefined
-            }));
-            setVehicles(normalized);
-            // Auto-populate location from selected vehicle if needed
-            if (normalized.length > 0 && !selectedLocation && normalized[0].location) {
-                // Don't auto-select, just keep it available
-            }
-        } catch (e) {
-            toast.error('Failed to fetch vehicles');
-        }
-    };
+    // fetchVehicles is now handled in fetchAssessedAssetsAndVehicles
 
     const fetchLocations = async () => {
         try {
@@ -308,53 +367,32 @@ const AssessmentForm: React.FC = () => {
         setDragOverId(null);
         const dt = e.dataTransfer;
         if (!dt?.files?.length) return;
-        const file = dt.files[0];
-        if (!file) return;
-        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
-        if (!isImage) {
-            setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
-            toast.error('Only PNG or JPG images are allowed.');
-            return;
-        }
-        setProofFile(id, file);
-    };
-
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
-        const file = e.target.files?.[0] || null;
-        if (!file) { setProofFile(id, null); return; }
-        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
-        if (!isImage) {
-            setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
-            toast.error('Only PNG or JPG images are allowed.');
-            return;
-        }
-        setProofFile(id, file);
-    };
-
-    const handleVehicleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setVehicleImageDragOver(false);
-        const dt = e.dataTransfer;
-        if (!dt?.files?.length) return;
-
+        const files = dt.files;
         const newFiles: File[] = [];
         const newUrls: string[] = [];
+        const currentCount = vehicleImages.length;
+        const maxImages = 4;
 
-        Array.from(dt.files).forEach(file => {
+        Array.from(files).forEach(file => {
             const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
             if (isImage) {
-                newFiles.push(file);
-                newUrls.push(URL.createObjectURL(file));
+                if (currentCount + newFiles.length < maxImages) {
+                    newFiles.push(file);
+                    newUrls.push(URL.createObjectURL(file));
+                }
             }
         });
 
-        if (newFiles.length > 0) {
-            setVehicleImages(prev => [...prev, ...newFiles]);
-            setVehicleImageUrls(prev => [...prev, ...newUrls]);
+        if (currentCount + newFiles.length > maxImages) {
+            toast.error('Maximum 4 vehicle images allowed.');
         }
 
-        if (newFiles.length !== dt.files.length) {
+        if (newFiles.length > 0) {
+            setVehicleImages(prev => [...prev, ...newFiles].slice(0, maxImages));
+            setVehicleImageUrls(prev => [...prev, ...newUrls].slice(0, maxImages));
+        }
+
+        if (newFiles.length !== files.length) {
             toast.error('Some files were skipped. Only PNG/JPG images are allowed.');
         }
     };
@@ -365,18 +403,26 @@ const AssessmentForm: React.FC = () => {
 
         const newFiles: File[] = [];
         const newUrls: string[] = [];
+        const currentCount = vehicleImages.length;
+        const maxImages = 4;
 
         Array.from(files).forEach(file => {
             const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
             if (isImage) {
-                newFiles.push(file);
-                newUrls.push(URL.createObjectURL(file));
+                if (currentCount + newFiles.length < maxImages) {
+                    newFiles.push(file);
+                    newUrls.push(URL.createObjectURL(file));
+                }
             }
         });
 
+        if (currentCount + newFiles.length > maxImages) {
+            toast.error('Maximum 4 vehicle images allowed.');
+        }
+
         if (newFiles.length > 0) {
-            setVehicleImages(prev => [...prev, ...newFiles]);
-            setVehicleImageUrls(prev => [...prev, ...newUrls]);
+            setVehicleImages(prev => [...prev, ...newFiles].slice(0, maxImages));
+            setVehicleImageUrls(prev => [...prev, ...newUrls].slice(0, maxImages));
         }
 
         if (newFiles.length !== files.length) {
@@ -443,28 +489,25 @@ const AssessmentForm: React.FC = () => {
             } else if (item.qset_type === 'Rating') {
                 if (typeof answer !== 'number' || answer < 1 || answer > 5) return false;
             } else if (item.qset_type === 'Selection') {
-                // Fix: Selection starts with null, not a default value
                 if (answer !== 'Equipped' && answer !== 'Missing') return false;
             }
 
-            // Check if evidence is required and provided
-            const needsEvidence = (
+            // Only comment is required if needed
+            const needsComment = (
                 item.qset_type === 'NCR' && answer === 'Not-comply'
             ) || (
-                    item.qset_type === 'Rating' && typeof answer === 'number' && answer < 2
-                ) || (
-                    item.qset_type === 'Selection' && answer === 'Missing'
-                );
+                item.qset_type === 'Rating' && answer === 1
+            ) || (
+                item.qset_type === 'Selection' && answer === 'Missing'
+            );
 
-            if (needsEvidence) {
+            if (needsComment) {
                 const comment = answers[`comment-${item.qset_id}`];
-                const file = answers[`file-${item.qset_id}`];
-                if (!comment || String(comment).trim().length === 0 || !file) {
+                if (!comment || String(comment).trim().length === 0) {
                     return false;
                 }
             }
         }
-
         return true;
     };
 
@@ -492,22 +535,19 @@ const AssessmentForm: React.FC = () => {
         let firstInvalidIndex = -1;
         items.forEach((it, idx) => {
             const ans = answers[it.qset_id];
-            const needs = (
-                it.qset_type === 'NCR' && ans === 'Not-comply'
-            ) || (
-                    it.qset_type === 'Rating' && typeof ans === 'number' && ans < 2
-                ) || (
-                    it.qset_type === 'Selection' && ans === 'Missing'
-                );
-            if (needs) {
+            // Determine if comment is required based on strict value match
+            let commentRequired = false;
+            if (it.qset_type === 'NCR') {
+                commentRequired = (ans === 'Not-comply');
+            } else if (it.qset_type === 'Rating') {
+                commentRequired = (ans === 1);
+            } else if (it.qset_type === 'Selection') {
+                commentRequired = (ans === 'Missing');
+            }
+            if (commentRequired) {
                 const cid = `comment-${it.qset_id}`;
-                const fid = `file-${it.qset_id}`;
                 if (!answers[cid] || String(answers[cid]).trim().length === 0) {
                     newErrors[cid] = 'Comment is required.';
-                    if (firstInvalidIndex === -1) firstInvalidIndex = idx;
-                }
-                if (!answers[fid]) {
-                    newErrors[fid] = 'Proof image is required.';
                     if (firstInvalidIndex === -1) firstInvalidIndex = idx;
                 }
             }
@@ -529,60 +569,87 @@ const AssessmentForm: React.FC = () => {
             const answer = answers[item.qset_id];
             const comment = answers[`comment-${item.qset_id}`] || '';
             const proofFile = answers[`file-${item.qset_id}`];
-            
-            let rate = '0';
+
+            let rate: string = '0';
             let ncr = 0;
-            
+            let rate2 = 0;
+
             if (item.qset_type === 'NCR') {
-                rate = answer === 'Comply' ? '5' : '0';
-                ncr = answer === 'Not-comply' ? 1 : 0;
+                // Comply = 1, Not-comply = 2 (adt_ncr)
+                ncr = answer === 'Comply' || answer === 1 ? 1 : (answer === 'Not-comply' || answer === 2 ? 2 : 0);
+                rate = answer === 'Comply' ? '5' : '0'; // for scoring, unchanged
             } else if (item.qset_type === 'Rating') {
-                rate = String(answer || 1);
-                ncr = (answer && answer < 2) ? 1 : 0;
-            } else {
-                rate = String(answer || 0);
-                ncr = answer === 'Missing' ? 1 : 0;
+                // adt_rate: 1..5 (unchanged)
+                const numeric = typeof answer === 'number' ? answer : parseInt(answer || '1', 10);
+                rate = String(isNaN(numeric) ? 1 : numeric);
+            } else if (item.qset_type === 'Selection') {
+                // adt_rate2: 1=Equipped, 2=Missing
+                if (answer === 'Equipped' || answer === 1) {
+                    rate2 = 1;
+                } else if (answer === 'Missing' || answer === 2) {
+                    rate2 = 2;
+                }
+                // For scoring, treat Equipped as 1, Missing as 0
+                rate = rate2 === 1 ? '1' : '0';
             }
-            
+
+            // Final safety: ensure numeric
+            if (isNaN(parseFloat(rate))) {
+                rate = '0';
+            }
+
+            // Only allow 1 proof file per criteria
+            let imageName = '';
+            if (proofFile instanceof File) imageName = proofFile.name;
+
             return {
                 adt_item: parseInt(String(item.qset_id)),
                 adt_rate: rate,
-                adt_rate2: 0,
+                adt_rate2: rate2,
                 adt_rem: comment,
                 adt_ncr: ncr,
-                adt_image: proofFile instanceof File ? proofFile.name : ''
+                adt_image: imageName
             };
         });
 
         // Calculate overall assessment rate and NCR count
         const totalCriteria = details.length;
         const totalNCR = details.reduce((sum, detail) => sum + detail.adt_ncr, 0);
-        const totalRate = details.reduce((sum, detail) => sum + parseFloat(detail.adt_rate), 0);
-        const overallRate = totalCriteria > 0 ? ((totalRate / (totalCriteria * 5)) * 100).toFixed(2) : '0.00';
+        const totalRate = details.reduce((sum, detail) => {
+            const v = parseFloat(detail.adt_rate);
+            return sum + (isNaN(v) ? 0 : v);
+        }, 0);
+        const rawOverall = totalCriteria > 0 ? (totalRate / (totalCriteria * 5)) * 100 : 0;
+        const overallRate = isNaN(rawOverall) ? '0.00' : rawOverall.toFixed(2);
 
         // Prepare FormData payload
         const formData = new FormData();
         
         // Header information
-        formData.append('asset_id', selectedVehicle);
-        formData.append('location_id', selectedLocation);
-        formData.append('a_date', new Date().toISOString());
+    formData.append('asset_id', selectedVehicle);
+    formData.append('location_id', selectedLocation);
+    // MySQL DATETIME expects 'YYYY-MM-DD HH:MM:SS' (no timezone 'Z'). Using toISOString() caused
+    // error: Incorrect datetime value: '2025-09-25T03:11:34.408Z'. Format manually in local time.
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const mysqlDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    formData.append('a_date', mysqlDateTime);
         formData.append('a_remark', ''); // General remark if needed
-        formData.append('a_rate', overallRate);
+    // Ensure a_rate is a valid decimal string
+    formData.append('a_rate', overallRate);
         formData.append('a_ncr', String(totalNCR));
         
-        // Vehicle images
+        // Vehicle images: upload as vehicle_images[]
         vehicleImages.forEach((file) => {
             formData.append('vehicle_images[]', file);
         });
-        
         formData.append('details', JSON.stringify(details));
 
         try {
             // Submit the form data
             const endpoint = isEditing ? `/api/compliance/assessment/${assessmentData?.assess_id}` : '/api/compliance/assessments';
             const method = isEditing ? 'PUT' : 'POST';
-            
+
             const response = await authenticatedApi.request({
                 method,
                 url: endpoint,
@@ -592,9 +659,19 @@ const AssessmentForm: React.FC = () => {
                 },
             });
 
-            console.log('Assessment submitted successfully:', response);
-            setShowSuccessDialog(true);
-            
+            // Notify other tabs/pages to reload assessment-record
+            localStorage.setItem('assessment-record-reload', Date.now().toString());
+
+            // Attempt to close the tab (works if opened via window.open)
+            window.close();
+
+            // Fallback: if not closed, redirect to assessment-record page
+            setTimeout(() => {
+                if (!window.closed) {
+                    window.location.href = '/compliance/assessment';
+                }
+            }, 500);
+
         } catch (error) {
             console.error('Error submitting assessment:', error);
             toast.error('Failed to submit assessment. Please try again.');
@@ -635,10 +712,16 @@ const AssessmentForm: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
                         <SingleSelect
-                            options={vehicles.map(v => ({
-                                value: String(v.id),
-                                label: v.register_number + (v.owner?.full_name ? ` - ${v.owner.full_name}` : '')
-                            }))}
+                            options={vehicles
+                                .filter(v => {
+                                    // If editing, always include the current vehicle
+                                    if (isEditing && assessmentData && v.id === assessmentData.asset?.id) return true;
+                                    return !assessedAssetIds.includes(v.id);
+                                })
+                                .map(v => ({
+                                    value: String(v.id),
+                                    label: v.register_number + (v.owner?.full_name ? ` - ${v.owner.full_name}` : '')
+                                }))}
                             value={selectedVehicle}
                             onValueChange={(value) => {
                                 setSelectedVehicle(value);
@@ -862,9 +945,18 @@ const AssessmentForm: React.FC = () => {
                         ) || (
                             it.qset_type === 'Selection' && currentAnswer === 'Missing'
                         );
+                    // Highlight unanswered
+                    let isUnanswered = false;
+                    if (it.qset_type === 'NCR') {
+                        isUnanswered = currentAnswer !== 'Comply' && currentAnswer !== 'Not-comply';
+                    } else if (it.qset_type === 'Rating') {
+                        isUnanswered = typeof currentAnswer !== 'number' || currentAnswer < 1 || currentAnswer > 5;
+                    } else if (it.qset_type === 'Selection') {
+                        isUnanswered = currentAnswer !== 'Equipped' && currentAnswer !== 'Missing';
+                    }
 
                     return (
-                        <div key={it.qset_id} className="p-4 border rounded bg-white shadow-sm">
+                        <div key={it.qset_id} className={`p-4 border rounded shadow-sm ${isUnanswered ? 'bg-yellow-100 border-yellow-400' : 'bg-white'}`}>
                             <div className="font-medium mb-2">{start + idx + 1}. {it.qset_desc}</div>
                             <div>
                                 {it.qset_type === 'NCR' && (
@@ -901,7 +993,9 @@ const AssessmentForm: React.FC = () => {
 
                                 {needsCommentOrFile && (
                                     <div className="mt-3 space-y-2">
-                                        <label className="block text-sm font-medium">Comment (required)</label>
+                                        <label className="block text-sm font-medium">
+                                            Comment {((it.qset_type === 'NCR' && currentAnswer === 'Not-comply') || (it.qset_type === 'Rating' && currentAnswer === 1) || (it.qset_type === 'Selection' && currentAnswer === 'Missing')) ? '(required)' : '(optional)'}
+                                        </label>
                                         <Textarea
                                             rows={3}
                                             value={answers[`comment-${it.qset_id}`] || ''}
@@ -917,7 +1011,7 @@ const AssessmentForm: React.FC = () => {
                                             <p className="text-xs text-red-600">{errors[`comment-${it.qset_id}`]}</p>
                                         )}
                                         <div>
-                                            <label className="block text-sm font-medium">Upload proof (png, jpg, jpeg) (required)</label>
+                                            <label className="block text-sm font-medium">Upload proof (png, jpg, jpeg) (optional)</label>
                                             <div
                                                 className={`mt-1 flex flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm text-gray-600 transition-colors ${dragOverId === it.qset_id ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
                                                 onDragOver={(e) => { e.preventDefault(); setDragOverId(it.qset_id); }}
@@ -929,7 +1023,7 @@ const AssessmentForm: React.FC = () => {
                                                     type="file"
                                                     accept="image/png,image/jpeg"
                                                     className="hidden"
-                                                    onChange={(e) => handleFileSelect(e, it.qset_id)}
+                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
                                                 />
                                                 <label htmlFor={`file-${it.qset_id}`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
                                                     Browse
