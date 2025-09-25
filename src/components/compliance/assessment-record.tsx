@@ -18,7 +18,7 @@ type Assessment = {
     a_remark?: string | null;
     a_dt?: string | null;
     asset?: any;
-    assessment_location?: any;
+    assessed_location?: any;
 };
 
 const AssessmentRecord: React.FC = () => {
@@ -58,7 +58,7 @@ const AssessmentRecord: React.FC = () => {
         { key: 'a_ncr' as any, header: 'NCR', sortable: true },
         { key: 'asset_reg' as any, header: 'Asset', filter: 'singleSelect', render: (row) => row.asset?.register_number || '-' },
         { key: 'asset_owner' as any, header: 'Owner', filter: 'singleSelect', render: (row) => row.asset?.owner?.full_name || '-' },
-        { key: 'assessment_location' as any, header: 'Location', filter: 'singleSelect', render: (row) => row.assessment_location?.code || '-' },
+        { key: 'assessed_location' as any, header: 'Location', filter: 'singleSelect', render: (row) => row.assessed_location?.code || '-' },
     ];
 
     const handleCreate = () => {

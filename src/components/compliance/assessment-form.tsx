@@ -613,8 +613,9 @@ const AssessmentForm: React.FC = () => {
         });
 
         // Calculate overall assessment rate and NCR count
-        const totalCriteria = details.length;
-        const totalNCR = details.reduce((sum, detail) => sum + detail.adt_ncr, 0);
+    const totalCriteria = details.length;
+    // Count only 'Not-comply' items. adt_ncr: 1=Comply, 2=Not-comply, 0/other=unset
+    const totalNCR = details.reduce((count, detail) => (detail.adt_ncr === 2 ? count + 1 : count), 0);
         const totalRate = details.reduce((sum, detail) => {
             const v = parseFloat(detail.adt_rate);
             return sum + (isNaN(v) ? 0 : v);
@@ -639,10 +640,18 @@ const AssessmentForm: React.FC = () => {
     formData.append('a_rate', overallRate);
         formData.append('a_ncr', String(totalNCR));
         
-        // Vehicle images: upload as vehicle_images[]
-        vehicleImages.forEach((file) => {
-            formData.append('vehicle_images[]', file);
+        // Vehicle images: map each file to individual a_upload* fields (legacy backend expectation)
+        // a_upload  -> first image
+        // a_upload2 -> second image
+        // a_upload3 -> third image
+        // a_upload4 -> fourth image
+        const uploadFieldNames = ['a_upload', 'a_upload2', 'a_upload3', 'a_upload4'];
+        vehicleImages.slice(0, 4).forEach((file, idx) => {
+            const field = uploadFieldNames[idx];
+            formData.append(field, file); // Append File directly so backend receives multipart file
         });
+        // (Optional) If backend expects empty strings for missing slots, uncomment below:
+        // uploadFieldNames.forEach((field, idx) => { if (!vehicleImages[idx]) formData.append(field, ''); });
         formData.append('details', JSON.stringify(details));
 
         try {
