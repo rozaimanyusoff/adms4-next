@@ -502,6 +502,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
     if (!formData.request_type) errors.request_type = 'Request type is required';
     if (!formData.costcenter) errors.costcenter = 'Cost center is required';
+    if (!formData.pic) errors.pic = 'Requester is required';
     if (!formData.items) errors.items = 'Item description is required';
     if (!formData.type_id) errors.type_id = 'Item type is required';
     if (!formData.supplier_id) errors.supplier_id = 'Supplier is required';
@@ -962,7 +963,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 type="date"
                 value={formData.pr_date}
                 onChange={(e) => handleInputChange('pr_date', e.target.value)}
-                readOnly={sidebarMode === 'edit'}
               />
               {validationErrors.pr_date && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
@@ -975,7 +975,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 value={formData.pr_no}
                 onChange={(e) => handleInputChange('pr_no', e.target.value)}
                 placeholder="Enter PR number"
-                readOnly={sidebarMode === 'edit'}
               />
               {validationErrors.pr_no && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
