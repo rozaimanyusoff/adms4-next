@@ -201,8 +201,12 @@ export function Combobox(props: ComboboxProps) {
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        <Command>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        className="min-w-[var(--radix-popover-trigger-width)] w-auto max-w-[80vw] p-0"
+      >
+        <Command className="w-full">
           <CommandInput
             placeholder={searchPlaceholder}
             value={search}

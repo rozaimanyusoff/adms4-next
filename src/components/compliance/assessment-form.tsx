@@ -27,6 +27,8 @@ interface CriteriaItem {
     qset_desc: string;
     qset_type: "NCR" | "Rating" | "Selection";
     qset_order: number;
+    dept?: number | null; // criteria ownership department id
+    ownership?: string | null; // raw ownership field if provided
     // selection options could be added later
 }
 
@@ -190,6 +192,7 @@ const AssessmentForm: React.FC = () => {
         setProofFile(id, file);
     };
     const [items, setItems] = useState<CriteriaItem[]>([]);
+    const [rawItems, setRawItems] = useState<CriteriaItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(0);
     const [answers, setAnswers] = useState<Record<string, any>>({});
@@ -220,20 +223,25 @@ const AssessmentForm: React.FC = () => {
     const assessmentId = searchParams?.get('id') || null;
 
     useEffect(() => {
-    fetchCriteria();
-    fetchLocations();
-
-        // Check if editing mode
-        if (assessmentId) {
-            setIsEditing(true);
-            fetchAssessmentData(assessmentId);
-        }
+        const bootstrap = async () => {
+            await fetchOwnershipAndCriteria();
+            fetchLocations();
+            // Check if editing mode
+            if (assessmentId) {
+                setIsEditing(true);
+                fetchAssessmentData(assessmentId);
+            }
+        };
+        bootstrap();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [assessmentId]);
 
-    const fetchCriteria = async () => {
+    const fetchCriteria = async (deptId?: number) => {
         setLoading(true);
         try {
-            const resp: any = await authenticatedApi.get('/api/compliance/assessments/criteria', { params: { status: 'active' } });
+            const params: any = { status: 'active' };
+            if (deptId && !Number.isNaN(deptId)) params.ownership = deptId;
+            const resp: any = await authenticatedApi.get('/api/compliance/assessments/criteria', { params });
             const arr = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
             // Normalize and sort by order
             const normalized = arr.map((r: any) => ({
@@ -242,21 +250,112 @@ const AssessmentForm: React.FC = () => {
                 qset_desc: r.qset_desc,
                 qset_type: r.qset_type,
                 qset_order: r.qset_order,
+                dept: ((): number | null => {
+                    const v = Number(r.ownership ?? r.dept ?? r.department_id ?? r.dept_id);
+                    return Number.isNaN(v) ? null : v;
+                })(),
+                ownership: (r.ownership != null ? String(r.ownership) : null),
             })).sort((a: any, b: any) => a.qset_order - b.qset_order);
+            setRawItems(normalized);
+            // If we're fetching from server with ownership applied, we can directly set items
             setItems(normalized);
-            // initialize with no defaults - all criteria start unanswered
-            const initial: Record<string, any> = {};
-            normalized.forEach((it: CriteriaItem) => {
-                const key = String(it.qset_id);
-                initial[key] = null; // No default values for any criteria type
-            });
-            setAnswers(initial);
         } catch (e) {
             toast.error('Failed to fetch criteria');
         } finally {
             setLoading(false);
         }
     };
+
+    // Ownership mapping: ramco_id -> department_id for criteria ownership
+    const [ownershipMap, setOwnershipMap] = useState<{ ramco_id: string; department_id: number; status?: string | null }[]>([]);
+    // Resolved ownership department_id for current user (used in payload header)
+    const [ownershipDeptId, setOwnershipDeptId] = useState<number | null>(null);
+
+    const fetchOwnershipMap = async (): Promise<{ ramco_id: string; department_id: number; status?: string | null }[]> => {
+        try {
+            const res: any = await authenticatedApi.get('/api/compliance/assessments/criteria/ownership');
+            const raw = res?.data;
+            const list: any[] = Array.isArray(raw) ? raw : (raw?.data?.data || raw?.data || []);
+            const mapped = list.map((r: any) => ({
+                ramco_id: String(r.ramco_id ?? r.username ?? ''),
+                department_id: Number(r.department_id ?? r.dept_id ?? 0),
+                status: r.status ?? null,
+            })).filter((r: any) => r.ramco_id && r.department_id);
+            setOwnershipMap(mapped);
+            return mapped;
+        } catch (e) {
+            // fail silently; no ownership restriction
+            setOwnershipMap([]);
+            return [];
+        }
+    };
+
+    // Fetch ownership then fetch criteria with relevant ownership filter
+    const fetchOwnershipAndCriteria = async () => {
+        try {
+            const mapped = await fetchOwnershipMap();
+            const user = (auth?.authData?.user?.username) || ((auth?.authData?.user as any)?.ramco_id) || '';
+            if (!user) {
+                // No user identity => no access to criteria
+                setRawItems([]);
+                setItems([]);
+                setOwnershipDeptId(null);
+                return;
+            }
+            const matches = mapped.filter(m => String(m.ramco_id) === String(user) && (m.status || 'Active') === 'Active');
+            if (!matches.length) {
+                // Not a member of criteria ownership -> do not expose criteria
+                setRawItems([]);
+                setItems([]);
+                setOwnershipDeptId(null);
+                return;
+            }
+            // Use the first matching department_id (extend to multi-dept if needed)
+            const deptId = Number(matches[0].department_id);
+            setOwnershipDeptId(Number.isNaN(deptId) ? null : deptId);
+            await fetchCriteria(deptId);
+        } catch (e) {
+            // On error, stay restrictive (no criteria)
+            setRawItems([]);
+            setItems([]);
+            setOwnershipDeptId(null);
+        }
+    };
+
+    // Derive current user's allowed departments (active entries)
+    const username = (auth?.authData?.user?.username) || ((auth?.authData?.user as any)?.ramco_id) || '';
+    const allowedDeptIds = React.useMemo(() => {
+        if (!username) return [] as number[];
+        const ids = ownershipMap
+            .filter(m => String(m.ramco_id) === String(username) && (m.status || 'Active') === 'Active')
+            .map(m => Number(m.department_id))
+            .filter(n => !Number.isNaN(n));
+        return Array.from(new Set(ids));
+    }, [ownershipMap, username]);
+
+    // When raw items or ownership changes, set visible items
+    useEffect(() => {
+        // When rawItems change and no ownership filtering is set via server, keep items in sync
+        if (!rawItems.length) return;
+        if (!items.length) setItems(rawItems);
+    }, [rawItems]);
+
+    // Initialize missing answer keys when items change (without wiping existing answers)
+    useEffect(() => {
+        if (!items.length) return;
+        setAnswers(prev => {
+            const next = { ...prev } as Record<string, any>;
+            let changed = false;
+            items.forEach((it) => {
+                const key = String(it.qset_id);
+                if (!(key in next)) {
+                    next[key] = null;
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+    }, [items]);
 
     // fetchVehicles is now handled in fetchAssessedAssetsAndVehicles
 
@@ -530,6 +629,12 @@ const AssessmentForm: React.FC = () => {
             return;
         }
 
+        // Ensure ownership department has been resolved (required by backend header payload)
+        if (!ownershipDeptId || Number.isNaN(Number(ownershipDeptId))) {
+            toast.error('Ownership is not set for your account. Please contact the administrator.');
+            return;
+        }
+
         // Validate required comment & file when triggered
         const newErrors: Record<string, string> = {};
         let firstInvalidIndex = -1;
@@ -629,6 +734,7 @@ const AssessmentForm: React.FC = () => {
         // Header information
     formData.append('asset_id', selectedVehicle);
     formData.append('location_id', selectedLocation);
+    formData.append('ownership', String(ownershipDeptId));
     // MySQL DATETIME expects 'YYYY-MM-DD HH:MM:SS' (no timezone 'Z'). Using toISOString() caused
     // error: Incorrect datetime value: '2025-09-25T03:11:34.408Z'. Format manually in local time.
     const now = new Date();

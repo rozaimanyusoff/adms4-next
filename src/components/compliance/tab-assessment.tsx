@@ -5,6 +5,7 @@ import { authenticatedApi } from '@/config/api';
 import AssessmentRecord from "./assessment-record";
 import AssessmentCriteriaGrid from "@/components/compliance/assessment-criteria";
 import DashAssessment from "@/components/compliance/dash-assessment";
+import AssessmentOwnership from "./assessment-ownership";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -82,11 +83,13 @@ const TabAssessment: React.FC = () => {
         { value: 'dash', label: 'Dashboard' },
         { value: 'record', label: 'Assessment Record' },
         { value: 'criteria', label: 'Assessment Criteria' },
+        { value: 'ownership', label: 'Ownership' }, // Future feature
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         dash: <DashAssessment />,
         record: <AssessmentRecord />,
+        ownership: <AssessmentOwnership />,
         criteria: <AssessmentCriteriaGrid />,
     };
 

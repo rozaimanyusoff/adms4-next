@@ -128,6 +128,7 @@ interface PurchaseFormData {
     grn_date: string;
     grn_no: string;
     upload_url?: string | null;
+    id?: number; // For existing deliveries from backend
   }>;
 }
 
@@ -265,7 +266,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         const tps = (typesRes as any).data?.data || (typesRes as any).data || [];
 
         setEmployees(emps);
-        setEmployeeOptions(emps.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name })));
+  const opts = emps.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name }));
+  console.log('Loaded employee options:', opts);
+  setEmployeeOptions(opts);
 
         setCostcenters(ccs);
         setCostcenterOptions(ccs.map((c: any) => ({ value: String(c.id), label: c.name })));
@@ -455,6 +458,173 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       arr[index] = e;
       return arr;
     });
+  };
+
+  // Detect duplicate deliveries based on key fields
+  const findDuplicateDeliveries = (): number[] => {
+    const duplicateIndices: number[] = [];
+    const deliveries = formData.deliveries || [];
+    
+    console.log('Checking for duplicates in deliveries:', deliveries);
+    
+    // Helper function to normalize strings for comparison
+    const normalize = (str: string | undefined | null): string => {
+      return (str || '').toString().trim().toUpperCase();
+    };
+    
+    for (let i = 0; i < deliveries.length; i++) {
+      const current = deliveries[i];
+      // Skip completely empty deliveries
+      if (!current.do_date && !current.do_no && !current.inv_date && !current.inv_no && !current.grn_date && !current.grn_no) {
+        console.log(`Delivery ${i} is completely empty, skipping`);
+        continue;
+      }
+      
+      for (let j = i + 1; j < deliveries.length; j++) {
+        const other = deliveries[j];
+        
+        // Skip comparison if other delivery is completely empty
+        if (!other.do_date && !other.do_no && !other.inv_date && !other.inv_no && !other.grn_date && !other.grn_no) {
+          continue;
+        }
+        
+        // Normalize values for comparison
+        const currentNorm = {
+          do_date: normalize(current.do_date),
+          do_no: normalize(current.do_no),
+          inv_date: normalize(current.inv_date),
+          inv_no: normalize(current.inv_no)
+        };
+        
+        const otherNorm = {
+          do_date: normalize(other.do_date),
+          do_no: normalize(other.do_no),
+          inv_date: normalize(other.inv_date),
+          inv_no: normalize(other.inv_no)
+        };
+        
+        // Check if deliveries match on key fields
+        const isDuplicate = (
+          currentNorm.do_date === otherNorm.do_date &&
+          currentNorm.do_no === otherNorm.do_no &&
+          currentNorm.inv_date === otherNorm.inv_date &&
+          currentNorm.inv_no === otherNorm.inv_no &&
+          // Only consider it duplicate if at least some key fields are filled
+          (currentNorm.do_date || currentNorm.do_no || currentNorm.inv_date || currentNorm.inv_no)
+        );
+        
+        console.log(`Comparing delivery ${i} with ${j}:`, {
+          current: currentNorm,
+          other: otherNorm,
+          isDuplicate
+        });
+        
+        if (isDuplicate) {
+          console.log(`Found duplicate: deliveries ${i} and ${j}`);
+          if (!duplicateIndices.includes(i)) duplicateIndices.push(i);
+          if (!duplicateIndices.includes(j)) duplicateIndices.push(j);
+        }
+      }
+    }
+    
+    console.log('Duplicate indices found:', duplicateIndices);
+    return duplicateIndices.sort((a, b) => a - b);
+  };
+
+  // Detect partial duplicates (same numbers but different dates) - potential data entry errors
+  const findPartialDuplicates = (): { indices: number[], details: string[] } => {
+    const partialDuplicates: number[] = [];
+    const details: string[] = [];
+    const deliveries = formData.deliveries || [];
+    
+    const normalize = (str: string | undefined | null): string => {
+      return (str || '').toString().trim().toUpperCase();
+    };
+    
+    for (let i = 0; i < deliveries.length; i++) {
+      const current = deliveries[i];
+      if (!current.do_no && !current.inv_no && !current.grn_no) continue;
+      
+      for (let j = i + 1; j < deliveries.length; j++) {
+        const other = deliveries[j];
+        if (!other.do_no && !other.inv_no && !other.grn_no) continue;
+        
+        const currentNorm = {
+          do_no: normalize(current.do_no),
+          inv_no: normalize(current.inv_no),
+          grn_no: normalize(current.grn_no)
+        };
+        
+        const otherNorm = {
+          do_no: normalize(other.do_no),
+          inv_no: normalize(other.inv_no),
+          grn_no: normalize(other.grn_no)
+        };
+        
+        // Check for same numbers but different dates
+        const sameNumbers = (
+          (currentNorm.do_no && currentNorm.do_no === otherNorm.do_no) ||
+          (currentNorm.inv_no && currentNorm.inv_no === otherNorm.inv_no) ||
+          (currentNorm.grn_no && currentNorm.grn_no === otherNorm.grn_no)
+        );
+        
+        const differentDates = (
+          normalize(current.do_date) !== normalize(other.do_date) ||
+          normalize(current.inv_date) !== normalize(other.inv_date) ||
+          normalize(current.grn_date) !== normalize(other.grn_date)
+        );
+        
+        if (sameNumbers && differentDates) {
+          if (!partialDuplicates.includes(i)) {
+            partialDuplicates.push(i);
+            details.push(`Delivery ${i + 1}`);
+          }
+          if (!partialDuplicates.includes(j)) {
+            partialDuplicates.push(j);
+            details.push(`Delivery ${j + 1}`);
+          }
+        }
+      }
+    }
+    
+    return { indices: partialDuplicates.sort((a, b) => a - b), details };
+  };
+  
+  // Delete delivery function that calls backend API
+  const deleteDelivery = async (deliveryIndex: number) => {
+    try {
+      const delivery = formData.deliveries?.[deliveryIndex];
+      
+      // If delivery has an ID, delete from backend
+      if (delivery?.id && sidebarMode === 'edit') {
+        await authenticatedApi.delete(`/api/purchases/deliveries/${delivery.id}`);
+        toast.success('Delivery deleted successfully');
+      }
+      
+      // Remove from local state
+      const updatedDeliveries = [...(formData.deliveries || [])];
+      updatedDeliveries.splice(deliveryIndex, 1);
+      
+      // Remove associated file
+      const updatedFiles = [...deliveryFiles];
+      updatedFiles.splice(deliveryIndex, 1);
+      
+      setFormData(prev => ({ ...prev, deliveries: updatedDeliveries }));
+      setDeliveryFiles(updatedFiles);
+      
+      // Adjust active tab if necessary
+      const newLength = updatedDeliveries.length;
+      if (newLength === 0) {
+        setActiveDeliveryTab('delivery-0');
+      } else if (deliveryIndex <= parseInt(activeDeliveryTab.split('-')[1])) {
+        const newActiveIndex = Math.max(0, Math.min(deliveryIndex - 1, newLength - 1));
+        setActiveDeliveryTab(`delivery-${newActiveIndex}`);
+      }
+      
+    } catch (error) {
+      console.error('Error deleting delivery:', error);
+      toast.error('Failed to delete delivery');
+    }
   };
 
   const validateDeliveries = (): boolean => {
@@ -882,7 +1052,12 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       key: 'pic',
       header: 'Requested By',
       filter: 'input',
-      render: (row: any) => row.request?.requested_by?.full_name || (typeof row.requestor === 'string' ? row.requestor : (row.requestor?.full_name || ''))
+      render: (row: any) => {
+        const r = row.request?.requested_by || (typeof row.requestor === 'string' ? null : row.requestor);
+        if (r && r.ramco_id && r.full_name) return `${r.ramco_id} - ${r.full_name}`;
+        if (typeof row.requestor === 'string') return row.requestor;
+        return r?.full_name || '';
+      }
     },
     {
       key: 'costcenter',
@@ -1000,7 +1175,33 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             <div>
               <Label htmlFor="pic">Requester *</Label>
               <Combobox
-                options={employeeOptions}
+                options={
+                  employeeOptions.some(opt => opt.value === formData.pic)
+                    ? employeeOptions
+                    : formData.pic
+                      ? [
+                          ...employeeOptions,
+                          {
+                            value: formData.pic,
+                            label:
+                              (() => {
+                                let fullName = '';
+                                if (selectedPurchase?.request?.requested_by?.ramco_id === formData.pic) {
+                                  fullName = selectedPurchase.request.requested_by.full_name;
+                                } else if (
+                                  selectedPurchase?.requestor &&
+                                  typeof selectedPurchase.requestor === 'object' &&
+                                  'ramco_id' in selectedPurchase.requestor &&
+                                  (selectedPurchase.requestor as any).ramco_id === formData.pic
+                                ) {
+                                  fullName = (selectedPurchase.requestor as any).full_name;
+                                }
+                                return fullName || formData.pic;
+                              })()
+                          }
+                        ]
+                      : employeeOptions
+                }
                 value={formData.pic}
                 onValueChange={(val) => handleInputChange('pic', val)}
                 placeholder="Select person in charge"
@@ -1317,15 +1518,184 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           <div className="mb-3 text-xs text-gray-500">
             {(formData.deliveries?.length || 0)} of {maxDeliveries} deliveries used (max 5)
           </div>
+          {(() => {
+            const duplicateIndices = findDuplicateDeliveries();
+            const partialDuplicates = findPartialDuplicates();
+            const deliveryCount = formData.deliveries?.length || 0;
+            const itemQty = formData.qty || 0;
+            const isOverDelivery = deliveryCount > itemQty;
+            
+            const hasAnyWarnings = duplicateIndices.length > 0 || partialDuplicates.indices.length > 0 || isOverDelivery;
+            
+            if (!hasAnyWarnings) return null;
+            
+            return (
+              <div className="mb-3 space-y-2">
+                {/* Exact Duplicates Warning */}
+                {duplicateIndices.length > 0 && (
+                  <div className="p-2 bg-red-50 border border-red-200 rounded">
+                    <p className="text-red-800 text-sm font-medium">
+                      🚨 {duplicateIndices.length} exact duplicate {duplicateIndices.length === 1 ? 'delivery' : 'deliveries'} detected
+                    </p>
+                    <p className="text-red-600 text-xs">
+                      Deliveries with identical DO date, DO number, invoice date, and invoice number.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Partial Duplicates Warning */}
+                {partialDuplicates.indices.length > 0 && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                    <p className="text-yellow-800 text-sm font-medium">
+                      ⚠️ Potential duplicate entries detected: {partialDuplicates.details.join(', ')}
+                    </p>
+                    <p className="text-yellow-600 text-xs">
+                      Same DO/Invoice/GRN numbers but different dates. Please verify if these are separate deliveries or data entry errors.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Over-delivery Warning */}
+                {isOverDelivery && (
+                  <div className="p-2 bg-orange-50 border border-orange-200 rounded">
+                    <p className="text-orange-800 text-sm font-medium">
+                      📦 Over-delivery detected: {deliveryCount} deliveries for {itemQty} {itemQty === 1 ? 'item' : 'items'}
+                    </p>
+                    <p className="text-orange-600 text-xs">
+                      You have more delivery records than the item quantity. Please verify if this is correct.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <Tabs value={activeDeliveryTab} onValueChange={setActiveDeliveryTab}>
-            <TabsList className="flex flex-wrap">
-              {(formData.deliveries || []).map((_, idx) => (
-                <TabsTrigger key={`delivery-tab-${idx}`} value={`delivery-${idx}`}>Delivery {idx + 1}</TabsTrigger>
-              ))}
+            <TabsList className="flex flex-wrap gap-1">
+              {(() => {
+                const duplicateIndices = findDuplicateDeliveries();
+                const partialDuplicates = findPartialDuplicates();
+                console.log('Rendering tabs, duplicate indices:', duplicateIndices);
+                console.log('Rendering tabs, partial duplicate indices:', partialDuplicates.indices);
+                return (formData.deliveries || []).map((_, idx) => {
+                  const isExactDuplicate = duplicateIndices.includes(idx);
+                  const isPartialDuplicate = partialDuplicates.indices.includes(idx);
+                  const isDuplicate = isExactDuplicate || isPartialDuplicate;
+                  console.log(`Tab ${idx}: isExactDuplicate = ${isExactDuplicate}, isPartialDuplicate = ${isPartialDuplicate}`);
+                  
+                  const tabStyle = isExactDuplicate 
+                    ? 'bg-red-100 text-red-800 border-2 border-red-400' 
+                    : isPartialDuplicate 
+                    ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
+                    : '';
+                  
+                  const warningIcon = isExactDuplicate ? '🚨' : isPartialDuplicate ? '⚠️' : '';
+                  const warningTitle = isExactDuplicate 
+                    ? 'Exact duplicate delivery detected' 
+                    : isPartialDuplicate 
+                    ? 'Potential duplicate delivery detected' 
+                    : '';
+                  
+                  return (
+                    <div key={`delivery-tab-wrapper-${idx}`} className="flex items-center gap-1">
+                      <TabsTrigger 
+                        value={`delivery-${idx}`}
+                        className={tabStyle}
+                      >
+                        Delivery {idx + 1}
+                        {isDuplicate && (
+                          <span className="ml-1 text-sm" title={warningTitle}>{warningIcon}</span>
+                        )}
+                      </TabsTrigger>
+                      {isDuplicate && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          className={`h-8 w-8 p-0 text-sm font-bold ${
+                            isExactDuplicate 
+                              ? 'bg-red-600 hover:bg-red-700' 
+                              : 'bg-yellow-600 hover:bg-yellow-700'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            console.log(`Delete button clicked for delivery ${idx}`);
+                            const confirmMessage = isExactDuplicate 
+                              ? `Delete duplicate Delivery ${idx + 1}? This action cannot be undone.`
+                              : `Delete potential duplicate Delivery ${idx + 1}? Please verify this is correct. This action cannot be undone.`;
+                            if (window.confirm(confirmMessage)) {
+                              deleteDelivery(idx);
+                            }
+                          }}
+                          title={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} Delivery ${idx + 1}`}
+                        >
+                          ×
+                        </Button>
+                      )}
+                    </div>
+                  );
+                });
+              })()
+              }
             </TabsList>
-            {(formData.deliveries || []).map((d, idx) => (
-              <TabsContent key={`delivery-content-${idx}`} value={`delivery-${idx}`} className="mt-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {(formData.deliveries || []).map((d, idx) => {
+              const duplicateIndices = findDuplicateDeliveries();
+              const partialDuplicates = findPartialDuplicates();
+              const isExactDuplicate = duplicateIndices.includes(idx);
+              const isPartialDuplicate = partialDuplicates.indices.includes(idx);
+              const isDuplicate = isExactDuplicate || isPartialDuplicate;
+              
+              return (
+                <TabsContent key={`delivery-content-${idx}`} value={`delivery-${idx}`} className="mt-4">
+                  {isDuplicate && (
+                    <div className={`mb-4 p-3 border rounded-md ${
+                      isExactDuplicate 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-yellow-50 border-yellow-200'
+                    }`}>
+                      <div className="flex items-center">
+                        <span className="font-bold mr-2">
+                          {isExactDuplicate ? '🚨' : '⚠️'}
+                        </span>
+                        <div>
+                          <p className={`font-medium ${
+                            isExactDuplicate ? 'text-red-800' : 'text-yellow-800'
+                          }`}>
+                            {isExactDuplicate ? 'Exact Duplicate Delivery' : 'Potential Duplicate Delivery'}
+                          </p>
+                          <p className={`text-sm ${
+                            isExactDuplicate ? 'text-red-600' : 'text-yellow-600'
+                          }`}>
+                            {isExactDuplicate 
+                              ? 'This delivery has identical DO date, DO number, invoice date, and invoice number as another delivery.'
+                              : 'This delivery has the same DO/Invoice/GRN numbers but different dates. Please verify if this is correct.'
+                            }
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          className={`ml-auto ${
+                            isExactDuplicate 
+                              ? 'bg-red-600 hover:bg-red-700' 
+                              : 'bg-yellow-600 hover:bg-yellow-700'
+                          }`}
+                          onClick={() => {
+                            const confirmMessage = isExactDuplicate 
+                              ? `Delete duplicate Delivery ${idx + 1}? This action cannot be undone.`
+                              : `Delete potential duplicate Delivery ${idx + 1}? Please verify this is correct. This action cannot be undone.`;
+                            if (window.confirm(confirmMessage)) {
+                              deleteDelivery(idx);
+                            }
+                          }}
+                          title={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} delivery`}
+                        >
+                          {isExactDuplicate ? 'Delete Duplicate' : 'Delete Entry'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor={`do_date_${idx}`}>DO Date</Label>
                     <Input
@@ -1472,7 +1842,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                   </div>
                 )}
               </TabsContent>
-            ))}
+              );
+            })}
           </Tabs>
         </CardContent>
       </Card>
@@ -1546,7 +1917,12 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">PIC</Label>
-                <p className="font-medium">{selectedPurchase.request?.requested_by?.full_name || (typeof selectedPurchase.requestor === 'string' ? selectedPurchase.requestor : (selectedPurchase.requestor as any)?.full_name || '')}</p>
+                <p className="font-medium">
+                  {selectedPurchase.request?.requested_by?.ramco_id && selectedPurchase.request?.requested_by?.full_name
+                    ? `${selectedPurchase.request.requested_by.ramco_id} - ${selectedPurchase.request.requested_by.full_name}`
+                    : (typeof selectedPurchase.requestor === 'string' ? selectedPurchase.requestor : (selectedPurchase.requestor?.ramco_id && selectedPurchase.requestor?.full_name ? `${selectedPurchase.requestor.ramco_id} - ${selectedPurchase.requestor.full_name}` : (selectedPurchase.requestor?.full_name || '')))
+                  }
+                </p>
               </div>
               <div>
                 <Label className="text-sm font-medium text-gray-600">Item Type</Label>
