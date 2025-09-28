@@ -724,6 +724,16 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         description: formData.items,
       };
 
+      // Ensure request_id is included on update (edit mode)
+      if (sidebarMode === 'edit' && selectedPurchase) {
+        const reqId = (selectedPurchase.request && selectedPurchase.request.id)
+          ? selectedPurchase.request.id
+          : (selectedPurchase as any).request_id;
+        if (reqId) {
+          jsonPayload.request_id = reqId;
+        }
+      }
+
       // remove top-level logistics fields to avoid duplication (kept only in deliveries)
       delete jsonPayload.do_date;
       delete jsonPayload.do_no;
