@@ -148,6 +148,7 @@ const UtilityBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
+  const [selectedGridRows, setSelectedGridRows] = useState<any[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false); // Default closed
   const [saving, setSaving] = useState(false);
   const [editingBill, setEditingBill] = useState<UtilityBill | null>(null);
@@ -162,7 +163,7 @@ const UtilityBill = () => {
   const [paymentRefFile, setPaymentRefFile] = useState<File | null>(null);
   const [paymentRefPreview, setPaymentRefPreview] = useState<string | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false); // Loading state for account switching
-  
+
   // Invoice validation state
   // Invoice validation state removed per request
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -258,12 +259,8 @@ const UtilityBill = () => {
     }
   }, [selectedRowIds, loading]);
 
-  // When beneficiary filter is cleared, also clear any selected rows and prevent row selection
-  useEffect(() => {
-    if (!beneficiaryFilter) {
-      setSelectedRowIds([]);
-    }
-  }, [beneficiaryFilter]);
+  // Keep selections independent of beneficiary filter to support service-based batch printing
+  // (No automatic clearing on beneficiary change)
 
   // Filter memoized accounts with provider prioritization
   const filteredAccountsWithLogos = useMemo(() => {
@@ -566,7 +563,7 @@ const UtilityBill = () => {
     setSidebarSize('sm');
     setPaymentRefFile(null);
     setPaymentRefPreview(null);
-  // Invoice validation removed
+    // Invoice validation removed
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -614,7 +611,7 @@ const UtilityBill = () => {
     // Clear file upload state when editing existing bill
     setPaymentRefFile(null);
     setPaymentRefPreview(null);
-  // Invoice validation removed
+    // Invoice validation removed
   };
 
   const handleSave = async () => {
@@ -767,7 +764,7 @@ const UtilityBill = () => {
   // Debounced invoice validation
   useEffect(() => {
     // Invoice validation removed; no-op effect retained for future hooks if needed
-    return () => {};
+    return () => { };
   }, [formData.ubill_no, formData.bill_id]);
 
   const columns: ColumnDef<UtilityBill & { rowNumber: number }>[] = [
@@ -813,110 +810,135 @@ const UtilityBill = () => {
   return (
     <div className="mt-4">
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-6">
 
           <h2 className="text-lg font-bold">Utility Bills Summary</h2>
+          <div className="flex items-center gap-2">
+            Filter by Year:&nbsp;
+            <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
+              <SelectTrigger className="w-28 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
+                {Array.from({ length: 6 }).map((_, i) => {
+                  const y = String(new Date().getFullYear() - i);
+                  return (<SelectItem key={y} value={y}>{y}</SelectItem>);
+                })}
+              </SelectContent>
+            </Select>
+          </div>
           {/* Export button removed; use single Print button to handle batch export */}
         </div>
+        <Button
+          variant={'default'}
+          onClick={handleAdd}
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+        </Button>
+      </div>
+      <Separator />
+      <div className="flex items-center gap-2 my-3">
+        {/* Beneficiary filter combobox and printer export */}
         <div className="flex items-center gap-2">
-          {/* Beneficiary filter combobox and printer export */}
-          <div className="flex items-center gap-2">
-            <div className="w-80">
-              <SingleSelect
-                options={beneficiaryOptions}
-                value={beneficiaryFilter}
-                onValueChange={(v) => setBeneficiaryFilter(v)}
-                placeholder="Select beneficiary..."
-                clearable
-                searchPlaceholder="Search beneficiary..."
-                className="w-full py-0"
-              />
-            </div>
-            <Button
-              variant="default"
-              onClick={async () => {
-                try {
-                  // If user selected rows, export those; otherwise export currently filtered (displayed) rows
-                  const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
-                    ? selectedRowIds
-                    : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
-
-                  if (!idsToExport || idsToExport.length === 0) {
-                    toast.error('No bills to export');
-                    return;
-                  }
-
-                    // Determine whether any of the bills selected are printing-related
-                    const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
-                    const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
-                    if (anyPrinting) {
-                      const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
-                      await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
-                    } else {
-                      const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
-                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
-                    }
-                } catch (err) {
-                  console.error('Failed to export utility PDF batch', err);
-                  toast.error('Failed to export PDF.');
-                }
-              }}
-              disabled={!canExport}
-            >
-        <Printer size={16} className="mr-1" /> Batch Bill Print
-            </Button>
-            {/* Delete Selected: only show when beneficiary selected, at least one row selected, and user is authorized */}
-            {beneficiaryFilter && selectedRowIds && selectedRowIds.length > 0 && deleteBillAuthorizer.includes(username) && (
-              <>
-                <Button
-                  variant="destructive"
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  Delete Selected
-                </Button>
-
-                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Confirm delete</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-2">
-                      Are you sure you want to delete {selectedRowIds.length} selected bill(s)? This cannot be undone.
-                    </div>
-                    <DialogFooter className="flex gap-2">
-                      <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-                      <Button variant="destructive" onClick={handleConfirmDelete}>
-                        {loading ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
-                        Delete
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </>
-            )}
-            <div className="flex items-center">
-              <Select value={yearFilter} onValueChange={(v) => setYearFilter(v)}>
-                <SelectTrigger className="w-28 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All years</SelectItem>
-                  {Array.from({ length: 6 }).map((_, i) => {
-                    const y = String(new Date().getFullYear() - i);
-                    return (<SelectItem key={y} value={y}>{y}</SelectItem>);
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button
-              variant={'default'}
-              onClick={handleAdd}
-              disabled={loading}
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-            </Button>
+          <div className="w-80">
+            <SingleSelect
+              options={beneficiaryOptions}
+              value={beneficiaryFilter}
+              onValueChange={(v) => setBeneficiaryFilter(v)}
+              placeholder="Select beneficiary..."
+              clearable
+              searchPlaceholder="Search beneficiary..."
+              className="w-full py-0"
+            />
           </div>
+          <Button
+            variant="default"
+            onClick={async () => {
+              try {
+                // If user selected rows, export those; otherwise export currently filtered (displayed) rows
+                const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
+                  ? selectedRowIds
+                  : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
+
+                if (!idsToExport || idsToExport.length === 0) {
+                  toast.error('No bills to export');
+                  return;
+                }
+
+                // Determine whether any of the bills selected are printing-related
+                const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
+                const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
+                if (anyPrinting) {
+                  const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
+                  await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
+                } else {
+                  const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
+                  await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
+                }
+              } catch (err) {
+                console.error('Failed to export utility PDF batch', err);
+                toast.error('Failed to export PDF.');
+              }
+            }}
+            // Keep legacy behavior: require beneficiary for bill batch export
+            disabled={!canExport || !beneficiaryFilter}
+          >
+            <Printer size={16} className="mr-1" /> Batch Bill Print
+          </Button>
+          {/* New: Batch Services Print (multi-beneficiaries allowed) */}
+          <Button
+            variant="default"
+            onClick={async () => {
+              try {
+                if (!selectedGridRows || selectedGridRows.length === 0) {
+                  toast.error('Select one or more rows to print by service');
+                  return;
+                }
+                const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
+                await exportUtilityBillBatchByService(selectedGridRows);
+              } catch (err) {
+                console.error('Failed to export utility batch by service', err);
+                toast.error('Failed to export service batch PDF.');
+              }
+            }}
+            disabled={!canExport}
+          >
+            <Printer size={16} className="mr-1" /> Batch Beneficiary Print
+          </Button>
+          {/* Delete Selected: show when any rows are selected and user is authorized */}
+          {selectedRowIds && selectedRowIds.length > 0 && deleteBillAuthorizer.includes(username) && (
+            <>
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                Delete Selected
+              </Button>
+
+              <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirm delete</DialogTitle>
+                  </DialogHeader>
+                  <div className="py-2">
+                    Are you sure you want to delete {selectedRowIds.length} selected bill(s)? This cannot be undone.
+                  </div>
+                  <DialogFooter className="flex gap-2">
+                    <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+                    <Button variant="destructive" onClick={handleConfirmDelete}>
+                      {loading ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+                      Delete
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </>
+          )}
+
+
+
         </div>
       </div>
       <CustomDataGrid
@@ -928,11 +950,12 @@ const UtilityBill = () => {
         dataExport={true}
         onRowDoubleClick={handleRowDoubleClick}
         rowSelection={{
-          // Enable row selection only after a beneficiary is selected
-          enabled: Boolean(beneficiaryFilter),
+          // Always allow selecting rows so users can pick multiple beneficiaries under same service
+          enabled: true,
           getRowId: (row: any) => row.util_id || row.account?.bill_id,
           onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
             setSelectedRowIds(selectedKeys.map(Number));
+            setSelectedGridRows(selectedRows as any[]);
           },
         }}
       />

@@ -32,17 +32,24 @@ interface Asset {
     costcenter: Costcenter;
     department: Department;
     location: Location;
-    types: Type;
-    categories: Category;
-    brands: Brand;
+    // API may return singular (type/category/brand) or plural keys (types/categories/brands)
+    type?: Type;
+    category?: Category;
+    brand?: Brand;
+    // Backward compatibility with older payloads
+    types?: Type;
+    categories?: Category;
+    brands?: Brand;
     owner: Owner;
     // Derived fields for DataGrid
     age?: number;
     owner_name?: string;
     department_name?: string;
     owner_district?: string;
-    category?: string;
-    brand?: string;
+    // Flattened display fields
+    asset_type?: string;
+    category_name?: string;
+    brand_name?: string;
     model?: string;
 }
 
@@ -143,9 +150,10 @@ const CoreAsset: React.FC = () => {
         
         return {
             ...asset,
-            brand: asset.brands?.name || '-',
-            category: asset.categories?.name || '-',
-            asset_type: asset.types?.name || '-',
+            // Normalize singular/plural API shapes
+            asset_type: asset.types?.name || asset.type?.name || '-',
+            category_name: asset.categories?.name || asset.category?.name || '-',
+            brand_name: asset.brands?.name || asset.brand?.name || '-',
             age: asset.purchase_year ? age : '-',
             owner_name: asset.owner?.full_name || '-',
             department_name: asset.department?.name || '-',
@@ -167,40 +175,32 @@ const CoreAsset: React.FC = () => {
                 header: "Classification", 
                 sortable: true, 
                 filter: 'singleSelect', 
-                filterParams: { options: ['asset', 'non-asset'] } 
+                filterParams: { options: Array.from(new Set(contextData.map(d => d.classification).filter(Boolean))) as (string | number)[] } 
             },
             { key: "register_number", header: "Register Number", sortable: true, filter: 'input' },
             {
-                key: "types",
+                key: "asset_type",
                 header: "Asset Type",
-                render: (row) => row.types?.name || '-',
+                render: (row) => row.asset_type || '-',
                 filter: "singleSelect",
                 filterParams: {
-                    options: Array.from(new Set(contextData.map(d => d.types?.name).filter(Boolean))) as (string | number)[]
+                    options: Array.from(new Set(contextData.map(d => d.asset_type).filter(Boolean))) as (string | number)[]
                 }
             },
             {
-                key: "category",
+                key: "category_name",
                 header: "Category",
                 filter: "singleSelect",
                 filterParams: {
-                    options: Array.from(new Set(
-                        transformedData
-                            .map(d => d.category)
-                            .filter(Boolean)
-                    )) as (string | number)[]
+                    options: Array.from(new Set(transformedData.map(d => d.category_name).filter(Boolean))) as (string | number)[]
                 }
             },
             {
-                key: "brand",
+                key: "brand_name",
                 header: "Brand",
                 filter: "singleSelect",
                 filterParams: {
-                    options: Array.from(new Set(
-                        transformedData
-                            .map(d => d.brand)
-                            .filter(Boolean)
-                    )) as (string | number)[]
+                    options: Array.from(new Set(transformedData.map(d => d.brand_name).filter(Boolean))) as (string | number)[]
                 }
             },
             { key: "age", header: "Age", sortable: true, filter: 'input' },
@@ -246,7 +246,7 @@ const CoreAsset: React.FC = () => {
 
     // Apply type filter if selected
     const finalFilteredData = selectedTypeFilter 
-        ? filteredData.filter(asset => asset.types?.name === selectedTypeFilter)
+        ? filteredData.filter(asset => (asset as any).asset_type === selectedTypeFilter)
         : filteredData;
 
     // Type card click handler
@@ -259,9 +259,8 @@ const CoreAsset: React.FC = () => {
     };
 
     // Summary stats by classification for specific types (excluding personal)
-    const allowedTypes = ['asset', 'rental', 'consumable'];
     const getCountsByClassification = (typeName: string) => {
-        const typeData = transformedData.filter(a => a.types?.name === typeName);
+        const typeData = transformedData.filter(a => (a as any).asset_type === typeName);
         return {
             asset: typeData.filter(a => a.classification === 'asset').length,
             rental: typeData.filter(a => a.classification === 'rental').length,
@@ -273,8 +272,8 @@ const CoreAsset: React.FC = () => {
     // Get unique types from data (excluding personal)
     const availableTypes = Array.from(new Set(
         transformedData
-            .map(a => a.types?.name)
-            .filter(typeName => typeName && typeName.toLowerCase() !== 'personal')
+            .map(a => a.asset_type)
+            .filter(typeName => typeName && String(typeName).toLowerCase() !== 'personal')
     )).sort();
 
     const handleRowDoubleClick = (row: any) => {
@@ -297,14 +296,14 @@ const CoreAsset: React.FC = () => {
                             onClick={() => handleTypeCardClick(typeName)}
                         >
                             <CardHeader>
-                                {/* <CardTitle className="flex items-center justify-between">
-                                    <span>{typeName}</span>
+                                <CardTitle className="flex items-center justify-between">
+                                    <span className="truncate" title={typeName}>{typeName}</span>
                                     {isSelected && (
-                                        <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded">
+                                        <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">
                                             Filtered
                                         </span>
                                     )}
-                                </CardTitle> */}
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-3xl font-bold text-blue-600 mb-3">{counts.total}</div>
@@ -364,7 +363,7 @@ const CoreAsset: React.FC = () => {
                     pagination={false}
                     onRowDoubleClick={handleRowDoubleClick}
                     dataExport={true}
-                    chainedFilters={['types', 'category', 'brand']}
+                    chainedFilters={['asset_type', 'category_name', 'brand_name']}
                 />
             )}
         </div>

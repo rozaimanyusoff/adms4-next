@@ -226,7 +226,7 @@ const CoreType: React.FC = () => {
             {loading ? (
                 <p>Loading...</p>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
                     {editingId === 'new' && (
                         <Card className="relative overflow-visible border-dashed border-2 border-blue-300 bg-blue-50/40">
                             <CardHeader className="py-2 px-3">
