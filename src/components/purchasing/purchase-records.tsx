@@ -1,3 +1,4 @@
+/* Procurement Management Module */
 'use client';
 import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
@@ -169,6 +170,8 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [deliveryErrors, setDeliveryErrors] = useState<Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>>>([]);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  // Delivery deletion confirm dialog state
+  const [pendingDelete, setPendingDelete] = useState<{ index: number; message: string } | null>(null);
 
   // Per-delivery file uploads
   const [deliveryFiles, setDeliveryFiles] = useState<Array<File | null>>([]);
@@ -893,6 +896,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
         const deliveries = Array.isArray(p.deliveries)
           ? p.deliveries.map((d: any) => ({
+              id: d.id,
               do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
               do_no: d.do_no || '',
               inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
@@ -1617,29 +1621,17 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                         )}
                       </TabsTrigger>
                       {isDuplicate && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className={`h-8 w-8 p-0 text-sm font-bold ${
-                            isExactDuplicate 
-                              ? 'bg-red-600 hover:bg-red-700' 
-                              : 'bg-yellow-600 hover:bg-yellow-700'
-                          }`}
+                        <Trash2
+                          className="h-4 w-4 cursor-pointer text-red-600 hover:text-red-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            console.log(`Delete button clicked for delivery ${idx}`);
-                            const confirmMessage = isExactDuplicate 
+                            const confirmMessage = isExactDuplicate
                               ? `Delete duplicate Delivery ${idx + 1}? This action cannot be undone.`
                               : `Delete potential duplicate Delivery ${idx + 1}? Please verify this is correct. This action cannot be undone.`;
-                            if (window.confirm(confirmMessage)) {
-                              deleteDelivery(idx);
-                            }
+                            setPendingDelete({ index: idx, message: confirmMessage });
                           }}
-                          title={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} Delivery ${idx + 1}`}
-                        >
-                          ×
-                        </Button>
+                          aria-label={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} Delivery ${idx + 1}`}
+                        />
                       )}
                     </div>
                   );
@@ -1656,55 +1648,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
               
               return (
                 <TabsContent key={`delivery-content-${idx}`} value={`delivery-${idx}`} className="mt-4">
-                  {isDuplicate && (
-                    <div className={`mb-4 p-3 border rounded-md ${
-                      isExactDuplicate 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-yellow-50 border-yellow-200'
-                    }`}>
-                      <div className="flex items-center">
-                        <span className="font-bold mr-2">
-                          {isExactDuplicate ? '🚨' : '⚠️'}
-                        </span>
-                        <div>
-                          <p className={`font-medium ${
-                            isExactDuplicate ? 'text-red-800' : 'text-yellow-800'
-                          }`}>
-                            {isExactDuplicate ? 'Exact Duplicate Delivery' : 'Potential Duplicate Delivery'}
-                          </p>
-                          <p className={`text-sm ${
-                            isExactDuplicate ? 'text-red-600' : 'text-yellow-600'
-                          }`}>
-                            {isExactDuplicate 
-                              ? 'This delivery has identical DO date, DO number, invoice date, and invoice number as another delivery.'
-                              : 'This delivery has the same DO/Invoice/GRN numbers but different dates. Please verify if this is correct.'
-                            }
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className={`ml-auto ${
-                            isExactDuplicate 
-                              ? 'bg-red-600 hover:bg-red-700' 
-                              : 'bg-yellow-600 hover:bg-yellow-700'
-                          }`}
-                          onClick={() => {
-                            const confirmMessage = isExactDuplicate 
-                              ? `Delete duplicate Delivery ${idx + 1}? This action cannot be undone.`
-                              : `Delete potential duplicate Delivery ${idx + 1}? Please verify this is correct. This action cannot be undone.`;
-                            if (window.confirm(confirmMessage)) {
-                              deleteDelivery(idx);
-                            }
-                          }}
-                          title={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} delivery`}
-                        >
-                          {isExactDuplicate ? 'Delete Duplicate' : 'Delete Entry'}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  {/* Removed in-content duplicate warning; using tablist icon + AlertDialog */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor={`do_date_${idx}`}>DO Date</Label>
@@ -1884,6 +1828,37 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
             </AlertDialogCancel>
             <AlertDialogAction asChild>
               <Button variant="default" size="sm" onClick={async () => { setShowSubmitConfirm(false); await handleSubmit(); }}>Confirm</Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation dialog before deleting a delivery */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            <div className="text-sm">{pendingDelete?.message || 'Are you sure you want to delete this delivery?'}</div>
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="secondary" size="sm">Cancel</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  if (pendingDelete?.index != null) {
+                    await deleteDelivery(pendingDelete.index);
+                  }
+                  setPendingDelete(null);
+                }}
+              >
+                Delete
+              </Button>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

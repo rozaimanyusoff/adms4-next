@@ -1060,7 +1060,18 @@ const PurchaseAssetRegistration: React.FC = () => {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        <SingleSelect options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]} value={bulkFormData.classification} onValueChange={(value) => handleBulkChange('classification', value)} placeholder="Select classification" className="h-10" />
+                        <SingleSelect
+                          options={[
+                            { value: 'Asset', label: 'Asset' },
+                            { value: 'Consumable', label: 'Consumable' },
+                            { value: 'Rental', label: 'Rental' },
+                            { value: 'Non-Asset', label: 'Non-Asset' },
+                          ]}
+                          value={bulkFormData.classification}
+                          onValueChange={(value) => handleBulkChange('classification', value)}
+                          placeholder="Select classification"
+                          className="h-10"
+                        />
                       </div>
                       <div>
                         <div className="flex items-center space-x-1">
@@ -1307,7 +1318,12 @@ const PurchaseAssetRegistration: React.FC = () => {
                           <div>
                             <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
                             <SingleSelect
-                              options={[{ value: 'Asset', label: 'Asset' }, { value: 'Consumable', label: 'Consumable' }, { value: 'Rental', label: 'Rental' }]}
+                              options={[
+                                { value: 'Asset', label: 'Asset' },
+                                { value: 'Consumable', label: 'Consumable' },
+                                { value: 'Rental', label: 'Rental' },
+                                { value: 'Non-Asset', label: 'Non-Asset' },
+                              ]}
                               value={asset.classification}
                               onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
                               placeholder="Select classification"
