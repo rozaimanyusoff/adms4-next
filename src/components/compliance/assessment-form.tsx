@@ -215,6 +215,8 @@ const AssessmentForm: React.FC = () => {
     const [selectedLocation, setSelectedLocation] = useState<string>('');
     const [vehicleImages, setVehicleImages] = useState<File[]>([]);
     const [vehicleImageUrls, setVehicleImageUrls] = useState<string[]>([]);
+    // Existing attachments from backend (a_upload*) when editing
+    const [existingVehicleImageUrls, setExistingVehicleImageUrls] = useState<string[]>([]);
     const [vehicleImageDragOver, setVehicleImageDragOver] = useState(false);
 
     const auth = useContext(AuthContext);
@@ -349,7 +351,8 @@ const AssessmentForm: React.FC = () => {
             items.forEach((it) => {
                 const key = String(it.qset_id);
                 if (!(key in next)) {
-                    next[key] = null;
+                    // Default ratings to N/A (0). Others remain null until set.
+                    next[key] = it.qset_type === 'Rating' ? 0 : null;
                     changed = true;
                 }
             });
@@ -397,14 +400,26 @@ const AssessmentForm: React.FC = () => {
                 data.details.forEach((detail: AssessmentDetail) => {
                     const itemId = detail.adt_item;
                     const rate = parseFloat(detail.adt_rate);
+                    const rate2 = Number(detail.adt_rate2);
+                    const ncr = Number(detail.adt_ncr);
 
-                    // Set the main answer
+                    // Set the main answer based on type
                     if (detail.qset_type === 'NCR') {
-                        populatedAnswers[itemId] = rate > 0 ? 'Comply' : 'Not-comply';
+                        // Prefer explicit NCR flag if available: 1=Comply, 2=Not-comply
+                        if (ncr === 1) populatedAnswers[itemId] = 'Comply';
+                        else if (ncr === 2) populatedAnswers[itemId] = 'Not-comply';
+                        else populatedAnswers[itemId] = rate > 0 ? 'Comply' : 'Not-comply';
                     } else if (detail.qset_type === 'Rating') {
-                        populatedAnswers[itemId] = rate;
-                    } else {
-                        populatedAnswers[itemId] = rate;
+                        // Rating is N/A(0) or 1..4
+                        const raw = Number.isNaN(rate) ? 0 : Math.round(rate);
+                        const r = Math.max(0, Math.min(4, raw));
+                        populatedAnswers[itemId] = r;
+                    } else if (detail.qset_type === 'Selection') {
+                        // Map adt_rate2 to selection value: 1=Equipped, 2=Missing (fallback using adt_rate if needed)
+                        if (rate2 === 1) populatedAnswers[itemId] = 'Equipped';
+                        else if (rate2 === 2) populatedAnswers[itemId] = 'Missing';
+                        else if (rate === 1) populatedAnswers[itemId] = 'Equipped';
+                        else if (rate === 0) populatedAnswers[itemId] = 'Missing';
                     }
 
                     // Set comment if exists
@@ -415,12 +430,10 @@ const AssessmentForm: React.FC = () => {
 
                 setAnswers(prev => ({ ...prev, ...populatedAnswers }));
 
-                // Handle existing images if needed
-                if (data.a_upload) {
-                    const imageNames = data.a_upload.split(',').filter(Boolean);
-                    // Note: You might want to fetch actual image URLs here
-                    console.log('Existing images:', imageNames);
-                }
+                // Handle existing vehicle images (a_upload*) when editing
+                const urls = [data.a_upload, data.a_upload2, data.a_upload3, data.a_upload4]
+                    .filter((u: any) => typeof u === 'string' && u.trim().length > 0) as string[];
+                setExistingVehicleImageUrls(urls);
             }
         } catch (e) {
             toast.error('Failed to load assessment data');
@@ -555,9 +568,11 @@ const AssessmentForm: React.FC = () => {
                 else if (answer === 'Not-comply') summary.ncr.notComply++;
                 else summary.ncr.unanswered++;
             } else if (item.qset_type === 'Rating') {
-                if (typeof answer === 'number' && answer >= 1) {
+                const num = Number(answer);
+                // Treat 0 as N/A (not counted as answered), 1..4 as answered
+                if (!Number.isNaN(num) && num >= 1 && num <= 4) {
                     summary.rating.answered++;
-                    summary.rating.totalRating += answer;
+                    summary.rating.totalRating += num;
                 } else {
                     summary.rating.unanswered++;
                 }
@@ -586,7 +601,9 @@ const AssessmentForm: React.FC = () => {
             if (item.qset_type === 'NCR') {
                 if (answer !== 'Comply' && answer !== 'Not-comply') return false;
             } else if (item.qset_type === 'Rating') {
-                if (typeof answer !== 'number' || answer < 1 || answer > 5) return false;
+                const num = Number(answer);
+                // Allow 0 (N/A) or 1..4 as complete
+                if (Number.isNaN(num) || num < 0 || num > 4) return false;
             } else if (item.qset_type === 'Selection') {
                 if (answer !== 'Equipped' && answer !== 'Missing') return false;
             }
@@ -595,7 +612,7 @@ const AssessmentForm: React.FC = () => {
             const needsComment = (
                 item.qset_type === 'NCR' && answer === 'Not-comply'
             ) || (
-                item.qset_type === 'Rating' && answer === 1
+                item.qset_type === 'Rating' && Number(answer) === 1
             ) || (
                 item.qset_type === 'Selection' && answer === 'Missing'
             );
@@ -645,7 +662,7 @@ const AssessmentForm: React.FC = () => {
             if (it.qset_type === 'NCR') {
                 commentRequired = (ans === 'Not-comply');
             } else if (it.qset_type === 'Rating') {
-                commentRequired = (ans === 1);
+                commentRequired = (Number(ans) === 1);
             } else if (it.qset_type === 'Selection') {
                 commentRequired = (ans === 'Missing');
             }
@@ -918,6 +935,25 @@ const AssessmentForm: React.FC = () => {
                             ))}
                         </div>
                     )}
+
+                    {/* Existing attachments (read-only) */}
+                    {existingVehicleImageUrls.length > 0 && (
+                        <div className="mt-3">
+                            <div className="text-sm font-medium text-gray-700 mb-2">Existing attachments</div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {existingVehicleImageUrls.map((url, idx) => (
+                                    <a key={idx} href={url} target="_blank" rel="noreferrer" className="block group">
+                                        <div className="relative">
+                                            <img src={url} alt={`Attachment ${idx + 1}`} className="w-full h-24 object-cover rounded border" />
+                                            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] p-1 truncate">
+                                                {(() => { try { return decodeURIComponent(url.split('/').pop() || `attachment-${idx+1}`); } catch { return `attachment-${idx+1}`; } })()}
+                                            </div>
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Assessment Progress */}
@@ -1056,16 +1092,18 @@ const AssessmentForm: React.FC = () => {
                     const needsCommentOrFile = (
                         it.qset_type === 'NCR' && currentAnswer === 'Not-comply'
                     ) || (
-                            it.qset_type === 'Rating' && typeof currentAnswer === 'number' && currentAnswer < 2
-                        ) || (
-                            it.qset_type === 'Selection' && currentAnswer === 'Missing'
-                        );
+                        it.qset_type === 'Rating' && Number(currentAnswer) === 1
+                    ) || (
+                        it.qset_type === 'Selection' && currentAnswer === 'Missing'
+                    );
                     // Highlight unanswered
                     let isUnanswered = false;
                     if (it.qset_type === 'NCR') {
                         isUnanswered = currentAnswer !== 'Comply' && currentAnswer !== 'Not-comply';
                     } else if (it.qset_type === 'Rating') {
-                        isUnanswered = typeof currentAnswer !== 'number' || currentAnswer < 1 || currentAnswer > 5;
+                        const num = Number(currentAnswer);
+                        // 0 = N/A is considered answered
+                        isUnanswered = Number.isNaN(num) || num < 0 || num > 4;
                     } else if (it.qset_type === 'Selection') {
                         isUnanswered = currentAnswer !== 'Equipped' && currentAnswer !== 'Missing';
                     }
@@ -1088,12 +1126,35 @@ const AssessmentForm: React.FC = () => {
                                 )}
 
                                 {it.qset_type === 'Rating' && (
-                                    <div className="flex items-center gap-1">
-                                        {[1, 2, 3, 4, 5].map(n => (
-                                            <button key={n} type="button" className={`${answers[it.qset_id] >= n ? 'text-yellow-500' : 'text-gray-300'}`} onClick={() => setAnswer(it.qset_id, n)} aria-label={`${n} star`}>
-                                                <Star className="w-6 h-6" />
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                className={`px-2 py-1 text-xs rounded border ${Number(answers[it.qset_id] || 0) === 0 ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                onClick={() => setAnswer(it.qset_id, 0)}
+                                            >
+                                                N/A
                                             </button>
-                                        ))}
+                                            <div className="flex items-center gap-1">
+                                                {[1, 2, 3, 4].map(n => {
+                                                    const selected = Number(answers[it.qset_id] || 0) >= n;
+                                                    return (
+                                                        <button
+                                                            key={n}
+                                                            type="button"
+                                                            onClick={() => setAnswer(it.qset_id, n)}
+                                                            aria-label={`${n} star`}
+                                                            className="focus:outline-none"
+                                                        >
+                                                            <Star className={`w-6 h-6 ${selected ? 'text-yellow-500 fill-yellow-400' : 'text-gray-300 fill-transparent'}`} />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-gray-500 text-center">
+                                            1 - Tidak memuaskan, 2 - Memuaskan, 3 - Baik, 4 - Cemerlang
+                                        </div>
                                     </div>
                                 )}
 
@@ -1109,7 +1170,7 @@ const AssessmentForm: React.FC = () => {
                                 {needsCommentOrFile && (
                                     <div className="mt-3 space-y-2">
                                         <label className="block text-sm font-medium">
-                                            Comment {((it.qset_type === 'NCR' && currentAnswer === 'Not-comply') || (it.qset_type === 'Rating' && currentAnswer === 1) || (it.qset_type === 'Selection' && currentAnswer === 'Missing')) ? '(required)' : '(optional)'}
+                                            Comment {((it.qset_type === 'NCR' && currentAnswer === 'Not-comply') || (it.qset_type === 'Rating' && Number(currentAnswer) === 1) || (it.qset_type === 'Selection' && currentAnswer === 'Missing')) ? '(required)' : '(optional)'}
                                         </label>
                                         <Textarea
                                             rows={3}
@@ -1170,7 +1231,7 @@ const AssessmentForm: React.FC = () => {
             {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                     <div>
-                        <Button onClick={handlePrev} disabled={page === 0} variant="outline">
+                        <Button onClick={handlePrev} disabled={page === 0} variant="outline" className="bg-gray-300 hover:bg-gray-400 border-gray-400">
                             Previous
                         </Button>
                     </div>
