@@ -313,7 +313,7 @@ const FleetCardList: React.FC = () => {
         if (!assetPickerOpen) return;
         // if we already have options, use cached list to avoid duplicate requests
         if (assetOptions.length > 0) return;
-        authenticatedApi.get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } }[] }>("/api/assets", { params: { type: 2, status: 'active' } })
+        authenticatedApi.get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } }[] }>("/api/assets", { params: { manager: 2, status: 'active' } })
             .then(res => setAssetOptions(res.data?.data || []))
             .catch(() => {
                 toast.error('Failed to load assets');
