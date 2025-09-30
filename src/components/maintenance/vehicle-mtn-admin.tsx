@@ -19,6 +19,12 @@ interface Vehicle {
   register_number: string;
 }
 
+// Some backends return `asset` instead of `vehicle`
+interface AssetRef {
+  id: number;
+  register_number?: string;
+}
+
 interface Requester {
   ramco_id: string;
   name: string;
@@ -54,7 +60,8 @@ interface MaintenanceRequest {
   emailStat: number;
   inv_status: number;
   status: 'pending' | 'verified' | 'recommended' | 'approved';
-  vehicle: Vehicle;
+  vehicle?: Vehicle; // legacy shape
+  asset?: AssetRef;  // current backend shape
   requester: Requester;
   recommendation_by: ApprovalBy | null;
   approval_by: ApprovalBy | null;
@@ -113,35 +120,47 @@ const VehicleMaintenanceAdmin = () => {
     }
   };
 
-  // Filter data based on current filters
-  const getFilteredData = () => {
-    let filtered = allRows;
-    
-    // Filter by year
-    filtered = filtered.filter(item => {
+  // Data filtered by year only (for summary counters)
+  const yearFilteredRows = React.useMemo(() => {
+    return allRows.filter(item => {
       if (!item.req_date) return false;
       return new Date(item.req_date).getFullYear() === yearFilter;
     });
-    
-    // Filter by status
+  }, [allRows, yearFilter]);
+
+  // Filter data based on current filters (year + status) for the grid
+  const getFilteredData = () => {
+    let filtered = yearFilteredRows;
+
+    // Filter by status for the grid only
     if (statusFilter !== 'all') {
       filtered = filtered.filter(item => item.status === statusFilter);
     }
-    
+
     // Process data for display
-    return filtered.map((item, idx) => ({
-      ...item,
-      rowNumber: idx + 1,
-      service_types: item.svc_type?.map(type => type.name).join(', ') || 'N/A',
-      requester_name: item.requester?.name || 'N/A',
-      register_number: item.vehicle?.register_number || 'N/A',
-      costcenter_name: item.costcenter?.name || 'N/A',
-      workshop_name: item.workshop?.name || 'N/A',
-      req_date: item.req_date ? new Date(item.req_date).toLocaleDateString() : 'N/A',
-      approval_date: item.approval_date ? new Date(item.approval_date).toLocaleDateString() : 'N/A',
-      verification_date: item.verification_date ? new Date(item.verification_date).toLocaleDateString() : 'N/A',
-      recommendation_date: item.recommendation_date ? new Date(item.recommendation_date).toLocaleDateString() : 'N/A',
-    }));
+    return filtered.map((item, idx) => {
+      const workshopName = (() => {
+        const w: any = (item as any).workshop;
+        if (!w) return (item as any).workshop_name || 'N/A';
+        if (typeof w === 'string') return w || 'N/A';
+        return w.name || (item as any).workshop_name || 'N/A';
+      })();
+
+      return ({
+        ...item,
+        rowNumber: idx + 1,
+        service_types: item.svc_type?.map(type => type.name).join(', ') || 'N/A',
+        requester_name: item.requester?.name || 'N/A',
+        // Prefer `asset.register_number`; fallback to legacy `vehicle.register_number`
+        register_number: item.asset?.register_number || item.vehicle?.register_number || 'N/A',
+        costcenter_name: item.costcenter?.name || 'N/A',
+        workshop_name: workshopName,
+        req_date: item.req_date ? new Date(item.req_date).toLocaleDateString() : 'N/A',
+        approval_date: item.approval_date ? new Date(item.approval_date).toLocaleDateString() : 'N/A',
+        verification_date: item.verification_date ? new Date(item.verification_date).toLocaleDateString() : 'N/A',
+        recommendation_date: item.recommendation_date ? new Date(item.recommendation_date).toLocaleDateString() : 'N/A',
+      });
+    });
   };
 
   // Update rows whenever filters change
@@ -190,8 +209,8 @@ const VehicleMaintenanceAdmin = () => {
   };
 
   const getStatusCount = (targetStatus: MaintenanceStatus) => {
-    if (targetStatus === 'all') return rows.length;
-    return rows.filter(row => row.status === targetStatus).length;
+    if (targetStatus === 'all') return yearFilteredRows.length;
+    return yearFilteredRows.filter(row => row.status === targetStatus).length;
   };
 
   useEffect(() => {
