@@ -351,8 +351,8 @@ const AssessmentForm: React.FC = () => {
             items.forEach((it) => {
                 const key = String(it.qset_id);
                 if (!(key in next)) {
-                    // Default ratings to N/A (0). Others remain null until set.
-                    next[key] = it.qset_type === 'Rating' ? 0 : null;
+                    // No default; assessor must choose (including explicit N/A where applicable)
+                    next[key] = null;
                     changed = true;
                 }
             });
@@ -405,21 +405,20 @@ const AssessmentForm: React.FC = () => {
 
                     // Set the main answer based on type
                     if (detail.qset_type === 'NCR') {
-                        // Prefer explicit NCR flag if available: 1=Comply, 2=Not-comply
+                        // Prefer explicit NCR flag if available: 1=Comply, 2=Not-comply, 0=N/A
                         if (ncr === 1) populatedAnswers[itemId] = 'Comply';
                         else if (ncr === 2) populatedAnswers[itemId] = 'Not-comply';
-                        else populatedAnswers[itemId] = rate > 0 ? 'Comply' : 'Not-comply';
+                        else populatedAnswers[itemId] = 0; // N/A
                     } else if (detail.qset_type === 'Rating') {
                         // Rating is N/A(0) or 1..4
                         const raw = Number.isNaN(rate) ? 0 : Math.round(rate);
                         const r = Math.max(0, Math.min(4, raw));
                         populatedAnswers[itemId] = r;
                     } else if (detail.qset_type === 'Selection') {
-                        // Map adt_rate2 to selection value: 1=Equipped, 2=Missing (fallback using adt_rate if needed)
+                        // Map adt_rate2 to selection value: 0=N/A, 1=Equipped, 2=Missing
                         if (rate2 === 1) populatedAnswers[itemId] = 'Equipped';
                         else if (rate2 === 2) populatedAnswers[itemId] = 'Missing';
-                        else if (rate === 1) populatedAnswers[itemId] = 'Equipped';
-                        else if (rate === 0) populatedAnswers[itemId] = 'Missing';
+                        else populatedAnswers[itemId] = 0; // N/A
                     }
 
                     // Set comment if exists
@@ -555,10 +554,10 @@ const AssessmentForm: React.FC = () => {
     // Calculate criteria summary
     const getCriteriaSummary = () => {
         const summary = {
-            ncr: { comply: 0, notComply: 0, unanswered: 0 },
-            rating: { answered: 0, unanswered: 0, averageRating: 0, totalRating: 0 },
-            selection: { equipped: 0, missing: 0, unanswered: 0 }
-        };
+            ncr: { comply: 0, notComply: 0, na: 0, unanswered: 0 },
+            rating: { answered: 0, na: 0, unanswered: 0, averageRating: 0, totalRating: 0 },
+            selection: { equipped: 0, missing: 0, na: 0, unanswered: 0 }
+        } as const as any;
 
         items.forEach(item => {
             const answer = answers[item.qset_id];
@@ -566,19 +565,25 @@ const AssessmentForm: React.FC = () => {
             if (item.qset_type === 'NCR') {
                 if (answer === 'Comply') summary.ncr.comply++;
                 else if (answer === 'Not-comply') summary.ncr.notComply++;
+                else if (answer === 0 || answer === '0') summary.ncr.na++;
                 else summary.ncr.unanswered++;
             } else if (item.qset_type === 'Rating') {
-                const num = Number(answer);
-                // Treat 0 as N/A (not counted as answered), 1..4 as answered
-                if (!Number.isNaN(num) && num >= 1 && num <= 4) {
-                    summary.rating.answered++;
-                    summary.rating.totalRating += num;
+                if (answer === 0 || answer === '0') {
+                    summary.rating.na++;
                 } else {
-                    summary.rating.unanswered++;
+                    const num = Number(answer);
+                    // 1..4 contribute to average
+                    if (!Number.isNaN(num) && num >= 1 && num <= 4) {
+                        summary.rating.answered++;
+                        summary.rating.totalRating += num;
+                    } else {
+                        summary.rating.unanswered++;
+                    }
                 }
             } else if (item.qset_type === 'Selection') {
                 if (answer === 'Equipped') summary.selection.equipped++;
                 else if (answer === 'Missing') summary.selection.missing++;
+                else if (answer === 0 || answer === '0') summary.selection.na++;
                 else summary.selection.unanswered++;
             }
         });
@@ -599,13 +604,16 @@ const AssessmentForm: React.FC = () => {
 
             // Check if answer is provided
             if (item.qset_type === 'NCR') {
-                if (answer !== 'Comply' && answer !== 'Not-comply') return false;
+                // Allow 0 (N/A) in addition to Comply/Not-comply; null/undefined is incomplete
+                if (answer !== 'Comply' && answer !== 'Not-comply' && answer !== 0 && answer !== '0') return false;
             } else if (item.qset_type === 'Rating') {
+                if (answer == null) return false;
                 const num = Number(answer);
                 // Allow 0 (N/A) or 1..4 as complete
                 if (Number.isNaN(num) || num < 0 || num > 4) return false;
             } else if (item.qset_type === 'Selection') {
-                if (answer !== 'Equipped' && answer !== 'Missing') return false;
+                // Allow 0 (N/A) in addition to Equipped/Missing; null/undefined is incomplete
+                if (answer !== 'Equipped' && answer !== 'Missing' && answer !== 0 && answer !== '0') return false;
             }
 
             // Only comment is required if needed
@@ -697,19 +705,22 @@ const AssessmentForm: React.FC = () => {
             let rate2 = 0;
 
             if (item.qset_type === 'NCR') {
-                // Comply = 1, Not-comply = 2 (adt_ncr)
-                ncr = answer === 'Comply' || answer === 1 ? 1 : (answer === 'Not-comply' || answer === 2 ? 2 : 0);
-                rate = answer === 'Comply' ? '5' : '0'; // for scoring, unchanged
+                // Comply = 1, Not-comply = 2, 0 = N/A
+                ncr = (answer === 'Comply' || answer === 1) ? 1 : ((answer === 'Not-comply' || answer === 2) ? 2 : 0);
+                // For scoring, keep 5 for comply, 0 otherwise (including N/A)
+                rate = (answer === 'Comply' || answer === 1) ? '5' : '0';
             } else if (item.qset_type === 'Rating') {
-                // adt_rate: 1..5 (unchanged)
-                const numeric = typeof answer === 'number' ? answer : parseInt(answer || '1', 10);
-                rate = String(isNaN(numeric) ? 1 : numeric);
+                // adt_rate: 0 (N/A) or 1..4
+                const numeric = typeof answer === 'number' ? answer : parseInt(answer ?? '0', 10);
+                rate = String(isNaN(numeric) ? 0 : numeric);
             } else if (item.qset_type === 'Selection') {
-                // adt_rate2: 1=Equipped, 2=Missing
+                // adt_rate2: 0=N/A, 1=Equipped, 2=Missing
                 if (answer === 'Equipped' || answer === 1) {
                     rate2 = 1;
                 } else if (answer === 'Missing' || answer === 2) {
                     rate2 = 2;
+                } else if (answer === 0 || answer === '0' || String(answer).toLowerCase() === 'n/a') {
+                    rate2 = 0;
                 }
                 // For scoring, treat Equipped as 1, Missing as 0
                 rate = rate2 === 1 ? '1' : '0';
@@ -960,16 +971,19 @@ const AssessmentForm: React.FC = () => {
                 {items.length > 0 && (() => {
                     const summary = getCriteriaSummary();
                     const totalItems = items.length;
-                    const answeredItems = summary.ncr.comply + summary.ncr.notComply + summary.rating.answered + summary.selection.equipped + summary.selection.missing;
+                    const answeredItems =
+                        summary.ncr.comply + summary.ncr.notComply + summary.ncr.na +
+                        summary.rating.answered + summary.rating.na +
+                        summary.selection.equipped + summary.selection.missing + summary.selection.na;
                     const progressPercentage = totalItems > 0 ? Math.round((answeredItems / totalItems) * 100) : 0;
 
                     // Calculate totals for each criteria type
-                    const ncrTotal = summary.ncr.comply + summary.ncr.notComply + summary.ncr.unanswered;
-                    const ncrAnswered = summary.ncr.comply + summary.ncr.notComply;
-                    const ratingTotal = summary.rating.answered + summary.rating.unanswered;
-                    const ratingAnswered = summary.rating.answered;
-                    const selectionTotal = summary.selection.equipped + summary.selection.missing + summary.selection.unanswered;
-                    const selectionAnswered = summary.selection.equipped + summary.selection.missing;
+                    const ncrTotal = summary.ncr.comply + summary.ncr.notComply + summary.ncr.na + summary.ncr.unanswered;
+                    const ncrAnswered = summary.ncr.comply + summary.ncr.notComply + summary.ncr.na;
+                    const ratingTotal = summary.rating.answered + summary.rating.na + summary.rating.unanswered;
+                    const ratingAnswered = summary.rating.answered + summary.rating.na;
+                    const selectionTotal = summary.selection.equipped + summary.selection.missing + summary.selection.na + summary.selection.unanswered;
+                    const selectionAnswered = summary.selection.equipped + summary.selection.missing + summary.selection.na;
 
                     return (
                         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1099,13 +1113,18 @@ const AssessmentForm: React.FC = () => {
                     // Highlight unanswered
                     let isUnanswered = false;
                     if (it.qset_type === 'NCR') {
-                        isUnanswered = currentAnswer !== 'Comply' && currentAnswer !== 'Not-comply';
+                        // 0 = N/A is considered answered; null/undefined => unanswered
+                        isUnanswered = !(currentAnswer === 'Comply' || currentAnswer === 'Not-comply' || currentAnswer === 0 || currentAnswer === '0');
                     } else if (it.qset_type === 'Rating') {
-                        const num = Number(currentAnswer);
-                        // 0 = N/A is considered answered
-                        isUnanswered = Number.isNaN(num) || num < 0 || num > 4;
+                        if (currentAnswer == null) isUnanswered = true;
+                        else {
+                            const num = Number(currentAnswer);
+                            // 0..4 valid
+                            isUnanswered = Number.isNaN(num) || num < 0 || num > 4;
+                        }
                     } else if (it.qset_type === 'Selection') {
-                        isUnanswered = currentAnswer !== 'Equipped' && currentAnswer !== 'Missing';
+                        // 0 = N/A is considered answered
+                        isUnanswered = !(currentAnswer === 'Equipped' || currentAnswer === 'Missing' || currentAnswer === 0 || currentAnswer === '0');
                     }
 
                     return (
@@ -1113,15 +1132,24 @@ const AssessmentForm: React.FC = () => {
                             <div className="font-medium mb-2">{start + idx + 1}. {it.qset_desc}</div>
                             <div>
                                 {it.qset_type === 'NCR' && (
-                                    <div className="flex gap-4">
-                                        <label className="flex items-center gap-2">
-                                            <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Comply'} onChange={() => setAnswer(it.qset_id, 'Comply')} />
-                                            <span>Comply</span>
-                                        </label>
-                                        <label className="flex items-center gap-2">
-                                            <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Not-comply'} onChange={() => setAnswer(it.qset_id, 'Not-comply')} />
-                                            <span>Not-comply</span>
-                                        </label>
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                type="button"
+                                            className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                onClick={() => setAnswer(it.qset_id, 0)}
+                                            >
+                                                N/A
+                                            </button>
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Comply'} onChange={() => setAnswer(it.qset_id, 'Comply')} />
+                                                <span>Comply</span>
+                                            </label>
+                                            <label className="flex items-center gap-2">
+                                                <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Not-comply'} onChange={() => setAnswer(it.qset_id, 'Not-comply')} />
+                                                <span>Not-comply</span>
+                                            </label>
+                                        </div>
                                     </div>
                                 )}
 
@@ -1130,14 +1158,14 @@ const AssessmentForm: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             <button
                                                 type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${Number(answers[it.qset_id] || 0) === 0 ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                            className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 0)}
                                             >
                                                 N/A
                                             </button>
                                             <div className="flex items-center gap-1">
                                                 {[1, 2, 3, 4].map(n => {
-                                                    const selected = Number(answers[it.qset_id] || 0) >= n;
+                                                    const selected = Number(answers[it.qset_id]) >= n;
                                                     return (
                                                         <button
                                                             key={n}
@@ -1159,12 +1187,31 @@ const AssessmentForm: React.FC = () => {
                                 )}
 
                                 {it.qset_type === 'Selection' && (
-                                    <SingleSelect
-                                        options={[{ value: 'Equipped', label: 'Equipped' }, { value: 'Missing', label: 'Missing' }]}
-                                        value={answers[it.qset_id] || ''}
-                                        onValueChange={(v: any) => setAnswer(it.qset_id, v)}
-                                        placeholder="Select"
-                                    />
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                onClick={() => setAnswer(it.qset_id, 0)}
+                                            >
+                                                N/A
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`px-2 py-1 text-xs rounded border ${answers[it.qset_id] === 'Equipped' ? 'bg-green-600 border-green-600 text-white hover:bg-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                onClick={() => setAnswer(it.qset_id, 'Equipped')}
+                                            >
+                                                Equipped
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`px-2 py-1 text-xs rounded border ${answers[it.qset_id] === 'Missing' ? 'bg-red-600 border-red-600 text-white hover:bg-red-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                onClick={() => setAnswer(it.qset_id, 'Missing')}
+                                            >
+                                                Missing
+                                            </button>
+                                        </div>
+                                    </div>
                                 )}
 
                                 {needsCommentOrFile && (

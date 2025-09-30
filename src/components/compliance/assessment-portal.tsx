@@ -5,11 +5,13 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { OTPInput } from '@/components/ui/otp-input';
 import { useSearchParams } from 'next/navigation';
+
+//http://localhost:3000/compliance/assessment/portal/149?code=003461197910
 
 type Location = { id?: number; code?: string | null } | null;
 type CostCenter = { id?: number; name?: string | null } | null;
@@ -99,6 +101,7 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
   const [summaryDetails, setSummaryDetails] = useState<AssessmentDetail[]>([]);
   const [summaryHeader, setSummaryHeader] = useState<any>(null);
   const [accepting, setAccepting] = useState(false);
+  const [pendingDownloadId, setPendingDownloadId] = useState<number | null>(null);
 
   // Portal verification via RAMCO ID + 6-digit PIN from email link
   const searchParams = useSearchParams();
@@ -183,8 +186,7 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
     );
   }
 
-  const openSummary = async (assessId: number) => {
-    setOpenSummaryId(assessId);
+  const loadSummary = async (assessId: number) => {
     setSummaryLoading(true);
     setSummaryDetails([]);
     setSummaryHeader(null);
@@ -201,19 +203,158 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
     }
   };
 
+  const openAcceptance = async (assessId: number) => {
+    setOpenSummaryId(assessId);
+    await loadSummary(assessId);
+  };
+
+  const mysqlNow = () => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  };
+
   const acceptAssessment = async () => {
     if (!openSummaryId) return;
     setAccepting(true);
     try {
-      await authenticatedApi.put(`/api/compliance/assessments/${assetId}/acceptance`, { assess_id: openSummaryId, ramco_id: ramcoId, pin } as any);
-      toast.success('Assessment accepted');
+      await authenticatedApi.put(`/api/compliance/assessments/${openSummaryId}/acceptance`, {
+        acceptance_status: 1,
+        acceptance_date: mysqlNow(),
+      } as any);
+      toast.success('Acceptance recorded');
       await fetchRows();
+      const toDownload = pendingDownloadId;
       setOpenSummaryId(null);
+      setPendingDownloadId(null);
+      if (toDownload) setTimeout(() => downloadSummary(toDownload), 50);
     } catch (err) {
-      console.error('Failed to accept assessment', err);
-      toast.error('Failed to accept assessment');
+      console.error('Failed to update acceptance', err);
+      toast.error('Failed to update acceptance');
     } finally {
       setAccepting(false);
+    }
+  };
+
+  const computeNcrCounts = (details: AssessmentDetail[]) => {
+    let comply = 0; let notComply = 0;
+    for (const d of details) {
+      if ((d.qset_type || '').toUpperCase() === 'NCR') {
+        if (d.adt_ncr === 1) comply++; else if (d.adt_ncr === 2) notComply++;
+      }
+    }
+    return { comply, notComply };
+  };
+
+  const downloadSummary = async (assessId: number) => {
+    try {
+      const res = await authenticatedApi.get(`/api/compliance/assessments/${assessId}`);
+      const payload: any = (res as any)?.data?.data || (res as any)?.data || {};
+      const details: AssessmentDetail[] = Array.isArray(payload?.details) ? payload.details : [];
+      const { comply, notComply } = computeNcrCounts(details);
+      const rate = parseRate(payload?.a_rate);
+
+      const safe = (v: any) => (v === null || v === undefined ? '' : String(v));
+      const vehicleNo = safe(payload?.asset?.register_number);
+      const locationCode = safe(payload?.assessment_location?.code || payload?.asset?.location?.code);
+      const driverId = safe(payload?.asset?.owner?.ramco_id);
+      const driverName = safe(payload?.asset?.owner?.full_name);
+      const vehicleAge = safe(payload?.asset?.age);
+      const makeModel = [safe(payload?.asset?.make), safe(payload?.asset?.model)].filter(Boolean).join(' ').trim();
+
+      const headerHtml = `
+        <div style="background:#2d2d2d;color:#fff;padding:6px 10px;font-weight:600">VEHICLE ASSESSMENT FORM</div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px">
+          <tbody>
+            <tr>
+              <td style="border:1px solid #cbd5e1;padding:6px;width:25%">Assessment Date:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px;width:25%">${formatDMY(payload?.a_date || payload?.a_dt)}</td>
+              <td style="border:1px solid #cbd5e1;padding:6px;width:25%">Driver's:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px;width:25%">${driverName || '&nbsp;'}</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #cbd5e1;padding:6px">Assessed Location:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">${locationCode || '&nbsp;'}</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">Driver's Employee ID:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">${driverId || '&nbsp;'}</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #cbd5e1;padding:6px">Vehicle Registration No:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">${vehicleNo || '&nbsp;'}</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">Vehicle Age:</td>
+              <td style="border:1px solid #cbd5e1;padding:6px">${vehicleAge || '&nbsp;'} year(s)</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="margin:10px 0 0 0;font-size:10px;color:#111827;text-align:center;font-weight:600">Comply: ${comply} &nbsp;&nbsp; Not-comply: ${notComply} &nbsp;&nbsp; NCR (Not-comply): ${payload?.a_ncr ?? 0} &nbsp;&nbsp; Rate: ${rate !== null ? rate.toFixed(2) : '-'}%</div>
+      `;
+
+      const rowsHtml = details.map((d, idx) => {
+        const type = (d.qset_type || '').toUpperCase();
+        const ncrLabel = type === 'NCR' ? (d.adt_ncr === 1 ? 'Comply' : (d.adt_ncr === 2 ? 'Not-comply' : '')) : '';
+        let rateCell = '';
+        if (type === 'NCR') {
+          const r = Number(d.adt_rate);
+          rateCell = r === 0 ? 'N/A' : '';
+        } else if (type === 'SELECTION') {
+          const v = Number(d.adt_rate2);
+          rateCell = v === 1 ? 'Equipped' : (v === 2 ? 'Missing' : 'N/A');
+        } else if (type === 'RATING') {
+          const n = Number(typeof d.adt_rate === 'number' ? d.adt_rate : (d.adt_rate ?? ''));
+          rateCell = Number.isFinite(n) ? (n === 0 ? 'N/A' : String(n)) : '';
+        } else {
+          rateCell = typeof d.adt_rate === 'number' ? String(d.adt_rate) : String(d.adt_rate ?? '');
+        }
+        return `
+          <tr>
+            <td style="border:1px solid #e5e7eb;padding:6px">${idx + 1}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px">${d.qset_desc || ''}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px">${ncrLabel}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px">${rateCell}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px">${type}</td>
+          </tr>`;
+      }).join('');
+
+      const html = `<!doctype html>
+        <html><head><meta charset="utf-8" />
+        <title>Assessment ${assessId} Summary</title>
+        <style>
+          body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:20px; font-size:10px;}
+          table{border-collapse:collapse;width:100%;font-size:10px}
+          thead{background:#f9fafb}
+          th,td{border:1px solid #e5e7eb;padding:6px;text-align:left}
+          .toolbar{display:flex;gap:8px;margin-bottom:12px}
+          .btn{padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#f3f4f6;cursor:pointer}
+          .btn.red{background:#fee2e2;border-color:#fecaca;color:#991b1b}
+          @media print{ .toolbar{ display:none } @page{ size:A4 portrait; margin:12mm } }
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+        </head><body>
+        <div class="toolbar">
+          <button class="btn red" onclick="window.close()">Close</button>
+          <button class="btn" onclick="(function(){
+            const el = document.getElementById('summary-root');
+            if (!window.html2pdf || !el) { window.print(); return; }
+            window.html2pdf().from(el).set({ margin: 10, filename: 'assessment-${assessId}-summary.pdf', image:{ type:'jpeg', quality:0.98 }, html2canvas:{ scale:2, useCORS:true }, jsPDF:{ unit:'mm', format:'a4', orientation:'portrait' } }).save();
+          })()">Save PDF</button>
+        </div>
+        <div id="summary-root">
+        ${headerHtml}
+        <div style="margin-top:10px"></div>
+        <table>
+          <thead><tr><th>Item</th><th>Description</th><th>NCR</th><th>Rate</th><th>Type</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div style="margin-top:8px;font-size:10px;color:#374151">Skala: 1-Tidak Memuaskan / Tidak Berfungsi 2-Memuaskan 3-Baik 4-Cemerlang / Berfungsi Dengan Baik</div>
+        </div>
+        </body></html>`;
+
+      // Open in a new tab (user can Print or Save PDF from toolbar)
+      const w = window.open('', '_blank');
+      if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+    } catch (err) {
+      console.error('Failed to download summary', err);
+      toast.error('Failed to download summary');
     }
   };
 
@@ -243,7 +384,7 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
           <CardContent className="py-8 text-center text-sm text-muted-foreground">No assessments found for this asset.</CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {rows
             .slice()
             .sort((a, b) => new Date(b.a_date ?? b.a_dt ?? 0).getTime() - new Date(a.a_date ?? a.a_dt ?? 0).getTime())
@@ -264,15 +405,37 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="text-sm">
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div className="space-y-1">
                       <div><span className="text-gray-500">Date</span><div className="font-medium">{formatDMY(row.a_date ?? row.a_dt)}</div></div>
                       <div><span className="text-gray-500">Location</span><div className="font-medium">{loc}</div></div>
-                      <div><span className="text-gray-500">NCR</span><div className="font-medium">{row.a_ncr ?? 0}</div></div>
+                      <div><span className="text-gray-500">NCR (Not-comply)</span><div className="font-medium">{row.a_ncr ?? 0}</div></div>
                       <div><span className="text-gray-500">Rate</span><div className="font-medium">{rate !== null ? `${rate.toFixed(2)}%` : '-'}</div></div>
-                      <div className="col-span-2"><span className="text-gray-500">Photos</span><div className="font-medium">{uploads.length ? `${uploads.length} photo${uploads.length>1?'s':''}` : '—'}</div></div>
+                      <div>
+                        <span className="text-gray-500">Photos</span>
+                        {uploads.length ? (
+                          <div className="mt-1 flex gap-2">
+                            {uploads.slice(0, 3).map((u, i) => (
+                              <img key={i} src={u} alt={`upload-${i+1}`} className="h-14 w-20 object-cover rounded border" />
+                            ))}
+                            {uploads.length > 3 ? (
+                              <div className="h-14 w-20 flex items-center justify-center rounded border bg-gray-50 text-xs text-gray-600">+{uploads.length - 3}</div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="font-medium">—</div>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <Button size="sm" onClick={() => openSummary(row.assess_id)}>View Summary</Button>
+                      <Button size="sm" onClick={async () => {
+                        const acceptedNow = Boolean(row.acceptance_status);
+                        if (!acceptedNow) {
+                          setPendingDownloadId(row.assess_id);
+                          await openAcceptance(row.assess_id);
+                        } else {
+                          downloadSummary(row.assess_id);
+                        }
+                      }}>Show Summary</Button>
                       {uploads.length ? (
                         <Button size="sm" variant="secondary" onClick={() => { window.open(uploads[0], '_blank'); }}>Open Photo</Button>
                       ) : null}
@@ -284,66 +447,43 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
         </div>
       )}
 
-      <Dialog open={openSummaryId !== null} onOpenChange={(o) => { if (!o) setOpenSummaryId(null); }}>
-        <DialogContent className="max-w-3xl">
+      <Dialog open={openSummaryId !== null} onOpenChange={(o) => { if (!o) { setOpenSummaryId(null); setPendingDownloadId(null); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Assessment Summary {openSummaryId ? `#${openSummaryId}` : ''}</DialogTitle>
+            <DialogTitle>Confirm Acceptance</DialogTitle>
+            <DialogDescription>Please accept to view the summary.</DialogDescription>
           </DialogHeader>
           {summaryLoading ? (
-            <div className="py-6">Loading summary…</div>
+            <div className="py-6">Loading…</div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 text-sm">
               {summaryHeader ? (
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="space-y-2">
+                  <div><span className="text-gray-500">Assessment</span><div className="font-medium">#{openSummaryId}</div></div>
                   <div><span className="text-gray-500">Vehicle</span><div className="font-medium">{summaryHeader?.asset?.register_number || '-'}</div></div>
                   <div><span className="text-gray-500">Location</span><div className="font-medium">{summaryHeader?.assessment_location?.code || summaryHeader?.asset?.location?.code || '-'}</div></div>
                   <div><span className="text-gray-500">Date</span><div className="font-medium">{formatDMY(summaryHeader?.a_date || summaryHeader?.a_dt)}</div></div>
-                  <div><span className="text-gray-500">NCR</span><div className="font-medium">{summaryHeader?.a_ncr ?? 0}</div></div>
+                  {(() => {
+                    let comply = 0, notComply = 0;
+                    for (const d of summaryDetails) {
+                      if ((d.qset_type || '').toUpperCase() === 'NCR') {
+                        if (d.adt_ncr === 1) comply++; else if (d.adt_ncr === 2) notComply++;
+                      }
+                    }
+                    return (
+                      <>
+                        <div><span className="text-gray-500">Comply</span><div className="font-medium text-green-700">{comply}</div></div>
+                        <div><span className="text-gray-500">Not-comply</span><div className="font-medium text-red-700">{notComply}</div></div>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : null}
-
-              <div className="border rounded-md">
-                <div className="px-3 py-2 font-medium bg-muted">Details</div>
-                <div className="max-h-80 overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead className="text-left text-gray-500">
-                      <tr>
-                        <th className="px-3 py-2 w-16">Item</th>
-                        <th className="px-3 py-2">Description</th>
-                        <th className="px-3 py-2 w-16">NCR</th>
-                        <th className="px-3 py-2 w-20">Rate</th>
-                        <th className="px-3 py-2">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summaryDetails.length ? summaryDetails.map((d) => (
-                        <tr key={d.adt_id} className="border-t">
-                          <td className="px-3 py-2">{d.adt_item}</td>
-                          <td className="px-3 py-2">{d.qset_desc || '-'}</td>
-                          <td className="px-3 py-2">{d.adt_ncr}</td>
-                          <td className="px-3 py-2">{typeof d.adt_rate === 'number' ? d.adt_rate.toFixed(2) : String(d.adt_rate)}</td>
-                          <td className="px-3 py-2">{d.qset_type || '-'}</td>
-                        </tr>
-                      )) : (
-                        <tr><td className="px-3 py-3 text-center text-gray-500" colSpan={5}>No details</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           )}
-
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpenSummaryId(null)}>Close</Button>
-            {(() => {
-              const accepted = openSummaryId ? Boolean(rows.find(r => r.assess_id === openSummaryId)?.acceptance_status || summaryHeader?.acceptance_status) : false;
-              return (
-                <Button onClick={acceptAssessment} disabled={accepting || accepted}>
-                  {accepting ? 'Accepting…' : (accepted ? 'Accepted' : 'Accept')}
-                </Button>
-              );
-            })()}
+            <Button variant="outline" onClick={() => { setOpenSummaryId(null); setPendingDownloadId(null); }}>Cancel</Button>
+            <Button onClick={acceptAssessment} disabled={accepting}>{accepting ? 'Accepting…' : 'Accept & Show'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
