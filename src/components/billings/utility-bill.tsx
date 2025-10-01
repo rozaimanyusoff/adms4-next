@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, Download, Loader2, ChevronRight, Search, X, Printer } from 'lucide-react';
+import { Plus, Download, Loader2, ChevronRight, Search, X, Printer, Trash2 } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { AuthContext } from '@store/AuthContext';
@@ -840,80 +840,96 @@ const UtilityBill = () => {
       </div>
       <Separator />
       <div className="flex items-center gap-2 my-3">
-        {/* Beneficiary filter combobox and printer export */}
-        <div className="flex items-center gap-2">
-          <div className="w-80">
-            <SingleSelect
-              options={beneficiaryOptions}
-              value={beneficiaryFilter}
-              onValueChange={(v) => setBeneficiaryFilter(v)}
-              placeholder="Select beneficiary..."
-              clearable
-              searchPlaceholder="Search beneficiary..."
-              className="w-full py-0"
-            />
+
+        <div className="flex items-start space-x-4">
+          {/* Beneficiary filter combobox and printer export */}
+          <div className='flex flex-col'>
+            <div className='flex items-center gap-2'>
+              <div className="w-60">
+                <SingleSelect
+                  options={beneficiaryOptions}
+                  value={beneficiaryFilter}
+                  onValueChange={(v) => setBeneficiaryFilter(v)}
+                  placeholder="Select beneficiary..."
+                  clearable
+                  searchPlaceholder="Search beneficiary..."
+                  className="w-full py-0"
+                />
+              </div>
+              <Button
+                variant="default"
+                onClick={async () => {
+                  try {
+                    // If user selected rows, export those; otherwise export currently filtered (displayed) rows
+                    const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
+                      ? selectedRowIds
+                      : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
+
+                    if (!idsToExport || idsToExport.length === 0) {
+                      toast.error('No bills to export');
+                      return;
+                    }
+
+                    // Determine whether any of the bills selected are printing-related
+                    const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
+                    const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
+                    if (anyPrinting) {
+                      const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
+                      await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
+                    } else {
+                      const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
+                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
+                    }
+                  } catch (err) {
+                    console.error('Failed to export utility PDF batch', err);
+                    toast.error('Failed to export PDF.');
+                  }
+                }}
+                // Keep legacy behavior: require beneficiary for bill batch export
+                disabled={!canExport || !beneficiaryFilter}
+              >
+                <Printer size={16} className="mr-1" /> Batch Bill Print
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-red-500 dark:text-gray-400 w-100">
+              *Used for print multiple bills from single beneficiary like utilities & printing
+            </p>
           </div>
-          <Button
-            variant="default"
-            onClick={async () => {
-              try {
-                // If user selected rows, export those; otherwise export currently filtered (displayed) rows
-                const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
-                  ? selectedRowIds
-                  : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
 
-                if (!idsToExport || idsToExport.length === 0) {
-                  toast.error('No bills to export');
-                  return;
+          <div className='flex flex-col'>
+            {/* New: Batch Services Print (multi-beneficiaries allowed) */}
+            <Button
+              variant="default"
+              className='w-70'
+              onClick={async () => {
+                try {
+                  if (!selectedGridRows || selectedGridRows.length === 0) {
+                    toast.error('Select one or more rows to print by service');
+                    return;
+                  }
+                  const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
+                  await exportUtilityBillBatchByService(selectedGridRows);
+                } catch (err) {
+                  console.error('Failed to export utility batch by service', err);
+                  toast.error('Failed to export service batch PDF.');
                 }
-
-                // Determine whether any of the bills selected are printing-related
-                const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
-                const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
-                if (anyPrinting) {
-                  const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
-                  await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
-                } else {
-                  const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
-                  await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
-                }
-              } catch (err) {
-                console.error('Failed to export utility PDF batch', err);
-                toast.error('Failed to export PDF.');
-              }
-            }}
-            // Keep legacy behavior: require beneficiary for bill batch export
-            disabled={!canExport || !beneficiaryFilter}
-          >
-            <Printer size={16} className="mr-1" /> Batch Bill Print
-          </Button>
-          {/* New: Batch Services Print (multi-beneficiaries allowed) */}
-          <Button
-            variant="default"
-            onClick={async () => {
-              try {
-                if (!selectedGridRows || selectedGridRows.length === 0) {
-                  toast.error('Select one or more rows to print by service');
-                  return;
-                }
-                const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
-                await exportUtilityBillBatchByService(selectedGridRows);
-              } catch (err) {
-                console.error('Failed to export utility batch by service', err);
-                toast.error('Failed to export service batch PDF.');
-              }
-            }}
-            disabled={!canExport}
-          >
-            <Printer size={16} className="mr-1" /> Batch Beneficiary Print
-          </Button>
+              }}
+              disabled={!canExport}
+            >
+              <Printer size={16} className="mr-1" /> Batch Beneficiary Print
+            </Button>
+            <p className="mt-1 text-xs text-red-500 dark:text-gray-400 w-70">
+              **Used for print bills from multiple beneficiaries like services (cleaner) & rentals
+            </p>
+          </div>
           {/* Delete Selected: show when any rows are selected and user is authorized */}
           {selectedRowIds && selectedRowIds.length > 0 && deleteBillAuthorizer.includes(username) && (
-            <>
+            <div className='flex items-start'>
               <Button
                 variant="destructive"
                 onClick={() => setDeleteDialogOpen(true)}
               >
+                <Trash2 size={16} className="mr-1" />
                 Delete Selected
               </Button>
 
@@ -934,11 +950,8 @@ const UtilityBill = () => {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            </>
+            </div>
           )}
-
-
-
         </div>
       </div>
       <CustomDataGrid

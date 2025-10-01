@@ -9,6 +9,7 @@ import AssessmentOwnership from "./assessment-ownership";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+
 const AssessmentSummary: React.FC = () => {
     const [total, setTotal] = useState<number | null>(null);
     const [byYear, setByYear] = useState<Record<string, number>>({});

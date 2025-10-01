@@ -3,7 +3,8 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { openManualAssessmentForm } from './pdf-manual-assessment';
+import { Plus, AlertTriangle, Eye } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type Assessment = {
@@ -55,10 +56,43 @@ const AssessmentRecord: React.FC = () => {
         { key: 'assess_id' as any, header: 'ID', sortable: true },
         { key: 'a_date' as any, header: 'Assessment Date', sortable: true, render: (row) => row.a_date ? new Date(row.a_date).toLocaleString() : '-' },
         { key: 'a_rate' as any, header: 'Rate', sortable: true },
-        { key: 'a_ncr' as any, header: 'NCR', sortable: true },
+        {
+            key: 'a_ncr' as any,
+            header: 'NCR',
+            sortable: true,
+            render: (row) =>
+                Number(row.a_ncr) > 0 ? (
+                    <div className="inline-flex items-center gap-1 text-red-600">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>{row.a_ncr}</span>
+                    </div>
+                ) : (
+                    <span className="text-gray-500">None</span>
+                ),
+        },
         { key: 'asset_reg' as any, header: 'Asset', filter: 'singleSelect', render: (row) => row.asset?.register_number || '-' },
         { key: 'asset_owner' as any, header: 'Owner', filter: 'singleSelect', render: (row) => row.asset?.owner?.full_name || '-' },
         { key: 'assessed_location' as any, header: 'Location', filter: 'singleSelect', render: (row) => row.assessed_location?.code || '-' },
+        {
+            key: 'action' as any,
+            header: 'Action',
+            render: (row) => {
+                const assetId = row.asset?.id ?? row.asset?.asset_id ?? row.asset?.aid;
+                if (!assetId) return <span className="text-gray-400 text-xs">No Asset</span>;
+                const href = `/compliance/assessment/portal/${assetId}`;
+                return (
+                    <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-blue-600 hover:text-blue-800"
+                        title="View"
+                    >
+                        <Eye className="h-4 w-4" />
+                    </a>
+                );
+            }
+        },
     ];
 
     const handleCreate = () => {
@@ -74,6 +108,9 @@ const AssessmentRecord: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Assessment Records</h2>
                 <div className="flex items-center gap-2">
+                    <Button variant="outline" className='ring-2 -ring-offset-2 ring-emerald-300 hover:bg-emerald-100' onClick={() => openManualAssessmentForm({ title: 'Vehicle Assessment Manual Form', ownership: 9, status: 'active' })}>
+                        Print Manual Form
+                    </Button>
                     <Button variant="default" onClick={handleCreate}><Plus className="h-4 w-4" /></Button>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { OTPInput } from '@/components/ui/otp-input';
 import { useSearchParams } from 'next/navigation';
+import { AuthContext } from '@/store/AuthContext';
+import { ArrowLeft } from 'lucide-react';
 
 //http://localhost:3000/compliance/assessment/portal/149?code=003461197910
 
@@ -92,6 +94,17 @@ const collectAllUploads = (row: Assessment): string[] => {
 };
 
 const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
+  // Admins who can bypass verification
+  const adminAccess = ['000277', '003461', '003768', '004550', '005480', '000712'];
+  const auth = useContext(AuthContext);
+  const username: string = auth?.authData?.user?.username || (() => {
+    try {
+      return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || '';
+    } catch {
+      return '';
+    }
+  })();
+
   const [rows, setRows] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +132,13 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
     }
   }, [initialCode]);
 
+  // Bypass prompt for admins
+  useEffect(() => {
+    if (username && adminAccess.includes(username)) {
+      setVerified(true);
+    }
+  }, [username]);
+
   const fetchRows = async (): Promise<Assessment[]> => {
     setLoading(true);
     setError(null);
@@ -139,8 +159,41 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
   };
 
   // Do not auto-fetch until verified.
+  useEffect(() => {
+    if (verified) {
+      fetchRows();
+    }
+  }, [verified]);
+
+  // Close current tab (if opened via script) or fallback to browser back
+  const handleCloseClick = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        if (window.opener) {
+          window.close();
+          return;
+        }
+        // Attempt to close anyway, then fallback
+        window.close();
+        setTimeout(() => {
+          // If still on the page, go back
+          try { history.back(); } catch {}
+        }, 150);
+      }
+    } catch {
+      try { history.back(); } catch {}
+    }
+  };
 
   const latestAsset = useMemo(() => rows[0]?.asset ?? null, [rows]);
+
+  // Update document title when we know the vehicle number
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const base = 'Assessment Portal';
+    const vehicle = latestAsset?.register_number ? ` – ${latestAsset.register_number}` : '';
+    document.title = `${base}${vehicle}`;
+  }, [latestAsset?.register_number]);
 
   const handleVerify = async () => {
     if (!ramcoId || !/^\d{6}$/.test(pin)) {
@@ -365,7 +418,13 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => history.back()} className="p-2 rounded hover:bg-gray-100" title="Back">←</button>
+          <button
+            onClick={handleCloseClick}
+            className="p-2 rounded bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400"
+            title="Close"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
           <h1 className="text-lg font-semibold">Assessment Portal</h1>
         </div>
         {latestAsset ? (
