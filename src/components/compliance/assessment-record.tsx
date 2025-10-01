@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { Button } from '@/components/ui/button';
 import { openManualAssessmentForm } from './pdf-manual-assessment';
-import { Plus, AlertTriangle, Eye } from 'lucide-react';
+import { Plus, AlertTriangle, Eye, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 type Assessment = {
@@ -80,16 +80,45 @@ const AssessmentRecord: React.FC = () => {
                 const assetId = row.asset?.id ?? row.asset?.asset_id ?? row.asset?.aid;
                 if (!assetId) return <span className="text-gray-400 text-xs">No Asset</span>;
                 const href = `/compliance/assessment/portal/${assetId}`;
+                const assessId = (row as any)?.assess_id ?? (row as any)?.id;
                 return (
-                    <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-blue-600 hover:text-blue-800"
-                        title="View"
-                    >
-                        <Eye className="h-4 w-4" />
-                    </a>
+                    <div className="inline-flex items-center gap-2">
+                        <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center text-blue-600 hover:text-blue-800"
+                            title="View"
+                        >
+                            <Eye className="h-4 w-4" />
+                        </a>
+                        <button
+                            title="Delete"
+                            className="inline-flex items-center text-red-600 hover:text-red-800"
+                            onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const ok = window.confirm('Delete assessment(s) for this asset? This action cannot be undone.');
+                                if (!ok) return;
+                                if (!assessId) { toast.error('Missing assessment id'); return; }
+                                try {
+                                    // Optionally set loading state if you want to disable controls globally
+                                    // setLoading(true);
+                                    await authenticatedApi.delete(`/api/compliance/assessments/${assessId}`);
+                                    toast.success('Assessment deleted');
+                                    // Refresh list
+                                    await fetchData();
+                                } catch (err) {
+                                    console.error('Delete failed', err);
+                                    toast.error('Failed to delete assessment(s)');
+                                } finally {
+                                    // setLoading(false);
+                                }
+                            }}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
+                    </div>
                 );
             }
         },
