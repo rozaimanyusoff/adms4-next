@@ -18,7 +18,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Star } from "lucide-react";
+import { Star, Loader2 } from "lucide-react";
 import { useSearchParams, useRouter } from 'next/navigation';
 
 interface CriteriaItem {
@@ -198,6 +198,8 @@ const AssessmentForm: React.FC = () => {
     const [answers, setAnswers] = useState<Record<string, any>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [dragOverId, setDragOverId] = useState<number | null>(null);
+    // Submission state to prevent double submit and show loader
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Dialog states
     const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -654,6 +656,9 @@ const AssessmentForm: React.FC = () => {
             return;
         }
 
+        // Prevent multiple rapid clicks
+        if (isSubmitting) return;
+
         // Ensure ownership department has been resolved (required by backend header payload)
         if (!ownershipDeptId || Number.isNaN(Number(ownershipDeptId))) {
             toast.error('Ownership is not set for your account. Please contact the administrator.');
@@ -756,6 +761,9 @@ const AssessmentForm: React.FC = () => {
         const rawOverall = totalCriteria > 0 ? (totalRate / (totalCriteria * 5)) * 100 : 0;
         const overallRate = isNaN(rawOverall) ? '0.00' : rawOverall.toFixed(2);
 
+        // After validations pass, mark as submitting
+        setIsSubmitting(true);
+
         // Prepare FormData payload
         const formData = new FormData();
         
@@ -818,6 +826,9 @@ const AssessmentForm: React.FC = () => {
         } catch (error) {
             console.error('Error submitting assessment:', error);
             toast.error('Failed to submit assessment. Please try again.');
+        } finally {
+            // Re-enable the UI if we are still on this page
+            setIsSubmitting(false);
         }
     };
 
@@ -1070,16 +1081,25 @@ const AssessmentForm: React.FC = () => {
                     <Button
                         onClick={handleCancel}
                         variant="outline"
+                        disabled={isSubmitting}
                         className="px-6"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        disabled={!isAssessmentComplete()}
-                        className={`px-6 ${isAssessmentComplete() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                        disabled={!isAssessmentComplete() || isSubmitting}
+                        aria-busy={isSubmitting}
+                        className={`px-6 ${isAssessmentComplete() && !isSubmitting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
                     >
-                        {isAssessmentComplete() ? (isEditing ? 'Update Assessment' : 'Submit Assessment') : 'Complete All Criteria'}
+                        {isSubmitting ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                {isEditing ? 'Updating...' : 'Submitting...'}
+                            </>
+                        ) : (
+                            isAssessmentComplete() ? (isEditing ? 'Update Assessment' : 'Submit Assessment') : 'Complete All Criteria'
+                        )}
                     </Button>
                 </div>
             </div>
