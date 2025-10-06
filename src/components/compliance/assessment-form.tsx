@@ -435,6 +435,32 @@ const AssessmentForm: React.FC = () => {
                 const urls = [data.a_upload, data.a_upload2, data.a_upload3, data.a_upload4]
                     .filter((u: any) => typeof u === 'string' && u.trim().length > 0) as string[];
                 setExistingVehicleImageUrls(urls);
+
+                // Ensure all criteria present in the saved assessment are included in `items`
+                // This avoids losing criteria on update when current ownership filtering hides some items.
+                setItems(prevItems => {
+                    try {
+                        const present = new Set((prevItems || []).map(i => String(i.qset_id)));
+                        const extras = (Array.isArray(data.details) ? data.details : [])
+                            .filter((d: any) => !present.has(String(d.adt_item)))
+                            .map((d: any, idx: number) => {
+                                const t = String(d.qset_type || '').toUpperCase();
+                                const normType: any = (t === 'NCR' || t === 'RATING' || t === 'SELECTION') ? t : 'RATING';
+                                return {
+                                    qset_id: Number(d.adt_item),
+                                    qset_quesno: Number(d.adt_item),
+                                    qset_desc: d.qset_desc || `Criterion ${d.adt_item}`,
+                                    qset_type: normType,
+                                    qset_order: (prevItems?.length || 0) + idx + 1,
+                                    dept: null,
+                                    ownership: null,
+                                } as CriteriaItem;
+                            });
+                        return extras.length ? [...prevItems, ...extras] : prevItems;
+                    } catch {
+                        return prevItems;
+                    }
+                });
             }
         } catch (e) {
             toast.error('Failed to load assessment data');
@@ -750,6 +776,13 @@ const AssessmentForm: React.FC = () => {
             };
         });
 
+        // All-or-nothing safety: ensure details count matches visible criteria count
+        const expectedCount = items.length;
+        if (details.length !== expectedCount) {
+            toast.error('Internal mismatch: criteria count changed during submission. Please try again.');
+            return;
+        }
+
         // Calculate overall assessment rate and NCR count
     const totalCriteria = details.length;
     // Count only 'Not-comply' items. adt_ncr: 1=Comply, 2=Not-comply, 0/other=unset
@@ -794,7 +827,19 @@ const AssessmentForm: React.FC = () => {
         });
         // (Optional) If backend expects empty strings for missing slots, uncomment below:
         // uploadFieldNames.forEach((field, idx) => { if (!vehicleImages[idx]) formData.append(field, ''); });
+
+        // Include details both as JSON and as indexed fields to maximize backend compatibility
         formData.append('details', JSON.stringify(details));
+        details.forEach((d, i) => {
+            formData.append(`details[${i}][adt_item]`, String(d.adt_item));
+            formData.append(`details[${i}][adt_rate]`, String(d.adt_rate));
+            formData.append(`details[${i}][adt_rate2]`, String(d.adt_rate2 ?? 0));
+            formData.append(`details[${i}][adt_rem]`, String(d.adt_rem || ''));
+            formData.append(`details[${i}][adt_ncr]`, String(d.adt_ncr ?? 0));
+            formData.append(`details[${i}][adt_image]`, String(d.adt_image || ''));
+        });
+        // Provide explicit count for backend transactional validation
+        formData.append('details_count', String(details.length));
 
         try {
             // Submit the form data
