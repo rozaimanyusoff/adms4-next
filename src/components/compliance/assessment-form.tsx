@@ -648,10 +648,10 @@ const AssessmentForm: React.FC = () => {
             const needsComment = (
                 item.qset_type === 'NCR' && answer === 'Not-comply'
             ) || (
-                item.qset_type === 'Rating' && Number(answer) === 1
-            ) || (
-                item.qset_type === 'Selection' && answer === 'Missing'
-            );
+                    item.qset_type === 'Rating' && Number(answer) === 1
+                ) || (
+                    item.qset_type === 'Selection' && answer === 'Missing'
+                );
 
             if (needsComment) {
                 const comment = answers[`comment-${item.qset_id}`];
@@ -784,9 +784,9 @@ const AssessmentForm: React.FC = () => {
         }
 
         // Calculate overall assessment rate and NCR count
-    const totalCriteria = details.length;
-    // Count only 'Not-comply' items. adt_ncr: 1=Comply, 2=Not-comply, 0/other=unset
-    const totalNCR = details.reduce((count, detail) => (detail.adt_ncr === 2 ? count + 1 : count), 0);
+        const totalCriteria = details.length;
+        // Count only 'Not-comply' items. adt_ncr: 1=Comply, 2=Not-comply, 0/other=unset
+        const totalNCR = details.reduce((count, detail) => (detail.adt_ncr === 2 ? count + 1 : count), 0);
         const totalRate = details.reduce((sum, detail) => {
             const v = parseFloat(detail.adt_rate);
             return sum + (isNaN(v) ? 0 : v);
@@ -799,22 +799,22 @@ const AssessmentForm: React.FC = () => {
 
         // Prepare FormData payload
         const formData = new FormData();
-        
+
         // Header information
-    formData.append('asset_id', selectedVehicle);
-    formData.append('location_id', selectedLocation);
-    formData.append('ownership', String(ownershipDeptId));
-    // MySQL DATETIME expects 'YYYY-MM-DD HH:MM:SS' (no timezone 'Z'). Using toISOString() caused
-    // error: Incorrect datetime value: '2025-09-25T03:11:34.408Z'. Format manually in local time.
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const mysqlDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    formData.append('a_date', mysqlDateTime);
+        formData.append('asset_id', selectedVehicle);
+        formData.append('location_id', selectedLocation);
+        formData.append('ownership', String(ownershipDeptId));
+        // MySQL DATETIME expects 'YYYY-MM-DD HH:MM:SS' (no timezone 'Z'). Using toISOString() caused
+        // error: Incorrect datetime value: '2025-09-25T03:11:34.408Z'. Format manually in local time.
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const mysqlDateTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        formData.append('a_date', mysqlDateTime);
         formData.append('a_remark', ''); // General remark if needed
-    // Ensure a_rate is a valid decimal string
-    formData.append('a_rate', overallRate);
+        // Ensure a_rate is a valid decimal string
+        formData.append('a_rate', overallRate);
         formData.append('a_ncr', String(totalNCR));
-        
+
         // Vehicle images: map each file to individual a_upload* fields (legacy backend expectation)
         // a_upload  -> first image
         // a_upload2 -> second image
@@ -838,8 +838,6 @@ const AssessmentForm: React.FC = () => {
             formData.append(`details[${i}][adt_ncr]`, String(d.adt_ncr ?? 0));
             formData.append(`details[${i}][adt_image]`, String(d.adt_image || ''));
         });
-        // Provide explicit count for backend transactional validation
-        formData.append('details_count', String(details.length));
 
         try {
             // Submit the form data
@@ -855,18 +853,11 @@ const AssessmentForm: React.FC = () => {
                 },
             });
 
-            // Notify other tabs/pages to reload assessment-record
+            // Log and hold on this page; show success dialog
+            try { console.debug('Assessment submit response:', (response as any)?.data ?? response); } catch {}
+            // Notify other tabs/pages to reload assessment-record, but do not redirect here
             localStorage.setItem('assessment-record-reload', Date.now().toString());
-
-            // Attempt to close the tab (works if opened via window.open)
-            window.close();
-
-            // Fallback: if not closed, redirect to assessment-record page
-            setTimeout(() => {
-                if (!window.closed) {
-                    window.location.href = '/compliance/assessment';
-                }
-            }, 500);
+            setShowSuccessDialog(true);
 
         } catch (error) {
             console.error('Error submitting assessment:', error);
@@ -1013,7 +1004,7 @@ const AssessmentForm: React.FC = () => {
                                         <div className="relative">
                                             <img src={url} alt={`Attachment ${idx + 1}`} className="w-full h-24 object-cover rounded border" />
                                             <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] p-1 truncate">
-                                                {(() => { try { return decodeURIComponent(url.split('/').pop() || `attachment-${idx+1}`); } catch { return `attachment-${idx+1}`; } })()}
+                                                {(() => { try { return decodeURIComponent(url.split('/').pop() || `attachment-${idx + 1}`); } catch { return `attachment-${idx + 1}`; } })()}
                                             </div>
                                         </div>
                                     </a>
@@ -1171,10 +1162,10 @@ const AssessmentForm: React.FC = () => {
                     const needsCommentOrFile = (
                         it.qset_type === 'NCR' && currentAnswer === 'Not-comply'
                     ) || (
-                        it.qset_type === 'Rating' && Number(currentAnswer) === 1
-                    ) || (
-                        it.qset_type === 'Selection' && currentAnswer === 'Missing'
-                    );
+                            it.qset_type === 'Rating' && Number(currentAnswer) === 1
+                        ) || (
+                            it.qset_type === 'Selection' && currentAnswer === 'Missing'
+                        );
                     // Highlight unanswered
                     let isUnanswered = false;
                     if (it.qset_type === 'NCR') {
@@ -1201,7 +1192,7 @@ const AssessmentForm: React.FC = () => {
                                         <div className="flex items-center gap-4">
                                             <button
                                                 type="button"
-                                            className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 0)}
                                             >
                                                 N/A
@@ -1223,7 +1214,7 @@ const AssessmentForm: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             <button
                                                 type="button"
-                                            className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 0)}
                                             >
                                                 N/A
