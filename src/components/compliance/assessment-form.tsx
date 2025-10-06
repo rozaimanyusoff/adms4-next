@@ -948,8 +948,17 @@ const AssessmentForm: React.FC = () => {
                         <input
                             id="vehicle-images"
                             type="file"
-                            accept="image/png,image/jpeg"
+                            accept="image/*"
                             multiple
+                            className="hidden"
+                            onChange={handleVehicleImageSelect}
+                        />
+                        {/* Dedicated camera capture for mobile (single photo, rear camera) */}
+                        <input
+                            id="vehicle-camera"
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
                             className="hidden"
                             onChange={handleVehicleImageSelect}
                         />
@@ -966,6 +975,12 @@ const AssessmentForm: React.FC = () => {
                                 <div className="text-xs text-gray-500">PNG, JPG up to 10MB each</div>
                             </div>
                         </label>
+                        <div className="mt-3">
+                            <label htmlFor="vehicle-camera" className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 5c-3.859 0-7 3.141-7 7s3.141 7 7 7 7-3.141 7-7-3.141-7-7-7zm0-3c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 4a1 1 0 011 1l.001 2H15a1 1 0 010 2h-1.999L13 13a1 1 0 01-2 0v-2H9a1 1 0 010-2h2V7a1 1 0 011-1z"/></svg>
+                                Use Camera
+                            </label>
+                        </div>
                     </div>
 
                     {vehicleImages.length > 0 && (
@@ -1300,7 +1315,8 @@ const AssessmentForm: React.FC = () => {
                                                 <input
                                                     id={`file-${it.qset_id}`}
                                                     type="file"
-                                                    accept="image/png,image/jpeg"
+                                                    accept="image/*"
+                                                    capture="environment"
                                                     className="hidden"
                                                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
                                                 />
