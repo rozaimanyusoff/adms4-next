@@ -34,6 +34,8 @@ const ComponentRegister = () => {
     const [matched, setMatched] = useState(false); // backend matched (name+email+contact)
     const [verifyError, setVerifyError] = useState<string | null>(null);
     const [serverRamcoId, setServerRamcoId] = useState<string>('');
+    const [employeeFullName, setEmployeeFullName] = useState<string>('');
+    const [nameLocked, setNameLocked] = useState<boolean>(false);
     const [sliderVerified, setSliderVerified] = useState(false);
 
     const handleChange = (e: { target: { id: string; value: string } }) => {
@@ -101,7 +103,7 @@ const ComponentRegister = () => {
         setVerifyError(null);
         const t = setTimeout(async () => {
             try {
-                const res = await api.post<{ status: string; message?: string; data?: { matched?: boolean; ramco_id?: string; confidence?: string } }>(
+                const res = await api.post<{ status: string; message?: string; data?: { matched?: boolean; ramco_id?: string; confidence?: string; employee_full_name?: string } }>(
                     '/api/auth/register/verifyme',
                     { name: formData.name, email: formData.email, contact: formData.contact }
                 );
@@ -109,15 +111,20 @@ const ComponentRegister = () => {
                 if (res.data?.status === 'success' && res.data?.data?.matched && res.data.data.ramco_id) {
                     setMatched(true);
                     setServerRamcoId(String(res.data.data.ramco_id));
+                    if (res.data.data.employee_full_name) {
+                        setEmployeeFullName(res.data.data.employee_full_name);
+                    }
                 } else {
                     setMatched(false);
                     setServerRamcoId('');
+                    setEmployeeFullName('');
                     setVerifyError(res.data?.message || 'Verification failed: details not matched');
                 }
             } catch (err: any) {
                 if (cancelled) return;
                 setMatched(false);
                 setServerRamcoId('');
+                setEmployeeFullName('');
                 setVerifyError(err?.response?.data?.message || 'Server error during verification');
             } finally {
                 if (!cancelled) setVerifying(false);
@@ -137,6 +144,20 @@ const ComponentRegister = () => {
     const [emailTooltipOpen, setEmailTooltipOpen] = useState(false);
     const [contactTooltipOpen, setContactTooltipOpen] = useState(false);
     const [userTypeTooltipOpen, setUserTypeTooltipOpen] = useState(false);
+
+    // Auto-fill name when Ramco ID matches server-provided ID
+    React.useEffect(() => {
+        if (formData.userType === '1' && matched && formData.username === serverRamcoId && serverRamcoId && employeeFullName) {
+            // Normalize name (title case) to enforce clean display, but preserve server version if contains capitals intentionally
+            const clean = employeeFullName.trim();
+            if (formData.name !== clean) {
+                setFormData(prev => ({ ...prev, name: clean }));
+            }
+            setNameLocked(true);
+        } else {
+            setNameLocked(false);
+        }
+    }, [formData.userType, matched, formData.username, serverRamcoId, employeeFullName]);
 
     return (
         <TooltipProvider>
@@ -169,21 +190,29 @@ const ComponentRegister = () => {
                     <div>
                         <Tooltip open={nameTooltipOpen} onOpenChange={setNameTooltipOpen} delayDuration={0}>
                             <TooltipTrigger asChild>
-                                <Input
-                                    id="name"
-                                    name="name"
-                                    type="text"
-                                    required
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    placeholder="Enter your full name"
-                                    onFocus={() => setNameTooltipOpen(true)}
-                                    onBlur={() => setNameTooltipOpen(false)}
-                                    disabled={!formData.userType}
-                                />
+                                <div className="relative">
+                                    <Input
+                                        id="name"
+                                        name="name"
+                                        type="text"
+                                        required
+                                        value={formData.name}
+                                        onChange={e => { if (!nameLocked) handleChange(e); }}
+                                        placeholder="Enter your full name"
+                                        onFocus={() => setNameTooltipOpen(true)}
+                                        onBlur={() => setNameTooltipOpen(false)}
+                                        disabled={!formData.userType || nameLocked}
+                                        className={nameLocked ? 'pr-24' : ''}
+                                    />
+                                    {nameLocked && (
+                                        <span className="absolute top-1/2 -translate-y-1/2 right-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-300 font-medium">
+                                            verified
+                                        </span>
+                                    )}
+                                </div>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-xs text-wrap">
-                                Please use your real full name for admin approval.
+                                {nameLocked ? 'Name auto-filled from HR record and locked.' : 'Please use your real full name for admin approval.'}
                             </TooltipContent>
                         </Tooltip>
                         {fieldErrors.name && <div className="text-xs text-red-600 mt-1">{fieldErrors.name}</div>}
@@ -242,7 +271,9 @@ const ComponentRegister = () => {
                                 name="username"
                                 type="text"
                                 value={formData.username}
-                                onChange={handleChange}
+                                onChange={e => {
+                                    handleChange(e);
+                                }}
                                 maxLength={serverRamcoId.length || 12}
                                 placeholder="Enter your Ramco ID"
                             />
