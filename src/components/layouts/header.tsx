@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useContext } from 'react';
+import { useEffect, useState, useContext, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Link from 'next/link';
 import { IRootState } from '@/store';
@@ -43,9 +43,11 @@ import { useTextSize } from '@/contexts/text-size-context';
 // Define Notification type
 interface Notification {
     id: number;
-    profile: string;
+    profile: string; // local avatar reference
     message: string;
-    time: string;
+    time: string; // ISO string or relative placeholder
+    title?: string;
+    read?: boolean; // backend-provided or locally managed
 }
 
 const Header = () => {
@@ -100,31 +102,149 @@ const Header = () => {
     const themeConfig = useSelector((state: IRootState) => state.themeConfig);
 
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [unreadCount, setUnreadCount] = useState<number>(0);
+    const [loadingNotifications, setLoadingNotifications] = useState(false);
+    const [notifError, setNotifError] = useState<string | null>(null);
+    const [viewingUserId, setViewingUserId] = useState<number | null>(null); // null = self (no forced param)
+    const [metaTargetUserId, setMetaTargetUserId] = useState<number | null>(null);
+    const [realtimeEnabled, setRealtimeEnabled] = useState(true); // allow pausing live feed
+    const MAX_NOTIFICATIONS = 50;
+    const notificationSigSetRef = useRef<Set<string>>(new Set());
+    const targetUserInputRef = useRef<HTMLInputElement | null>(null);
+    const selfUserId = authData?.user?.id;
 
+    const mapServerNotification = (n: any): Notification => ({
+        id: Number(n.id ?? Date.now()),
+        profile: 'user-profile.jpeg',
+        message: n.message || n.title || 'Notification',
+        time: n.time || n.created_at || new Date().toISOString(),
+        title: n.title,
+        read: !!n.read,
+    });
+
+    // Treat role id 1 (Admin) and 8 (Developer) as privileged for cross-user view
+    const isPrivilegedRole = (roleId?: number) => roleId != null && [1,8].includes(roleId);
+
+    const loadNotifications = useCallback(async (targetUser?: number) => {
+        if (!authData) return;
+        setLoadingNotifications(true);
+        setNotifError(null);
+        try {
+            const isAdmin = isPrivilegedRole(authData?.user?.role?.id);
+            // For admins: if they supplied any numeric targetUser (>=1 or even 0), append user_id param (including self) so backend variant is exercised.
+            const hasExplicitTarget = typeof targetUser === 'number' && !Number.isNaN(targetUser);
+            const useForeign = isAdmin && hasExplicitTarget;
+            const endpoint = useForeign ? `/api/notifications?user_id=${targetUser}` : '/api/notifications';
+            const res = await authenticatedApi.get<any>(endpoint);
+            // Expected shape: { status: 'success', data: [...] , meta?: { targetUserId }} OR array fallback
+            const raw: any = res.data as any;
+            const candidate = Array.isArray(raw?.data) ? raw.data
+                : Array.isArray(raw?.notifications) ? raw.notifications
+                : Array.isArray(raw?.results) ? raw.results
+                : Array.isArray(raw?.rows) ? raw.rows
+                : Array.isArray(raw) ? raw
+                : [];
+            const list: any[] = candidate;
+            const mapped: Notification[] = list.map(mapServerNotification).sort((a: Notification, b: Notification) => new Date(b.time).getTime() - new Date(a.time).getTime());
+            setNotifications(mapped);
+            setViewingUserId(useForeign ? targetUser! : null);
+            setMetaTargetUserId(raw?.meta?.targetUserId ?? (useForeign ? targetUser! : null));
+            // Debug logging (non-intrusive)
+            // eslint-disable-next-line no-console
+            console.debug('[Notifications] load ok -> endpoint:', endpoint, '| items:', mapped.length, '| viewingUserId:', viewingUserId, '| meta.targetUserId:', raw?.meta?.targetUserId);
+            // Don't alter unreadCount here for foreign view: unreadCount remains for self
+        } catch (e: any) {
+            if (e?.response?.status === 403) {
+                setNotifError('Forbidden: only admins can view other users\' notifications');
+                setViewingUserId(null);
+                setMetaTargetUserId(null);
+            } else {
+                setNotifError(e?.response?.data?.message || 'Failed to load notifications');
+            }
+            // eslint-disable-next-line no-console
+            console.error('[Notifications] load failed', e);
+        } finally {
+            setLoadingNotifications(false);
+        }
+    }, [authData, selfUserId, viewingUserId]);
+
+    const loadUnreadCount = useCallback(async () => {
+        if (!authData) return;
+        try {
+            const res = await authenticatedApi.get<any>('/api/notifications/unread-count');
+            const raw: any = res.data as any;
+            const count = raw?.count ?? raw?.data?.count ?? raw?.data?.unread ?? 0;
+            setUnreadCount(Number(count) || 0);
+        } catch {
+            // Silent fail; keep existing count
+        }
+    }, [authData]);
+
+    const markNotificationRead = useCallback(async (id: number) => {
+        // Optimistic UI
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+        setUnreadCount(c => (c > 0 ? c - 1 : 0));
+        try {
+            await authenticatedApi.post('/api/notifications/mark-read', { id });
+        } catch {
+            // rollback on failure (optional)
+        }
+    }, []);
+
+    const markAllRead = useCallback(async () => {
+        // Optimistic
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+        try {
+            await authenticatedApi.post('/api/notifications/mark-all-read');
+        } catch {
+            // ignore for now
+        }
+    }, []);
+
+    // Initial load from backend
+    useEffect(() => {
+        if (authData?.user) {
+            loadNotifications();
+            loadUnreadCount();
+        }
+    }, [authData?.user, loadNotifications, loadUnreadCount]);
+
+    // Real-time notifications via socket
     useEffect(() => {
         const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
         const socket = io(socketUrl, { transports: ['websocket'] });
         socket.on('notification', (data) => {
-            // Only show notification if user is admin (role id = 1)
-            if (authData?.user?.role?.id === 1) {
-                setNotifications((prev) => [
-                    {
-                        id: Date.now(),
-                        profile: 'user-profile.jpeg',
-                        message: data.message || '<strong>New Notification</strong>',
-                        time: 'Just now',
-                    },
-                    ...prev,
-                ]);
+            if (!realtimeEnabled) return;
+            if (isPrivilegedRole(authData?.user?.role?.id)) {
+                const signature = `${data.message || data.title || ''}::${data.time || ''}`;
+                if (notificationSigSetRef.current.has(signature)) return; // duplicate skip
+                notificationSigSetRef.current.add(signature);
+                setNotifications(prev => {
+                    const incoming: Notification = mapServerNotification({ ...data, id: Date.now() });
+                    const next = [incoming, ...prev];
+                    if (next.length > MAX_NOTIFICATIONS) {
+                        // Trim excess & rebuild signature set to keep memory bounded
+                        const trimmed = next.slice(0, MAX_NOTIFICATIONS);
+                        notificationSigSetRef.current = new Set(trimmed.map(n => `${n.message || ''}::${n.time || ''}`));
+                        return trimmed;
+                    }
+                    return next;
+                });
+                setUnreadCount(c => c + 1);
             }
         });
-        return () => {
-            socket.disconnect();
-        };
-    }, [authData?.user?.role?.id]);
+        return () => { socket.disconnect(); };
+    }, [authData?.user?.role?.id, realtimeEnabled]);
 
     const removeNotification = (value: number) => {
-        setNotifications(notifications.filter((user) => user.id !== value));
+        // Interpret removal as mark read locally
+        const target = notifications.find(n => n.id === value);
+        if (target && !target.read) {
+            markNotificationRead(value);
+        } else {
+            setNotifications(prev => prev.filter(n => n.id !== value));
+        }
     };
 
     const [search, setSearch] = useState(false);
@@ -313,39 +433,119 @@ const Header = () => {
                                 button={
                                     <span>
                                         <IconBellBing />
-                                        <span className="absolute top-0 flex h-3 w-3 ltr:right-0 rtl:left-0">
-                                            <span className="absolute -top-[3px] inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-[3px] rtl:-right-[3px]"></span>
-                                            <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-success"></span>
-                                        </span>
+                                        {unreadCount > 0 && (
+                                            <span className="absolute top-0 flex h-3 w-3 ltr:right-0 rtl:left-0">
+                                                <span className="absolute -top-[3px] inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-[3px] rtl:-right-[3px]"></span>
+                                                <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-success"></span>
+                                            </span>
+                                        )}
                                     </span>
                                 }
                             >
                                 <ul className="w-[300px] divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-[350px]">
                                     <li onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-between px-4 py-2 font-semibold">
-                                            <h4 className={textSizeClasses.heading}>Notification</h4>
-                                            {notifications.length ? <span className="badge bg-primary/80">{notifications.length} New</span> : ''}
+                                            <h4 className={textSizeClasses.heading}>Notifications</h4>
+                                            {unreadCount > 0 && <span className="badge bg-primary/80">{unreadCount} New</span>}
                                         </div>
                                     </li>
-                                    {notifications.length > 0 ? (
+                                    {isPrivilegedRole(authData?.user?.role?.id) && (
+                                        <li onClick={(e)=> e.stopPropagation()} className="px-4 pt-2 pb-1 text-xs flex flex-col gap-2 bg-slate-50 dark:bg-slate-800/40">
+                                            <form
+                                                className="flex items-center gap-2"
+                                                onSubmit={(e)=>{
+                                                    e.preventDefault();
+                                                    const rawVal = targetUserInputRef.current?.value?.trim();
+                                                    if (!rawVal) return;
+                                                    const val = Number(rawVal);
+                                                    if (!Number.isNaN(val)) {
+                                                        // eslint-disable-next-line no-console
+                                                        console.debug('[Notifications] submit load targetUserId:', val);
+                                                        loadNotifications(val);
+                                                    }
+                                                }}
+                                            >
+                                                <input
+                                                    ref={targetUserInputRef}
+                                                    type="number"
+                                                    min={1}
+                                                    placeholder="User ID"
+                                                    className="form-input h-7 w-28 px-2 py-1 text-xs"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="btn btn-secondary btn-xs h-7 px-3"
+                                                    onClick={(e)=>{
+                                                        // Redundant safety to ensure click triggers same logic
+                                                        const rawVal = targetUserInputRef.current?.value?.trim();
+                                                        if (!rawVal) return;
+                                                        const val = Number(rawVal);
+                                                        if (!Number.isNaN(val)) {
+                                                            // eslint-disable-next-line no-console
+                                                            console.debug('[Notifications] click load targetUserId:', val);
+                                                            // allow form onSubmit to handle; no duplicate call needed
+                                                        }
+                                                    }}
+                                                >Load</button>
+                                                {viewingUserId && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-outline-primary btn-xs h-7 px-3"
+                                                        onClick={()=>{ loadNotifications(); if (targetUserInputRef.current) targetUserInputRef.current.value=''; }}
+                                                    >Mine</button>
+                                                )}
+                                            </form>
+                                            {viewingUserId && (
+                                                <div className="text-[10px] italic text-amber-600 flex items-center justify-between">
+                                                    Viewing user ID {viewingUserId}{metaTargetUserId && metaTargetUserId !== viewingUserId ? ` (meta: ${metaTargetUserId})` : ''}
+                                                    <button
+                                                        className="underline"
+                                                        onClick={()=>{ loadNotifications(); if (targetUserInputRef.current) targetUserInputRef.current.value=''; }}
+                                                    >return</button>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center gap-2 text-[10px]">
+                                                <label className="flex items-center gap-1 cursor-pointer select-none">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={realtimeEnabled}
+                                                        onChange={(e)=> setRealtimeEnabled(e.target.checked)}
+                                                        className="form-checkbox h-3 w-3"
+                                                    />
+                                                    <span>Live feed</span>
+                                                </label>
+                                                <span className="text-gray-400">({notifications.length}/{MAX_NOTIFICATIONS})</span>
+                                            </div>
+                                        </li>
+                                    )}
+                                    {loadingNotifications && (
+                                        <li className="py-4 text-center text-xs text-gray-500">Loading...</li>
+                                    )}
+                                    {notifError && !loadingNotifications && (
+                                        <li className="py-2 px-4 text-xs text-red-600">{notifError}</li>
+                                    )}
+                                    {!loadingNotifications && notifications.length > 0 ? (
                                         <>
                                             {notifications.map((notification: Notification) => (
-                                                <li key={notification.id} className="dark:text-white-light/90" onClick={(e) => e.stopPropagation()}>
+                                                <li
+                                                    key={notification.id}
+                                                    className={`dark:text-white-light/90 cursor-pointer ${!notification.read ? 'bg-orange-50 dark:bg-slate-800/40' : ''}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (!notification.read) markNotificationRead(notification.id);
+                                                    }}
+                                                >
                                                     <div className="group flex items-center px-4 py-2">
                                                         <div className="grid place-content-center rounded-sm">
                                                             <div className="relative h-12 w-12">
                                                                 <img className="h-12 w-12 rounded-full object-cover" alt="profile" src={`/assets/images/${notification.profile}`} />
-                                                                <span className="absolute bottom-0 right-[6px] block h-2 w-2 rounded-full bg-success"></span>
+                                                                {!notification.read && <span className="absolute bottom-0 right-[6px] block h-2 w-2 rounded-full bg-success"></span>}
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-auto ltr:pl-3 rtl:pr-3">
                                                             <div className="ltr:pr-3 rtl:pl-3">
-                                                                <h6
-                                                                    dangerouslySetInnerHTML={{
-                                                                        __html: notification.message,
-                                                                    }}
-                                                                ></h6>
-                                                                <span className={`block ${textSizeClasses.small} font-normal dark:text-gray-500`}>{notification.time}</span>
+                                                                <h6 className={`font-${notification.read ? 'normal' : 'semibold'}`}>{notification.message}</h6>
+                                                                <span className={`block ${textSizeClasses.small} font-normal dark:text-gray-500`}>{notification.time === 'Just now' ? 'Just now' : new Date(notification.time).toLocaleString()}</span>
                                                             </div>
                                                             <button
                                                                 type="button"
@@ -359,20 +559,37 @@ const Header = () => {
                                                 </li>
                                             ))}
                                             <li>
-                                                <div className="p-4">
-                                                    <button className="btn btn-primary btn-small block w-full">Read All Notifications</button>
+                                                <div className="p-4 flex gap-2">
+                                                    <button
+                                                        className="btn btn-primary btn-small flex-1"
+                                                        onClick={(e) => { e.stopPropagation(); markAllRead(); }}
+                                                        disabled={unreadCount === 0 || (viewingUserId !== null && viewingUserId !== selfUserId)}
+                                                    >
+                                                        {(viewingUserId !== null && viewingUserId !== selfUserId) ? 'Mark All (Disabled)' : 'Mark All Read'}
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-secondary btn-small flex-1"
+                                                        onClick={(e) => { e.stopPropagation(); loadNotifications(viewingUserId || undefined); if (!viewingUserId) loadUnreadCount(); }}
+                                                    >
+                                                        Refresh
+                                                    </button>
                                                 </div>
                                             </li>
+                                            {notifications.length >= MAX_NOTIFICATIONS && (
+                                                <li className="px-4 pb-2 text-[10px] text-gray-500">Showing latest {MAX_NOTIFICATIONS} notifications (older trimmed).</li>
+                                            )}
                                         </>
                                     ) : (
-                                        <li onClick={(e) => e.stopPropagation()}>
-                                            <button type="button" className="!grid min-h-[200px] place-content-center text-lg hover:bg-transparent!">
-                                                <div className="mx-auto mb-4 rounded-full ring-4 ring-primary/30">
-                                                    <IconInfoCircle fill={true} className="h-10 w-10 text-primary" />
-                                                </div>
-                                                No data available.
-                                            </button>
-                                        </li>
+                                        !loadingNotifications && (
+                                            <li onClick={(e) => e.stopPropagation()}>
+                                                <button type="button" className="!grid min-h-[160px] place-content-center text-sm hover:bg-transparent! w-full">
+                                                    <div className="mx-auto mb-3 rounded-full ring-4 ring-primary/20 p-2 w-fit">
+                                                        <IconInfoCircle fill={true} className="h-8 w-8 text-primary" />
+                                                    </div>
+                                                    {notifError ? 'Failed to load notifications' : 'No notifications'}
+                                                </button>
+                                            </li>
+                                        )
                                     )}
                                 </ul>
                             </Dropdown>

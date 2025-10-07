@@ -359,14 +359,17 @@ const UserManagement = () => {
             key: "status",
             header: "Status",
             sortable: true,
-            render: (row) => (
-                <span
-                    className={`px-2 py-1 rounded-full text-xs font-semibold
-            ${row.status === 1 ? "bg-green-200 text-green-800" : "bg-red-200 text-red-800"}`}
-                >
-                    {row.status === 1 ? "Active" : "Inactive"}
-                </span>
-            ),
+            render: (row) => {
+                const label = row.status === 1 ? 'Active' : row.status === 2 ? 'Suspended' : 'Inactive';
+                const cls = row.status === 1
+                    ? 'bg-green-200 text-green-800'
+                    : row.status === 2
+                        ? 'bg-red-200 text-red-800'
+                        : 'bg-gray-200 text-gray-800';
+                return (
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cls}`}>{label}</span>
+                );
+            },
         },
     ];
 
@@ -751,6 +754,38 @@ const UserManagement = () => {
             toast.error('Failed to approve user(s).');
         } finally {
             setModalLoading(false);
+        }
+    };
+
+    // Suspend / Activate Users (for admin)
+    const handleSuspendActivateUsers = async () => {
+        if (!suspendAction) return;
+        setModalLoading(true);
+        setModalError(null);
+        try {
+            // Assumed backend payload. Adjust if needed.
+            const res = await authenticatedApi.post('/api/users/suspend', {
+                userIds: selectedUsers.map(u => u.id),
+                action: suspendAction, // 'suspend' | 'activate'
+            });
+            const data = res.data as any;
+            if (data?.status === 'Success' || data?.status === 'success') {
+                toast.success(suspendAction === 'suspend' ? 'User account(s) suspended.' : 'User account(s) reactivated.');
+                clearUserSelection();
+                await refreshUsers();
+                setModalOpen(null);
+            } else {
+                const msg = data?.message || 'Failed to update user status.';
+                setModalError(msg);
+                toast.error(msg);
+            }
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || 'Failed to update user status.';
+            setModalError(msg);
+            toast.error(msg);
+        } finally {
+            setModalLoading(false);
+            setSuspendAction(null);
         }
     };
 
@@ -1186,6 +1221,35 @@ const UserManagement = () => {
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>
+                                {/* Suspend / Activate Buttons */}
+                                {(() => {
+                                    const hasActive = selectedUsers.some(u => u.status === 1 || u.status === 0);
+                                    const hasSuspended = selectedUsers.some(u => u.status === 2);
+                                    return (
+                                        <>
+                                            {hasActive && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="min-w-[120px] border-red-600 hover:bg-red-300"
+                                                    onClick={() => { setSuspendAction('suspend'); setModalOpen('suspend'); }}
+                                                >
+                                                    Suspend
+                                                </Button>
+                                            )}
+                                            {hasSuspended && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="min-w-[120px] border-green-600 hover:bg-green-300"
+                                                    onClick={() => { setSuspendAction('activate'); setModalOpen('suspend'); }}
+                                                >
+                                                    Activate
+                                                </Button>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                                 {/* Change Roles Dialog */}
                                 <AlertDialog open={showRoleDropdown} onOpenChange={setShowRoleDropdown}>
                                     <AlertDialogTrigger asChild>
@@ -1446,7 +1510,8 @@ const UserManagement = () => {
                                 {modalOpen === 'reset' ? 'Confirm Password Reset' :
                                     modalOpen === 'approve' ? 'Confirm User Approval' :
                                         modalOpen === 'role' ? 'Confirm Role Change' :
-                                            modalOpen === 'group' ? 'Confirm Group Change' : ''}
+                                            modalOpen === 'group' ? 'Confirm Group Change' :
+                                                modalOpen === 'suspend' ? (suspendAction === 'suspend' ? 'Confirm Suspend User(s)' : 'Confirm Activate User(s)') : ''}
                             </AlertDialogTitle>
                         </AlertDialogHeader>
                         <AlertDialogDescription>
@@ -1474,6 +1539,17 @@ const UserManagement = () => {
                                     {modalError && <div className="text-xs text-red-600 mb-2">{modalError}</div>}
                                 </>
                             )}
+                            {modalOpen === 'suspend' && (
+                                <>
+                                    <div className="text-sm mb-4">
+                                        {suspendAction === 'suspend'
+                                            ? 'Suspending will immediately block login access for the selected account(s). You can reactivate them later.'
+                                            : 'Activating will restore login access for the selected suspended account(s).'}
+                                        <br />Are you sure you want to proceed?
+                                    </div>
+                                    {modalError && <div className="text-xs text-red-600 mb-2">{modalError}</div>}
+                                </>
+                            )}
                         </AlertDialogDescription>
                         <AlertDialogFooter>
                             <AlertDialogCancel asChild>
@@ -1486,10 +1562,45 @@ const UserManagement = () => {
                                         if (modalOpen === 'approve') handleApproveUser();
                                         if (modalOpen === 'role') handleChangeRoles();
                                         if (modalOpen === 'group') handleChangeGroups();
+                                        if (modalOpen === 'suspend') handleSuspendActivateUsers();
                                     }}
                                     disabled={modalLoading}
                                 >
                                     Confirm
+                                </button>
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
+            {/* Delete Pending Users Confirmation Dialog */}
+            {showDeletePendingDialog && (
+                <AlertDialog open={showDeletePendingDialog} onOpenChange={setShowDeletePendingDialog}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Pending User{pendingSidebarCheckedIds.length > 1 ? 's' : ''}</AlertDialogTitle>
+                        </AlertDialogHeader>
+                        <AlertDialogDescription>
+                            <div className="text-sm mb-4">
+                                This action will permanently remove the selected pending user{pendingSidebarCheckedIds.length > 1 ? 's' : ''} from the system and cannot be undone.<br />
+                                {pendingSidebarCheckedIds.length === 0 ? 'No users currently selected.' : `You are about to delete ${pendingSidebarCheckedIds.length} user${pendingSidebarCheckedIds.length > 1 ? 's' : ''}.`}
+                            </div>
+                            {deletePendingError && <div className="text-xs text-red-600 mb-2">{deletePendingError}</div>}
+                        </AlertDialogDescription>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel asChild>
+                                <button
+                                    className="btn py-2 px-4 bg-slate-500 text-white border-0 rounded-full"
+                                    disabled={deletePendingLoading}
+                                >Cancel</button>
+                            </AlertDialogCancel>
+                            <AlertDialogAction asChild>
+                                <button
+                                    className="btn py-2 px-4 bg-red-600 hover:bg-red-700 text-white border-0 rounded-full"
+                                    onClick={handleDeletePendingUsers}
+                                    disabled={deletePendingLoading || pendingSidebarCheckedIds.length === 0}
+                                >
+                                    {deletePendingLoading ? 'Deleting...' : 'Delete'}
                                 </button>
                             </AlertDialogAction>
                         </AlertDialogFooter>
