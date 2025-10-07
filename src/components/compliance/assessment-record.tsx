@@ -5,6 +5,17 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { Button } from '@/components/ui/button';
 import { openManualAssessmentForm } from './pdf-manual-assessment';
 import { Plus, AlertTriangle, Eye, Trash2 } from 'lucide-react';
+import {
+    AlertDialog,
+    AlertDialogTrigger,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogFooter,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogCancel,
+    AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { useRouter } from 'next/navigation';
 
 type Assessment = {
@@ -25,6 +36,9 @@ type Assessment = {
 const AssessmentRecord: React.FC = () => {
     const [data, setData] = useState<Assessment[]>([]);
     const [loading, setLoading] = useState(false);
+    // Dialog state for delete confirmation
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const router = useRouter();
 
     const fetchData = async () => {
@@ -95,25 +109,12 @@ const AssessmentRecord: React.FC = () => {
                         <button
                             title="Delete"
                             className="inline-flex items-center text-red-600 hover:text-red-800"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const ok = window.confirm('Delete assessment(s) for this asset? This action cannot be undone.');
-                                if (!ok) return;
                                 if (!assessId) { toast.error('Missing assessment id'); return; }
-                                try {
-                                    // Optionally set loading state if you want to disable controls globally
-                                    // setLoading(true);
-                                    await authenticatedApi.delete(`/api/compliance/assessments/${assessId}`);
-                                    toast.success('Assessment deleted');
-                                    // Refresh list
-                                    await fetchData();
-                                } catch (err) {
-                                    console.error('Delete failed', err);
-                                    toast.error('Failed to delete assessment(s)');
-                                } finally {
-                                    // setLoading(false);
-                                }
+                                setPendingDeleteId(assessId);
+                                setDeleteDialogOpen(true);
                             }}
                         >
                             <Trash2 className="h-4 w-4" />
@@ -130,6 +131,23 @@ const AssessmentRecord: React.FC = () => {
 
     const handleRowDoubleClick = (row: Assessment) => {
         router.push(`/compliance/assessment/form?id=${row.assess_id}`);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!pendingDeleteId) return;
+        try {
+            setLoading(true);
+            await authenticatedApi.delete(`/api/compliance/assessments/${pendingDeleteId}`);
+            toast.success('Assessment deleted');
+            await fetchData();
+        } catch (err) {
+            console.error('Delete failed', err);
+            toast.error('Failed to delete assessment(s)');
+        } finally {
+            setLoading(false);
+            setPendingDeleteId(null);
+            setDeleteDialogOpen(false);
+        }
     };
 
     return (
@@ -153,6 +171,27 @@ const AssessmentRecord: React.FC = () => {
                 onRowDoubleClick={handleRowDoubleClick}
                 dataExport
             />
+
+            <AlertDialog open={deleteDialogOpen} onOpenChange={(o) => { if(!o) { setDeleteDialogOpen(false); setPendingDeleteId(null);} }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Assessment</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently remove the selected assessment record. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleConfirmDelete}
+                            className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                            disabled={loading}
+                        >
+                            {loading ? 'Deleting...' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

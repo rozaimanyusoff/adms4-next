@@ -42,6 +42,7 @@ interface AssessmentDetail {
     adt_rem: string;
     qset_desc: string | null;
     qset_type: string | null;
+    adt_image?: string | null; // proof image absolute URL from backend
 }
 
 interface AssessmentData {
@@ -181,13 +182,23 @@ const AssessmentForm: React.FC = () => {
 
     // Handles file selection for individual criteria proof upload
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
-        const file = e.target.files?.[0] || null;
-        if (!file) { setProofFile(id, null); return; }
-        const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
+        const original = e.target.files?.[0] || null;
+        if (!original) { setProofFile(id, null); return; }
+        const isImage = /^image\/(png|jpeg)$/i.test(original.type) || /\.(png|jpg|jpeg)$/i.test(original.name);
         if (!isImage) {
             setErrors(prev => ({ ...prev, [`file-${id}`]: 'Only PNG or JPG images are allowed.' }));
             toast.error('Only PNG or JPG images are allowed.');
             return;
+        }
+        // Sanitize filename: replace spaces with underscores to avoid backend rejection
+        let file: File = original;
+        if (/\s/.test(original.name)) {
+            try {
+                const safeName = original.name.replace(/\s+/g, '_');
+                file = new File([original], safeName, { type: original.type });
+            } catch {
+                // Fallback: keep original if File constructor fails (older browsers)
+            }
         }
         setProofFile(id, file);
     };
@@ -426,6 +437,10 @@ const AssessmentForm: React.FC = () => {
                     // Set comment if exists
                     if (detail.adt_rem) {
                         populatedAnswers[`comment-${itemId}`] = detail.adt_rem;
+                    }
+                    if (detail.adt_image) {
+                        // Store existing backend proof image under a stable key
+                        populatedAnswers[`existing-proof-${itemId}`] = detail.adt_image;
                     }
                 });
 
@@ -1305,38 +1320,67 @@ const AssessmentForm: React.FC = () => {
                                             <p className="text-xs text-red-600">{errors[`comment-${it.qset_id}`]}</p>
                                         )}
                                         <div>
-                                            <label className="block text-sm font-medium">Upload proof (png, jpg, jpeg) (optional)</label>
-                                            <div
-                                                className={`mt-1 flex flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm text-gray-600 transition-colors ${dragOverId === it.qset_id ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-                                                onDragOver={(e) => { e.preventDefault(); setDragOverId(it.qset_id); }}
-                                                onDragLeave={(e) => { e.preventDefault(); if (dragOverId === it.qset_id) setDragOverId(null); }}
-                                                onDrop={(e) => handleDrop(e, it.qset_id)}
-                                            >
-                                                <input
-                                                    id={`file-${it.qset_id}`}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    capture="environment"
-                                                    className="hidden"
-                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
-                                                />
-                                                <label htmlFor={`file-${it.qset_id}`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
-                                                    Browse
-                                                </label>
-                                                <span className="mt-1">or drag & drop</span>
-                                                {answers[`fileUrl-${it.qset_id}`] && (
-                                                    <img src={answers[`fileUrl-${it.qset_id}`]} alt="Proof preview" className="mt-3 h-24 w-auto rounded border object-cover" />
-                                                )}
-                                                {answers[`file-${it.qset_id}`] && (
-                                                    <>
-                                                        <div className="mt-1 text-xs text-gray-500">{(answers[`file-${it.qset_id}`] as File).name}</div>
-                                                        <button type="button" className="mt-2 text-xs text-red-600 underline" onClick={() => setProofFile(it.qset_id, null)}>Remove</button>
-                                                    </>
-                                                )}
+                                            <label className="block text-sm font-medium mb-1">Proof (optional)</label>
+                                            <div className="flex flex-col md:flex-row gap-4">
+                                                {/* Preview Column */}
+                                                <div className="md:w-40 flex flex-col items-start gap-2">
+                                                    {answers[`fileUrl-${it.qset_id}`] ? (
+                                                        <div className="relative">
+                                                            <img src={answers[`fileUrl-${it.qset_id}`]} alt="New proof preview" className="h-24 w-32 object-cover rounded border" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setProofFile(it.qset_id, null)}
+                                                                className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center shadow"
+                                                                title="Remove selected image"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                            <div className="text-[10px] text-gray-500 mt-1 max-w-[7.5rem] truncate">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
+                                                        </div>
+                                                    ) : answers[`existing-proof-${it.qset_id}`] ? (
+                                                        <a
+                                                            href={answers[`existing-proof-${it.qset_id}`] as string}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="group relative block"
+                                                            title="Open existing proof"
+                                                        >
+                                                            <img src={answers[`existing-proof-${it.qset_id}`] as string} alt="Existing proof" className="h-24 w-32 object-cover rounded border group-hover:opacity-90" />
+                                                            <span className="absolute bottom-0 left-0 right-0 bg-black/55 text-[10px] text-white px-1 py-0.5 truncate">{(() => { try { return decodeURIComponent(String(answers[`existing-proof-${it.qset_id}`]).split('/').pop() || 'proof'); } catch { return 'proof'; } })()}</span>
+                                                        </a>
+                                                    ) : (
+                                                        <div className="text-[11px] text-gray-400">No image</div>
+                                                    )}
+                                                </div>
+                                                {/* Dropzone Column */}
+                                                <div className="flex-1">
+                                                    <div
+                                                        className={`flex flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm text-gray-600 transition-colors ${dragOverId === it.qset_id ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+                                                        onDragOver={(e) => { e.preventDefault(); setDragOverId(it.qset_id); }}
+                                                        onDragLeave={(e) => { e.preventDefault(); if (dragOverId === it.qset_id) setDragOverId(null); }}
+                                                        onDrop={(e) => handleDrop(e, it.qset_id)}
+                                                    >
+                                                        <input
+                                                            id={`file-${it.qset_id}`}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            capture="environment"
+                                                            className="hidden"
+                                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
+                                                        />
+                                                        <label htmlFor={`file-${it.qset_id}`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
+                                                            {answers[`fileUrl-${it.qset_id}`] ? 'Change' : 'Browse'}
+                                                        </label>
+                                                        <span className="mt-1">or drag & drop</span>
+                                                        {!answers[`fileUrl-${it.qset_id}`] && answers[`existing-proof-${it.qset_id}`] && (
+                                                            <div className="mt-2 text-[10px] text-gray-500 text-center max-w-xs">Selecting a new image will replace the existing proof.</div>
+                                                        )}
+                                                    </div>
+                                                    {errors[`file-${it.qset_id}`] && (
+                                                        <p className="mt-1 text-xs text-red-600">{errors[`file-${it.qset_id}`]}</p>
+                                                    )}
+                                                </div>
                                             </div>
-                                            {errors[`file-${it.qset_id}`] && (
-                                                <p className="mt-1 text-xs text-red-600">{errors[`file-${it.qset_id}`]}</p>
-                                            )}
                                         </div>
                                     </div>
                                 )}
