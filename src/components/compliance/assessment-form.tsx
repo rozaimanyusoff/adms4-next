@@ -208,7 +208,7 @@ const AssessmentForm: React.FC = () => {
     const [page, setPage] = useState(0);
     const [answers, setAnswers] = useState<Record<string, any>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [dragOverId, setDragOverId] = useState<number | null>(null);
+    // Removed drag & drop for per-criteria proof; keep UI simple upload/camera
     // Submission state to prevent double submit and show loader
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -515,41 +515,7 @@ const AssessmentForm: React.FC = () => {
         }
     };
 
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>, id: number) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOverId(null);
-        const dt = e.dataTransfer;
-        if (!dt?.files?.length) return;
-        const files = dt.files;
-        const newFiles: File[] = [];
-        const newUrls: string[] = [];
-        const currentCount = vehicleImages.length;
-        const maxImages = 4;
-
-        Array.from(files).forEach(file => {
-            const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
-            if (isImage) {
-                if (currentCount + newFiles.length < maxImages) {
-                    newFiles.push(file);
-                    newUrls.push(URL.createObjectURL(file));
-                }
-            }
-        });
-
-        if (currentCount + newFiles.length > maxImages) {
-            toast.error('Maximum 4 vehicle images allowed.');
-        }
-
-        if (newFiles.length > 0) {
-            setVehicleImages(prev => [...prev, ...newFiles].slice(0, maxImages));
-            setVehicleImageUrls(prev => [...prev, ...newUrls].slice(0, maxImages));
-        }
-
-        if (newFiles.length !== files.length) {
-            toast.error('Some files were skipped. Only PNG/JPG images are allowed.');
-        }
-    };
+    // No per-criteria drag & drop handler anymore
 
     const handleVehicleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -851,7 +817,18 @@ const AssessmentForm: React.FC = () => {
             formData.append(`details[${i}][adt_rate2]`, String(d.adt_rate2 ?? 0));
             formData.append(`details[${i}][adt_rem]`, String(d.adt_rem || ''));
             formData.append(`details[${i}][adt_ncr]`, String(d.adt_ncr ?? 0));
-            formData.append(`details[${i}][adt_image]`, String(d.adt_image || ''));
+
+            // Append proof image as a real file where available; otherwise avoid overwriting existing proofs in edit mode
+            const proofKey = `file-${d.adt_item}`;
+            const maybeFile = (answers as any)[proofKey];
+            if (maybeFile instanceof File) {
+                formData.append(`details[${i}][adt_image]`, maybeFile, maybeFile.name);
+            } else {
+                // On create, send empty string for consistency; on edit, omit to preserve existing
+                if (!isEditing) {
+                    formData.append(`details[${i}][adt_image]`, '');
+                }
+            }
         });
 
         try {
@@ -1196,6 +1173,10 @@ const AssessmentForm: React.FC = () => {
                         ) || (
                             it.qset_type === 'Selection' && currentAnswer === 'Missing'
                         );
+                    const commentKey = `comment-${it.qset_id}`;
+                    const commentVal = (answers[commentKey] ?? '') as string;
+                    const commentIsRequired = needsCommentOrFile;
+                    const commentShowError = commentIsRequired && String(commentVal).trim().length === 0;
                     // Highlight unanswered
                     let isUnanswered = false;
                     if (it.qset_type === 'NCR') {
@@ -1302,12 +1283,14 @@ const AssessmentForm: React.FC = () => {
 
                                 {needsCommentOrFile && (
                                     <div className="mt-3 space-y-2">
-                                        <label className="block text-sm font-medium">
+                                        <label className={`block text-sm font-medium ${commentShowError ? 'text-red-600' : ''}`}>
                                             Comment {((it.qset_type === 'NCR' && currentAnswer === 'Not-comply') || (it.qset_type === 'Rating' && Number(currentAnswer) === 1) || (it.qset_type === 'Selection' && currentAnswer === 'Missing')) ? '(required)' : '(optional)'}
                                         </label>
                                         <Textarea
                                             rows={3}
                                             value={answers[`comment-${it.qset_id}`] || ''}
+                                            aria-invalid={commentShowError || !!errors[`comment-${it.qset_id}`]}
+                                            className={`${commentShowError || errors[`comment-${it.qset_id}`] ? 'ring-2 ring-red-500 border-red-500' : ''}`}
                                             onChange={e => {
                                                 const key = `comment-${it.qset_id}`;
                                                 const val = e.target.value;
@@ -1316,17 +1299,20 @@ const AssessmentForm: React.FC = () => {
                                                 if (val && errors[key]) setErrors(prev => ({ ...prev, [key]: '' }));
                                             }}
                                         />
+                                        {commentShowError && !errors[`comment-${it.qset_id}`] && (
+                                            <p className="text-xs text-red-600">Comment is required for this answer.</p>
+                                        )}
                                         {errors[`comment-${it.qset_id}`] && (
                                             <p className="text-xs text-red-600">{errors[`comment-${it.qset_id}`]}</p>
                                         )}
                                         <div>
                                             <label className="block text-sm font-medium mb-1">Proof (optional)</label>
-                                            <div className="flex flex-col md:flex-row gap-4">
-                                                {/* Preview Column */}
-                                                <div className="md:w-40 flex flex-col items-start gap-2">
-                                                    {answers[`fileUrl-${it.qset_id}`] ? (
+                                            <div className="flex flex-col gap-3">
+                                                {/* Preview: show only when a new image is selected; centered */}
+                                                {answers[`fileUrl-${it.qset_id}`] && (
+                                                    <div className="w-full flex justify-center">
                                                         <div className="relative">
-                                                            <img src={answers[`fileUrl-${it.qset_id}`]} alt="New proof preview" className="h-24 w-32 object-cover rounded border" />
+                                                            <img src={answers[`fileUrl-${it.qset_id}`]} alt="New proof preview" className="h-28 w-36 object-cover rounded border" />
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setProofFile(it.qset_id, null)}
@@ -1335,51 +1321,65 @@ const AssessmentForm: React.FC = () => {
                                                             >
                                                                 ×
                                                             </button>
-                                                            <div className="text-[10px] text-gray-500 mt-1 max-w-[7.5rem] truncate">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
+                                                            <div className="text-[10px] text-gray-500 mt-1 max-w-[9rem] truncate text-center">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
                                                         </div>
-                                                    ) : answers[`existing-proof-${it.qset_id}`] ? (
-                                                        <a
-                                                            href={answers[`existing-proof-${it.qset_id}`] as string}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="group relative block"
-                                                            title="Open existing proof"
-                                                        >
-                                                            <img src={answers[`existing-proof-${it.qset_id}`] as string} alt="Existing proof" className="h-24 w-32 object-cover rounded border group-hover:opacity-90" />
-                                                            <span className="absolute bottom-0 left-0 right-0 bg-black/55 text-[10px] text-white px-1 py-0.5 truncate">{(() => { try { return decodeURIComponent(String(answers[`existing-proof-${it.qset_id}`]).split('/').pop() || 'proof'); } catch { return 'proof'; } })()}</span>
-                                                        </a>
-                                                    ) : (
-                                                        <div className="text-[11px] text-gray-400">No image</div>
-                                                    )}
-                                                </div>
-                                                {/* Dropzone Column */}
-                                                <div className="flex-1">
-                                                    <div
-                                                        className={`flex flex-col items-center justify-center rounded-md border-2 border-dashed p-4 text-sm text-gray-600 transition-colors ${dragOverId === it.qset_id ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-                                                        onDragOver={(e) => { e.preventDefault(); setDragOverId(it.qset_id); }}
-                                                        onDragLeave={(e) => { e.preventDefault(); if (dragOverId === it.qset_id) setDragOverId(null); }}
-                                                        onDrop={(e) => handleDrop(e, it.qset_id)}
-                                                    >
+                                                    </div>
+                                                )}
+
+                                                {/* When no new image, show action buttons; keep existing-proof (if any) below */}
+                                                {!answers[`fileUrl-${it.qset_id}`] && (
+                                                    <div className="flex flex-col gap-2">
+                                                        {/* Hidden inputs */}
                                                         <input
-                                                            id={`file-${it.qset_id}`}
+                                                            id={`file-${it.qset_id}-gallery`}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
+                                                        />
+                                                        <input
+                                                            id={`file-${it.qset_id}-camera`}
                                                             type="file"
                                                             accept="image/*"
                                                             capture="environment"
                                                             className="hidden"
                                                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
                                                         />
-                                                        <label htmlFor={`file-${it.qset_id}`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
-                                                            {answers[`fileUrl-${it.qset_id}`] ? 'Change' : 'Browse'}
-                                                        </label>
-                                                        <span className="mt-1">or drag & drop</span>
-                                                        {!answers[`fileUrl-${it.qset_id}`] && answers[`existing-proof-${it.qset_id}`] && (
-                                                            <div className="mt-2 text-[10px] text-gray-500 text-center max-w-xs">Selecting a new image will replace the existing proof.</div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <label htmlFor={`file-${it.qset_id}-gallery`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
+                                                                Upload Photo
+                                                            </label>
+                                                            <label htmlFor={`file-${it.qset_id}-camera`} className="cursor-pointer rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700">
+                                                                Use Camera
+                                                            </label>
+                                                            <span className="text-[11px] text-gray-500">PNG/JPG, 1 image only</span>
+                                                        </div>
+
+                                                        {answers[`existing-proof-${it.qset_id}`] && (
+                                                            <div className="mt-1 text-[10px] text-gray-500">Selecting a new image will replace the existing proof.</div>
+                                                        )}
+
+                                                        {errors[`file-${it.qset_id}`] && (
+                                                            <p className="mt-1 text-xs text-red-600">{errors[`file-${it.qset_id}`]}</p>
+                                                        )}
+
+                                                        {/* Existing proof preview when no new image selected */}
+                                                        {answers[`existing-proof-${it.qset_id}`] && (
+                                                            <div className="w-full flex justify-center">
+                                                                <a
+                                                                    href={answers[`existing-proof-${it.qset_id}`] as string}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="group relative inline-block"
+                                                                    title="Open existing proof"
+                                                                >
+                                                                    <img src={answers[`existing-proof-${it.qset_id}`] as string} alt="Existing proof" className="h-24 w-32 object-cover rounded border group-hover:opacity-90" />
+                                                                    <span className="absolute bottom-0 left-0 right-0 bg-black/55 text-[10px] text-white px-1 py-0.5 truncate">{(() => { try { return decodeURIComponent(String(answers[`existing-proof-${it.qset_id}`]).split('/').pop() || 'proof'); } catch { return 'proof'; } })()}</span>
+                                                                </a>
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    {errors[`file-${it.qset_id}`] && (
-                                                        <p className="mt-1 text-xs text-red-600">{errors[`file-${it.qset_id}`]}</p>
-                                                    )}
-                                                </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
