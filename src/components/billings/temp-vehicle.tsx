@@ -83,34 +83,42 @@ const TempVehicle: React.FC = () => {
   const [classificationFilter, setClassificationFilter] = useState<string | null>(null);
 
   // Helper to map backend asset object to UI Vehicle shape (keeps entry_code)
-  const mapAssetToVehicle = (item: any): Vehicle => ({
-    id: item.id ?? undefined,
-    entry_code: item.entry_code ?? undefined,
-  effective_date: item.effective_date ?? null,
-  register_number: item.register_number ?? item.reg_no ?? undefined,
-  transmission: item.transmission ?? undefined,
-  fuel_type: item.fuel_type ?? undefined,
-  purchase_date: item.purchase_date ?? null,
-    purchase_year: item.purchase_year ?? undefined,
-    disposed_date: item.disposed_date ?? null,
-    costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : undefined,
-    department: item.department ? { id: item.department.id, name: item.department.name } : undefined,
-    location: item.location ? { id: item.location.id, name: item.location.name } : undefined,
-    types: item.types ? { id: item.types.id, name: item.types.name } : undefined,
-    categories: item.categories ? { id: item.categories.id, name: item.categories.name } : undefined,
-    brands: item.brands ? { id: Number(item.brands.id), name: item.brands.name } : undefined,
-    owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
-    models: item.models ? { id: Number(item.models.id), name: item.models.name } : undefined,
-    fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
-    brand_id: item.brands ? String(item.brands.id) : undefined,
-    model_id: item.models ? String(item.models.id) : undefined,
-    category_id: item.categories ? String(item.categories.id) : undefined,
-    classification: item.classification ?? (item.types?.name ?? undefined),
-    record_status: item.record_status ?? item.status ?? undefined,
-    purpose: item.purpose ?? undefined,
-    condition_status: item.condition_status ?? undefined,
-    age: item.age ?? undefined,
-  });
+  const mapAssetToVehicle = (item: any): Vehicle => {
+    // Normalize singular/plural keys from different endpoints
+    const typeObj = item.type || item.types;
+    const categoryObj = item.category || item.categories;
+    const brandObj = item.brand || item.brands;
+    const modelObj = item.model || item.models;
+
+    return {
+      id: item.id ?? undefined,
+      entry_code: item.entry_code ?? undefined,
+      effective_date: item.effective_date ?? null,
+      register_number: item.register_number ?? item.reg_no ?? undefined,
+      transmission: item.transmission ?? undefined,
+      fuel_type: item.fuel_type ?? undefined,
+      purchase_date: item.purchase_date ?? null,
+      purchase_year: item.purchase_year ?? undefined,
+      disposed_date: item.disposed_date ?? null,
+      costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : undefined,
+      department: item.department ? { id: item.department.id, name: item.department.name } : undefined,
+      location: item.location ? { id: item.location.id, name: item.location.name } : undefined,
+      types: typeObj ? { id: Number(typeObj.id), name: typeObj.name } : undefined,
+      categories: categoryObj ? { id: Number(categoryObj.id), name: categoryObj.name } : undefined,
+      brands: brandObj ? { id: Number(brandObj.id), name: brandObj.name } : undefined,
+      owner: item.owner ? { ramco_id: String(item.owner.ramco_id), full_name: item.owner.full_name } : undefined,
+      models: modelObj ? { id: Number(modelObj.id), name: modelObj.name } : undefined,
+      fleetcard: item.fleetcard ? { id: item.fleetcard.id, card_no: item.fleetcard.card_no } : undefined,
+      brand_id: brandObj ? String(brandObj.id) : undefined,
+      model_id: modelObj ? String(modelObj.id) : undefined,
+      category_id: categoryObj ? String(categoryObj.id) : undefined,
+      classification: item.classification ?? (typeObj?.name ?? undefined),
+      record_status: item.record_status ?? item.status ?? undefined,
+      purpose: item.purpose ?? undefined,
+      condition_status: item.condition_status ?? undefined,
+      age: item.age ?? undefined,
+    };
+  };
 
   // format value to yyyy-mm-dd or return null
   const formatToYMD = (value: any): string | null => {
