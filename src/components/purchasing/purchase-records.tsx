@@ -37,6 +37,9 @@ const fmtRM = (value: number) => {
   return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+// Users allowed to delete purchase records
+const deletePermissionAdmin = ['000705', '000277'];
+
 interface ApiPurchase {
   id: number;
   request_id?: number;
@@ -344,6 +347,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       return '';
     }
   };
+  const canDelete = useMemo(() => deletePermissionAdmin.includes(getUsername()), [auth?.authData?.user?.username]);
 
   // Load purchases whenever username becomes available/changes
   useEffect(() => {
@@ -818,8 +822,29 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
       loadPurchases();
       closeSidebar();
-    } catch (error) {
-      toast.error('Failed to save purchase record');
+    } catch (error: any) {
+      // Prefer backend-provided message over generic 500
+      const getApiErrorMessage = (err: any): string => {
+        try {
+          const resp = err?.response;
+          const data = resp?.data;
+          if (!data) return err?.message || 'Failed to save purchase record';
+          // Common shapes: { message }, { error }, string, { errors: { field: [msg] } }
+          if (typeof data === 'string') return data;
+          if (data.message && typeof data.message === 'string') return data.message;
+          if (data.error && typeof data.error === 'string') return data.error;
+          if (data.errors && typeof data.errors === 'object') {
+            const first = Object.values<any>(data.errors).flat().find((m: any) => typeof m === 'string');
+            if (first) return first as string;
+          }
+          return err?.message || 'Failed to save purchase record';
+        } catch {
+          return 'Failed to save purchase record';
+        }
+      };
+
+      const msg = getApiErrorMessage(error);
+      toast.error(msg || 'Failed to save purchase record');
       console.error('Error saving purchase:', error);
     } finally {
       setLoading(false);
@@ -835,8 +860,21 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       await authenticatedApi.delete(`/api/purchases/${id}`);
       toast.success('Purchase record deleted successfully');
       loadPurchases();
-    } catch (error) {
-      toast.error('Failed to delete purchase record');
+      closeSidebar();
+    } catch (error: any) {
+      const getApiErrorMessage = (err: any): string => {
+        const data = err?.response?.data;
+        if (!data) return err?.message || 'Failed to delete purchase record';
+        if (typeof data === 'string') return data;
+        if (data.message && typeof data.message === 'string') return data.message;
+        if (data.error && typeof data.error === 'string') return data.error;
+        if (data.errors && typeof data.errors === 'object') {
+          const first = Object.values<any>(data.errors).flat().find((m: any) => typeof m === 'string');
+          if (first) return first as string;
+        }
+        return err?.message || 'Failed to delete purchase record';
+      };
+      toast.error(getApiErrorMessage(error));
       console.error('Error deleting purchase:', error);
     } finally {
       setLoading(false);
@@ -1804,13 +1842,27 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
 
       <Separator />
 
-      <div className="flex justify-end space-x-2">
-        <Button variant="outline" onClick={closeSidebar}>
+      <div className="flex justify-between items-center">
+        <div>
+          {sidebarMode === 'edit' && selectedPurchase?.id && canDelete ? (
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => handleDelete(selectedPurchase.id!)}
+              disabled={loading}
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
+            </Button>
+          ) : null}
+        </div>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={closeSidebar}>
           Cancel
-        </Button>
-        <Button onClick={() => setShowSubmitConfirm(true)} disabled={loading}>
+          </Button>
+          <Button onClick={() => setShowSubmitConfirm(true)} disabled={loading}>
           {loading ? 'Saving...' : sidebarMode === 'edit' ? 'Update Purchase' : 'Create Purchase'}
-        </Button>
+          </Button>
+        </div>
       </div>
 
       {/* Confirmation dialog before form submit */}
