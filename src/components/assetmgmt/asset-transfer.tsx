@@ -7,17 +7,18 @@ import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import AssetTransferForm from "./asset-transfer-form";
 
 
 export default function AssetTransfer() {
+    const [showForm, setShowForm] = useState(false);
+    const [editId, setEditId] = useState<string | number | undefined>(undefined);
 
     const handleRowDoubleClick = (row: any) => {
-        // Open the asset transfer form in a new blank tab for editing
-        if (row && row.id) {
-            window.open(`/assetdata/transfer/form?id=${row.id}`, '_blank');
-        } else if (row && row.request_no) {
-            // Fallback if your backend uses request_no as the unique identifier
-            window.open(`/assetdata/transfer/form?id=${row.request_no}`, '_blank');
+        // Open the asset transfer form inline for editing
+        if (row && (row.id || row.request_no)) {
+            setEditId(row.id ?? row.request_no);
+            setShowForm(true);
         }
     };
 
@@ -57,6 +58,26 @@ export default function AssetTransfer() {
         });
         return counts;
     }, [data]);
+
+    if (showForm) {
+        return (
+            <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold">Asset Transfer Form</h2>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="ring-1 ring-red-500"
+                        size="sm"
+                        onClick={() => { setShowForm(false); setEditId(undefined); }}
+                    >
+                        Back to Requests
+                    </Button>
+                </div>
+                <AssetTransferForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} />
+            </div>
+        );
+    }
 
     return (
         <div className="p-4">
@@ -105,7 +126,7 @@ export default function AssetTransfer() {
                     variant="default"
                     size="sm"
                     title="Create New Asset Transfer"
-                    onClick={() => window.open('/assetdata/transfer/form', '_blank')}
+                    onClick={() => { setEditId(undefined); setShowForm(true); }}
                 >
                     <Plus className="w-5 h-5" />
                 </Button>

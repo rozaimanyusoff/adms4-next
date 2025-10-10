@@ -3,7 +3,7 @@ import { AuthContext } from "@/store/AuthContext";
 import { Checkbox } from '../ui/checkbox';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Combobox, SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
@@ -139,10 +139,11 @@ interface Location {
 
 // Change AssetTransferForm to a self-contained component
 interface AssetTransferFormProps {
-    id?: string | null;
+    id?: string | number | null;
+    onClose?: () => void;
 }
 
-const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
+const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) => {
     const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
     const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
     const [supervised, setSupervised] = React.useState<any[]>([]);
@@ -172,12 +173,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
     const [openCancelDialog, setOpenCancelDialog] = React.useState(false);
     const [loading, setLoading] = React.useState(!!id);
     const [error, setError] = React.useState<string | null>(null);
+    const [submitting, setSubmitting] = React.useState(false);
     const [showAccordionTooltip, setShowAccordionTooltip] = React.useState<{ [id: string]: boolean }>({});
     const [showAddItemsTooltip, setShowAddItemsTooltip] = React.useState(false);
     // Track which items' accordions are expanded so we can apply the approval-level visual style
     const [expandedItems, setExpandedItems] = React.useState<Record<number, boolean>>({});
     // Application type/purpose: resignation reporting vs transfer to someone else
-    const [applicationOption, setApplicationOption] = React.useState<'resignation' | 'transfer'>('transfer');
+    const [applicationOption, setApplicationOption] = React.useState<'resignation' | 'transfer' | ''>('');
 
     const authContext = useContext(AuthContext);
     const user = authContext?.authData?.user;
@@ -268,7 +270,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                 return {
                     transfer_type: item.transfer_type,
                     effective_date: effectiveDate,
-                    asset_type: item.type?.name || item.asset_type || '',
+                    asset_type: getAssetTypeName(item),
                     identifier: String(item.register_number || item.ramco_id || '0'),
                     curr_owner: item.owner ? { ramco_id: item.owner.ramco_id, name: item.owner.full_name } : item.curr_owner ? { ramco_id: item.curr_owner.ramco_id, name: item.curr_owner.name } : null,
                     curr_costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : item.curr_costcenter ? { id: item.curr_costcenter.id, name: item.curr_costcenter.name } : null,
@@ -286,12 +288,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
             }),
         };
         try {
+            setSubmitting(true);
             await authenticatedApi.post('/api/assets/transfer-requests', payload);
             toast.success((status || requestStatus) === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
             clearFormAndItems();
             handleCancel();
         } catch (err) {
             setSubmitError('Failed to submit transfer. Please try again.');
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -356,6 +361,22 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
         }));
     }
 
+    function getAssetTypeName(asset: any): string {
+        return asset?.types?.name || asset?.type?.name || asset?.asset_type || '';
+    }
+
+    function getAssetCategoryName(asset: any): string {
+        return asset?.categories?.name || asset?.category?.name || '';
+    }
+
+    function getAssetBrandName(asset: any): string {
+        return asset?.brands?.name || asset?.brand?.name || '';
+    }
+
+    function getAssetModelName(asset: any): string {
+        return asset?.models?.name || asset?.model?.name || '';
+    }
+
     // AddSelectedItem handler (internalized)
     function addSelectedItem(item: any) {
         setSelectedItems((prev: any[]) => {
@@ -379,12 +400,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                         transfer_type: 'Asset',
                         register_number: item.register_number,
                         asset_code: item.entry_code || item.register_number,
-                        asset_type: item.types?.name || '',
+                        asset_type: getAssetTypeName(item),
                         // Map the plural properties to singular for compatibility
-                        type: item.types,
-                        category: item.categories,
-                        brand: item.brands,
-                        model: item.models,
+                        type: item.types || item.type || null,
+                        category: item.categories || item.category || null,
+                        brand: item.brands || item.brand || null,
+                        model: item.models || item.model || null,
                         costcenter: item.costcenter,
                         department: item.department,
                         location: item.location,
@@ -486,24 +507,27 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
 
     // Handler to close the blank tab (window)
     async function handleCancel() {
-        // This is now handled by AlertDialog, so just close dialog or navigate as needed
-        window.close();
+        // Return to parent if provided, else best-effort close
+        if (onClose) {
+            onClose();
+        } else {
+            try { window.close(); } catch {}
+        }
     }
 
     // Handler to open sidebar and fetch data
     async function handleOpenSidebar() {
+        if (!applicationOption) {
+            toast.error('Select a transfer type before adding items.');
+            return;
+        }
         setSidebarLoading(true);
         try {
             const param = form?.requestor?.ramco_id || user?.username;
             let res: any;
 
-            if (applicationOption === 'resignation') {
-                // For resignation, get assets assigned to the supervisor/user
-                res = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
-            } else {
-                // For regular transfer, get assets by supervisor (existing behavior)
-                res = await authenticatedApi.get(`/api/assets/by-supervisor?ramco_id=${param}`);
-            }
+            // Both transfer types now use the same supervisor endpoint
+            res = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
 
             setSupervised(res.data?.data || []);
         } catch (err) {
@@ -588,6 +612,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                     if (data) {
                         // Prefill form state for edit mode
                         setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
+                        // Determine transfer type based on existing data
+                        const inferredOption: 'resignation' | 'transfer' = data.items?.some((item: any) => item.transfer_type === 'Employee') ? 'resignation' : 'transfer';
+                        setApplicationOption(inferredOption);
                         // Map items to selectedItems
                         if (Array.isArray(data.items)) {
                             setSelectedItems(data.items.map((item: any) => ({
@@ -597,11 +624,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                 register_number: typeof item.identifier === 'string' ? item.identifier : undefined,
                                 ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
                                 full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
-                                asset_type: item.asset_type,
+                                asset_type: item.asset_type || getAssetTypeName(item),
                                 owner: item.curr_owner,
                                 costcenter: item.curr_costcenter,
                                 department: item.curr_department,
                                 location: item.curr_location,
+                                type: item.type || item.types || null,
+                                category: item.category || item.categories || null,
+                                brand: item.brand || item.brands || null,
+                                model: item.model || item.models || null,
                             })));
                             // Prefill effective dates
                             setItemEffectiveDates(
@@ -658,20 +689,24 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
 
     // Show tooltip to add items if none are selected
     React.useEffect(() => {
+        if (!applicationOption) {
+            setShowAddItemsTooltip(false);
+            return;
+        }
         if (selectedItems.length === 0) {
             setShowAddItemsTooltip(true);
             const timer = setTimeout(() => setShowAddItemsTooltip(false), 5000);
             return () => clearTimeout(timer);
         }
-    }, [selectedItems.length]);
+    }, [selectedItems.length, applicationOption]);
 
     if (loading) return <div className="p-8 text-center">Loading...</div>;
     if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
     return (
-        <div>
+        <div className='max-w-7xl mx-auto p-4'>
             {/* AlertDialogs for confirmation */}
-            <AlertDialog open={openSubmitDialog} onOpenChange={setOpenSubmitDialog}>
+            <AlertDialog open={openSubmitDialog} onOpenChange={(open) => { if (!open && !submitting) setOpenSubmitDialog(false); }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Submit Transfer Request?</AlertDialogTitle>
@@ -680,21 +715,28 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel asChild>
+                            <button className="px-3 py-2 rounded border" disabled={submitting}>Cancel</button>
+                        </AlertDialogCancel>
                         <AlertDialogAction asChild>
                             <button
                                 type="submit"
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                                className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded inline-flex items-center ${submitting ? 'opacity-90 cursor-not-allowed' : ''}`}
                                 onClick={handleSubmitConfirmed}
+                                disabled={submitting}
                             >
-                                Yes, Submit
+                                {submitting ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                                    </>
+                                ) : 'Yes, Submit'}
                             </button>
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
             {/* Save Draft dialog removed */}
-            <AlertDialog open={openCancelDialog} onOpenChange={setOpenCancelDialog}>
+            <AlertDialog open={openCancelDialog} onOpenChange={(open) => { if (!open) setOpenCancelDialog(false); }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Leave Form?</AlertDialogTitle>
@@ -703,7 +745,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Stay</AlertDialogCancel>
+                        <AlertDialogCancel asChild>
+                            <button className="px-3 py-2 rounded border">Stay</button>
+                        </AlertDialogCancel>
                         <AlertDialogAction asChild>
                             <button
                                 type="button"
@@ -731,17 +775,23 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                             {/* Row 1: Application Option & Request Date */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <Label className="text-sm">Request Type</Label>
+                                    <Label className="text-sm flex items-center gap-1">
+                                        Transfer Type
+                                        <span className="text-red-500" aria-hidden="true">*</span>
+                                    </Label>
                                     <SingleSelect
                                         options={[
-                                            { value: 'internal', label: 'Internal Transfer' },
+                                            { value: 'transfer', label: 'Internal Transfer' },
                                             { value: 'resignation', label: 'Resignation' },
                                         ]}
-                                        value={applicationOption}
-                                        onValueChange={(v) => setApplicationOption(v as any)}
-                                        placeholder="Select request types"
+                                        value={applicationOption || undefined}
+                                        onValueChange={(v) => setApplicationOption((v as 'resignation' | 'transfer') || '')}
+                                        placeholder="Select transfer type"
                                         className="h-10"
                                     />
+                                    {!applicationOption && (
+                                        <p className="mt-1 text-xs text-red-500">Select a transfer type before adding any items.</p>
+                                    )}
                                 </div>
                                 <div>
                                     <Label className="text-sm">Request Date</Label>
@@ -789,14 +839,14 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                     variant="default"
                                                     className=""
                                                     title="Add Items"
-                                                    disabled={sidebarLoading}
+                                                    disabled={sidebarLoading || !applicationOption}
                                                 >
                                                     {sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
                                                 </Button>
                                             </span>
                                         </TooltipTrigger>
                                         <TooltipContent side="top" align="center" className="z-50">
-                                            Click here to add items for transfer.
+                                            {applicationOption ? 'Click here to add items for transfer.' : 'Select a transfer type before adding items.'}
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
@@ -1266,23 +1316,31 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                                     </Button>
                                                                                 </div>
                                                                                 <div className="space-y-1 max-h-32 overflow-y-auto">
-                                                                                    {assets.map((asset, idx) => (
-                                                                                        <div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
-                                                                                            <div>
-                                                                                                <span className="font-medium">{asset.register_number}</span>
-                                                                                                <div className="text-gray-600 dark:text-gray-300">
-                                                                                                    {asset.types?.name} - {asset.categories?.name}
+                                                                                    {assets.map((asset, idx) => {
+                                                                                        const typeName = getAssetTypeName(asset);
+                                                                                        const categoryName = getAssetCategoryName(asset);
+                                                                                        const brandName = getAssetBrandName(asset);
+                                                                                        const modelName = getAssetModelName(asset);
+                                                                                        const typeLine = [typeName, categoryName].filter(Boolean).join(' - ');
+                                                                                        const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+                                                                                        return (
+                                                                                            <div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
+                                                                                                <div>
+                                                                                                    <span className="font-medium">{asset.register_number}</span>
+                                                                                                    <div className="text-gray-600 dark:text-gray-300">
+                                                                                                        {typeLine || '-'}
+                                                                                                    </div>
+                                                                                                    <div className="text-gray-500 dark:text-gray-400">
+                                                                                                        {brandLine || '-'}
+                                                                                                    </div>
                                                                                                 </div>
-                                                                                                <div className="text-gray-500 dark:text-gray-400">
-                                                                                                    {asset.brands?.name} {asset.models?.name}
-                                                                                                </div>
+                                                                                                <CirclePlus
+                                                                                                    className="text-blue-500 w-4 h-4 cursor-pointer hover:text-blue-600"
+                                                                                                    onClick={() => addSelectedItem(asset)}
+                                                                                                />
                                                                                             </div>
-                                                                                            <CirclePlus
-                                                                                                className="text-blue-500 w-4 h-4 cursor-pointer hover:text-blue-600"
-                                                                                                onClick={() => addSelectedItem(asset)}
-                                                                                            />
-                                                                                        </div>
-                                                                                    ))}
+                                                                                        );
+                                                                                    })}
                                                                                 </div>
                                                                             </li>
                                                                         );
@@ -1296,8 +1354,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                     const allAssets = Array.isArray(supervised) ? supervised : [];
                                                     const typeCounts: Record<string, number> = {};
                                                     allAssets.forEach(a => {
-                                                        const type = a.types && typeof a.types.name === 'string' && a.types.name.trim() ? a.types.name : '(Unspecified)';
-                                                        typeCounts[type] = (typeCounts[type] || 0) + 1;
+                                                        const typeName = getAssetTypeName(a);
+                                                        const key = typeName && typeName.trim() ? typeName : '(Unspecified)';
+                                                        typeCounts[key] = (typeCounts[key] || 0) + 1;
                                                     });
                                                     const summary = Object.entries(typeCounts).map(([type, count]) => `${type}: ${count}`).join(' | ');
 
@@ -1318,22 +1377,30 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                     .filter((a: any) => {
                                                                         if (!assetSearch) return true;
                                                                         const search = assetSearch.toLowerCase();
+                                                                        const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
                                                                         return (
-                                                                            a.register_number?.toLowerCase().includes(search) ||
-                                                                            a.entry_code?.toLowerCase().includes(search) ||
-                                                                            a.categories?.name?.toLowerCase().includes(search) ||
-                                                                            a.brands?.name?.toLowerCase().includes(search) ||
-                                                                            a.models?.name?.toLowerCase().includes(search) ||
-                                                                            a.types?.name?.toLowerCase().includes(search)
+                                                                            matches(a.register_number) ||
+                                                                            matches(a.entry_code) ||
+                                                                            matches(getAssetCategoryName(a)) ||
+                                                                            matches(getAssetBrandName(a)) ||
+                                                                            matches(getAssetModelName(a)) ||
+                                                                            matches(getAssetTypeName(a))
                                                                         );
                                                                     })
                                                                     .map((a: any, j: any) => {
+                                                                        const assetType = getAssetTypeName(a);
+                                                                        const lowerType = assetType.toLowerCase();
                                                                         let typeIcon = null;
-                                                                        if (a.types?.name?.toLowerCase().includes('motor')) {
+                                                                        if (lowerType.includes('motor')) {
                                                                             typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
-                                                                        } else if (a.types?.name?.toLowerCase().includes('computer')) {
+                                                                        } else if (lowerType.includes('computer')) {
                                                                             typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
                                                                         }
+                                                                        const categoryName = getAssetCategoryName(a);
+                                                                        const brandName = getAssetBrandName(a);
+                                                                        const modelName = getAssetModelName(a);
+                                                                        const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
+                                                                        const brandLine = [brandName, modelName].filter(Boolean).join(' ');
                                                                         return (
                                                                             <React.Fragment key={a.id || a.register_number || j}>
                                                                                 <li className="flex flex-col bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
@@ -1350,16 +1417,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                                                                                             </div>
                                                                                             <span className="font-medium dark:text-dark-light">{a.register_number}</span>
                                                                                             <div className="text-xs text-gray-700 dark:text-dark-light mt-0.5">
-                                                                                                {a.types?.name && a.categories?.name && (
-                                                                                                    <div>{a.types.name} - {a.categories.name}</div>
-                                                                                                )}
-                                                                                                {a.types?.name && !a.categories?.name && <div>Type: {a.types.name}</div>}
-                                                                                                {!a.types?.name && a.categories?.name && <div>Category: {a.categories.name}</div>}
-                                                                                                {a.brands?.name && a.models?.name && (
-                                                                                                    <div>{a.brands.name} {a.models.name}</div>
-                                                                                                )}
-                                                                                                {a.brands?.name && !a.models?.name && <div>Brand: {a.brands.name}</div>}
-                                                                                                {!a.brands?.name && a.models?.name && <div>Model: {a.models.name}</div>}
+                                                                                                <div>{typeLine || '-'}</div>
+                                                                                                <div>{brandLine || '-'}</div>
                                                                                             </div>
                                                                                         </div>
                                                                                     </div>
@@ -1381,8 +1440,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id }) => {
                             )}
                         </div>
                         <div className="flex justify-center gap-2 mt-4">
-                            <Button type="button" onClick={() => setOpenSubmitDialog(true)}>Submit</Button>
-                            <Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)}>Cancel</Button>
+                            <Button
+                                type="button"
+                                onClick={() => setOpenSubmitDialog(true)}
+                                disabled={submitting || loading || selectedItems.length === 0}
+                            >
+                                {submitting ? (
+                                    <span className="inline-flex items-center">
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                                    </span>
+                                ) : 'Submit'}
+                            </Button>
+                            <Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
                         </div>
                         {/* Workflow section removed as requested */}
                     </form>

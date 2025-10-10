@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 const AssetTransferPage = () => {
-    return <TransferApp />;
+    return <AssetTransfer />;
 };
 
 export default AssetTransferPage;
