@@ -325,27 +325,31 @@ const VehicleMaintenanceAdmin = () => {
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold">Vehicle Maintenance Requests</h2>
-          {selectedRowIds.length > 0 && (
-            <Button
-              variant="secondary"
-              className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
-              onClick={() => {
-                toast.info(`Export functionality for ${selectedRowIds.length} selected requests will be implemented`);
-              }}
-            >
-              <Download size={16} className="mr-1" /> Export
-            </Button>
-          )}
+      {/* Header + Filters */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-lg font-bold truncate">Vehicle Maintenance Requests</h2>
+            {selectedRowIds.length > 0 && (
+              <Button
+                variant="secondary"
+                className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
+                onClick={() => {
+                  toast.info(`Export functionality for ${selectedRowIds.length} selected requests will be implemented`);
+                }}
+              >
+                <Download size={16} className="mr-1" /> Export
+              </Button>
+            )}
+          </div>
         </div>
-                <div className="flex items-center gap-2">
+        {/* Filters row: stack on mobile, allow horizontal scroll if tight */}
+        <div className="mt-2 -mx-1 px-1 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 overflow-x-auto whitespace-nowrap">
           <Select 
             value={yearFilter.toString()} 
             onValueChange={(value) => handleYearFilterChange(parseInt(value))}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-full sm:w-36">
               <Calendar size={16} className="mr-2" />
               <SelectValue placeholder="Year" />
             </SelectTrigger>
@@ -358,7 +362,7 @@ const VehicleMaintenanceAdmin = () => {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full sm:w-48">
               <Filter size={16} className="mr-2" />
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
@@ -374,6 +378,7 @@ const VehicleMaintenanceAdmin = () => {
             variant="outline"
             onClick={() => fetchMaintenanceRequests()}
             disabled={loading}
+            className="shrink-0"
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
             Refresh
@@ -469,15 +474,20 @@ const VehicleMaintenanceAdmin = () => {
         </div>
       </div>
 
-      <CustomDataGrid
-        columns={columns as ColumnDef<unknown>[]}
-        data={rows}
-        pagination={false}
-        inputFilter={false}
-        theme="sm"
-        dataExport={false}
-        onRowDoubleClick={handleRowDoubleClick}
-      />
+      {/* Data grid within scrollable card to avoid page overspan */}
+      <div className="bg-white dark:bg-gray-900 rounded-lg border shadow-sm overflow-x-auto">
+        <div className="min-w-full">
+          <CustomDataGrid
+            columns={columns as ColumnDef<unknown>[]}
+            data={rows}
+            pagination={false}
+            inputFilter={false}
+            theme="sm"
+            dataExport={false}
+            onRowDoubleClick={handleRowDoubleClick}
+          />
+        </div>
+      </div>
     </div>
   );
 };

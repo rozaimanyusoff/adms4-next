@@ -95,7 +95,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   const handleSave = async () => {
     try {
       setSaving(true);
-      
+
       if (editingService) {
         // Update existing service type
         await authenticatedApi.put(`/api/mtn/types/${editingService.svcTypeId}`, formData);
@@ -105,12 +105,12 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
         await authenticatedApi.post('/api/mtn/types', formData);
         toast.success('Service type created successfully');
       }
-      
+
       setIsDialogOpen(false);
       setEditingService(null);
       setFormData({ svcType: '', svcOpt: 0, group_desc: '' });
       await fetchServiceTypes();
-      
+
     } catch (error) {
       console.error('Error saving service type:', error);
       toast.error('Failed to save service type');
@@ -121,7 +121,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
 
   const handleDelete = async (serviceTypeId: number) => {
     if (!confirm('Are you sure you want to delete this service type?')) return;
-    
+
     try {
       setDeleting(serviceTypeId);
       await authenticatedApi.delete(`/api/mtn/types/${serviceTypeId}`);
@@ -164,13 +164,13 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   // Group service types by group_desc if showGroupLabels is true
   const groupedServiceTypes = showGroupLabels || displayMode === 'management'
     ? filteredServiceTypes.reduce((acc, serviceType) => {
-        const group = serviceType.group_desc;
-        if (!acc[group]) {
-          acc[group] = [];
-        }
-        acc[group].push(serviceType);
-        return acc;
-      }, {} as Record<string, ServiceType[]>)
+      const group = serviceType.group_desc;
+      if (!acc[group]) {
+        acc[group] = [];
+      }
+      acc[group].push(serviceType);
+      return acc;
+    }, {} as Record<string, ServiceType[]>)
     : { '': filteredServiceTypes };
 
   const handleSelectionChange = (serviceTypeId: number, isChecked: boolean) => {
@@ -193,7 +193,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
             <DialogTrigger asChild>
               <Button onClick={handleAdd} className="flex items-center gap-2">
                 <Plus className="w-4 h-4" />
-                Add Service Type
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -205,7 +204,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                   {editingService ? 'Update the service type details' : 'Create a new maintenance service type'}
                 </DialogDescription>
               </DialogHeader>
-              
+
               <div className="space-y-4 py-4">
                 <div>
                   <label className="text-sm font-medium block mb-2">Service Type Name</label>
@@ -215,7 +214,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                     placeholder="Enter service type name"
                   />
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium block mb-2">Group</label>
                   <Select value={formData.group_desc} onValueChange={(value) => setFormData({ ...formData, group_desc: value })}>
@@ -229,7 +228,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div>
                   <label className="text-sm font-medium block mb-2">Service Option Level</label>
                   <Select value={formData.svcOpt.toString()} onValueChange={(value) => setFormData({ ...formData, svcOpt: parseInt(value) })}>
@@ -246,7 +245,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                   </Select>
                 </div>
               </div>
-              
+
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
@@ -362,7 +361,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
             <Checkbox
               id={`service-${serviceType.svcTypeId}`}
               checked={isSelected}
-              onCheckedChange={(checked) => 
+              onCheckedChange={(checked) =>
                 handleSelectionChange(serviceType.svcTypeId, Boolean(checked))
               }
             />
@@ -383,11 +382,10 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
           <Badge
             key={serviceType.svcTypeId}
             variant={isSelected ? "default" : "outline"}
-            className={`cursor-pointer transition-colors ${
-              isSelected
+            className={`cursor-pointer transition-colors ${isSelected
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
                 : 'hover:bg-gray-100'
-            }`}
+              }`}
             onClick={() => onSelectionChange && handleSelectionChange(serviceType.svcTypeId, !isSelected)}
           >
             {serviceType.svcType}
@@ -405,13 +403,12 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
               {groupName}
             </h4>
           )}
-          <div className={`${
-            displayMode === 'badges'
+          <div className={`${displayMode === 'badges'
               ? 'flex flex-wrap gap-2'
               : displayMode === 'checkboxes'
-              ? 'space-y-2'
-              : 'space-y-1'
-          }`}>
+                ? 'space-y-2'
+                : 'space-y-1'
+            }`}>
             {services.map(renderServiceType)}
           </div>
         </div>

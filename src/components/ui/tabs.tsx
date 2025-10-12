@@ -68,15 +68,16 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "bg-gray-100 dark:bg-gray-800/50 text-muted-foreground inline-flex w-fit min-w-0 items-center justify-start rounded-lg",
+        // Container should not grow wider than viewport
+        "bg-gray-100 dark:bg-gray-800/50 text-muted-foreground flex w-full max-w-full min-w-0 items-center justify-start rounded-lg",
         // Add lighter border
         "border border-gray-200/60 dark:border-gray-700/40",
         // Responsive height and padding based on screen size
         "h-9 sm:h-10 md:h-11 px-1 sm:px-0.5",
-        // Enable horizontal scroll on small screens without visible scrollbar
-        "overflow-x-auto scrollbar-hide",
+        // Enable horizontal scroll without growing layout width
+        "overflow-x-auto overflow-y-hidden scrollbar-hide flex-nowrap",
         // Smooth scrolling behavior
-        "scroll-smooth",
+        "scroll-smooth overscroll-x-contain",
         // Add small gap between tabs
         "gap-0.5",
         // Hide scrollbars but maintain functionality
@@ -124,6 +125,8 @@ function TabsTrigger({
         // Mobile touch targets
         "touch-manipulation select-none",
 
+        // Snap each tab to viewport edge when scrolling the list horizontally
+        "snap-start",
         className
       )}
       {...props}

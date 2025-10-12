@@ -13,6 +13,8 @@ import AssetTransferForm from "./asset-transfer-form";
 export default function AssetTransfer() {
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<string | number | undefined>(undefined);
+    const [formDirty, setFormDirty] = useState(false);
+    const [confirmBackOpen, setConfirmBackOpen] = useState(false);
 
     const handleRowDoubleClick = (row: any) => {
         // Open the asset transfer form inline for editing
@@ -25,32 +27,37 @@ export default function AssetTransfer() {
 
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const auth = useContext(AuthContext);
+    const username = auth?.authData?.user?.username;
 
     useEffect(() => {
+        if (!username) return;
         setLoading(true);
-        authenticatedApi.get("/api/assets/transfer-requests").then((res: any) => {
-            setData(res?.data?.data || []);
-            setLoading(false);
-        }).catch(() => setLoading(false));
-    }, []);
+        authenticatedApi
+            .get(`/api/assets/transfers?ramco=${encodeURIComponent(username)}`)
+            .then((res: any) => {
+                setData(res?.data?.data || []);
+                setLoading(false);
+            })
+            .catch(() => setLoading(false));
+    }, [username]);
 
     const columns: ColumnDef<any>[] = [
-        { key: "request_no", header: "Request No" },
-        { key: "requestor", header: "Requestor", render: row => row.requestor?.name || "-" },
-        { key: "requestor_department", header: "Department", render: row => row.requestor?.department?.name || "-" },
-        { key: "requestor_location", header: "Location (District)", render: row => row.requestor?.district?.name || "-" },
-        { key: "items_count", header: "Items Count", render: row => row.items?.length || 0 },
-        { key: "request_date", header: "Request Date", render: row => row.request_date ? new Date(row.request_date).toLocaleDateString() : "-" },
-        { key: "verified_date", header: "Verified Date", render: row => row.verified_date ? new Date(row.verified_date).toLocaleDateString() : "-" },
-        { key: "approval_date", header: "Approval Date", render: row => row.approval_date ? new Date(row.approval_date).toLocaleDateString() : "-" },
-        { key: "request_status", header: "Status" },
+        { key: "id", header: "ID" },
+        { key: "transfer_by", header: "Transfer By", render: row => row.transfer_by?.full_name || row.transfer_by?.ramco_id || "-" },
+        { key: "department", header: "Department", render: row => row.department?.code || row.department?.name || row.department_id || "-" },
+        { key: "costcenter", header: "Cost Center", render: row => row.costcenter?.name || row.costcenter_id || "-" },
+        { key: "new_owner", header: "New Owner", render: row => Array.isArray(row.new_owner) && row.new_owner.length > 0 ? row.new_owner.map((n: any) => n.full_name || n.ramco_id).join(", ") : "-" },
+        { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
+        { key: "transfer_date", header: "Transfer Date", render: row => row.transfer_date ? new Date(row.transfer_date).toLocaleDateString() : "-" },
+        { key: "transfer_status", header: "Status" },
     ];
 
     // Summary counts for each status
     const summary = React.useMemo(() => {
-        const counts = { draft: 0, submitted: 0, approved: 0, completed: 0 };
+        const counts = { draft: 0, submitted: 0, approved: 0, completed: 0 } as Record<string, number>;
         data.forEach((row: any) => {
-            const status = (row.request_status || '').toLowerCase();
+            const status = (row.transfer_status || '').toLowerCase();
             if (status.includes('draft')) counts.draft++;
             else if (status.includes('submit')) counts.submitted++;
             else if (status.includes('approve')) counts.approved++;
@@ -64,17 +71,43 @@ export default function AssetTransfer() {
             <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-2xl font-bold">Asset Transfer Form</h2>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="ring-1 ring-red-500"
-                        size="sm"
-                        onClick={() => { setShowForm(false); setEditId(undefined); }}
-                    >
-                        Back to Requests
-                    </Button>
+                    {/* Back button with unsaved changes confirmation */}
+                    <>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="ring-1 ring-red-500"
+                            size="sm"
+                            onClick={() => {
+                                if (formDirty) setConfirmBackOpen(true);
+                                else { setShowForm(false); setEditId(undefined); }
+                            }}
+                        >
+                            Back to Requests
+                        </Button>
+                    </>
                 </div>
-                <AssetTransferForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} />
+                {/* Confirm dialog */}
+                <div>
+                    {confirmBackOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+                            <div className="bg-white rounded shadow-lg p-4 w-full max-w-sm">
+                                <div className="font-semibold mb-2">Leave Form?</div>
+                                <div className="text-sm text-gray-600 mb-4">You have unsaved changes. Are you sure you want to go back?</div>
+                                <div className="flex justify-end gap-2">
+                                    <button className="px-3 py-2 rounded border" onClick={() => setConfirmBackOpen(false)}>Stay</button>
+                                    <button
+                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded"
+                                        onClick={() => { setConfirmBackOpen(false); setShowForm(false); setEditId(undefined); }}
+                                    >
+                                        Leave
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <AssetTransferForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} onDirtyChange={setFormDirty} />
             </div>
         );
     }

@@ -145,6 +145,9 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string | undefined>(undefined);
   // Registry assets loaded from backend (if any)
   const [registryAssets, setRegistryAssets] = useState<any[] | null>(null);
+  // Registry across all purchases for this type (for de-dup in mapping list)
+  const [registryAll, setRegistryAll] = useState<any[] | null>(null);
+  const [loadingRegistryAll, setLoadingRegistryAll] = useState(false);
   const auth = React.useContext(AuthContext);
 
   useEffect(() => {
@@ -278,8 +281,36 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   // Fetch existing active assets when sidebar opens or dependencies change
   useEffect(() => {
-    if (showSidebar) fetchExistingAssets();
+    if (showSidebar) {
+      fetchExistingAssets();
+    }
   }, [typeId, showSidebar, purchase]);
+
+  // Fetch registry across all purchases by type when sidebar opens (used to filter duplicates)
+  useEffect(() => {
+    if (!showSidebar) return;
+    const tId = typeId
+      || (purchase && typeof (purchase as any).type_detail === 'object' ? String((purchase as any).type_detail.id || '') : '')
+      || (purchase && typeof (purchase as any).type === 'object' ? String((purchase as any).type.id || '') : '');
+    if (!tId) {
+      setRegistryAll([]);
+      return;
+    }
+    const loadAll = async () => {
+      setLoadingRegistryAll(true);
+      try {
+        const res = await authenticatedApi.get(`/api/purchases/registry/all?type=${tId}`);
+        const data = (res as any).data?.data || (res as any).data || [];
+        setRegistryAll(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.warn('Failed to load registry/all', e);
+        setRegistryAll([]);
+      } finally {
+        setLoadingRegistryAll(false);
+      }
+    };
+    loadAll();
+  }, [showSidebar, typeId, purchase]);
 
   const fetchPurchaseData = async () => {
     setLoading(true);
@@ -353,12 +384,32 @@ const PurchaseAssetRegistration: React.FC = () => {
 
   const mapRegisterNumberToActive = (registerNo: string) => {
     if (!assetItems || assetItems.length === 0) return;
+    const rn = String(registerNo || '').toUpperCase().trim();
+    if (!rn) {
+      toast.error('Invalid register number');
+      return;
+    }
+    // Prevent duplicates: already registered in system or already used in current form
+    const registrySet = new Set(
+      (registryAll || []).map((r: any) => String(r.register_number || '').toUpperCase().trim()).filter(Boolean)
+    );
+    const usedSet = new Set(
+      (assetItems || []).map((i: any) => String(i.register_number || '').toUpperCase().trim()).filter(Boolean)
+    );
+    if (registrySet.has(rn)) {
+      toast.error('Register number already registered');
+      return;
+    }
+    if (usedSet.has(rn)) {
+      toast.error('Register number already used in this form');
+      return;
+    }
     const targetId = activeAssetId || assetItems.find(a => !a.register_number)?.id || assetItems[0]?.id || null;
     if (!targetId) {
       toast.error('No asset form available to map');
       return;
     }
-    setAssetItems(prev => prev.map(item => item.id === targetId ? { ...item, register_number: registerNo } : item));
+    setAssetItems(prev => prev.map(item => item.id === targetId ? { ...item, register_number: rn } : item));
     requestAnimationFrame(() => scrollToAsset(targetId));
     toast.success('Register number mapped');
     setShowSidebar(false);
@@ -1574,10 +1625,27 @@ const PurchaseAssetRegistration: React.FC = () => {
               )}
               {!loadingAssets && (() => {
                 const query = assetSearch.trim().toLowerCase();
+                // Build sets for quick duplicate checks
+                const registrySet = new Set(
+                  (registryAll || []).map((r: any) => String(r.register_number || '').toUpperCase().trim()).filter(Boolean)
+                );
+                const usedSet = new Set(
+                  (assetItems || []).map((i: any) => String(i.register_number || '').toUpperCase().trim()).filter(Boolean)
+                );
                 const filtered = existingAssets.filter((a: any) => {
                   const reg = (a.register_number || '').toLowerCase();
                   const brand = (a.brands?.name || a.brand?.name || a.brand || '').toLowerCase();
-                  return !query || reg.includes(query) || brand.includes(query);
+                  // Apply text query first
+                  const matchesQuery = (!query || reg.includes(query) || brand.includes(query));
+                  if (!matchesQuery) return false;
+                  // Exclude if asset already linked to a purchase
+                  if (a.purchase_id) return false;
+                  // Exclude if already registered in system (registryAll)
+                  const rn = String(a.register_number || '').toUpperCase().trim();
+                  if (rn && registrySet.has(rn)) return false;
+                  // Exclude if already used in current form entries
+                  if (rn && usedSet.has(rn)) return false;
+                  return true;
                 });
                 if (filtered.length === 0) {
                   return <div className="text-sm text-gray-500">No active assets found.</div>;
@@ -1588,6 +1656,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                       const brand = a.brands?.name || a.brand?.name || a.brand || '-';
                       const model = a.models?.name || a.model?.name || a.model || '-';
                       const pdate = a.purchase_date ? new Date(a.purchase_date).toLocaleDateString() : '-';
+                      const btnDisabled = loadingRegistryAll || !a.register_number;
                       return (
                         <li key={a.id} className="flex items-center justify-between rounded-md border p-2 bg-white">
                           <div className="min-w-0">
@@ -1599,8 +1668,8 @@ const PurchaseAssetRegistration: React.FC = () => {
                               variant="outline"
                               size="sm"
                               onClick={() => mapRegisterNumberToActive(a.register_number)}
-                              disabled={!a.register_number}
-                              title="Map register number to selected form"
+                              disabled={btnDisabled}
+                              title={loadingRegistryAll ? 'Checking registry…' : 'Map register number to selected form'}
                             >
                               <Link2 className="h-4 w-4 mr-1" /> Map
                             </Button>
@@ -1611,6 +1680,9 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </ul>
                 );
               })()}
+              {loadingRegistryAll && (
+                <div className="text-[11px] text-gray-500 mt-1">Checking registry to avoid duplicates…</div>
+              )}
             </div>
           </div>
         )}

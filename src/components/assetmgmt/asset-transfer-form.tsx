@@ -89,8 +89,15 @@ const REASONS_ORGANIZATIONAL = [
 ];
 
 const REASONS_CONDITION = [
-	{ label: 'Asset Problem / Maintenance', value: 'asset_problem_maintenance' },
+    { label: 'Asset Problem / Maintenance', value: 'asset_problem_maintenance' },
 ];
+
+// Map reason values to human-friendly labels for payload
+const REASON_VALUE_TO_LABEL: Record<string, string> = Object.fromEntries([
+    ...REASONS_OPERATIONAL,
+    ...REASONS_ORGANIZATIONAL,
+    ...REASONS_CONDITION,
+].map(r => [r.value, r.label]));
 
 // Define the Requestor interface if not already imported
 type Requestor = {
@@ -141,9 +148,11 @@ interface Location {
 interface AssetTransferFormProps {
 	id?: string | number | null;
 	onClose?: () => void;
+	// Notify parent when form has unsaved changes/items
+	onDirtyChange?: (dirty: boolean) => void;
 }
 
-const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) => {
+const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDirtyChange }) => {
 	const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
 	const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
 	const [supervised, setSupervised] = React.useState<any[]>([]);
@@ -230,77 +239,70 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 			return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 		};
 
-		const payload = {
-			transfer_type: 'resignation',
-			transfer_date: formatDateTime(dateRequest || new Date().toISOString()),
-			transfer_by: String(form.requestor?.ramco_id || user?.username || ''),
-			costcenter_id: form.requestor?.costcenter?.id ?? null,
-			department_id: form.requestor?.department?.id ?? null,
-			total_items: selectedItems.length,
-			request_status: status || requestStatus,
-			details: selectedItems.map(item => {
-				const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
-				const reasons = itemReasons[item.id] || {};
-				const effectiveDate = itemEffectiveDates[item.id] || '';
-				const emptyDetails = {
-					ownerName: '', ownerStaffId: '', location: '', costCenter: '', department: '', condition: '', brandModel: '', serialNo: '',
-				};
-				const current = { ...emptyDetails, ...(transfer.current || {}) };
-				const newDetails = { ...emptyDetails, ...(transfer.new || {}) };
-				const new_costcenter = { id: parseInt(newDetails.costCenter || current.costCenter || item.costcenter?.id || '0', 10), name: item.costcenter?.name || '' };
-				const new_department = { id: parseInt(newDetails.department || current.department || item.department?.id || '0', 10), name: item.department?.name || '' };
-				const new_location = { id: parseInt(newDetails.location || current.location || item.location?.id || '0', 10), name: item.location?.name || '' };
-				const reasonsStr = Object.entries(reasons)
-					.filter(([key, value]) => (typeof value === 'boolean' ? value : value === 'true'))
-					.map(([key]) => key)
-					.join(',');
-				let new_owner = undefined;
-				if (item.transfer_type === 'Asset') {
-					if (transfer.new.ownerName) {
-						new_owner = {
-							name: transfer.new.ownerName,
-							ramco_id: transfer.new.ownerStaffId || '',
-						};
-					} else if (item.new_owner && item.new_owner_staffId) {
-						new_owner = {
-							name: item.new_owner,
-							ramco_id: item.new_owner_staffId,
-						};
-					} else if (item.curr_owner) {
-						new_owner = {
-							name: item.curr_owner.name,
-							ramco_id: item.curr_owner.ramco_id,
-						};
-					} else if (item.owner) {
-						new_owner = {
-							name: item.owner.full_name,
-							ramco_id: item.owner.ramco_id,
-						};
-					}
-				}
-				return {
-					transfer_type: item.transfer_type,
-					effective_date: effectiveDate,
-					asset_type: getAssetTypeName(item),
-					identifier: String(item.register_number || item.ramco_id || '0'),
-					curr_owner: item.owner ? { ramco_id: item.owner.ramco_id, name: item.owner.full_name } : item.curr_owner ? { ramco_id: item.curr_owner.ramco_id, name: item.curr_owner.name } : null,
-					curr_costcenter: item.costcenter ? { id: item.costcenter.id, name: item.costcenter.name } : item.curr_costcenter ? { id: item.curr_costcenter.id, name: item.curr_costcenter.name } : null,
-					curr_department: item.department ? { id: item.department.id, name: item.department.name } : item.curr_department ? { id: item.curr_department.id, name: item.curr_department.name } : null,
-					curr_location: item.location ? { id: item.location.id, name: item.location.name } : item.curr_location ? { id: item.curr_location.id, name: item.curr_location.name } : null,
-					new_costcenter,
-					new_department,
-					new_location,
-					reasons: reasonsStr,
-					remarks: reasons.othersText,
-					attachment: itemAttachments[item.id]?.name || null,
-					return_to_asset_manager: !!returnToAssetManager[item.id],
-					...(item.transfer_type === 'Asset' && new_owner ? { new_owner } : {}),
-				};
-			}),
-		};
+
+		// New details payload per revised spec
+		const detailsPayload = selectedItems.map(item => {
+			const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
+			const reasons = itemReasons[item.id] || {};
+			const effectiveDate = itemEffectiveDates[item.id] || '';
+			const empty = { ownerName: '', ownerStaffId: '', location: '', costCenter: '', department: '' } as any;
+			const current = { ...empty, ...(transfer.current || {}) };
+			const next = { ...empty, ...(transfer.new || {}) };
+
+			const current_owner = item.owner?.ramco_id || item.curr_owner?.ramco_id || '';
+			const new_owner = next.ownerStaffId || item.owner?.ramco_id || item.curr_owner?.ramco_id || '';
+			const current_costcenter_id = parseInt(String(item.costcenter?.id || item.curr_costcenter?.id || current.costCenter || 0), 10) || null;
+			const current_department_id = parseInt(String(item.department?.id || item.curr_department?.id || current.department || 0), 10) || null;
+			const current_location_id = parseInt(String(item.location?.id || item.curr_location?.id || current.location || 0), 10) || null;
+			const new_costcenter_id = parseInt(String(next.costCenter || current_costcenter_id || 0), 10) || null;
+			const new_department_id = parseInt(String(next.department || current_department_id || 0), 10) || null;
+			const new_location_id = parseInt(String(next.location || current_location_id || 0), 10) || null;
+
+			const selectedReasonLabels = Object.entries(reasons)
+				.filter(([key, value]) => key !== 'othersText' && key !== 'comment' && (value === true || value === 'true'))
+				.map(([key]) => REASON_VALUE_TO_LABEL[key] || key);
+			const includeOwnership = !!(next.ownerName || next.ownerStaffId || item.new_owner || item.new_owner_staffId);
+			const reason = [includeOwnership ? 'Transfer ownership' : null, ...selectedReasonLabels]
+				.filter(Boolean)
+				.join(', ');
+
+			return {
+				effective_date: effectiveDate,
+				asset_id: item.id ?? null,
+				type_id: item.type?.id || item.types?.id || null,
+				current_owner: current_owner || '',
+				current_costcenter_id,
+				current_department_id,
+				current_location_id,
+				new_owner,
+				new_costcenter_id,
+				new_department_id,
+				new_location_id,
+				return_to_asset_manager: !!returnToAssetManager[item.id],
+				reason,
+				remarks: (reasons as any).othersText || '',
+			};
+		});
+
+		// Build multipart form data with attachments
+		const formData = new FormData();
+		formData.append('transfer_date', formatDateTime(dateRequest || new Date().toISOString()));
+		formData.append('transfer_by', String(form.requestor?.ramco_id || user?.username || ''));
+		if (form.requestor?.costcenter?.id) formData.append('costcenter_id', String(form.requestor.costcenter.id));
+		if (form.requestor?.department?.id) formData.append('department_id', String(form.requestor.department.id));
+		formData.append('transfer_status', String(status || requestStatus));
+		formData.append('details', JSON.stringify(detailsPayload));
+
+		selectedItems.forEach((item: any) => {
+			const f = itemAttachments[item.id];
+			if (f) {
+				formData.append(`attachments[${item.id}]`, f, f.name);
+			}
+		});
+
 		try {
 			setSubmitting(true);
-			await authenticatedApi.post('/api/assets/transfer-requests', payload);
+			await authenticatedApi.post('/api/assets/transfers', formData);
 			toast.success((status || requestStatus) === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
 			clearFormAndItems();
 			handleCancel();
@@ -327,6 +329,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 	// This function is used to update the itemTransferDetails state when a new value is entered
 	function detectNewChanges(itemId: string, section: 'current' | 'new', field: string, value: string) {
 		setItemTransferDetails((prev: any) => {
+			const firstItemId = selectedItems[0]?.id;
+			const updated: any = { ...prev };
 			const updatedItem = {
 				...prev[itemId],
 				[section]: {
@@ -337,25 +341,68 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 			};
 
 			// Automatically check or uncheck the corresponding checkbox for New Owner, Cost Center, Department, or Location
-			if (section === 'new' && ['ownerName', 'costCenter', 'department', 'location'].includes(field)) {
+			if (section === 'new' && ['ownerName', 'costCenter', 'department', 'location', 'ownerStaffId'].includes(field)) {
 				updatedItem[section].ownerChecked = field === 'ownerName' ? !!value : updatedItem[section].ownerChecked;
 			}
 
-			return {
-				...prev,
-				[itemId]: updatedItem,
-			};
+			updated[itemId] = updatedItem;
+
+			// Bulk apply: if editing the first accordion, mirror to the rest
+			if (firstItemId && String(itemId) === String(firstItemId) && section === 'new') {
+				for (const it of selectedItems.slice(1)) {
+					if (!it?.id) continue;
+					const prevIt = updated[it.id] || prev[it.id] || {};
+					const prevSection = { ...(prevIt[section] || {}) };
+					prevSection[field] = value;
+					if (['ownerName', 'ownerStaffId'].includes(field)) {
+						prevSection.ownerChecked = field === 'ownerName' ? !!value : prevSection.ownerChecked;
+					}
+					updated[it.id] = { ...prevIt, [section]: prevSection, effectiveDate: prevIt?.effectiveDate || '' };
+				}
+			}
+
+			return updated;
 		});
 	}
 
 	function handleItemReasonInput(itemId: string, field: string, value: boolean | string) {
-		setItemReasons((prev: any) => ({
-			...prev,
-			[itemId]: {
+		const boolVal = typeof value === 'string' ? value === 'true' : !!value;
+		setItemReasons((prev: any) => {
+			const firstItemId = selectedItems[0]?.id;
+			const updated: any = { ...prev };
+			updated[itemId] = {
 				...prev[itemId],
-				[field]: typeof value === 'string' ? value === 'true' : !!value,
-			},
-		}));
+				[field]: boolVal,
+			};
+
+			// Bulk apply reasons from the first accordion
+			if (firstItemId && String(itemId) === String(firstItemId)) {
+				for (const it of selectedItems.slice(1)) {
+					if (!it?.id) continue;
+					updated[it.id] = {
+						...updated[it.id],
+						[field]: boolVal,
+					};
+				}
+			}
+
+			return updated;
+		});
+	}
+
+	// Helper to set Return to Asset Manager with optional bulk apply from first item
+	function setReturnToAssetManagerFor(itemId: number, checked: boolean) {
+		setReturnToAssetManager(prev => {
+			const firstItemId = selectedItems[0]?.id;
+			const updated = { ...prev, [itemId]: checked } as { [key: number]: boolean };
+			if (firstItemId && String(itemId) === String(firstItemId)) {
+				for (const it of selectedItems.slice(1)) {
+					if (!it?.id) continue;
+					updated[it.id] = checked;
+				}
+			}
+			return updated;
+		});
 	}
 
 	function handleItemAttachment(itemId: number, file: File | null) {
@@ -502,6 +549,30 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 			setDateRequest(now.toISOString());
 		}
 	}, [dateRequest]);
+
+	// Track dirty state (unsaved changes) to inform parent and guard navigation
+	const dirtyRef = React.useRef(false);
+	React.useEffect(() => {
+		const dirty =
+			selectedItems.length > 0 ||
+			Object.keys(itemTransferDetails || {}).length > 0 ||
+			Object.keys(itemReasons || {}).length > 0 ||
+			Object.keys(itemEffectiveDates || {}).length > 0 ||
+			Object.keys(itemAttachments || {}).length > 0;
+		dirtyRef.current = dirty;
+		onDirtyChange && onDirtyChange(dirty);
+	}, [selectedItems.length, itemTransferDetails, itemReasons, itemEffectiveDates, itemAttachments, onDirtyChange]);
+
+	// Warn when closing tab if there are unsaved items
+	React.useEffect(() => {
+		const beforeUnload = (e: BeforeUnloadEvent) => {
+			if (!dirtyRef.current) return;
+			e.preventDefault();
+			e.returnValue = '';
+		};
+		window.addEventListener('beforeunload', beforeUnload);
+		return () => window.removeEventListener('beforeunload', beforeUnload);
+	}, []);
 
 	// Auto-populate sidebar when resignation option is selected
 	React.useEffect(() => {
@@ -656,7 +727,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 	React.useEffect(() => {
 		if (id) {
 			setLoading(true);
-			authenticatedApi.get(`/api/assets/transfer-requests/${id}`)
+			authenticatedApi.get(`/api/assets/transfers/${id}`)
 				.then((res: any) => {
 					const data = res?.data?.data;
 					if (data) {
@@ -822,29 +893,29 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div className="sm:col-start-2">
 									<Label className="text-sm">Application Date</Label>
-									<Input className="h-10" value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
+									<Input className="h-10 text-black" value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
 								</div>
 							</div>
 							{/* Row 2: Name & Ramco ID */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Name</Label>
-									<Input className="h-10" value={form.requestor.full_name || ''} disabled />
+									<Input className="h-10 text-black" value={form.requestor.full_name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Ramco ID</Label>
-									<Input className="h-10" value={form.requestor.ramco_id || ''} disabled />
+									<Input className="h-10 text-black" value={form.requestor.ramco_id || ''} disabled />
 								</div>
 							</div>
 							{/* Row 3: Cost Center & Department */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Cost Center</Label>
-									<Input className="h-10" value={form.requestor.costcenter?.name || ''} disabled />
+									<Input className="h-10 text-black" value={form.requestor.costcenter?.name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Department</Label>
-									<Input className="h-10" value={form.requestor.department?.name || ''} disabled />
+									<Input className="h-10 text-black" value={form.requestor.department?.name || ''} disabled />
 								</div>
 							</div>
 							{/* Application Options moved above next to Request Date */}
@@ -1000,10 +1071,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 												<div className="mb-2">
 													<div className="flex items-center justify-between gap-4">
 														<div className="font-semibold">Transfer Details</div>
-														<div className="flex items-center gap-2">
-															<div className="font-medium">Return to Asset Manager</div>
-															<Switch checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManager(prev => ({ ...prev, [item.id]: checked }))} />
-														</div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="font-medium">Return to Asset Manager</div>
+                                        <Switch checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManagerFor(item.id, checked)} />
+                                    </div>
 													</div>
 													{/* Show only Transfer Details error for this item */}
 													{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
@@ -1222,11 +1293,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 																<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
 																	<div className="flex-1">
 																		<Label className="font-semibold mb-1">Other Reason</Label>
-																		<Textarea className="w-full min-h-[60px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
+																		<Textarea className="w-full min-h-[90px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
 																	</div>
 																	<div className="flex-1">
 																		<Label className="font-semibold mb-1">Attachments</Label>
-																		<div className="border-2 border-dashed rounded-md p-4 text-center bg-white">
+																		<div className="border-2 border-dashed rounded-md p-1 text-center bg-white">
 																			<input
 																				id={`attachment-${item.id}`}
 																				type="file"
@@ -1239,12 +1310,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 																				}}
 																			/>
 																			<Label htmlFor={`attachment-${item.id}`} className="cursor-pointer inline-block w-full">
-																				<div className="py-6">
+																				<div className="py-1">
 																					<div className="text-sm text-gray-600">Drag & drop a file here or click to browse</div>
-																					<div className="mt-2 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
+																					<div className="mt-1 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
 																				</div>
 																			</Label>
-																			<div className="mt-2 text-sm text-gray-700">
+																			<div className="text-sm text-gray-700">
 																				{itemAttachments[item.id]?.name || itemAttachmentNames[item.id] || <span className="text-gray-400">No file chosen</span>}
 																			</div>
 																		</div>
@@ -1366,7 +1437,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 																									</div>
 																								</div>
 																								<CirclePlus
-																									className="text-blue-500 w-4 h-4 cursor-pointer hover:text-blue-600"
+																									className="text-blue-500 w-5 h-5 cursor-pointer hover:text-blue-600"
 																									onClick={() => addSelectedItem(asset)}
 																								/>
 																							</div>
@@ -1484,7 +1555,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose }) =>
 											) : 'Submit'}
 										</Button>
 										<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={submitting}>Reset</Button>
-										<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting || selectedItems.length > 0}>Back to Request</Button>
+										<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
 									</div>
 						{/* Workflow section removed as requested */}
 					</form>

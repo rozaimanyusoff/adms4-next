@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   ShoppingCart,
   Package,
@@ -326,7 +327,18 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
   }, [requestTypeYearRows]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <Accordion type="single" collapsible className="mb-6">
+      <AccordionItem value="summary">
+        <AccordionTrigger className="px-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold">Purchase Summary</span>
+            {stats.total > 0 && (
+              <span className="text-xs text-muted-foreground">{stats.total} records • RM {fmtRM(stats.totalValue)}</span>
+            )}
+          </div>
+        </AccordionTrigger>
+        <AccordionContent className="pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Purchases summary (count + value) */}
       <Card className={`${pick(0).border} md:col-span-2`}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -593,7 +605,10 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       </Card>
 
       {/* Yearly breakdown moved into Total Purchases & Total Value cards */}
-    </div>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 };
 

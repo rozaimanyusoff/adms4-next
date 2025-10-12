@@ -38,7 +38,7 @@ const TabMaintenance = () => {
             </p>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-4 lg:w-[700px]">
+                <TabsList className="w-full">
                     <TabsTrigger value="dashboard" className="flex items-center gap-2">
                         <BarChart3 size={16} />
                         Dashboard
