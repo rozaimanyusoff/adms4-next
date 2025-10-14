@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Ban, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react';
 import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
 import { AuthContext } from '@/store/AuthContext';
@@ -29,6 +29,11 @@ type PoolcarRecord = {
   vehicle?: string;
   options?: string;
   passengers?: string;
+  recommendationStat?: number | string | null;
+  recommendationDate?: string;
+  approvalStat?: number | string | null;
+  approvalDate?: string;
+  returnAt?: string;
   // keep original for potential drill-down
   __raw?: any;
 };
@@ -54,6 +59,35 @@ function formatDMYHM(value?: string) {
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
 
+function formatStatus(value: any) {
+  if (value === null || value === undefined || value === '') return 'Pending';
+  const numeric = Number(value);
+  if (!Number.isNaN(numeric)) {
+    const map: Record<number, string> = {
+      0: 'Pending',
+      1: 'Approved',
+      2: 'Rejected',
+      3: 'Cancelled',
+    };
+    return map[numeric] || String(numeric);
+  }
+  return String(value);
+}
+
+function formatReturnDateTime(date?: string, time?: string) {
+  if (!date) return '-';
+  const base = new Date(date);
+  if (isNaN(base.getTime())) return '-';
+  if (time) {
+    const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+    if (match) {
+      const [, hh, mm, ss] = match;
+      base.setHours(Number(hh ?? 0), Number(mm ?? 0), Number(ss ?? 0), 0);
+    }
+  }
+  return formatDMYHM(base.toISOString());
+}
+
 function getPoolcarTypeLabel(val: any): string {
   const map: Record<string | number, string> = { 3: 'MPV', 5: 'Sedan', 6: 'SUV' };
   if (val == null) return '-';
@@ -69,15 +103,86 @@ function getPoolcarTypeLabel(val: any): string {
   return '-';
 }
 
+function renderStatusCell(status: any, date?: string) {
+  const label = formatStatus(status);
+  const formattedDate = date ? formatDMYHM(date) : '';
+  const numeric = Number(status);
+  let Icon = Clock;
+  let iconClass = 'text-amber-500';
+  if (!Number.isNaN(numeric)) {
+    if (numeric === 1) {
+      Icon = CheckCircle2;
+      iconClass = 'text-emerald-600';
+    } else if (numeric === 2) {
+      Icon = Ban;
+      iconClass = 'text-red-600';
+    }
+  } else if (typeof status === 'string') {
+    const lowered = status.toLowerCase();
+    if (lowered.includes('approve')) {
+      Icon = CheckCircle2;
+      iconClass = 'text-emerald-600';
+    } else if (lowered.includes('reject')) {
+      Icon = Ban;
+      iconClass = 'text-red-600';
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className={`h-4 w-4 ${iconClass}`} />
+      <div className="flex flex-col">
+        <span>{label}</span>
+        {formattedDate ? <span className="text-xs text-muted-foreground">{formattedDate}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function isPendingStatus(status: any) {
+  if (status === null || status === undefined) return true;
+  if (typeof status === 'string') {
+    const trimmed = status.trim();
+    if (trimmed === '') return true;
+    const numeric = Number(status);
+    if (!Number.isNaN(numeric)) return numeric === 0;
+    return trimmed.toLowerCase() === 'pending';
+  }
+  const numeric = Number(status);
+  return !Number.isNaN(numeric) ? numeric === 0 : false;
+}
+
 const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'request_date', header: 'Request Date', sortable: true },
   { key: 'type', header: 'Poolcar Type', sortable: true },
-  { key: 'from', header: 'From', sortable: true },
-  { key: 'to', header: 'To', sortable: true },
+  {
+    key: 'from',
+    header: 'Trip Window',
+    sortable: true,
+    render: (row) => (
+      <div className="flex flex-col">
+        <span>{row.from}</span>
+        <span className="text-xs text-muted-foreground">to {row.to}</span>
+      </div>
+    ),
+  },
   { key: 'duration', header: 'Duration', sortable: true },
+  { key: 'returnAt', header: 'Return Date/Time', sortable: true },
   { key: 'destination', header: 'Destination', sortable: true },
   { key: 'vehicle', header: 'Vehicle', sortable: true },
+  {
+    key: 'recommendationStat',
+    header: 'Recommendation',
+    sortable: false,
+    render: (row) => renderStatusCell(row.recommendationStat, row.recommendationDate),
+  },
+  {
+    key: 'approvalStat',
+    header: 'Approval',
+    sortable: false,
+    render: (row) => renderStatusCell(row.approvalStat, row.approvalDate),
+  },
   // Optionally include purpose/passengers/options if needed later
 ];
 
@@ -118,11 +223,16 @@ const PoolcarRecord: React.FC = () => {
         from: formatDMYHM(d.pcar_datefr),
         to: formatDMYHM(d.pcar_dateto),
         duration: `${d.pcar_day ?? 0}d ${d.pcar_hour ?? 0}h`,
+        returnAt: formatReturnDateTime(d.pcar_retdate, d.pcar_rettime),
         destination: d.pcar_dest ?? '-',
         purpose: d.pcar_purp ?? '-',
         vehicle: d.asset?.register_number || String(d.vehicle_id ?? '-') ,
         options: d.pcar_opt ?? '-',
         passengers: d.pass ?? '-',
+        recommendationStat: d.recommendation_stat,
+        recommendationDate: d.recommendation_date,
+        approvalStat: d.approval_stat,
+        approvalDate: d.approval_date,
         __raw: d,
       }));
       setRows(mapped);
@@ -227,6 +337,11 @@ const PoolcarRecord: React.FC = () => {
             dataExport={false}
             theme="sm"
             onRowDoubleClick={handleRowDoubleClick}
+            rowClass={(row) =>
+              isPendingStatus(row.recommendationStat) || isPendingStatus(row.approvalStat)
+                ? 'bg-amber-50 dark:bg-amber-900/20'
+                : ''
+            }
           />
         </div>
       )}
