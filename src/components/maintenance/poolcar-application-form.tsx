@@ -9,6 +9,14 @@ import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { AuthContext } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { Plus } from 'lucide-react';
@@ -20,12 +28,60 @@ interface PoolcarApplicationFormProps {
   onSubmitted?: () => void;
 }
 
+function pad2(value: number) {
+  return String(value).padStart(2, '0');
+}
+
+function formatLocalInputValue(date: Date) {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+function parseLocalDateTime(value: string) {
+  if (!value) return new Date(NaN);
+  const [datePart, timePart] = value.split('T');
+  if (!datePart || !timePart) return new Date(NaN);
+  const [y, m, d] = datePart.split('-').map(Number);
+  const [hh, mm] = timePart.split(':').map(Number);
+  const parts = [y, m, d, hh, mm];
+  if (parts.some(n => Number.isNaN(n))) return new Date(NaN);
+  return new Date(y, m - 1, d, hh, mm, 0);
+}
+
+function formatDateTimeForPayload(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function calculateDurationDetails(start: Date, end: Date) {
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    return { days: 0, hours: 0, totalHours: 0 };
+  }
+  const diffMs = end.getTime() - start.getTime();
+  const totalHours = diffMs / (3600 * 1000);
+  let days = Math.floor(totalHours / 24);
+  let remainingHours = totalHours - days * 24;
+
+  if (remainingHours >= 8) {
+    days += 1;
+    remainingHours = 0;
+  }
+
+  let hours = remainingHours > 0 ? Math.ceil(remainingHours) : 0;
+  if (hours > 7) {
+    days += 1;
+    hours = 0;
+  }
+
+  return { days, hours, totalHours };
+}
+
 const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onClose, onSubmitted }) => {
   const auth = React.useContext(AuthContext);
   const user = auth?.authData?.user;
 
   const [submitting, setSubmitting] = React.useState(false);
   const [agree, setAgree] = React.useState(false);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
 
   // Requestor
   const [requestor, setRequestor] = React.useState<any>({
@@ -45,8 +101,8 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   // Trip
   const now = React.useMemo(() => new Date(), []);
   const twoHoursLater = React.useMemo(() => new Date(now.getTime() + 2 * 3600 * 1000), [now]);
-  const [fromDT, setFromDT] = React.useState<string>(now.toISOString().slice(0, 16)); // yyyy-MM-ddTHH:mm
-  const [toDT, setToDT] = React.useState<string>(twoHoursLater.toISOString().slice(0, 16));
+  const [fromDT, setFromDT] = React.useState<string>(formatLocalInputValue(now)); // yyyy-MM-ddTHH:mm
+  const [toDT, setToDT] = React.useState<string>(formatLocalInputValue(twoHoursLater));
 
   // Core fields
   const [poolcarType, setPoolcarType] = React.useState<string>('');
@@ -116,13 +172,9 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
 
   // Duration calculation
   const duration = React.useMemo(() => {
-    const start = new Date(fromDT);
-    const end = new Date(toDT);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return { days: 0, hours: 0 };
-    const diffMs = end.getTime() - start.getTime();
-    const days = Math.floor(diffMs / (24 * 3600 * 1000));
-    const hours = Math.ceil((diffMs % (24 * 3600 * 1000)) / (3600 * 1000));
-    return { days, hours };
+    const start = parseLocalDateTime(fromDT);
+    const end = parseLocalDateTime(toDT);
+    return calculateDurationDetails(start, end);
   }, [fromDT, toDT]);
 
   const maxPassengers = React.useMemo(() => {
@@ -150,37 +202,65 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
 
   const handleSubmit = async () => {
     if (!agree) { toast.error('You must agree to the terms before submitting.'); return; }
-    const start = new Date(fromDT); const end = new Date(toDT);
+    const start = parseLocalDateTime(fromDT); const end = parseLocalDateTime(toDT);
     if (!(start < end)) { toast.error('Trip end must be after start.'); return; }
+    const booktype = bookingOption === 'onbehalf' ? 'behalf' : 'own';
+    if (booktype === 'behalf' && !onBehalf) {
+      toast.error('Select an employee for on-behalf booking.');
+      return;
+    }
+    if (!poolcarType) {
+      toast.error('Select a poolcar type.');
+      return;
+    }
     setSubmitting(true);
     try {
-      // Build payload structure (stub to be refined once backend is ready)
+      const requirementsMap: Record<string, string> = {
+        fleet_card: 'fleetcard',
+        tng: 'tng',
+        smart_tag: 'smarttag',
+        driver: 'driver',
+      };
+      const selectedRequirements = Object.entries(requirements)
+        .filter(([, checked]) => checked)
+        .map(([key]) => requirementsMap[key]);
+
+      const durationDetails = calculateDurationDetails(start, end);
+
+      const passengerIds = passengers.map(p => p.ramco_id);
+      const guestEntries = guestNotes
+        .split(/[\n,]+/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      const passengerPayload = [...passengerIds, ...guestEntries].join(',');
+
       const payload = {
-        requestor: {
-          ramco_id: requestor.ramco_id,
-          full_name: requestor.name,
-          contact: requestor.contact,
-          department_id: requestor?.department?.id,
-          location_id: requestor?.location?.id,
-        },
-        booking_option: bookingOption,
-        onbehalf_ramco: bookingOption === 'onbehalf' ? onBehalf : undefined,
-        poolcar_type_id: poolcarType ? Number(poolcarType) : undefined,
-        trip_from: start.toISOString(),
-        trip_to: end.toISOString(),
-        origin: requestor?.location?.name || '',
-        destination,
-        purpose,
-        requirements,
-        passengers: passengers.map(p => ({ ramco_id: p.ramco_id, full_name: p.full_name })),
-        guest_notes: guestNotes,
+        pcar_datereq: formatDateTimeForPayload(new Date(requestor.application_date)),
+        pcar_empid: requestor.ramco_id,
+        ctc_m: requestor.contact,
+        dept_id: requestor?.department?.id ?? null,
+        loc_id: requestor?.location?.id ?? null,
+        pcar_booktype: booktype,
+        pcar_driver: booktype === 'own' ? requestor.ramco_id : onBehalf,
+        pcar_type: Number(poolcarType),
+        pcar_datefr: formatDateTimeForPayload(start),
+        pcar_dateto: formatDateTimeForPayload(end),
+        pcar_day: durationDetails.days,
+        pcar_hour: durationDetails.hours,
+        pcar_dest: destination,
+        pcar_purp: purpose,
+        pcar_opt: selectedRequirements.join(','),
+        pcar_pass: passengerPayload,
       };
 
-      // await authenticatedApi.post('/api/mtn/poolcars', payload)
-      await new Promise((r) => setTimeout(r, 600));
-      toast.success('Poolcar application created (draft)');
-      onSubmitted?.();
-      onClose?.();
+      if (id) {
+        await authenticatedApi.put(`/api/mtn/poolcars/${id}`, payload);
+        toast.success('Poolcar application updated');
+      } else {
+        await authenticatedApi.post('/api/mtn/poolcars', payload);
+        toast.success('Poolcar application created');
+      }
+      setDialogOpen(true);
     } catch (e) {
       toast.error('Failed to submit application');
     } finally {
@@ -196,6 +276,12 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     const yyyy = d.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
   }
+
+  const handleReturnToMain = React.useCallback(() => {
+    setDialogOpen(false);
+    onSubmitted?.();
+    onClose?.();
+  }, [onClose, onSubmitted]);
 
   return (
     <div className="p-4">
@@ -230,7 +316,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
               </div>
               <div>
                 <Label>Location</Label>
-                <Input readOnly value={requestor?.location?.name || ''} />
+                <Input readOnly value={requestor?.location?.code || ''} />
               </div>
             </div>
           </div>
@@ -255,7 +341,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 </RadioGroup>
               </div>
               <div className="md:col-span-1">
-                <Label>On-Behalf</Label>
+                <Label>On-Behalf Driver</Label>
                 <SingleSelect
                   options={employeeOptions}
                   value={onBehalf}
@@ -284,7 +370,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   className="text-xs text-primary hover:underline"
                   onClick={() => {
                     const now = new Date();
-                    setFromDT(now.toISOString().slice(0,16));
+                    setFromDT(formatLocalInputValue(now));
                   }}
                 >
                   Today
@@ -300,9 +386,10 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     type="button"
                     className="text-xs text-primary hover:underline"
                     onClick={() => {
-                      const base = new Date(fromDT || new Date());
-                      const end = new Date(base.getTime() + 2 * 3600 * 1000);
-                      setToDT(end.toISOString().slice(0,16));
+                      const base = parseLocalDateTime(fromDT);
+                      const origin = isNaN(base.getTime()) ? new Date() : base;
+                      const end = new Date(origin.getTime() + 2 * 3600 * 1000);
+                      setToDT(formatLocalInputValue(end));
                     }}
                   >
                     +2h
@@ -312,7 +399,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     className="text-xs text-primary hover:underline"
                     onClick={() => {
                       const now = new Date();
-                      setToDT(now.toISOString().slice(0,16));
+                      setToDT(formatLocalInputValue(now));
                     }}
                   >
                     Today
@@ -322,20 +409,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
               <Input type="datetime-local" value={toDT} min={fromDT} onChange={e => setToDT(e.target.value)} />
             </div>
             <div>
-              <Label className="flex items-center justify-between">
-                <span>Duration</span>
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={() => {
-                    // Emulate a picker 'Done' by blurring any focused element
-                    const el = document.activeElement as HTMLElement | null;
-                    try { el?.blur(); } catch {}
-                  }}
-                >
-                  Done
-                </button>
-              </Label>
+              <Label>Duration</Label>
               <Input readOnly value={`${duration.days} day(s) ${duration.hours} hour(s)`} />
             </div>
           </div>
@@ -439,6 +513,20 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Application saved</DialogTitle>
+            <DialogDescription>
+              The form has been submitted successfully. You may return to the main page when you are ready.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:justify-end">
+            <Button onClick={handleReturnToMain}>Return to main page</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

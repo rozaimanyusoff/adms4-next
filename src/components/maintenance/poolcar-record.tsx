@@ -12,7 +12,7 @@ import PoolcarCalendar from './poolcar-calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 
 // Users who can view all poolcar requests without filtering by ramco
-const poolcarAdmin: string[] = ['000277', '003456'];
+const poolcarAdmin: string[] = ['003456'];
 
 type PoolcarRecord = {
   id: number | string;
@@ -72,10 +72,7 @@ function getPoolcarTypeLabel(val: any): string {
 const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'request_date', header: 'Request Date', sortable: true },
-  { key: 'employee', header: 'Employee', sortable: true },
-  { key: 'department', header: 'Dept', sortable: true },
-  { key: 'location', header: 'Location', sortable: true },
-  { key: 'type', header: 'Type', sortable: true },
+  { key: 'type', header: 'Poolcar Type', sortable: true },
   { key: 'from', header: 'From', sortable: true },
   { key: 'to', header: 'To', sortable: true },
   { key: 'duration', header: 'Duration', sortable: true },
@@ -213,8 +210,7 @@ const PoolcarRecord: React.FC = () => {
         <div className="text-lg font-semibold">My Poolcar Requests</div>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => { setEditId(undefined); setShowForm(true); }}>
-            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-            <span className="ml-1">Create Application</span>
+            {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
           </Button>
         </div>
       </div>
