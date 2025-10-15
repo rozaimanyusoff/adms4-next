@@ -29,8 +29,6 @@ type PoolcarRecord = {
   vehicle?: string;
   options?: string;
   passengers?: string;
-  recommendationStat?: number | string | null;
-  recommendationDate?: string;
   approvalStat?: number | string | null;
   approvalDate?: string;
   returnAt?: string;
@@ -155,7 +153,7 @@ function isPendingStatus(status: any) {
 const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'request_date', header: 'Request Date', sortable: true },
-  { key: 'type', header: 'Poolcar Type', sortable: true },
+  { key: 'type', header: 'Poolcar Type', sortable: true, filter: 'singleSelect' },
   {
     key: 'from',
     header: 'Trip Window',
@@ -170,17 +168,12 @@ const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'duration', header: 'Duration', sortable: true },
   { key: 'returnAt', header: 'Return Date/Time', sortable: true },
   { key: 'destination', header: 'Destination', sortable: true },
-  { key: 'vehicle', header: 'Vehicle', sortable: true },
-  {
-    key: 'recommendationStat',
-    header: 'Recommendation',
-    sortable: false,
-    render: (row) => renderStatusCell(row.recommendationStat, row.recommendationDate),
-  },
+  { key: 'vehicle', header: 'Vehicle', sortable: true, filter: 'singleSelect' },
   {
     key: 'approvalStat',
     header: 'Approval',
     sortable: false,
+    filter: 'singleSelect',
     render: (row) => renderStatusCell(row.approvalStat, row.approvalDate),
   },
   // Optionally include purpose/passengers/options if needed later
@@ -229,8 +222,6 @@ const PoolcarRecord: React.FC = () => {
         vehicle: d.asset?.register_number || String(d.vehicle_id ?? '-') ,
         options: d.pcar_opt ?? '-',
         passengers: d.pass ?? '-',
-        recommendationStat: d.recommendation_stat,
-        recommendationDate: d.recommendation_date,
         approvalStat: d.approval_stat,
         approvalDate: d.approval_date,
         __raw: d,
@@ -338,7 +329,7 @@ const PoolcarRecord: React.FC = () => {
             theme="sm"
             onRowDoubleClick={handleRowDoubleClick}
             rowClass={(row) =>
-              isPendingStatus(row.recommendationStat) || isPendingStatus(row.approvalStat)
+              isPendingStatus(row.approvalStat)
                 ? 'bg-amber-50 dark:bg-amber-900/20'
                 : ''
             }
