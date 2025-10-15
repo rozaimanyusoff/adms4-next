@@ -82,6 +82,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   const [submitting, setSubmitting] = React.useState(false);
   const [agree, setAgree] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [loadingExisting, setLoadingExisting] = React.useState(false);
 
   // Requestor
   const [requestor, setRequestor] = React.useState<any>({
@@ -129,6 +130,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
 
   // Guest / non-employee
   const [guestNotes, setGuestNotes] = React.useState<string>('');
+  const driverOptionRef = React.useRef<ComboboxOption | null>(null);
 
   // Fetch requestor details (department, location, etc.)
   React.useEffect(() => {
@@ -154,21 +156,32 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   // Prefetch employees by department for On-Behalf and passengers
   React.useEffect(() => {
     const deptId = requestor?.department?.id;
-    if (!deptId) { setEmployeeOptions([]); return; }
+    if (!deptId) {
+      const driverOption = driverOptionRef.current && onBehalf
+        ? [{ ...driverOptionRef.current }]
+        : [];
+      setEmployeeOptions(driverOption);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const res: any = await authenticatedApi.get(`/api/assets/employees?dept=${deptId}`);
         const list = res?.data?.data || [];
         if (!cancelled) {
-          setEmployeeOptions(list.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name })));
+          const base = list.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name }));
+          const driverOption = driverOptionRef.current && onBehalf ? { ...driverOptionRef.current } : null;
+          if (driverOption && !base.some((opt) => opt.value === driverOption.value)) {
+            base.push(driverOption);
+          }
+          setEmployeeOptions(base);
         }
       } catch {
         if (!cancelled) setEmployeeOptions([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [requestor?.department?.id]);
+  }, [requestor?.department?.id, onBehalf]);
 
   // Duration calculation
   const duration = React.useMemo(() => {
@@ -197,8 +210,44 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   function removePassenger(ramco: string) {
     setPassengers(prev => prev.filter(p => p.ramco_id !== ramco));
   }
+  const disabled = submitting || loadingExisting;
 
-  const disabled = submitting;
+  const normalizeOptionToken = React.useCallback((token: string) => {
+    return token.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }, []);
+
+  const parseRequirementFlags = React.useCallback(
+    (raw: any) => {
+      const tokens = new Set(
+        String(raw ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => normalizeOptionToken(s)),
+      );
+      return {
+        fleet_card: tokens.has('fleetcard'),
+        tng: tokens.has('tng') || tokens.has('touchngo'),
+        smart_tag: tokens.has('smarttag') || tokens.has('smarttagdevice'),
+        driver: tokens.has('driver'),
+      };
+    },
+    [normalizeOptionToken],
+  );
+
+  const toLocalInputValue = React.useCallback((value?: string | null) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    return formatLocalInputValue(date);
+  }, []);
+
+  const formatApplicationDate = React.useCallback((value?: string | null, fallback?: string) => {
+    if (!value) return fallback ?? '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return fallback ?? '';
+    return date.toISOString();
+  }, []);
 
   const handleSubmit = async () => {
     if (!agree) { toast.error('You must agree to the terms before submitting.'); return; }
@@ -283,6 +332,12 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     onClose?.();
   }, [onClose, onSubmitted]);
 
+  if (loadingExisting && id) {
+    return (
+      <div className="p-4 text-sm text-muted-foreground">Loading application details...</div>
+    );
+  }
+
   return (
     <div className="p-4">
       <Card>
@@ -346,7 +401,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   options={employeeOptions}
                   value={onBehalf}
                   onValueChange={setOnBehalf}
-                  disabled={bookingOption !== 'onbehalf'}
+                  disabled={bookingOption !== 'onbehalf' || disabled}
                   placeholder="Select employee"
                 />
               </div>
@@ -356,6 +411,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   options={poolcarTypeOptions}
                   value={poolcarType}
                   onValueChange={setPoolcarType}
+                  disabled={disabled}
                   placeholder="Select type"
                 />
               </div>
@@ -368,6 +424,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 <button
                   type="button"
                   className="text-xs text-primary hover:underline"
+                  disabled={disabled}
                   onClick={() => {
                     const now = new Date();
                     setFromDT(formatLocalInputValue(now));
@@ -376,7 +433,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   Today
                 </button>
               </Label>
-              <Input type="datetime-local" value={fromDT} onChange={e => setFromDT(e.target.value)} />
+              <Input type="datetime-local" value={fromDT} onChange={e => setFromDT(e.target.value)} disabled={disabled} />
             </div>
             <div>
               <Label className="flex items-center justify-between">
@@ -385,6 +442,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   <button
                     type="button"
                     className="text-xs text-primary hover:underline"
+                    disabled={disabled}
                     onClick={() => {
                       const base = parseLocalDateTime(fromDT);
                       const origin = isNaN(base.getTime()) ? new Date() : base;
@@ -397,6 +455,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   <button
                     type="button"
                     className="text-xs text-primary hover:underline"
+                    disabled={disabled}
                     onClick={() => {
                       const now = new Date();
                       setToDT(formatLocalInputValue(now));
@@ -406,7 +465,13 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   </button>
                 </div>
               </Label>
-              <Input type="datetime-local" value={toDT} min={fromDT} onChange={e => setToDT(e.target.value)} />
+              <Input
+                type="datetime-local"
+                value={toDT}
+                min={fromDT}
+                onChange={e => setToDT(e.target.value)}
+                disabled={disabled}
+              />
             </div>
             <div>
               <Label>Duration</Label>
@@ -529,6 +594,131 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
       </Dialog>
     </div>
   );
+};
+
+  React.useEffect(() => {
+    if (!id) {
+      driverOptionRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    setLoadingExisting(true);
+    authenticatedApi
+      .get(`/api/mtn/poolcars/${id}`)
+      .then((res) => {
+        if (cancelled) return;
+        const payload: any = res?.data?.data ?? res?.data;
+        if (!payload) {
+          toast.error('Failed to load poolcar application details');
+          return;
+        }
+        const deptObject = payload.department
+          ? {
+              id: payload.department.id ?? payload.dept_id ?? null,
+              code: payload.department.code ?? '',
+              name: payload.department.name ?? payload.department.code ?? '',
+            }
+          : payload.dept_id
+            ? { id: payload.dept_id, code: '', name: '' }
+            : null;
+
+        const locationObject = payload.location
+          ? {
+              id: payload.location.id ?? payload.loc_id ?? null,
+              code: payload.location.code ?? '',
+              name: payload.location.name ?? payload.location.code ?? '',
+            }
+          : payload.loc_id
+            ? { id: payload.loc_id, code: '', name: '' }
+            : null;
+
+        setRequestor((prev: any) => ({
+          ...prev,
+          application_date: formatApplicationDate(payload.pcar_datereq, prev.application_date),
+          name: payload.pcar_empid?.full_name || payload.pcar_empname || prev.name,
+          ramco_id:
+            payload.pcar_empid?.ramco_id ||
+            payload.pcar_empid?.ramcoId ||
+            (typeof payload.pcar_empid === 'string' ? payload.pcar_empid : prev.ramco_id),
+          contact: payload.ctc_m ?? prev.contact,
+          department: deptObject ?? prev.department,
+          location: locationObject ?? prev.location,
+        }));
+
+        const bookTypeRaw = String(payload.pcar_booktype ?? '').toLowerCase();
+        const resolvedBookType = bookTypeRaw.includes('behalf') ? 'onbehalf' : 'own';
+        setBookingOption(resolvedBookType as 'own' | 'onbehalf');
+
+        const driverValue =
+          payload.pcar_driver?.ramco_id ||
+          payload.pcar_driver?.ramcoId ||
+          (typeof payload.pcar_driver === 'string' ? payload.pcar_driver : '');
+        const driverLabel =
+          payload.pcar_driver?.full_name ||
+          payload.pcar_driver?.name ||
+          driverValue ||
+          '';
+        driverOptionRef.current = driverValue
+          ? { value: String(driverValue), label: driverLabel || String(driverValue) }
+          : null;
+        setOnBehalf(resolvedBookType === 'onbehalf' && driverValue ? String(driverValue) : '');
+
+        const typeValue =
+          payload.pcar_type && typeof payload.pcar_type === 'object'
+            ? String(payload.pcar_type.id ?? '')
+            : payload.pcar_type != null
+              ? String(payload.pcar_type)
+              : '';
+        setPoolcarType(typeValue);
+
+        const fromValue = toLocalInputValue(payload.pcar_datefr);
+        if (fromValue) setFromDT(fromValue);
+        const toValue = toLocalInputValue(payload.pcar_dateto);
+        if (toValue) setToDT(toValue);
+
+        setDestination(payload.pcar_dest ?? '');
+        setPurpose(payload.pcar_purp ?? '');
+        setRequirements(parseRequirementFlags(payload.pcar_opt));
+
+        const passengerList = Array.isArray(payload.passenger)
+          ? payload.passenger
+              .map((p: any) => ({
+                ramco_id: p?.ramco_id || p?.ramcoId || String(p?.id ?? ''),
+                full_name: p?.full_name || p?.name || p?.ramco_id || '',
+              }))
+              .filter((p) => p.ramco_id)
+          : [];
+        setPassengers(passengerList);
+        setPassengerPick('');
+
+        const passTokens = String(payload.pass ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const normalizedPassengerIds = new Set(passengerList.map((p) => p.ramco_id));
+        const guestTokens = passTokens.filter((token) => !normalizedPassengerIds.has(token));
+        setGuestNotes(guestTokens.length > 0 ? guestTokens.join(', ') : '');
+        setAgree(true);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to load poolcar application details');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, parseRequirementFlags, toLocalInputValue, formatApplicationDate]);
+
+  React.useEffect(() => {
+    if (!driverOptionRef.current || !onBehalf) return;
+    const option = driverOptionRef.current;
+    setEmployeeOptions((prev) => {
+      if (prev.some((opt) => opt.value === option.value)) return prev;
+      return [...prev, option];
+    });
+  }, [onBehalf]);
 };
 
 export default PoolcarApplicationForm;
