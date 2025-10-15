@@ -212,43 +212,6 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   }
   const disabled = submitting || loadingExisting;
 
-  const normalizeOptionToken = React.useCallback((token: string) => {
-    return token.toLowerCase().replace(/[^a-z0-9]/g, '');
-  }, []);
-
-  const parseRequirementFlags = React.useCallback(
-    (raw: any) => {
-      const tokens = new Set(
-        String(raw ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map((s) => normalizeOptionToken(s)),
-      );
-      return {
-        fleet_card: tokens.has('fleetcard'),
-        tng: tokens.has('tng') || tokens.has('touchngo'),
-        smart_tag: tokens.has('smarttag') || tokens.has('smarttagdevice'),
-        driver: tokens.has('driver'),
-      };
-    },
-    [normalizeOptionToken],
-  );
-
-  const toLocalInputValue = React.useCallback((value?: string | null) => {
-    if (!value) return '';
-    const date = new Date(value);
-    if (isNaN(date.getTime())) return '';
-    return formatLocalInputValue(date);
-  }, []);
-
-  const formatApplicationDate = React.useCallback((value?: string | null, fallback?: string) => {
-    if (!value) return fallback ?? '';
-    const date = new Date(value);
-    if (isNaN(date.getTime())) return fallback ?? '';
-    return date.toISOString();
-  }, []);
-
   const handleSubmit = async () => {
     if (!agree) { toast.error('You must agree to the terms before submitting.'); return; }
     const start = parseLocalDateTime(fromDT); const end = parseLocalDateTime(toDT);
@@ -596,6 +559,45 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   );
 };
 
+export default PoolcarApplicationForm;
+
+  const normalizeOptionToken = React.useCallback((token: string) => {
+    return token.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }, []);
+
+  const parseRequirementFlags = React.useCallback(
+    (raw: any) => {
+      const tokens = new Set(
+        String(raw ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => normalizeOptionToken(s)),
+      );
+      return {
+        fleet_card: tokens.has('fleetcard'),
+        tng: tokens.has('tng') || tokens.has('touchngo'),
+        smart_tag: tokens.has('smarttag') || tokens.has('smarttagdevice'),
+        driver: tokens.has('driver'),
+      };
+    },
+    [normalizeOptionToken],
+  );
+
+  const toLocalInputValue = React.useCallback((value?: string | null) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    return formatLocalInputValue(date);
+  }, []);
+
+  const formatApplicationDate = React.useCallback((value?: string | null, fallback?: string) => {
+    if (!value) return fallback ?? '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return fallback ?? '';
+    return date.toISOString();
+  }, []);
+
   React.useEffect(() => {
     if (!id) {
       driverOptionRef.current = null;
@@ -612,37 +614,14 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
           toast.error('Failed to load poolcar application details');
           return;
         }
-        const deptObject = payload.department
-          ? {
-              id: payload.department.id ?? payload.dept_id ?? null,
-              code: payload.department.code ?? '',
-              name: payload.department.name ?? payload.department.code ?? '',
-            }
-          : payload.dept_id
-            ? { id: payload.dept_id, code: '', name: '' }
-            : null;
-
-        const locationObject = payload.location
-          ? {
-              id: payload.location.id ?? payload.loc_id ?? null,
-              code: payload.location.code ?? '',
-              name: payload.location.name ?? payload.location.code ?? '',
-            }
-          : payload.loc_id
-            ? { id: payload.loc_id, code: '', name: '' }
-            : null;
-
         setRequestor((prev: any) => ({
           ...prev,
           application_date: formatApplicationDate(payload.pcar_datereq, prev.application_date),
           name: payload.pcar_empid?.full_name || payload.pcar_empname || prev.name,
-          ramco_id:
-            payload.pcar_empid?.ramco_id ||
-            payload.pcar_empid?.ramcoId ||
-            (typeof payload.pcar_empid === 'string' ? payload.pcar_empid : prev.ramco_id),
+          ramco_id: payload.pcar_empid?.ramco_id || payload.pcar_empid?.ramcoId || payload.pcar_empid || prev.ramco_id,
           contact: payload.ctc_m ?? prev.contact,
-          department: deptObject ?? prev.department,
-          location: locationObject ?? prev.location,
+          department: payload.department ?? prev.department,
+          location: payload.location ?? prev.location,
         }));
 
         const bookTypeRaw = String(payload.pcar_booktype ?? '').toLowerCase();
@@ -661,14 +640,9 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         driverOptionRef.current = driverValue
           ? { value: String(driverValue), label: driverLabel || String(driverValue) }
           : null;
-        setOnBehalf(resolvedBookType === 'onbehalf' && driverValue ? String(driverValue) : '');
+        setOnBehalf(driverValue ? String(driverValue) : '');
 
-        const typeValue =
-          payload.pcar_type && typeof payload.pcar_type === 'object'
-            ? String(payload.pcar_type.id ?? '')
-            : payload.pcar_type != null
-              ? String(payload.pcar_type)
-              : '';
+        const typeValue = payload.pcar_type != null ? String(payload.pcar_type) : '';
         setPoolcarType(typeValue);
 
         const fromValue = toLocalInputValue(payload.pcar_datefr);
@@ -680,24 +654,17 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         setPurpose(payload.pcar_purp ?? '');
         setRequirements(parseRequirementFlags(payload.pcar_opt));
 
-        const passengerList = Array.isArray(payload.passenger)
-          ? payload.passenger
-              .map((p: any) => ({
+        const passengerList =
+          Array.isArray(payload.passenger)
+            ? payload.passenger.map((p: any) => ({
                 ramco_id: p?.ramco_id || p?.ramcoId || String(p?.id ?? ''),
                 full_name: p?.full_name || p?.name || p?.ramco_id || '',
               }))
-              .filter((p) => p.ramco_id)
-          : [];
-        setPassengers(passengerList);
+            : [];
+        setPassengers(passengerList.filter((p) => p.ramco_id));
         setPassengerPick('');
-
-        const passTokens = String(payload.pass ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        const normalizedPassengerIds = new Set(passengerList.map((p) => p.ramco_id));
-        const guestTokens = passTokens.filter((token) => !normalizedPassengerIds.has(token));
-        setGuestNotes(guestTokens.length > 0 ? guestTokens.join(', ') : '');
+        const passRaw = payload.pass ?? '';
+        setGuestNotes(passRaw && passRaw !== '-' ? String(passRaw) : '');
         setAgree(true);
       })
       .catch(() => {
@@ -719,6 +686,3 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
       return [...prev, option];
     });
   }, [onBehalf]);
-};
-
-export default PoolcarApplicationForm;
