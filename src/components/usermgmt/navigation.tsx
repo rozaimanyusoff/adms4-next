@@ -305,6 +305,30 @@ const NavigationMaintenance: React.FC = () => {
             if (!found) return prevTree;
             
             const { node, parent, index } = found;
+            // Special-case: when moving a section, only consider other sections at root level
+            if (!parent && node.type === 'section') {
+                const root = tree as any[];
+                const sectionSiblings = root.filter((n: any) => n.type === 'section');
+                const secIndex = sectionSiblings.findIndex((n: any) => n.navId === navId);
+                if (secIndex > 0) {
+                    const targetPrev = sectionSiblings[secIndex - 1];
+                    // swap positions in the actual root array
+                    const idxA = root.findIndex((n: any) => n.navId === node.navId);
+                    const idxB = root.findIndex((n: any) => n.navId === targetPrev.navId);
+                    if (idxA >= 0 && idxB >= 0) {
+                        [root[idxB], root[idxA]] = [root[idxA], root[idxB]];
+                        updatePositions(root);
+                        // debounce and persist only sections' order
+                        if (reorderTimeoutId) clearTimeout(reorderTimeoutId);
+                        const newTimeoutId = setTimeout(() => {
+                            reorderNavOnBackend(sectionSiblings.sort((a:any,b:any)=> (a.position??0)-(b.position??0)), null, tree);
+                        }, 300);
+                        setReorderTimeoutId(newTimeoutId);
+                    }
+                }
+                return tree;
+            }
+
             let siblings = parent ? parent.children : tree;
             
             if (index > 0) {
@@ -332,6 +356,30 @@ const NavigationMaintenance: React.FC = () => {
             if (!found) return prevTree;
             
             const { node, parent, index } = found;
+            // Special-case: when moving a section, only consider other sections at root level
+            if (!parent && node.type === 'section') {
+                const root = tree as any[];
+                const sectionSiblings = root.filter((n: any) => n.type === 'section');
+                const secIndex = sectionSiblings.findIndex((n: any) => n.navId === navId);
+                if (secIndex < sectionSiblings.length - 1 && secIndex >= 0) {
+                    const targetNext = sectionSiblings[secIndex + 1];
+                    // swap positions in the actual root array
+                    const idxA = root.findIndex((n: any) => n.navId === node.navId);
+                    const idxB = root.findIndex((n: any) => n.navId === targetNext.navId);
+                    if (idxA >= 0 && idxB >= 0) {
+                        [root[idxA], root[idxB]] = [root[idxB], root[idxA]];
+                        updatePositions(root);
+                        // debounce and persist only sections' order
+                        if (reorderTimeoutId) clearTimeout(reorderTimeoutId);
+                        const newTimeoutId = setTimeout(() => {
+                            reorderNavOnBackend(sectionSiblings.sort((a:any,b:any)=> (a.position??0)-(b.position??0)), null, tree);
+                        }, 300);
+                        setReorderTimeoutId(newTimeoutId);
+                    }
+                }
+                return tree;
+            }
+
             let siblings = parent ? parent.children : tree;
             
             if (index < siblings.length - 1) {

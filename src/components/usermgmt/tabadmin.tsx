@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Accounts from "./user-account";
 import Groups from "./c-group";
-import Navigations from "./c-nav";
+import Navigations from "./navigation";
 import Roles from "./c-role";
 import CLogs from "./c-logs";
 import Workflows from "./workflows";
