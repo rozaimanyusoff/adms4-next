@@ -1,23 +1,49 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { BarChart3, List, Activity, Wrench } from 'lucide-react';
 import MaintenanceDash from './mtn-dash';
 import VehicleMaintenanceAdmin from './vehicle-mtn-admin';
 import ServiceTypes from './service-types';
+import Workshop from '@components/billings/workshop';
 import InsuranceModule from './insurance-module';
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
 const TabMaintenance = () => {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const [activeTab, setActiveTab] = useState('dashboard');
     const tabTitles = [
         { value: 'dashboard', label: 'Dashboard' },
         { value: 'records', label: 'Records' },
         { value: 'service-types', label: 'Service Types' },
+        { value: 'workshop', label: 'Workshop' },
         { value: 'insurance', label: 'Insurance' },
-    ];
 
+    ];
+    // Initialize from ?tab=... if provided
+    useEffect(() => {
+        const tab = searchParams?.get('tab') ?? null;
+        const allowed = ['dashboard', 'records', 'service-types', 'workshop', 'insurance'];
+        if (typeof tab === 'string' && allowed.includes(tab)) {
+            setActiveTab(tab);
+        }
+        // Re-run when search params change (e.g., from back/forward navigation)
+    }, [searchParams]);
+
+    // Optional: keep URL in sync when switching tabs
+    useEffect(() => {
+        // Preserve current params but avoid redundant replaces
+        const params = new URLSearchParams(searchParams?.toString());
+        if (params.get('tab') === activeTab) return;
+        params.set('tab', activeTab);
+        router.replace(`${pathname}?${params.toString()}`);
+        // Do not include searchParams to avoid loops; we only react to activeTab/path changes
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, pathname, router]);
 
     return (
         <div className="p-4">
@@ -31,7 +57,7 @@ const TabMaintenance = () => {
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
                     <span>{tabTitles.find(t => t.value === activeTab)?.label}</span>
                 </li>
-                
+
             </ul>
             <p className="text-gray-600 dark:text-gray-400">
                 Monitor and manage vehicle maintenance requests and analytics
@@ -51,6 +77,10 @@ const TabMaintenance = () => {
                         <Wrench size={16} />
                         Service Types
                     </TabsTrigger>
+                    <TabsTrigger value="workshop" className="flex items-center gap-2">
+                        <Wrench size={16} />
+                        Workshop
+                    </TabsTrigger>
                     <TabsTrigger value="insurance" className="flex items-center gap-2">
                         Insurance
                     </TabsTrigger>
@@ -65,11 +95,7 @@ const TabMaintenance = () => {
                 </TabsContent>
 
                 <TabsContent value="records" className="mt-6">
-                    <Card>
-                        <CardContent className="p-0">
-                            <VehicleMaintenanceAdmin />
-                        </CardContent>
-                    </Card>
+                    <VehicleMaintenanceAdmin />
                 </TabsContent>
 
                 <TabsContent value="service-types" className="mt-6">
@@ -77,6 +103,9 @@ const TabMaintenance = () => {
                         displayMode="management"
                         className="space-y-6"
                     />
+                </TabsContent>
+                <TabsContent value="workshop" className="mt-6">
+                    <Workshop />
                 </TabsContent>
                 <TabsContent value="insurance" className="mt-6">
                     <InsuranceModule />

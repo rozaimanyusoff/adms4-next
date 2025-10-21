@@ -1,5 +1,5 @@
 import React from 'react';
-import VehicleServicePortal from '@/components/maintenance/vehicle-service-portal';
+import VehicleServicePortal from '@components/maintenance/vehicle-mtn-portal';
 
 export default function MaintenancePortalPage(props: any) {
   const params = props?.params || {};

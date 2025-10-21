@@ -13,11 +13,11 @@ import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, ChevronUp, ChevronDown, Check, ChevronsUpDown, User } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-export interface ApprovalLevel {
+export interface Workflows {
   id?: number;
   module_name: string;
   level_order: number;
@@ -32,14 +32,20 @@ export interface ApprovalLevel {
   };
 }
 
-interface ApprovalLevelForm {
+type AuthorizeLevel = string;
+
+interface AssignedEmployee {
+  ramco_id: string;
+  full_name: string;
+  authorize_level: AuthorizeLevel;
+}
+
+interface WorkflowsForm {
   id?: number;
   module_name: string;
-  level_order: number;
-  level_name: string;
   description: string;
   is_active: boolean;
-  employee_ramco_id: string;
+  employees: AssignedEmployee[];
 }
 
 interface Employee {
@@ -47,33 +53,22 @@ interface Employee {
   full_name: string;
 }
 
-const MODULES = [
-  'billing',
-  'purchase_order',
-  'maintenance',
-  'asset_management',
-  'inventory',
-  'hr',
-  'finance',
-  'procurement'
-];
+const authorizedLevels: string[] = ['Verify', 'Recommend', 'Approval'];
 
-interface ApprovalLevelProps {
+interface WorkflowsProps {
   className?: string;
 }
 
-const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
-  const [approvalLevels, setApprovalLevels] = useState<ApprovalLevel[]>([]);
+const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
+  const [workflows, setWorkflows] = useState<Workflows[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingLevel, setEditingLevel] = useState<ApprovalLevel | null>(null);
-  const [formData, setFormData] = useState<ApprovalLevelForm>({
+  const [editingLevel, setEditingLevel] = useState<Workflows | null>(null);
+  const [formData, setFormData] = useState<WorkflowsForm>({
     module_name: '',
-    level_order: 1,
-    level_name: '',
     description: '',
     is_active: true,
-    employee_ramco_id: ''
+    employees: []
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -84,6 +79,9 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
   const [employeeComboboxOpen, setEmployeeComboboxOpen] = useState(false);
+  // Per-employee authorize level select state
+  const [empSelectOpen, setEmpSelectOpen] = useState<Record<string, boolean>>({});
+  const [customLevelInputs, setCustomLevelInputs] = useState<Record<string, string>>({});
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -168,14 +166,14 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   const fetchApprovalLevels = async () => {
     try {
       setLoading(true);
-      const response = await authenticatedApi.get('/api/users/approvals');
-      const data = response.data as { status: string; message: string; data: ApprovalLevel[] };
+      const response = await authenticatedApi.get('/api/users/workflows');
+      const data = response.data as { status: string; message: string; data: Workflows[] };
       if (data.status === 'success') {
-        setApprovalLevels(data.data || []);
+        setWorkflows(data.data || []);
       }
     } catch (error) {
-      console.error('Error fetching approval levels:', error);
-      toast.error('Failed to fetch approval levels');
+      console.error('Error fetching workflows:', error);
+      toast.error('Failed to fetch workflows');
     } finally {
       setLoading(false);
     }
@@ -186,19 +184,29 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
       setSaving(true);
 
       // Validate required fields
-      if (!formData.module_name || !formData.level_name || !formData.employee_ramco_id) {
+      if (!formData.module_name || formData.employees.length === 0 || formData.employees.some(e => !e.authorize_level?.trim())) {
         toast.error('Please fill in all required fields');
         return;
       }
 
+      const payload = {
+        module_name: formData.module_name,
+        description: formData.description,
+        is_active: formData.is_active,
+        employees: formData.employees.map((e) => ({
+          employee_ramco_id: e.ramco_id,
+          authorize_level: e.authorize_level,
+        })),
+      };
+
       if (editingLevel?.id) {
-        // Update existing approval level
-        await authenticatedApi.put(`/api/users/approvals/${editingLevel.id}`, formData);
-        toast.success('Approval level updated successfully');
+        // Update existing workflow
+        await authenticatedApi.put(`/api/users/workflows/${editingLevel.id}`, payload);
+        toast.success('Workflow updated successfully');
       } else {
-        // Create new approval level
-        await authenticatedApi.post('/api/users/approvals', formData);
-        toast.success('Approval level created successfully');
+        // Create new workflow
+        await authenticatedApi.post('/api/users/workflows', payload);
+        toast.success('Workflow created successfully');
       }
 
       setIsDialogOpen(false);
@@ -207,8 +215,8 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
       await fetchApprovalLevels();
 
     } catch (error) {
-      console.error('Error saving approval level:', error);
-      toast.error('Failed to save approval level');
+      console.error('Error saving workflow:', error);
+      toast.error('Failed to save workflow');
     } finally {
       setSaving(false);
     }
@@ -216,45 +224,75 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
 
   const handleEmployeeSelect = (employee: Employee) => {
     setSelectedEmployee(employee);
-    setFormData({ ...formData, employee_ramco_id: employee.ramco_id });
     setEmployeeComboboxOpen(false);
     setEmployeeSearchQuery(employee.full_name);
+  };
+
+  const handleAddSelectedEmployee = () => {
+    if (!selectedEmployee) return;
+    const exists = formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id);
+    if (exists) {
+      toast.error('Employee already added');
+      return;
+    }
+    setFormData({
+      ...formData,
+      employees: [
+        ...formData.employees,
+        { ramco_id: selectedEmployee.ramco_id, full_name: selectedEmployee.full_name, authorize_level: 'Verify' },
+      ],
+    });
+    setSelectedEmployee(null);
+    setEmployeeSearchQuery('');
+  };
+
+  const handleRemoveAssignedEmployee = (ramco_id: string) => {
+    setFormData({
+      ...formData,
+      employees: formData.employees.filter((e) => e.ramco_id !== ramco_id),
+    });
   };
 
   const handleDelete = async (levelId: number) => {
     const performDelete = async () => {
       try {
         setDeleting(levelId);
-        await authenticatedApi.delete(`/api/users/approvals/${levelId}`);
-        toast.success('Approval level deleted successfully');
+        await authenticatedApi.delete(`/api/users/workflows/${levelId}`);
+        toast.success('Workflow deleted successfully');
         await fetchApprovalLevels();
       } catch (error) {
-        console.error('Error deleting approval level:', error);
-        toast.error('Failed to delete approval level');
+        console.error('Error deleting workflow:', error);
+        toast.error('Failed to delete workflow');
       } finally {
         setDeleting(null);
       }
     };
 
     showAlertDialog(
-      'Delete Approval Level',
-      'Are you sure you want to delete this approval level? This action cannot be undone.',
+      'Delete Workflow',
+      'Are you sure you want to delete this workflow? This action cannot be undone.',
       performDelete,
       'Delete',
       'Cancel'
     );
   };
 
-  const handleEdit = (level: ApprovalLevel) => {
+  const handleEdit = (level: Workflows) => {
     setEditingLevel(level);
     setFormData({
       id: level.id,
       module_name: level.module_name,
-      level_order: level.level_order,
-      level_name: level.level_name,
       description: level.description || '',
       is_active: level.is_active,
-      employee_ramco_id: level.employee?.ramco_id || ''
+      employees: level.employee
+        ? [
+            {
+              ramco_id: level.employee.ramco_id,
+              full_name: level.employee.full_name,
+              authorize_level: 'Verify',
+            },
+          ]
+        : [],
     });
 
     // Set selected employee if available
@@ -281,35 +319,33 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   const resetForm = () => {
     setFormData({
       module_name: '',
-      level_order: 1,
-      level_name: '',
       description: '',
       is_active: true,
-      employee_ramco_id: ''
+      employees: []
     });
     setSelectedEmployee(null);
     setEmployeeSearchQuery('');
     setEmployees([]);
   };
 
-  const handleToggleActive = async (level: ApprovalLevel) => {
+  const handleToggleActive = async (level: Workflows) => {
     const action = level.is_active ? 'deactivate' : 'activate';
 
     const performToggle = async () => {
       try {
         const updatedLevel = { ...level, is_active: !level.is_active };
         await authenticatedApi.put(`/api/approval-levels/${level.id}`, updatedLevel);
-        toast.success(`Approval level ${updatedLevel.is_active ? 'activated' : 'deactivated'}`);
+        toast.success(`Workflow ${updatedLevel.is_active ? 'activated' : 'deactivated'}`);
         await fetchApprovalLevels();
       } catch (error) {
-        console.error('Error toggling approval level status:', error);
-        toast.error('Failed to update approval level status');
+        console.error('Error toggling workflow status:', error);
+        toast.error('Failed to update workflow status');
       }
     };
 
     showAlertDialog(
-      `${action.charAt(0).toUpperCase() + action.slice(1)} Approval Level`,
-      `Are you sure you want to ${action} this approval level?`,
+      `${action.charAt(0).toUpperCase() + action.slice(1)} Workflow`,
+      `Are you sure you want to ${action} this workflow?`,
       performToggle,
       action.charAt(0).toUpperCase() + action.slice(1),
       'Cancel'
@@ -319,12 +355,79 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   const moveLevel = async (levelId: number, direction: 'up' | 'down') => {
     try {
       await authenticatedApi.post(`/api/approval-levels/${levelId}/move`, { direction });
-      toast.success('Level order updated successfully');
+      toast.success('Workflow order updated successfully');
       await fetchApprovalLevels();
     } catch (error) {
-      console.error('Error moving level:', error);
-      toast.error('Failed to update level order');
+      console.error('Error moving workflow:', error);
+      toast.error('Failed to update workflow order');
     }
+  };
+
+  // Chevron up/down reorder within a module via reorder endpoint
+  const handleChevronMove = async (module: string, index: number, direction: 'up' | 'down') => {
+    const levels = groupedLevels[module];
+    if (!levels) return;
+    const ids = levels.map((l) => l.id!);
+    const to = direction === 'up' ? index - 1 : index + 1;
+    if (to < 0 || to >= ids.length) return;
+    const newOrder = ids.slice();
+    const [moved] = newOrder.splice(index, 1);
+    newOrder.splice(to, 0, moved);
+    try {
+      await authenticatedApi.post('/api/users/workflows/reorder', {
+        module_name: module,
+        order: newOrder,
+      });
+      toast.success('Workflow order updated successfully');
+      await fetchApprovalLevels();
+    } catch (error) {
+      console.error('Error reordering workflow:', error);
+      toast.error('Failed to reorder workflow');
+    }
+  };
+
+  // Edit/Delete at module (workflow) level
+  const handleEditModule = (moduleName: string) => {
+    const levels = groupedLevels[moduleName] || [];
+    setEditingLevel(null);
+    setFormData({
+      id: undefined,
+      module_name: moduleName,
+      description: levels[0]?.description || '',
+      is_active: levels.some((l) => l.is_active),
+      employees: levels
+        .filter((l) => !!l.employee)
+        .map((l) => ({
+          ramco_id: l.employee!.ramco_id,
+          full_name: l.employee!.full_name,
+          authorize_level: l.level_name || 'Verify',
+        })),
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteModule = (moduleName: string) => {
+    const levels = groupedLevels[moduleName] || [];
+    const performDelete = async () => {
+      try {
+        for (const lvl of levels) {
+          await authenticatedApi.delete(`/api/users/approvals/${lvl.id}`);
+        }
+        toast.success('Workflow deleted successfully');
+        await fetchApprovalLevels();
+      } catch (error) {
+        console.error('Error deleting workflow module:', error);
+        toast.error('Failed to delete workflow');
+      }
+    };
+
+    showAlertDialog(
+      'Delete Workflow',
+      `Delete entire workflow for "${moduleName.replace('_', ' ').toUpperCase()}"? This cannot be undone.`,
+      performDelete,
+      'Delete',
+      'Cancel'
+    );
   };
 
   useEffect(() => {
@@ -332,13 +435,13 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   }, []);
 
   // Group approval levels by module
-  const groupedLevels = approvalLevels.reduce((acc, level) => {
+  const groupedLevels = workflows.reduce((acc, level) => {
     if (!acc[level.module_name]) {
       acc[level.module_name] = [];
     }
     acc[level.module_name].push(level);
     return acc;
-  }, {} as Record<string, ApprovalLevel[]>);
+  }, {} as Record<string, Workflows[]>);
 
   // Sort levels within each module by level_order
   Object.keys(groupedLevels).forEach(module => {
@@ -349,45 +452,39 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
     <div className={className}>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-semibold">Approval Levels Management</h2>
-          <p className="text-gray-600 mt-1">Configure approval workflow levels for different modules</p>
+          <h2 className="text-2xl font-semibold">Workflows Management</h2>
+          <p className="text-gray-600 mt-1">Configure workflows for different modules</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={handleAdd} className="flex items-center gap-2">
               <Plus className="w-4 h-4" />
-              Add Approval Level
+              Add Workflow
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
-                {editingLevel ? 'Edit Approval Level' : 'Add New Approval Level'}
+                {editingLevel ? 'Edit Workflow' : 'Add New Workflow'}
               </DialogTitle>
               <DialogDescription>
-                {editingLevel ? 'Update the approval level details' : 'Create a new approval level for workflow management'}
+                {editingLevel ? 'Update the workflow details' : 'Create a new workflow for management'}
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid grid-cols-2 gap-4 py-4">
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Module Name *</label>
-                <Select value={formData.module_name} onValueChange={(value) => setFormData({ ...formData, module_name: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select module" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MODULES.map(module => (
-                      <SelectItem key={module} value={module}>
-                        {module.replace('_', ' ').toUpperCase()}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={formData.module_name}
+                  onChange={(e) => setFormData({ ...formData, module_name: e.target.value })}
+                  placeholder="Enter module name"
+                  className='capitalize'
+                />
               </div>
 
               <div className="col-span-2">
-                <label className="text-sm font-medium block mb-2">Employee *</label>
+                <label className="text-sm font-medium block mb-2">Employees *</label>
                 <div className="relative employee-dropdown">
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -409,22 +506,17 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                       }}
                       className="pl-10"
                     />
-                    {selectedEmployee && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                        onClick={() => {
-                          setSelectedEmployee(null);
-                          setFormData({ ...formData, employee_ramco_id: '' });
-                          setEmployeeSearchQuery('');
-                          setEmployeeComboboxOpen(false);
-                        }}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7 px-2"
+                      variant="default"
+                      onClick={handleAddSelectedEmployee}
+                      disabled={!selectedEmployee}
+                      title="Add employee"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
                   </div>
 
                   {employeeComboboxOpen && (
@@ -464,34 +556,105 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                     </div>
                   )}
 
-                  {selectedEmployee && (
-                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
-                      <span className="font-medium text-blue-800">Selected: </span>
-                      <span className="text-blue-700">{selectedEmployee.full_name} ({selectedEmployee.ramco_id})</span>
+                  {formData.employees.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {formData.employees.map((emp) => (
+                        <div key={emp.ramco_id} className="flex items-center justify-between gap-3 p-2 bg-gray-50 border rounded">
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">{emp.full_name}</div>
+                            <div className="text-xs text-gray-500">{emp.ramco_id}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              open={empSelectOpen[emp.ramco_id] || false}
+                              onOpenChange={(o) =>
+                                setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: o }))
+                              }
+                              value={emp.authorize_level}
+                              onValueChange={(val) => {
+                                setFormData({
+                                  ...formData,
+                                  employees: formData.employees.map((x) =>
+                                    x.ramco_id === emp.ramco_id ? { ...x, authorize_level: val } : x
+                                  ),
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-[200px]">
+                                <SelectValue placeholder="Authorize level" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {authorizedLevels.map((lvl) => (
+                                  <SelectItem key={lvl} value={lvl}>
+                                    {lvl}
+                                  </SelectItem>
+                                ))}
+                                <div className="border-t my-1" />
+                                <div className="p-2 flex items-center gap-2">
+                                  <Input
+                                    placeholder="Custom level"
+                                    value={customLevelInputs[emp.ramco_id] || ''}
+                                    onChange={(e) =>
+                                      setCustomLevelInputs((prev) => ({
+                                        ...prev,
+                                        [emp.ramco_id]: e.target.value,
+                                      }))
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const name = (customLevelInputs[emp.ramco_id] || '').trim();
+                                        if (!name) return;
+                                        setFormData({
+                                          ...formData,
+                                          employees: formData.employees.map((x) =>
+                                            x.ramco_id === emp.ramco_id ? { ...x, authorize_level: name } : x
+                                          ),
+                                        });
+                                        setCustomLevelInputs((prev) => ({ ...prev, [emp.ramco_id]: '' }));
+                                        setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: false }));
+                                      }
+                                    }}
+                                    className="h-8"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      const name = (customLevelInputs[emp.ramco_id] || '').trim();
+                                      if (!name) return;
+                                      setFormData({
+                                        ...formData,
+                                        employees: formData.employees.map((x) =>
+                                          x.ramco_id === emp.ramco_id ? { ...x, authorize_level: name } : x
+                                        ),
+                                      });
+                                      setCustomLevelInputs((prev) => ({ ...prev, [emp.ramco_id]: '' }));
+                                      setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: false }));
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => handleRemoveAssignedEmployee(emp.ramco_id)}
+                              title="Remove"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-medium block mb-2">Level Order *</label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.level_order}
-                  onChange={(e) => setFormData({ ...formData, level_order: parseInt(e.target.value) || 1 })}
-                  placeholder="Enter level order"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="text-sm font-medium block mb-2">Level Name *</label>
-                <Input
-                  value={formData.level_name}
-                  onChange={(e) => setFormData({ ...formData, level_name: e.target.value })}
-                  placeholder="e.g., Prepare, Verify, Approve"
-                />
-              </div>
+              
 
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Description</label>
@@ -520,7 +683,7 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving || !formData.module_name || !formData.level_name || !formData.employee_ramco_id}
+                disabled={saving || !formData.module_name || formData.employees.length === 0}
               >
                 {saving ? (
                   <>
@@ -556,15 +719,44 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                       {moduleName.replace('_', ' ').toUpperCase()}
                     </span>
                   </div>
-                  <Badge variant="secondary">
-                    {levels.length} levels
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{levels.length} levels</Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleEditModule(moduleName);
+                      }}
+                      title="Edit Workflow"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteModule(moduleName);
+                      }}
+                      title="Delete Workflow"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-6 pb-4">
                 <div className="space-y-3">
                   {levels.map((level, index) => (
-                    <div key={level.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                    <div
+                      key={level.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
+                    >
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-1">
                           <Badge variant="outline" className="text-xs">
@@ -596,18 +788,20 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => moveLevel(level.id!, 'up')}
+                          onClick={() => handleChevronMove(moduleName, index, 'up')}
                           disabled={index === 0}
                           className="h-8 w-8 p-0"
+                          title="Move up"
                         >
                           <ChevronUp className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => moveLevel(level.id!, 'down')}
+                          onClick={() => handleChevronMove(moduleName, index, 'down')}
                           disabled={index === levels.length - 1}
                           className="h-8 w-8 p-0"
+                          title="Move down"
                         >
                           <ChevronDown className="w-4 h-4" />
                         </Button>
@@ -626,19 +820,6 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
                           className="h-8 w-8 p-0"
                         >
                           <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(level.id!)}
-                          disabled={deleting === level.id}
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          {deleting === level.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
                         </Button>
                       </div>
                     </div>
@@ -660,11 +841,11 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
           <CardContent className="py-12">
             <div className="text-center">
               <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Approval Levels</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Workflow Levels</h3>
               <p className="text-gray-500 mb-4">Get started by creating your first approval level</p>
               <Button onClick={handleAdd} className="flex items-center gap-2 mx-auto">
                 <Plus className="w-4 h-4" />
-                Add Approval Level
+                Add Workflow Level
               </Button>
             </div>
           </CardContent>
@@ -700,4 +881,4 @@ const ApprovalLevel: React.FC<ApprovalLevelProps> = ({ className = '' }) => {
   );
 };
 
-export default ApprovalLevel;
+export default Workflows;

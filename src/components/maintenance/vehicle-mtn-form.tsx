@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
@@ -12,9 +13,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Users in this list will not be filtered by ?ramco
-const exclusionUser: string[] = ['username1', 'username2'];
+const exclusionUser: string[] = ['000277', 'username2'];
 
 interface VehicleMtnFormProps {
   id?: number | string | null;
@@ -27,13 +29,19 @@ interface ServiceOption {
   svcType: string;
   svcOpt: number;
   group_desc?: string;
+  orders?: number;
+  appearance?: string;
 }
 
 interface ServiceHistoryRecord {
   req_id: number;
   req_date: string;
-  svc_type?: Array<Pick<ServiceOption, 'svcTypeId' | 'svcType'>>;
+  svc_type?: Array<{ svcTypeId?: number; svcType?: string; id?: number; name?: string }>;
   req_comment?: string | null;
+  odo_start?: number | null;
+  odo_end?: number | null;
+  mileage?: number | null;
+  invoice?: { inv_date?: string | null; inv_total?: string | number | null } | null;
 }
 
 interface AssessmentSummary {
@@ -60,6 +68,19 @@ function formatDMY(value: string) {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
+}
+
+function formatRelativeYM(value: string) {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  let months = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+  if (now.getDate() < d.getDate()) months -= 1; // approximate partial month
+  if (months < 0) months = 0;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  if (years > 0) return `${years}y${rem ? ` ${rem}m` : ''} ago`;
+  return `${months}m ago`;
 }
 
 function extractServiceTypeId(value: unknown): number | null {
@@ -91,6 +112,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   // Vehicle selection
   const [vehicleOptions, setVehicleOptions] = React.useState<ComboboxOption[]>([]);
+  const [vehicleById, setVehicleById] = React.useState<Record<string, any>>({});
   const [assetId, setAssetId] = React.useState<string>('');
 
   // Type of Request: 1 Car Wash, 2 Service, 3 NCR Compliance
@@ -100,6 +122,13 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [selectedServiceTypeIds, setSelectedServiceTypeIds] = React.useState<number[]>([]);
   const [remarks, setRemarks] = React.useState<string>('');
   const [attachments, setAttachments] = React.useState<File[]>([]);
+  const [odoStart, setOdoStart] = React.useState<string>('');
+  const [odoEnd, setOdoEnd] = React.useState<string>('');
+  const [lateNotice, setLateNotice] = React.useState<string>('');
+  const [agree, setAgree] = React.useState<boolean>(false);
+  const [showSuccess, setShowSuccess] = React.useState<boolean>(false);
+  const [successTitle, setSuccessTitle] = React.useState<string>('Form submitted');
+  const [successDescription, setSuccessDescription] = React.useState<string>('Your maintenance request has been successfully submitted.');
   const [serviceOptionsError, setServiceOptionsError] = React.useState<string | null>(null);
   const [serviceHistory, setServiceHistory] = React.useState<ServiceHistoryRecord[]>([]);
   const [serviceHistoryLoading, setServiceHistoryLoading] = React.useState<boolean>(false);
@@ -109,6 +138,105 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [assessmentLoading, setAssessmentLoading] = React.useState<boolean>(false);
   const [assessmentError, setAssessmentError] = React.useState<string | null>(null);
   const currentYear = React.useMemo(() => new Date().getFullYear(), []);
+  const isReadOnly = Boolean(id);
+  // Cancellation state (edit mode)
+  const [cancelChecked, setCancelChecked] = React.useState(false);
+  const [cancelReason, setCancelReason] = React.useState('');
+  // Validation state
+  const [showErrors, setShowErrors] = React.useState(false);
+  const [errors, setErrors] = React.useState<{ asset?: boolean; svcType?: boolean; odoStart?: boolean; odoEnd?: boolean; lateNotice?: boolean; serviceOptions?: boolean; agree?: boolean; }>({});
+  // Refs for focusing first error
+  const vehicleRef = React.useRef<HTMLDivElement | null>(null);
+  const svcTypeRef = React.useRef<HTMLDivElement | null>(null);
+  const odoStartRef = React.useRef<HTMLInputElement | null>(null);
+  const odoEndRef = React.useRef<HTMLInputElement | null>(null);
+  const lateNoticeRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const svcContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Selected vehicle details for payload convenience
+  const selectedVehicle = React.useMemo(() => (assetId ? vehicleById[assetId] : null), [vehicleById, assetId]);
+
+  const focusFirstError = React.useCallback((e: typeof errors) => {
+    if (e.asset && vehicleRef.current) { vehicleRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (e.svcType && svcTypeRef.current) { svcTypeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (e.odoStart && odoStartRef.current) { odoStartRef.current.focus(); return; }
+    if (e.odoEnd && odoEndRef.current) { odoEndRef.current.focus(); return; }
+    if (e.lateNotice && lateNoticeRef.current) { lateNoticeRef.current.focus(); return; }
+    if (e.serviceOptions && svcContainerRef.current) { svcContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  }, []);
+
+  const attemptSubmit = React.useCallback(async () => {
+    setShowErrors(true);
+    const newErrors: typeof errors = {};
+    const isServiceRequest = svcType === '2';
+    const parsedOdoStartLocal = (odoStart.trim() === '' ? NaN : Number(odoStart));
+    const parsedOdoEndLocal = (odoEnd.trim() === '' ? NaN : Number(odoEnd));
+    if (!assetId) newErrors.asset = true;
+    if (!svcType && selectedServiceTypeIds.length === 0) newErrors.svcType = true;
+    if (selectedServiceTypeIds.length === 0) newErrors.serviceOptions = true;
+    if (isServiceRequest) {
+      if (odoStart.trim() === '' || Number.isNaN(parsedOdoStartLocal)) newErrors.odoStart = true;
+      if (odoEnd.trim() === '' || Number.isNaN(parsedOdoEndLocal)) newErrors.odoEnd = true;
+      const diff = Math.floor((Number.isNaN(parsedOdoStartLocal) || Number.isNaN(parsedOdoEndLocal)) ? 0 : (parsedOdoStartLocal - parsedOdoEndLocal));
+      if (diff > 500 && lateNotice.trim().length === 0) newErrors.lateNotice = true;
+    }
+    if (!agree) newErrors.agree = true;
+    setErrors(newErrors);
+    const messages: string[] = [];
+    if (newErrors.asset) messages.push('Please select a vehicle');
+    if (newErrors.svcType) messages.push('Please select type or a service option');
+    if (newErrors.serviceOptions) messages.push('Select at least one service option');
+    if (newErrors.odoStart) messages.push('Enter Current ODO (Service)');
+    if (newErrors.odoEnd) messages.push('Enter Service Mileage (Service)');
+    if (newErrors.lateNotice) messages.push('Provide Late Notice (exceeds 500 km)');
+    if (newErrors.agree) messages.push('Confirm the information is accurate');
+    if (messages.length > 0) {
+      toast.error(messages.join('\n'));
+      focusFirstError(newErrors);
+      return;
+    }
+
+
+
+
+    // build and submit
+    const form = new FormData();
+    form.append('req_date', new Date().toISOString().slice(0, 19).replace('T', ' '));
+    form.append('ramco_id', requestor?.ramco_id ?? '');
+    if (requestor?.department?.id) form.append('costcenter_id', String(requestor.department.id));
+    if (requestor?.location?.id) form.append('location_id', String(requestor.location.id));
+    form.append('ctc_m', requestor?.contact ?? '');
+    if (assetId) form.append('asset_id', String(assetId));
+    form.append('register_number', selectedVehicle?.register_number || existing?.asset?.register_number || '');
+    form.append('entry_code', selectedVehicle?.entry_code || (existing as any)?.asset?.entry_code || '');
+    if (svcType === '2' && odoStart !== '') form.append('odo_start', String(odoStart));
+    if (svcType === '2' && odoEnd !== '') form.append('odo_end', String(odoEnd));
+    form.append('req_comment', remarks ?? '');
+    const svcOptCsv = selectedServiceTypeIds.join(',');
+    form.append('svc_opt', svcOptCsv);
+    // recompute extra mileage like before
+    if (svcType === '2') {
+      const pStart = (odoStart.trim() === '' ? NaN : Number(odoStart));
+      const pEnd = (odoEnd.trim() === '' ? NaN : Number(odoEnd));
+      const diff2 = (Number.isNaN(pStart) || Number.isNaN(pEnd)) ? 0 : Math.floor(pStart - pEnd);
+      if (diff2 > 0) form.append('extra_mileage', String(diff2));
+      if (diff2 > 500) {
+        form.append('late_notice', lateNotice);
+        const reqDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        form.append('late_notice_date', reqDate);
+      }
+    }
+    if (attachments[0]) form.append('req_upload', attachments[0]);
+    try {
+      await authenticatedApi.post('/api/mtn/request', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setSuccessTitle('Form submitted');
+      setSuccessDescription('Your maintenance request has been successfully submitted.');
+      setShowSuccess(true);
+      onSubmitted?.();
+    } catch (e) {
+      toast.error('Failed to submit application');
+    }
+  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted]);
 
   // Load existing record (edit mode)
   React.useEffect(() => {
@@ -124,10 +252,11 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
         // Prefill requestor if available
         const reqEmp = data?.requester || {};
-        const dept = (data as any)?.costcenter || reqEmp?.department || null;
-        const loc = reqEmp?.location || null;
-        const deptNorm = dept ? { ...dept, name: (dept as any).name || (dept as any).code } : null;
-        const locNorm = loc ? { ...loc, code: (loc as any).code || (loc as any).name } : null;
+        // Prefer explicit department/location from payload; fallback to asset.*; then requester.*; then null.
+        const deptSrc = (data as any)?.department || (data as any)?.asset?.department || reqEmp?.department || null;
+        const locSrc = (data as any)?.location || (data as any)?.asset?.location || reqEmp?.location || null;
+        const deptNorm = deptSrc ? { ...deptSrc, name: (deptSrc as any).name || (deptSrc as any).code } : null;
+        const locNorm = locSrc ? { ...locSrc, code: (locSrc as any).code || (locSrc as any).name } : null;
         setRequestor((s: any) => ({
           ...s,
           application_date: data?.req_date || s.application_date,
@@ -140,26 +269,40 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
         // Prefill vehicle selection
         const asset = data?.asset || data?.vehicle || null;
-        if (asset?.id) setAssetId(String(asset.id));
+        if (asset?.id) {
+          const idStr = String(asset.id);
+          setAssetId(idStr);
+          // Ensure the selected asset exists in our local maps/options for later payload fields
+          setVehicleById((prev) => ({ ...prev, [idStr]: { ...prev[idStr], ...asset } }));
+          setVehicleOptions((prev) => {
+            if (prev.some((o) => o.value === idStr)) return prev;
+            const label = asset.register_number || (asset as any).asset_no || `Asset #${asset.id}`;
+            return [{ value: idStr, label }, ...prev];
+          });
+        }
 
-        // Prefill svc type if available
+        // Prefill service options if available
         if (data?.svc_type) {
-          // Some backends return array for service type; pick first id
-          const st = Array.isArray(data.svc_type) ? (data.svc_type[0]?.id ?? data.svc_type[0]) : data.svc_type;
-          if (st) setSvcType(String(st));
           if (Array.isArray(data.svc_type)) {
             const svcSelections: number[] = [];
             data.svc_type.forEach((item: unknown) => {
               const svcId = extractServiceTypeId(item);
               if (typeof svcId === 'number') svcSelections.push(svcId);
             });
+            // Set checked options from backend
             setSelectedServiceTypeIds(svcSelections);
+            // Default type to '2' (Service) so ODO fields remain visible when applicable
+            setSvcType('2');
           }
         }
 
         // Prefill remarks if available
         const existingRemarks = data?.req_comment || data?.description || '';
         if (existingRemarks) setRemarks(existingRemarks);
+
+        // Prefill odo if available
+        if (typeof (data as any)?.odo_start !== 'undefined') setOdoStart(String((data as any).odo_start ?? ''));
+        if (typeof (data as any)?.odo_end !== 'undefined') setOdoEnd(String((data as any).odo_end ?? ''));
       } catch (e) {
         if (!cancelled) toast.error('Failed to load request details');
       } finally {
@@ -199,8 +342,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     (async () => {
       try {
         const url = exclusionUser.includes(username)
-          ? '/api/assets?type=2'
-          : `/api/assets?type=2&ramco=${encodeURIComponent(username)}`;
+          ? '/api/assets?manager=2&status=active&purpose=project,pool'
+          : `/api/assets?manager=2&status=active&purpose=project,pool&owner=${encodeURIComponent(username)}`;
         const res: any = await authenticatedApi.get(url);
         const payload = res?.data as any;
         const list: any[] = Array.isArray(payload)
@@ -213,7 +356,14 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 ? payload.result
                 : [];
         if (!cancelled) {
-          setVehicleOptions(list.map((a: any) => ({ value: String(a.id ?? a.asset_id ?? a.assetId), label: a.register_number || a.asset_no || `Asset #${a.id}` })));
+          const map: Record<string, any> = {};
+          const opts = list.map((a: any) => {
+            const idVal = String(a.id ?? a.asset_id ?? a.assetId);
+            map[idVal] = a;
+            return { value: idVal, label: a.register_number || a.asset_no || `Asset #${a.id}` } as ComboboxOption;
+          });
+          setVehicleById(map);
+          setVehicleOptions(opts);
         }
       } catch {
         if (!cancelled) setVehicleOptions([]);
@@ -221,6 +371,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     })();
     return () => { cancelled = true; };
   }, [user?.username]);
+
 
   // Fetch service options
   React.useEffect(() => {
@@ -234,7 +385,13 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
         if (cancelled) return;
         const payload = res?.data?.data ?? res?.data ?? [];
         if (Array.isArray(payload)) {
-          setServiceOptions(payload as ServiceOption[]);
+          // keep all data but filter out appearance: 'admin' for rendering later
+          const normalized = (payload as any[]).map((o) => ({
+            ...o,
+            orders: typeof (o as any)?.orders === 'number' ? (o as any).orders : undefined,
+            appearance: (o as any)?.appearance,
+          })) as ServiceOption[];
+          setServiceOptions(normalized);
         } else {
           setServiceOptions([]);
         }
@@ -367,37 +524,160 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const groupedServiceOptions = React.useMemo(() => {
     if (!serviceOptions.length) return [];
-    const groups = new Map<number, { label: string; items: ServiceOption[] }>();
-    serviceOptions.forEach((option) => {
+    // exclude options marked for admin appearance
+    const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
+    const groups = new Map<number, { label: string; items: ServiceOption[]; order: number }>();
+    visible.forEach((option) => {
       const group = groups.get(option.svcOpt);
       if (group) {
         group.items.push(option);
+        // keep the smallest orders as the group order
+        const ord = typeof option.orders === 'number' ? option.orders : Number.POSITIVE_INFINITY;
+        if (ord < group.order) group.order = ord;
       } else {
         groups.set(option.svcOpt, {
           label: option.group_desc || '',
           items: [option],
+          order: typeof option.orders === 'number' ? option.orders : Number.POSITIVE_INFINITY,
         });
       }
     });
     return Array.from(groups.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([key, value]) => ({ key, ...value }));
+      .sort((a, b) => {
+        const ao = a[1].order;
+        const bo = b[1].order;
+        if (ao !== bo) return (ao - bo);
+        return a[0] - b[0];
+      })
+      .map(([key, value]) => ({
+        key, ...value, items: value.items.sort((i1, i2) => {
+          const o1 = typeof i1.orders === 'number' ? i1.orders : Number.POSITIVE_INFINITY;
+          const o2 = typeof i2.orders === 'number' ? i2.orders : Number.POSITIVE_INFINITY;
+          if (o1 !== o2) return o1 - o2;
+          return i1.svcTypeId - i2.svcTypeId;
+        })
+      }));
   }, [serviceOptions]);
 
-  const handleServiceOptionToggle = React.useCallback((svcTypeId: number, checked: boolean) => {
+  // Identify Car Wash and NCR groups/options
+  const carWashGroupKeys = React.useMemo(() => {
+    const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
+    const keys = new Set<number>();
+    visible.forEach((o) => {
+      if ((o.group_desc || '').toLowerCase() === 'car wash') keys.add(o.svcOpt);
+    });
+    if (keys.size === 0) keys.add(2); // fallback to svcOpt 2
+    return keys;
+  }, [serviceOptions]);
+
+  const handleServiceOptionToggle = React.useCallback((svcTypeId: number, checked: boolean, groupKey?: number) => {
     setSelectedServiceTypeIds((prev) => {
       if (checked) {
         if (prev.includes(svcTypeId)) return prev;
+        if (!svcType) {
+          if (typeof groupKey === 'number') {
+            if (carWashGroupKeys.has(groupKey)) setSvcType('1');
+            else if (groupKey === 32) setSvcType('3');
+            else setSvcType('2');
+          } else {
+            setSvcType('2');
+          }
+        }
         return [...prev, svcTypeId];
       }
       return prev.filter((idVal) => idVal !== svcTypeId);
     });
-  }, []);
+  }, [svcType, carWashGroupKeys]);
 
   const handleAttachmentChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];
     setAttachments(files);
   }, []);
+
+  const carWashIds = React.useMemo(() => {
+    const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
+    return visible.filter((o) => carWashGroupKeys.has(o.svcOpt)).map((o) => o.svcTypeId);
+  }, [serviceOptions, carWashGroupKeys]);
+
+  const ncrIds = React.useMemo(() => {
+    const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
+    return visible.filter((o) => o.svcOpt === 32 || /ncr/i.test(o.group_desc || '')).map((o) => o.svcTypeId);
+  }, [serviceOptions]);
+
+  // Auto-select logic based on Type of Request
+  const prevSvcType = React.useRef<string>('');
+  React.useEffect(() => {
+    // In edit mode, if we already prefilled selections from backend, don't override
+    if (id && selectedServiceTypeIds.length > 0) {
+      prevSvcType.current = svcType;
+      return;
+    }
+    // Reset selections only when svcType actually changes (create mode)
+    if (svcType === '1') {
+      setSelectedServiceTypeIds(carWashIds);
+    } else if (svcType === '3') {
+      setSelectedServiceTypeIds(ncrIds);
+    } else if (svcType === '2') {
+      // Clear only on transition into Service from a different type; keep user's manual selections otherwise
+      if (prevSvcType.current && prevSvcType.current !== '2') {
+        setSelectedServiceTypeIds([]);
+      }
+      // Auto-check Routine Service on Service selection in create mode, if nothing selected yet
+      if (!id && selectedServiceTypeIds.length === 0 && serviceOptions.length > 0) {
+        const routine = serviceOptions.find((o) => /servis\s*rutin|routine/i.test(o.svcType || ''));
+        if (routine && typeof routine.svcTypeId === 'number') {
+          setSelectedServiceTypeIds([routine.svcTypeId]);
+        }
+      }
+    }
+    prevSvcType.current = svcType;
+  }, [id, svcType, carWashIds, ncrIds, selectedServiceTypeIds.length, serviceOptions]);
+
+  // Previews for attachments
+  const [previews, setPreviews] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    const urls = attachments
+      .filter((f) => f && f.type && f.type.startsWith('image/'))
+      .map((file) => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [attachments]);
+
+  // Dropzone events
+  const onDropFiles = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) setAttachments(files);
+  }, []);
+
+  const onDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  }, []);
+
+  // Derived values for service mileage logic
+  const isServiceRequest = svcType === '2';
+  const parsedOdoStart = React.useMemo(() => (odoStart.trim() === '' ? NaN : Number(odoStart)), [odoStart]);
+  const parsedOdoEnd = React.useMemo(() => (odoEnd.trim() === '' ? NaN : Number(odoEnd)), [odoEnd]);
+  const extraMileage = React.useMemo(() => {
+    if (!isServiceRequest) return 0;
+    if (Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd)) return 0;
+    // Extra mileage is Current ODO - Service Mileage
+    const diff = Math.floor(parsedOdoStart - parsedOdoEnd);
+    return diff > 0 ? diff : 0;
+  }, [isServiceRequest, parsedOdoStart, parsedOdoEnd]);
+  const needsLateNotice = isServiceRequest && extraMileage > 500;
+  const reasonRequiredMissing = isServiceRequest && extraMileage > 500 && lateNotice.trim().length === 0;
+
+  // Reset odo fields when not service request
+  React.useEffect(() => {
+    if (!isServiceRequest) {
+      setOdoStart('');
+      setOdoEnd('');
+      setLateNotice('');
+    }
+  }, [isServiceRequest]);
 
   return (
     <div className="p-2">
@@ -444,19 +724,30 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
             {/* Vehicle + Type of Request */}
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <div>
-                  <Label>Vehicle</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <div ref={vehicleRef}>
+                  <Label>Select Vehicle</Label>
                   <SingleSelect
                     options={vehicleOptions}
                     value={assetId}
                     onValueChange={setAssetId}
                     placeholder="Select vehicle"
+                    className={showErrors && errors.asset ? 'ring-1 ring-red-500' : ''}
+                    disabled={isReadOnly}
                   />
                 </div>
                 <div>
                   <Label>Type of Request</Label>
-                  <RadioGroup value={svcType} onValueChange={setSvcType} className="mt-2 grid grid-cols-3 gap-2">
+                  <RadioGroup
+                    ref={svcTypeRef as any}
+                    value={svcType}
+                    onValueChange={setSvcType}
+                    className={[
+                      'mt-2 grid grid-cols-3 gap-2',
+                      showErrors && errors.svcType ? 'ring-1 ring-red-500 rounded-md p-1' : '',
+                      isReadOnly ? 'pointer-events-none opacity-70' : '',
+                    ].join(' ')}
+                  >
                     <div className="flex items-center gap-2">
                       <RadioGroupItem id="svc1" value="1" />
                       <Label htmlFor="svc1">Car Wash</Label>
@@ -472,10 +763,67 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   </RadioGroup>
                 </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div>
+                  <Label htmlFor="vehicle-mtn-odo-start">Current ODO {isServiceRequest && <span className="text-red-500">*</span>}</Label>
+                  <Input
+                    id="vehicle-mtn-odo-start"
+                    type="number"
+                    inputMode="numeric"
+                    value={odoStart}
+                    onChange={(e) => setOdoStart(e.target.value)}
+                    placeholder="e.g. 15000"
+                    disabled={!isServiceRequest || isReadOnly}
+                    className={showErrors && errors.odoStart ? 'ring-1 ring-red-500' : ''}
+                    ref={odoStartRef}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="vehicle-mtn-odo-end">Service Mileage {isServiceRequest && <span className="text-red-500">*</span>}</Label>
+                  <Input
+                    id="vehicle-mtn-odo-end"
+                    type="number"
+                    inputMode="numeric"
+                    value={odoEnd}
+                    onChange={(e) => setOdoEnd(e.target.value)}
+                    placeholder="e.g. 15250"
+                    disabled={!isServiceRequest || isReadOnly}
+                    className={showErrors && errors.odoEnd ? 'ring-1 ring-red-500' : ''}
+                    ref={odoEndRef}
+                  />
+                </div>
+              </div>
+              {isServiceRequest && (
+                <div className="text-xs text-muted-foreground">
+                  {extraMileage > 0 ? (
+                    <>
+                      Extra mileage: <span className="font-medium text-foreground">{extraMileage} km</span>
+                      {needsLateNotice && (
+                        <span className="ml-2 text-red-600 font-medium">Warning: exceeds 500 km</span>
+                      )}
+                    </>
+                  ) : (
+                    'Enter Current ODO and Service Mileage to calculate extra mileage.'
+                  )}
+                </div>
+              )}
+              {needsLateNotice && (
+                <div className="space-y-2">
+                  <Label htmlFor="vehicle-mtn-late-notice">Late Notice <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    id="vehicle-mtn-late-notice"
+                    placeholder="Provide reason for exceeding 500 km interval"
+                    value={lateNotice}
+                    onChange={(e) => setLateNotice(e.target.value)}
+                    className={showErrors && errors.lateNotice ? 'ring-1 ring-red-500' : ''}
+                    ref={lateNoticeRef}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Service Options */}
-            <div className="space-y-3">
+            <div className="space-y-3" ref={svcContainerRef}>
               <div className="font-semibold">Service Options</div>
               {serviceOptionsLoading ? (
                 <div className="text-sm text-muted-foreground">Loading service options...</div>
@@ -485,30 +833,50 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 <div className="text-sm text-muted-foreground">No service options available.</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {groupedServiceOptions.map(({ key, label, items }) => (
-                    <div key={key} className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-sm">
-                      <div className="flex items-center justify-between text-sm font-semibold text-foreground">
-                        <span>{label || 'Service Level'}</span>
-                        <span className="text-xs font-normal text-muted-foreground">Option {key}</span>
+                  {groupedServiceOptions.map(({ key, label, items }) => {
+                    const anyChecked = items.some((opt) => selectedServiceTypeIds.includes(opt.svcTypeId));
+                    const disabledCard =
+                      (isReadOnly || !assetId || !svcType)
+                        ? true // guide user: select vehicle and type first
+                        : svcType === '1'
+                          ? !carWashGroupKeys.has(key)
+                          : svcType === '3'
+                            ? key !== 32
+                            : // svcType === '2' (Service)
+                            (reasonRequiredMissing ? true : key === 32);
+                    return (
+                      <div
+                        key={key}
+                        className={[
+                          'space-y-3 rounded-lg border border-border bg-card p-4 shadow-sm transition ring-offset-background',
+                          anyChecked ? 'ring-2 ring-red-500' : '',
+                          disabledCard ? 'opacity-50 pointer-events-none' : '',
+                          showErrors && errors.serviceOptions ? 'ring-2 ring-red-500' : '',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+                          <span>{label || 'Service Level'}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {items.map((option) => (
+                            <label
+                              key={option.svcTypeId}
+                              htmlFor={`svc-option-${option.svcTypeId}`}
+                              className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/40 transition-colors"
+                            >
+                              <Checkbox
+                                id={`svc-option-${option.svcTypeId}`}
+                                checked={selectedServiceTypeIds.includes(option.svcTypeId)}
+                                disabled={disabledCard}
+                                onCheckedChange={(checked) => handleServiceOptionToggle(option.svcTypeId, Boolean(checked), key)}
+                              />
+                              <span className="text-sm">{option.svcType}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        {items.map((option) => (
-                          <label
-                            key={option.svcTypeId}
-                            htmlFor={`svc-option-${option.svcTypeId}`}
-                            className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/40 transition-colors"
-                          >
-                            <Checkbox
-                              id={`svc-option-${option.svcTypeId}`}
-                              checked={selectedServiceTypeIds.includes(option.svcTypeId)}
-                              onCheckedChange={(checked) => handleServiceOptionToggle(option.svcTypeId, Boolean(checked))}
-                            />
-                            <span className="text-sm">{option.svcType}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -524,44 +892,160 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   placeholder="Add any remarks for this request"
                   value={remarks}
                   onChange={(event) => setRemarks(event.target.value)}
+                  disabled={isReadOnly}
+                  className="h-40"
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vehicle-mtn-attachments">Attachments</Label>
-                <Input
-                  id="vehicle-mtn-attachments"
-                  type="file"
-                  multiple
-                  onChange={handleAttachmentChange}
-                />
-                {attachments.length > 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    Selected files:
+                {isReadOnly && existing?.req_upload ? (
+                  <div className="rounded-md border bg-muted/20 p-2">
+                    <a href={existing.req_upload} target="_blank" rel="noreferrer">
+                      <img src={existing.req_upload} alt="Attachment" className="w-full max-h-72 object-contain rounded-md" />
+                    </a>
+                  </div>
+                ) : (
+                <div
+                  onDrop={onDropFiles}
+                  onDragOver={onDragOver}
+                  className="h-40 rounded-md border border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground p-3 bg-muted/20"
+                >
+                  <div>Drag & drop files here</div>
+                  <div>or</div>
+                  <div>
+                    <Input
+                      id="vehicle-mtn-attachments"
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleAttachmentChange}
+                    />
+                  </div>
+                </div>)}
+                {(!isReadOnly && attachments.length > 0) && (
+                  <div className="text-sm text-muted-foreground space-y-2">
+                    <div>Selected files:</div>
                     <ul className="list-disc list-inside">
                       {attachments.map((file) => (
                         <li key={`${file.name}-${file.lastModified}`}>{file.name}</li>
                       ))}
                     </ul>
+                    {previews.length > 0 && (
+                      <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-2">
+                        {previews.map((src, idx) => (
+                          <img key={`preview-${idx}`} src={src} alt={`preview-${idx}`} className="w-full h-24 object-cover rounded-md border" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>Back</Button>
-              <Button onClick={() => { /* submission to be implemented later; ensure state available */ onSubmitted?.(); onClose?.(); }} disabled={!assetId || !svcType}>
-                Done
-              </Button>
-            </div>
+            {/* Create vs Readonly Actions */}
+            {isReadOnly ? (
+              <div className="space-y-3 mt-4">
+                <Separator />
+                <div className="space-y-2">
+                  <div className="font-semibold text-red-500">Cancel Application</div>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Checkbox id="vehicle-mtn-cancel" checked={cancelChecked} onCheckedChange={(v)=>setCancelChecked(Boolean(v))} />
+                    <span className='text-red-500'>Request cancellation (driver)</span>
+                  </label>
+                  <Textarea
+                    placeholder="Provide justification for cancellation"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    className={["h-24", cancelChecked && !cancelReason.trim() ? 'ring-1 ring-red-500' : ''].join(' ')}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={onClose}>Back</Button>
+                    <Button
+                      onClick={async () => {
+                        if (!cancelChecked) { toast.error('Tick to confirm cancellation'); return; }
+                        if (!cancelReason.trim()) { toast.error('Provide cancellation justification'); return; }
+                        try {
+                          await authenticatedApi.put(`/api/mtn/request/${id}/cancel`, {
+                            req_id: Number(id),
+                            drv_stat: 2,
+                            drv_cancel_comment: cancelReason,
+                            drv_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                          });
+                          setSuccessTitle('Application Cancelled');
+                          setSuccessDescription('Your cancellation request has been submitted.');
+                          setShowSuccess(true);
+                          onSubmitted?.();
+                        } catch (e) {
+                          toast.error('Failed to cancel application');
+                        }
+                      }}
+                      disabled={!cancelChecked || !cancelReason.trim()}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Cancel Application
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox id="vehicle-mtn-agree" checked={agree} onCheckedChange={(v) => setAgree(Boolean(v))} />
+                  <span>I confirm the information provided is accurate.</span>
+                </label>
+                <div className="flex justify-end gap-2" onClick={(e) => {
+                  const isServiceRequest = svcType === '2';
+                  const disabledByState = !assetId || (!svcType && selectedServiceTypeIds.length === 0) || !agree || (selectedServiceTypeIds.length === 0) || (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0)));
+                  if (disabledByState) {
+                    e.stopPropagation();
+                    attemptSubmit();
+                  }
+                }}>
+                  <Button variant="outline" onClick={onClose}>Back</Button>
+                  <Button onClick={attemptSubmit} disabled={!assetId || (!svcType && selectedServiceTypeIds.length === 0) || !agree || (selectedServiceTypeIds.length === 0) || (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0)))}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card className="lg:col-span-2 flex flex-col">
           <CardHeader>
-            <CardTitle>Previous Services</CardTitle>
+            <CardTitle>Application Status & History</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 flex-1">
+            {/* Status section on top */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Verification</span>
+                {existing?.verification_date ? (
+                  <Badge className="bg-green-100 text-green-700">Verified</Badge>
+                ) : (
+                  <Badge variant="secondary">Pending</Badge>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Recommendation</span>
+                {existing?.recommendation_date ? (
+                  <Badge className="bg-green-100 text-green-700">Recommended</Badge>
+                ) : (
+                  <Badge variant="secondary">Pending</Badge>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Approval</span>
+                {existing?.approval_date ? (
+                  <Badge className="bg-green-100 text-green-700">Approved</Badge>
+                ) : (
+                  <Badge variant="secondary">Pending</Badge>
+                )}
+              </div>
+            </div>
+            <Separator />
+            {/* Previous services section */}
             <div className="space-y-3">
               {!assetId ? (
                 <p className="text-sm text-muted-foreground">Select a vehicle to view previous services.</p>
@@ -577,21 +1061,38 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     Total previous services:{' '}
                     <span className="font-semibold text-foreground">{serviceHistory.length}</span>
                   </div>
-                  <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 hide-scrollbar">
                     {serviceHistory.map((record) => (
-                      <div key={record.req_id} className="rounded-md border bg-sky-100 border-border p-3">
+                      <div key={record.req_id} className="rounded-md border bg-sky-100 dark:bg-gray-800 border-border p-3">
                         <div className="flex items-center justify-between text-sm font-semibold">
-                          <span>Request #{record.req_id}</span>
+                          <span className="flex items-center gap-2">
+                            Request #{record.req_id}
+                            {String(id ?? '') === String(record.req_id ?? '') && (
+                              <Badge className="bg-amber-100 text-amber-700">Current</Badge>
+                            )}
+                          </span>
                           <span className="text-xs font-normal text-muted-foreground">
-                            {formatDMY(record.req_date)}
+                            {formatDMY(record.req_date)} · {formatRelativeYM(record.req_date)}
                           </span>
                         </div>
                         {record.svc_type && record.svc_type.length > 0 && (
-                          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                            {record.svc_type.map((svc) => (
-                              <li key={`${record.req_id}-${svc.svcTypeId ?? svc.svcType}`}>{svc.svcType}</li>
+                          <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-muted-foreground">
+                            {record.svc_type.map((svc, idx) => (
+                              <li key={`${record.req_id}-${svc?.id ?? svc?.svcTypeId ?? idx}`}>
+                                {svc?.name || svc?.svcType || ''}
+                              </li>
                             ))}
                           </ul>
+                        )}
+                        {(record.odo_start || record.odo_end || record.mileage) && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            Odo: {record.odo_start ?? '-'} → {record.odo_end ?? '-'} · Mileage: {record.mileage ?? '-'} km
+                          </div>
+                        )}
+                        {record.invoice && (record.invoice.inv_date || record.invoice.inv_total) && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Invoice: {record.invoice.inv_date ? formatDMY(String(record.invoice.inv_date)) : '-'} · {record.invoice.inv_total ?? '-'}
+                          </div>
                         )}
                         {record.req_comment && (
                           <p className="mt-2 text-xs text-muted-foreground">Comment: {record.req_comment}</p>
@@ -634,6 +1135,25 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
           </CardContent>
         </Card>
       </div>
+      <style jsx>{`
+        .hide-scrollbar::-webkit-scrollbar { width: 0; height: 0; }
+        .hide-scrollbar:hover::-webkit-scrollbar { width: 6px; height: 6px; }
+        .hide-scrollbar { scrollbar-width: none; }
+        .hide-scrollbar:hover { scrollbar-width: thin; }
+      `}</style>
+      <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{successTitle}</DialogTitle>
+            <DialogDescription>
+              {successDescription}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => { setShowSuccess(false); onClose?.(); }}>Back to parent</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

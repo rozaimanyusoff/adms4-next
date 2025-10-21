@@ -7,7 +7,7 @@ import Groups from "./c-group";
 import Navigations from "./c-nav";
 import Roles from "./c-role";
 import CLogs from "./c-logs";
-import ApprovalLevel from "./approval-level";
+import Workflows from "./workflows";
 import ManagementModule from "./mgmt-module";
 import PermissionMgmt from "./permission";
 
@@ -17,7 +17,7 @@ const UserMgmtMain = () => {
         { value: "roles", label: "Roles" },
         { value: "group", label: "Group" },
         { value: "navigation", label: "Navigation" },
-        { value: "approval", label: "Approval Levels" },
+        { value: "workflow", label: "Workflows" },
         { value: "permission", label: "Permissions" },
         { value: "module", label: "Modules" },
         { value: "logs", label: "Logs" },
@@ -28,7 +28,7 @@ const UserMgmtMain = () => {
         roles: <Roles />,
         group: <Groups />,
         navigation: <Navigations />,
-        approval: <ApprovalLevel />,
+        workflow: <Workflows />,
         permission: <PermissionMgmt />,
         module: <ManagementModule />,
         logs: <CLogs />,

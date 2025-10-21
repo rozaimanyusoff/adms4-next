@@ -58,21 +58,34 @@ const MaintenanceDash = () => {
     costCenterActivity: []
   });
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState('3m'); // 1m, 3m, 6m, 1y
+  const [timeRange, setTimeRange] = useState('3m'); // kept for future charting
+  const currentYear = new Date().getFullYear();
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch all maintenance requests to calculate statistics
-      const response = await authenticatedApi.get('/api/mtn/request');
-      const data = (response.data as { data?: any[] })?.data || [];
+      // Fetch datasets by backend filters for current year
+      const base = { year: currentYear } as const;
+      const [allRes, pendVerRes, verRes, recRes, apprRes] = await Promise.all([
+        authenticatedApi.get('/api/mtn/request', { params: base }),
+        authenticatedApi.get('/api/mtn/request', { params: { ...base, pendingstatus: 'verified' } }),
+        authenticatedApi.get('/api/mtn/request', { params: { ...base, status: 'verified' } }),
+        authenticatedApi.get('/api/mtn/request', { params: { ...base, status: 'recommended' } }),
+        authenticatedApi.get('/api/mtn/request', { params: { ...base, status: 'approved' } }),
+      ]);
 
-      // Calculate stats
-      const totalRequests = data.length;
-      const pendingRequests = data.filter((item: any) => item.status === 'pending').length;
-      const verifiedRequests = data.filter((item: any) => item.status === 'verified').length;
-      const recommendedRequests = data.filter((item: any) => item.status === 'recommended').length;
-      const approvedRequests = data.filter((item: any) => item.status === 'approved').length;
+      const allData = ((allRes.data as any)?.data || []) as any[];
+      const pendingData = ((pendVerRes.data as any)?.data || []) as any[];
+      const verifiedData = ((verRes.data as any)?.data || []) as any[];
+      const recommendedData = ((recRes.data as any)?.data || []) as any[];
+      const approvedData = ((apprRes.data as any)?.data || []) as any[];
+
+      const totalRequests = allData.length;
+      // Exclude cancelled from pending verification bucket (mirrors records page)
+      const pendingRequests = pendingData.filter(x => (x?.status || '').toLowerCase() !== 'cancelled').length;
+      const verifiedRequests = verifiedData.length;
+      const recommendedRequests = recommendedData.length;
+      const approvedRequests = approvedData.length;
 
       // Status distribution for pie chart
       const statusDistribution = [
@@ -94,7 +107,7 @@ const MaintenanceDash = () => {
 
       // Top workshops
       const workshopCounts: { [key: string]: number } = {};
-      data.forEach((item: any) => {
+      allData.forEach((item: any) => {
         if (item.workshop?.name) {
           workshopCounts[item.workshop.name] = (workshopCounts[item.workshop.name] || 0) + 1;
         }
@@ -106,7 +119,7 @@ const MaintenanceDash = () => {
 
       // Service type distribution
       const serviceTypeCounts: { [key: string]: number } = {};
-      data.forEach((item: any) => {
+      allData.forEach((item: any) => {
         if (item.svc_type && Array.isArray(item.svc_type)) {
           item.svc_type.forEach((type: any) => {
             if (type.name) {
@@ -121,7 +134,7 @@ const MaintenanceDash = () => {
 
       // Cost center activity
       const costCenterCounts: { [key: string]: number } = {};
-      data.forEach((item: any) => {
+      allData.forEach((item: any) => {
         if (item.costcenter?.name) {
           costCenterCounts[item.costcenter.name] = (costCenterCounts[item.costcenter.name] || 0) + 1;
         }
@@ -235,11 +248,11 @@ const MaintenanceDash = () => {
           description="All maintenance requests"
         />
         <StatCard
-          title="Pending"
+          title="Pending Verification"
           value={stats.pendingRequests}
           icon={Clock}
           color="text-yellow-600"
-          description="Awaiting review"
+          description="Awaiting verification"
         />
         <StatCard
           title="Verified"
