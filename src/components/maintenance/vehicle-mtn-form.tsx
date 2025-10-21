@@ -203,7 +203,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     const form = new FormData();
     form.append('req_date', new Date().toISOString().slice(0, 19).replace('T', ' '));
     form.append('ramco_id', requestor?.ramco_id ?? '');
-    if (requestor?.department?.id) form.append('costcenter_id', String(requestor.department.id));
+    // costcenter_id should come from the selected asset's costcenter
+    const assetCostcenterId = (selectedVehicle as any)?.costcenter?.id || (existing as any)?.asset?.costcenter?.id;
+    if (assetCostcenterId) form.append('costcenter_id', String(assetCostcenterId));
     if (requestor?.location?.id) form.append('location_id', String(requestor.location.id));
     form.append('ctc_m', requestor?.contact ?? '');
     if (assetId) form.append('asset_id', String(assetId));
