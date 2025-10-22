@@ -420,7 +420,10 @@ const UserManagement = () => {
     }
 
     // Determine selectable rows (ids)
-    const selectableRowIds = useMemo(() => users.filter(user => user.role.id !== 1).map(user => user.id), [users]);
+    const selectableRowIds = useMemo(
+        () => users.filter((user) => (user.role?.id ?? 0) !== 1).map((user) => user.id),
+        [users]
+    );
 
     // Determine if all selectable rows are selected
     const allRowsSelected = selectedUserIds.length > 0 && selectableRowIds.length > 0 && selectableRowIds.every(id => selectedUserIds.includes(id));
@@ -444,7 +447,7 @@ const UserManagement = () => {
     const rowSelection = {
         enabled: true,
         getRowId: (row: User) => row.id,
-        isSelectable: (row: User) => row.role.id !== 1,
+        isSelectable: (row: User) => (row.role?.id ?? 0) !== 1,
         headerCheckboxRenderer: () => {
             return (
                 <input
@@ -462,7 +465,7 @@ const UserManagement = () => {
             // Filter out excluded rows (e.g., role === 1)
             const validSelectedKeys = selectedKeys.filter(key => {
                 const user = users.find(u => u.id === key);
-                return user && user.role.id !== 1;
+                return user && (user.role?.id ?? 0) !== 1;
             });
 
             // Set selectedUserIds and alert
@@ -1208,7 +1211,7 @@ const UserManagement = () => {
                                             <AlertDialogTitle>Reset Password</AlertDialogTitle>
                                         </AlertDialogHeader>
                                         <div className="text-sm text-red-600 rounded-sm p-1 mb-2">
-                                            A new password will be generated and sent to the user's email. This action cannot be undone.<br />
+                                            A new password will be generated and sent to the user&apos;s email. This action cannot be undone.<br />
                                             Are you sure you want to reset the password for the selected user(s)?
                                         </div>
                                         <AlertDialogFooter>
@@ -1517,7 +1520,7 @@ const UserManagement = () => {
                         <AlertDialogDescription>
                             {modalOpen === 'reset' && (
                                 <>
-                                    <div className="text-sm mb-4">A new password will be generated and sent to the user's email. This action cannot be undone.<br />Are you sure you want to reset the password for the selected user(s)?</div>
+                                    <div className="text-sm mb-4">A new password will be generated and sent to the user&apos;s email. This action cannot be undone.<br />Are you sure you want to reset the password for the selected user(s)?</div>
                                     {modalError && <div className="text-xs text-red-600 mb-2">{modalError}</div>}
                                 </>
                             )}

@@ -41,9 +41,18 @@ import { authenticatedApi } from '@/config/api';
 import { useTextSize } from '@/contexts/text-size-context';
 
 // Define Notification type
+const DEFAULT_AVATAR = '/assets/images/user-profile.jpeg';
+
+const resolveAvatarSrc = (value?: string | null) => {
+    if (!value) return DEFAULT_AVATAR;
+    if (typeof value !== 'string') return DEFAULT_AVATAR;
+    if (value.startsWith('http') || value.startsWith('/')) return value;
+    return `/assets/images/${value}`;
+};
+
 interface Notification {
     id: number;
-    profile: string; // local avatar reference
+    profile: string; // resolved avatar reference
     message: string;
     time: string; // ISO string or relative placeholder
     title?: string;
@@ -101,6 +110,10 @@ const Header = () => {
 
     const themeConfig = useSelector((state: IRootState) => state.themeConfig);
 
+    const userAvatar = resolveAvatarSrc(authData?.user?.avatar || authData?.user?.profile?.profileImage || authData?.user?.profile?.profile_image_url);
+    const userDisplayName = authData?.user?.name || authData?.user?.username || 'User';
+    const userEmail = authData?.user?.email || '';
+
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [unreadCount, setUnreadCount] = useState<number>(0);
     const [loadingNotifications, setLoadingNotifications] = useState(false);
@@ -113,14 +126,14 @@ const Header = () => {
     const targetUserInputRef = useRef<HTMLInputElement | null>(null);
     const selfUserId = authData?.user?.id;
 
-    const mapServerNotification = (n: any): Notification => ({
+    const mapServerNotification = useCallback((n: any): Notification => ({
         id: Number(n.id ?? Date.now()),
-        profile: 'user-profile.jpeg',
+        profile: resolveAvatarSrc(n.profile || n.avatar || userAvatar),
         message: n.message || n.title || 'Notification',
         time: n.time || n.created_at || new Date().toISOString(),
         title: n.title,
         read: !!n.read,
-    });
+    }), [userAvatar]);
 
     // Treat role id 1 (Admin) and 8 (Developer) as privileged for cross-user view
     const isPrivilegedRole = (roleId?: number) => roleId != null && [1,8].includes(roleId);
@@ -166,7 +179,7 @@ const Header = () => {
         } finally {
             setLoadingNotifications(false);
         }
-    }, [authData, selfUserId, viewingUserId]);
+    }, [authData, mapServerNotification, viewingUserId]);
 
     const loadUnreadCount = useCallback(async () => {
         if (!authData) return;
@@ -235,7 +248,7 @@ const Header = () => {
             }
         });
         return () => { socket.disconnect(); };
-    }, [authData?.user?.role?.id, realtimeEnabled]);
+    }, [authData?.user?.role?.id, mapServerNotification, realtimeEnabled]);
 
     const removeNotification = (value: number) => {
         // Interpret removal as mark read locally
@@ -538,7 +551,7 @@ const Header = () => {
                                                     <div className="group flex items-center px-4 py-2">
                                                         <div className="grid place-content-center rounded-sm">
                                                             <div className="relative h-12 w-12">
-                                                                <img className="h-12 w-12 rounded-full object-cover" alt="profile" src={`/assets/images/${notification.profile}`} />
+                                                                <img className="h-12 w-12 rounded-full object-cover" alt="profile" src={notification.profile} />
                                                                 {!notification.read && <span className="absolute bottom-0 right-[6px] block h-2 w-2 rounded-full bg-success"></span>}
                                                             </div>
                                                         </div>
@@ -599,20 +612,21 @@ const Header = () => {
                                 offset={[0, 8]}
                                 placement={`${isRtl ? 'bottom-start' : 'bottom-end'}`}
                                 btnClassName="relative group block"
-                                button={<img className="h-9 w-9 rounded-full object-cover saturate-50 group-hover:saturate-100" src="/assets/images/user-profile.jpeg" alt="userProfile" />}
+                                button={<img className="h-9 w-9 rounded-full object-cover saturate-50 group-hover:saturate-100" src={userAvatar} alt={userDisplayName} />}
                             >
                                 <ul className="w-[230px] py-0! font-semibold text-dark dark:text-white-light/90">
                                     <li>
                                         <div className="flex items-center px-4 py-4">
-                                            <img className="h-10 w-10 rounded-md object-cover" src="/assets/images/user-profile.jpeg" alt="userProfile" />
+                                            <img className="h-10 w-10 rounded-md object-cover" src={userAvatar} alt={userDisplayName} />
                                             <div className="truncate ltr:pl-4 rtl:pr-4">
                                                 <h4 className={textSizeClasses.base}>
-                                                    John Doe
-                                                    <span className={`rounded bg-success-light px-1 ${textSizeClasses.small} text-success ltr:ml-2 rtl:ml-2`}>Pro</span>
+                                                    {userDisplayName}
                                                 </h4>
-                                                <button type="button" className="text-black/60 hover:text-primary dark:text-dark-light/60 dark:hover:text-white">
-                                                    johndoe@gmail.com
-                                                </button>
+                                                {userEmail && (
+                                                    <button type="button" className="text-black/60 hover:text-primary dark:text-dark-light/60 dark:hover:text-white">
+                                                        {userEmail}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </li>

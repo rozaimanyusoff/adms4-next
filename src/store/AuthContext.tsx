@@ -14,12 +14,22 @@ interface UserGroup {
 }
 
 // Updated User type
+interface UserProfileInfo {
+  user_id?: number;
+  dob?: string;
+  location?: string;
+  job?: string;
+  profile_image_url?: string;
+  profileImage?: string;
+}
+
 interface User {
   id: number;
   email: string;
   username: string;
   contact: string;
   name: string;
+  avatar?: string | null;
   userType: number;
   status: number;
   lastNav: string;
@@ -27,13 +37,7 @@ interface User {
     id: number;
     name: string;
   };
-  profile: {
-    user_id: number;
-    dob: string;
-    location: string;
-    job: string;
-    profile_image_url: string;
-  };
+  profile?: UserProfileInfo | null;
 }
 
 // Updated NavTree type
@@ -54,16 +58,51 @@ interface AuthData {
   token: string;
   user: User;
   usergroups: UserGroup[];
-  navTree: NavTree[];
+  navTree?: NavTree[];
 }
+
+const normalizeUser = (user: any): User => {
+  if (!user) {
+    return user;
+  }
+
+  const normalizedUser: User = {
+    ...user,
+  };
+
+  const profile: UserProfileInfo = {
+    ...(normalizedUser.profile ?? {}),
+  };
+
+  const profileImage =
+    profile.profileImage ||
+    profile.profile_image_url ||
+    normalizedUser.avatar ||
+    undefined;
+
+  if (profileImage) {
+    profile.profileImage = profileImage;
+    profile.profile_image_url = profile.profile_image_url || profileImage;
+    if (!normalizedUser.avatar) {
+      normalizedUser.avatar = profileImage;
+    }
+  }
+
+  normalizedUser.profile = profile;
+
+  return normalizedUser;
+};
+
+const normalizeAuthData = (data: AuthData): AuthData => {
+  return {
+    ...data,
+    user: normalizeUser(data.user),
+  };
+};
 
 // Helper to extract AuthData from API response
 function parseAuthApiResponse(apiResponse: any): AuthData {
-  // Map profile_image_url to profileImage for frontend use if needed
-  const user = apiResponse.data.user;
-  if (user && user.profile && user.profile.profile_image_url && !user.profile.profileImage) {
-    user.profile.profileImage = user.profile.profile_image_url;
-  }
+  const user = normalizeUser(apiResponse.data.user);
   return {
     token: apiResponse.token,
     user,
@@ -75,10 +114,7 @@ function parseAuthApiResponse(apiResponse: any): AuthData {
 // Helper to parse API login response into AuthData
 export function parseLoginResponse(apiResponse: any): AuthData {
   const { token, data } = apiResponse;
-  const user = data.user;
-  if (user && user.profile && user.profile.profile_image_url && !user.profile.profileImage) {
-    user.profile.profileImage = user.profile.profile_image_url;
-  }
+  const user = normalizeUser(data.user);
   return {
     token,
     user,
@@ -105,12 +141,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const storedAuthData = localStorage.getItem('authData');
     if (storedAuthData) {
       const parsed = JSON.parse(storedAuthData);
-      setAuthData(parsed);
+      if (parsed && parsed.user) {
+        const normalized = normalizeAuthData(parsed as AuthData);
+        setAuthData(normalized);
+      } else {
+        setAuthData(parsed);
+      }
       // Fetch navTree from backend and set in state
       (async () => {
         try {
-          if (parsed && parsed.user && parsed.user.id) {
-            const response = await authenticatedApi.get(`/api/nav/access/${parsed.user.id}`);
+          const userId = (parsed && parsed.user && parsed.user.id) || undefined;
+          if (userId) {
+            const response = await authenticatedApi.get(`/api/nav/access/${userId}`);
             const navTreeRemote: NavTree[] = (response.data as { navTree: NavTree[] }).navTree;
             if (navTreeRemote) {
               setAuthData((prev) => prev ? { ...prev, navTree: navTreeRemote } : prev);
@@ -128,12 +170,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [authData]);
 
   const handleSetAuthData = (data: AuthData | null) => {
-    setAuthData(data);
     if (data) {
+      const normalizedData = normalizeAuthData(data);
+      setAuthData(normalizedData);
       // Exclude navTree from localStorage
-      const { navTree, ...rest } = data;
+      const { navTree, ...rest } = normalizedData;
       localStorage.setItem('authData', JSON.stringify(rest));
     } else {
+      setAuthData(null);
       localStorage.removeItem('authData');
     }
   };
