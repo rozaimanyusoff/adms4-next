@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SingleSelect } from "@/components/ui/combobox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
 type DataType = "string" | "text" | "integer" | "float" | "decimal" | "boolean" | "date" | "datetime" | "json";
@@ -25,12 +27,19 @@ interface SpecProperty {
     default_value?: any;
     options?: any[] | null;
     is_active?: number | boolean;
+    visible_on_form?: boolean | number;
 }
 
 interface Props {
     // optional props: if provided, component filters by typeId or loads asset specs for assetId
     typeId?: number;
     assetId?: number | string;
+}
+
+interface SpecGroup {
+    type_id: number;
+    type_name: string;
+    properties: SpecProperty[];
 }
 
 const ALLOWED_TYPES: DataType[] = ["string","text","integer","float","decimal","boolean","date","datetime","json"];
@@ -51,12 +60,16 @@ const supportsOptions = (type: DataType) => {
 const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId }) => {
     const [typeId, setTypeId] = useState<number | undefined>(propTypeId);
     const [types, setTypes] = useState<{ id: number; name: string }[]>([]);
+    // flat list for validations and asset spec form
     const [list, setList] = useState<SpecProperty[]>([]);
+    // grouped list for UI accordion rendering
+    const [groups, setGroups] = useState<SpecGroup[]>([]);
     const [loading, setLoading] = useState(false);
     const [editing, setEditing] = useState<SpecProperty | null>(null);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [applyLoadingId, setApplyLoadingId] = useState<number | null>(null);
     const [assetSpecs, setAssetSpecs] = useState<Record<string, any> | null>(null);
+    const [accordionValue, setAccordionValue] = useState<string | undefined>(undefined);
     const auth = useContext(AuthContext);
     const username = (auth?.authData?.user?.username) || ((auth?.authData?.user as any)?.ramco_id) || '';
 
@@ -67,9 +80,34 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
         try {
             const resp: any = await authenticatedApi.get(`/api/assets/spec-properties${typeId ? `?type_id=${typeId}` : ''}`);
             const data = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
-            setList(data || []);
+            // New API returns grouped by type: [{ type_id, type_name, properties: [...] }]
+            // Fallback: if flat array is returned, group it locally.
+            let grouped: SpecGroup[] = [];
+            if (Array.isArray(data) && data.length > 0 && (data[0]?.properties || data.every((d:any)=>d?.properties))) {
+                grouped = (data as any[]).map((g: any) => ({
+                    type_id: Number(g.type_id),
+                    type_name: g.type_name ?? (types.find(t=>t.id===Number(g.type_id))?.name ?? String(g.type_id)),
+                    properties: Array.isArray(g.properties) ? g.properties : []
+                }));
+            } else {
+                // legacy flat list
+                const byType: Record<number, SpecProperty[]> = {};
+                (data || []).forEach((p: any) => {
+                    const tid = Number(p.type_id);
+                    if (!byType[tid]) byType[tid] = [];
+                    byType[tid].push(p);
+                });
+                grouped = Object.entries(byType).map(([tid, props]) => ({
+                    type_id: Number(tid),
+                    type_name: types.find(t=>t.id===Number(tid))?.name ?? String(tid),
+                    properties: props
+                }));
+            }
+            setGroups(grouped);
+            setList(grouped.flatMap(g => g.properties));
         } catch (e) {
             console.error('Failed to fetch spec properties', e);
+            setGroups([]);
             setList([]);
             toast.error('Failed to load spec properties');
         } finally {
@@ -113,9 +151,11 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
     }, [assetId, list]);
 
     const openNewDialog = () => {
+        // Prefer currently opened accordion's type, then selected filter typeId, then first group/type
+        const activeTid = accordionValue?.startsWith('type-') ? Number(accordionValue.replace('type-', '')) : undefined;
         setEditing({
             id: 0,
-            type_id: typeId || (types[0]?.id ?? 0),
+            type_id: activeTid || typeId || (groups[0]?.type_id ?? types[0]?.id ?? 0),
             name: '',
             label: '',
             column_name: '',
@@ -123,7 +163,8 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
             nullable: true,
             default_value: null,
             options: null,
-            is_active: 1
+            is_active: 1,
+            visible_on_form: true
         });
         setDialogOpen(true);
     };
@@ -143,13 +184,14 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
             default_value: editing.default_value ?? null,
             options: editing.options ?? null,
             created_by: username || undefined,
-            is_active: editing.is_active ? 1 : 0
+            is_active: editing.is_active ? 1 : 0,
+            visible_on_form: !(editing.visible_on_form === false || (editing as any).visible_on_form === 0)
         };
 
         try {
             if (editing.id && editing.id > 0) {
                 // Update (only allowed safe fields)
-                const allowed = { label: payload.label, nullable: payload.nullable, default_value: payload.default_value, options: payload.options, is_active: editing.is_active ? 1 : 0 };
+                const allowed = { label: payload.label, nullable: payload.nullable, default_value: payload.default_value, options: payload.options, is_active: editing.is_active ? 1 : 0, visible_on_form: payload.visible_on_form };
                 await authenticatedApi.put(`/api/assets/spec-properties/${editing.id}`, allowed);
                 toast.success('Spec metadata updated');
             } else {
@@ -249,28 +291,54 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
                 </div>
             </div>
 
-            <Card>
-                <CardContent>
-                    {loading ? <div className="flex items-center gap-2"><Loader2 className="animate-spin"/> Loading...</div> : (
-                        <div className="space-y-3">
-                            {list.map(s => (
-                                <div key={s.id} className="flex items-center justify-between border p-2 rounded">
-                                    <div>
-                                        <div className="font-medium">{s.name} <span className="text-xs text-gray-500">({s.column_name})</span></div>
-                                        <div className="text-xs text-gray-600">{s.label || '-'} • {s.data_type} • {s.nullable ? 'nullable' : 'required'}</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }}><Pencil size={14} /></Button>
-                                        <Button size="sm" variant="outline" onClick={() => handleApply(s.id)} disabled={applyLoadingId===s.id}>{applyLoadingId===s.id ? 'Applying...' : 'Apply'}</Button>
-                                        <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}><Trash2 size={14} /></Button>
-                                    </div>
-                                </div>
+            {loading ? (
+                <div className="flex items-center gap-2"><Loader2 className="animate-spin"/> Loading...</div>
+            ) : (
+                <>
+                    {groups.length > 0 ? (
+                        <Accordion
+                            type="single"
+                            collapsible
+                            value={accordionValue}
+                            onValueChange={(v)=> setAccordionValue(v)}
+                            className="space-y-3"
+                        >
+                            {groups.map(g => (
+                                <AccordionItem key={g.type_id} value={`type-${g.type_id}`} className="rounded-md border">
+                                    <AccordionTrigger className="bg-transparent px-3 py-2">
+                                        <div className="flex items-center justify-between w-full">
+                                            <div className="font-medium">{g.type_name}</div>
+                                            <div className="text-xs text-gray-600">{g.properties?.length || 0} properties</div>
+                                        </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                        <div className="space-y-2 p-2">
+                                            {(g.properties || []).map(s => (
+                                                <div key={s.id} className="flex items-center justify-between border p-2 rounded bg-white">
+                                                    <div>
+                                                        <div className="font-medium">{s.name} <span className="text-xs text-gray-500">({s.column_name})</span></div>
+                                                        <div className="text-xs text-gray-600">{s.label || '-'} • {s.data_type} • {s.nullable ? 'nullable' : 'required'}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                                <Button size="sm" onClick={() => { const v: any = (s as any).visible_on_form; const vis = v === undefined ? true : (v === 0 ? false : Boolean(v)); setEditing({ ...s, visible_on_form: vis }); setDialogOpen(true); }}><Pencil size={14} /></Button>
+                                                        <Button size="sm" variant="outline" onClick={() => handleApply(s.id)} disabled={applyLoadingId===s.id}>{applyLoadingId===s.id ? 'Applying...' : 'Apply'}</Button>
+                                                        <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}><Trash2 size={14} /></Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {(!g.properties || g.properties.length === 0) && (
+                                                <div className="text-sm text-gray-500">No properties for this type.</div>
+                                            )}
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
                             ))}
-                            {list.length === 0 && <div className="text-sm text-gray-500">No spec properties found for this type.</div>}
-                        </div>
+                        </Accordion>
+                    ) : (
+                        <div className="text-sm text-gray-500">No spec properties found.</div>
                     )}
-                </CardContent>
-            </Card>
+                </>
+            )}
 
             {assetId && (
                 <Card>
@@ -350,11 +418,19 @@ const SpecPropertiesManager: React.FC<Props> = ({ typeId: propTypeId, assetId })
                                 </div>
                                 <div>
                                     <Label>Nullable</Label>
-                                    <div className="mt-1">
-                                        <label className="inline-flex items-center gap-2">
-                                            <input type="checkbox" checked={!!editing.nullable} onChange={(e)=> setEditing({...editing, nullable: e.target.checked})} />
-                                            <span className="text-sm">Allow null</span>
-                                        </label>
+                                    <div className="mt-1 inline-flex items-center gap-2">
+                                        <Checkbox checked={!!editing.nullable} onCheckedChange={(v: any)=> setEditing({...editing, nullable: !!v})} />
+                                        <span className="text-sm">Allow null</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <Label>Visible on form</Label>
+                                    <div className="mt-1 inline-flex items-center gap-2">
+                                        <Checkbox
+                                            checked={!(editing.visible_on_form === false || (editing as any).visible_on_form === 0)}
+                                            onCheckedChange={(v: any)=> setEditing({ ...editing, visible_on_form: !!v })}
+                                        />
+                                        <span className="text-sm">Show field when editing asset</span>
                                     </div>
                                 </div>
                                 {supportsOptions(editing.data_type) && (
