@@ -14,6 +14,7 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Loader2, X } from 'lucide-react';
 
 // Users in this list will not be filtered by ?ramco
 const exclusionUser: string[] = ['000277', 'username2'];
@@ -70,6 +71,18 @@ function formatDMY(value: string) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+function formatDMYHM(value: string) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  const dd = pad2(d.getDate());
+  const mm = pad2(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const hh = pad2(d.getHours());
+  const min = pad2(d.getMinutes());
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+}
+
 function formatRelativeYM(value: string) {
   const d = new Date(value);
   if (isNaN(d.getTime())) return '';
@@ -122,6 +135,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [selectedServiceTypeIds, setSelectedServiceTypeIds] = React.useState<number[]>([]);
   const [remarks, setRemarks] = React.useState<string>('');
   const [attachments, setAttachments] = React.useState<File[]>([]);
+  const [formUpload, setFormUpload] = React.useState<File | null>(null);
+  const [formUploadDate, setFormUploadDate] = React.useState<string | null>(null);
+  const [formUploadSaving, setFormUploadSaving] = React.useState<boolean>(false);
   const [odoStart, setOdoStart] = React.useState<string>('');
   const [odoEnd, setOdoEnd] = React.useState<string>('');
   const [lateNotice, setLateNotice] = React.useState<string>('');
@@ -144,7 +160,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [cancelReason, setCancelReason] = React.useState('');
   // Validation state
   const [showErrors, setShowErrors] = React.useState(false);
-  const [errors, setErrors] = React.useState<{ asset?: boolean; svcType?: boolean; odoStart?: boolean; odoEnd?: boolean; lateNotice?: boolean; serviceOptions?: boolean; agree?: boolean; }>({});
+  const [errors, setErrors] = React.useState<{ asset?: boolean; svcType?: boolean; odoStart?: boolean; odoEnd?: boolean; lateNotice?: boolean; serviceOptions?: boolean; agree?: boolean; formUpload?: boolean; }>({});
   // Refs for focusing first error
   const vehicleRef = React.useRef<HTMLDivElement | null>(null);
   const svcTypeRef = React.useRef<HTMLDivElement | null>(null);
@@ -152,6 +168,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const odoEndRef = React.useRef<HTMLInputElement | null>(null);
   const lateNoticeRef = React.useRef<HTMLTextAreaElement | null>(null);
   const svcContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const formUploadRef = React.useRef<HTMLDivElement | null>(null);
+  const formUploadInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Selected vehicle details for payload convenience
   const selectedVehicle = React.useMemo(() => (assetId ? vehicleById[assetId] : null), [vehicleById, assetId]);
@@ -163,6 +181,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     if (e.odoEnd && odoEndRef.current) { odoEndRef.current.focus(); return; }
     if (e.lateNotice && lateNoticeRef.current) { lateNoticeRef.current.focus(); return; }
     if (e.serviceOptions && svcContainerRef.current) { svcContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    if (e.formUpload && formUploadRef.current) { formUploadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   }, []);
 
   const attemptSubmit = React.useCallback(async () => {
@@ -181,6 +200,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       if (diff > 500 && lateNotice.trim().length === 0) newErrors.lateNotice = true;
     }
     if (!agree) newErrors.agree = true;
+    const existingStatusValue = typeof existing?.status === 'string' ? existing.status.toLowerCase() : '';
+    const requireFormUpload = Boolean(id && (existingStatusValue === 'approved' || ((existing as any)?.approval_date)));
+    const hasStoredFormUpload = Boolean((existing as any)?.form_upload || (existing as any)?.formUpload);
+    if (requireFormUpload && !formUpload && !hasStoredFormUpload) newErrors.formUpload = true;
     setErrors(newErrors);
     const messages: string[] = [];
     if (newErrors.asset) messages.push('Please select a vehicle');
@@ -190,6 +213,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     if (newErrors.odoEnd) messages.push('Enter Service Mileage (Service)');
     if (newErrors.lateNotice) messages.push('Provide Late Notice (exceeds 500 km)');
     if (newErrors.agree) messages.push('Confirm the information is accurate');
+    if (newErrors.formUpload) messages.push('Upload the maintenance form provided by the workshop');
     if (messages.length > 0) {
       toast.error(messages.join('\n'));
       focusFirstError(newErrors);
@@ -229,6 +253,11 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       }
     }
     if (attachments[0]) form.append('req_upload', attachments[0]);
+    if (formUpload) form.append('form_upload', formUpload);
+    if (formUpload) {
+      const uploadDate = formUploadDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+      form.append('form_upload_date', uploadDate);
+    }
     try {
       await authenticatedApi.post('/api/mtn/request', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       setSuccessTitle('Form submitted');
@@ -238,7 +267,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     } catch (e) {
       toast.error('Failed to submit application');
     }
-  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted]);
+  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted, formUpload, formUploadDate]);
 
   // Load existing record (edit mode)
   React.useEffect(() => {
@@ -305,6 +334,15 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
         // Prefill odo if available
         if (typeof (data as any)?.odo_start !== 'undefined') setOdoStart(String((data as any).odo_start ?? ''));
         if (typeof (data as any)?.odo_end !== 'undefined') setOdoEnd(String((data as any).odo_end ?? ''));
+        if (typeof (data as any)?.form_upload_date === 'string' && (data as any).form_upload_date) {
+          setFormUploadDate((data as any).form_upload_date);
+        }
+        const cancelledStatus = typeof data?.status === 'string' && data.status.toLowerCase() === 'cancelled';
+        const cancelledAcceptance = Number((data as any)?.acceptance_status) === 2;
+        if (cancelledStatus || cancelledAcceptance) {
+          setCancelChecked(true);
+          setCancelReason((data as any)?.cancellation_comment || '');
+        }
       } catch (e) {
         if (!cancelled) toast.error('Failed to load request details');
       } finally {
@@ -596,6 +634,65 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     setAttachments(files);
   }, []);
 
+  const handleFormUploadChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setFormUpload(file);
+    if (file) {
+      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      setFormUploadDate(timestamp);
+    } else {
+      setFormUploadDate(null);
+    }
+    if (event.target.value) event.target.value = '';
+  }, []);
+
+  const clearFormUpload = React.useCallback(() => {
+    setFormUpload(null);
+    setFormUploadDate(null);
+    if (formUploadInputRef.current) {
+      formUploadInputRef.current.value = '';
+    }
+  }, []);
+
+  const openFormUploadPicker = React.useCallback(() => {
+    formUploadInputRef.current?.click();
+  }, []);
+
+  const handleFormUploadSubmit = React.useCallback(async () => {
+    if (!id || !formUpload) return;
+    setFormUploadSaving(true);
+    const uploadDate = formUploadDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const formData = new FormData();
+    formData.append('form_upload', formUpload);
+    formData.append('form_upload_date', uploadDate);
+    try {
+      const res: any = await authenticatedApi.put(`/api/mtn/request/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const payload = res?.data?.data ?? res?.data ?? {};
+      const uploadedUrl = typeof payload?.form_upload === 'string' ? payload.form_upload : (typeof payload?.url === 'string' ? payload.url : null);
+      const uploadedDate = typeof payload?.form_upload_date === 'string' ? payload.form_upload_date : uploadDate;
+      setExisting((prev: any) => {
+        const base = prev && typeof prev === 'object' ? prev : {};
+        return {
+          ...base,
+          form_upload: uploadedUrl ?? base.form_upload,
+          form_upload_date: uploadedDate,
+        };
+      });
+      setFormUpload(null);
+      setFormUploadPreview(null);
+      setFormUploadDate(uploadedDate);
+      if (formUploadInputRef.current) formUploadInputRef.current.value = '';
+      toast.success('Maintenance form uploaded successfully');
+      onSubmitted?.();
+    } catch (error) {
+      toast.error('Failed to upload maintenance form');
+    } finally {
+      setFormUploadSaving(false);
+    }
+  }, [id, formUpload, formUploadDate, onSubmitted]);
+
   const carWashIds = React.useMemo(() => {
     const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
     return visible.filter((o) => carWashGroupKeys.has(o.svcOpt)).map((o) => o.svcTypeId);
@@ -636,7 +733,19 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [id, svcType, carWashIds, ncrIds, selectedServiceTypeIds.length, serviceOptions]);
 
   // Previews for attachments
+  const [formUploadPreview, setFormUploadPreview] = React.useState<string | null>(null);
   const [previews, setPreviews] = React.useState<string[]>([]);
+  React.useEffect(() => {
+    if (!formUpload) {
+      setFormUploadPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(formUpload);
+    setFormUploadPreview(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [formUpload]);
   React.useEffect(() => {
     const urls = attachments
       .filter((f) => f && f.type && f.type.startsWith('image/'))
@@ -671,6 +780,135 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [isServiceRequest, parsedOdoStart, parsedOdoEnd]);
   const needsLateNotice = isServiceRequest && extraMileage > 500;
   const reasonRequiredMissing = isServiceRequest && extraMileage > 500 && lateNotice.trim().length === 0;
+  const existingFormUploadUrl = React.useMemo(() => {
+    if (!existing || typeof existing !== 'object') return null;
+    const candidate = (existing as any).form_upload ?? (existing as any).formUpload ?? null;
+    return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+  }, [existing]);
+  const existingFormUploadIsPdf = React.useMemo(() => (
+    existingFormUploadUrl ? /\.pdf(?:$|\?|#)/i.test(existingFormUploadUrl) : false
+  ), [existingFormUploadUrl]);
+  const existingFormUploadIsImage = React.useMemo(() => (
+    existingFormUploadUrl ? /\.(png|jpe?g|gif|bmp|webp)(?:$|\?|#)/i.test(existingFormUploadUrl) : false
+  ), [existingFormUploadUrl]);
+  const isApprovedStatus = React.useMemo(() => {
+    const statusValue = typeof existing?.status === 'string' ? existing.status.toLowerCase() : '';
+    if (statusValue === 'approved') return true;
+    const approvalDate = (existing as any)?.approval_date;
+    if (typeof approvalDate === 'string' && approvalDate) return true;
+    return false;
+  }, [existing]);
+  const showFormUploadSection = Boolean(id && isApprovedStatus);
+  const isCancelledApplication = React.useMemo(() => {
+    const statusValue = typeof existing?.status === 'string' ? existing.status.toLowerCase() : '';
+    const acceptanceStatus = Number((existing as any)?.acceptance_status);
+    return statusValue === 'cancelled' || acceptanceStatus === 2;
+  }, [existing]);
+  React.useEffect(() => {
+    if (!showFormUploadSection) {
+      setFormUpload(null);
+      if (!existingFormUploadUrl) setFormUploadDate(null);
+    }
+  }, [showFormUploadSection, existingFormUploadUrl]);
+  const formUploadContent = React.useMemo(() => {
+    if (formUpload && formUploadPreview) {
+      const isPdf = formUpload.type === 'application/pdf';
+      return (
+        <div className="relative w-full">
+          <Button
+            type="button"
+            onClick={clearFormUpload}
+            className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
+            aria-label="Remove selected file"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+          <div className="space-y-2 text-foreground">
+            <div className="text-sm font-medium break-words">{formUpload.name}</div>
+            {isPdf ? (
+              <object data={formUploadPreview} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
+                <p className="text-sm">
+                  Unable to preview PDF.
+                  {' '}
+                  <a href={formUploadPreview} target="_blank" rel="noreferrer" className="underline">
+                    Download maintenance form
+                  </a>
+                  .
+                </p>
+              </object>
+            ) : (
+              <img src={formUploadPreview} alt="Maintenance form preview" className="w-full max-h-60 object-contain rounded-md border bg-background" />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (existingFormUploadUrl) {
+      const overlayAction = (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+          <Button type="button" variant="outline" size="sm" className="pointer-events-auto" onClick={openFormUploadPicker}>
+            Select File
+          </Button>
+        </div>
+      );
+      if (existingFormUploadIsPdf) {
+        return (
+          <div className="relative w-full text-foreground">
+            <object data={existingFormUploadUrl} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
+              <p className="text-sm">
+                Unable to preview PDF.
+                {' '}
+                <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="underline">
+                  Download maintenance form
+                </a>
+                .
+              </p>
+            </object>
+            <div className="absolute left-3 top-3">
+              <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+                Download
+              </a>
+            </div>
+            {overlayAction}
+          </div>
+        );
+      }
+      if (existingFormUploadIsImage) {
+        return (
+          <div className="relative w-full text-foreground">
+            <img src={existingFormUploadUrl} alt="Maintenance form" className="w-full max-h-60 object-contain rounded-md border bg-background" />
+            <div className="absolute left-3 top-3">
+              <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-xs underline">
+                Download
+              </a>
+            </div>
+            {overlayAction}
+          </div>
+        );
+      }
+      return (
+        <div className="relative flex flex-col items-center gap-2">
+          <div className="text-sm">Preview unavailable for this file type.</div>
+          <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-sm underline">
+            Download maintenance form
+          </a>
+          {overlayAction}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 text-center py-6 text-muted-foreground">
+        <Button type="button" variant="outline" onClick={openFormUploadPicker}>
+          Select File
+        </Button>
+        <div className="text-xs max-w-xs">
+          Supports PDF, PNG, JPEG, JPG, or capture from camera.
+        </div>
+      </div>
+    );
+  }, [clearFormUpload, existingFormUploadIsImage, existingFormUploadIsPdf, existingFormUploadUrl, formUpload, formUploadPreview, openFormUploadPicker]);
 
   // Reset odo fields when not service request
   React.useEffect(() => {
@@ -678,6 +916,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       setOdoStart('');
       setOdoEnd('');
       setLateNotice('');
+      setFormUpload(null);
+      setFormUploadDate(null);
     }
   }, [isServiceRequest]);
 
@@ -945,6 +1185,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
               </div>
             </div>
 
+            
+
             {/* Create vs Readonly Actions */}
             {isReadOnly ? (
               <div className="space-y-3 mt-4">
@@ -982,7 +1224,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           toast.error('Failed to cancel application');
                         }
                       }}
-                      disabled={!cancelChecked || !cancelReason.trim()}
+                      disabled={!cancelChecked || !cancelReason.trim() || isCancelledApplication}
                       className="bg-red-600 hover:bg-red-700 text-white"
                     >
                       Cancel Application
@@ -1011,6 +1253,68 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 </div>
               </div>
             )}
+
+            {showFormUploadSection && (
+              <>
+                <Separator />
+
+                {/* Maintenance Form Upload */}
+                <div ref={formUploadRef} className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold">
+                      Maintenance Form Upload
+                    </div>
+                    {formUploadDate && (
+                      <Badge variant="outline">
+                        Selected {formatDMYHM(formUploadDate)}
+                      </Badge>
+                    )}
+                  </div>
+                  <Input
+                    ref={formUploadInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFormUploadChange}
+                  />
+                  <div
+                    className={[
+                      'rounded-md border bg-muted/20 p-4 min-h-[160px] flex items-center justify-center w-full',
+                      showErrors && errors.formUpload ? 'border-red-500 ring-1 ring-red-500/50' : 'border-muted-foreground/40',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    {formUploadContent}
+                  </div>
+                  {showErrors && errors.formUpload && (
+                    <div className="text-xs text-red-500">
+                      Workshop maintenance form is required once the request is approved.
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (onClose) onClose();
+                        else if (typeof window !== 'undefined') window.history.back();
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleFormUploadSubmit}
+                      disabled={!formUpload || formUploadSaving}
+                    >
+                      {formUploadSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Upload Form
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+
           </CardContent>
         </Card>
 
