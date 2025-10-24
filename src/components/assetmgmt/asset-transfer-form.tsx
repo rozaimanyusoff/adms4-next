@@ -194,6 +194,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const authContext = useContext(AuthContext);
 	const user = authContext?.authData?.user;
 	const formRef = useRef<HTMLFormElement>(null);
+	const requestor = React.useMemo(() => (form?.requestor ? { ...form.requestor } : {}), [form?.requestor]);
 
 	function clearFormAndItems() {
 		setForm(initialForm);
@@ -732,7 +733,14 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 					const data = res?.data?.data;
 					if (data) {
 						// Prefill form state for edit mode
-						setForm((prev: any) => ({ ...prev, ...data, requestor: data.requestor }));
+						setForm((prev: any) => ({
+							...prev,
+							...data,
+							requestor: {
+								...(prev?.requestor || {}),
+								...(data?.requestor || {}),
+							},
+						}));
 						// Determine transfer type based on existing data
 						const inferredOption: 'resignation' | 'transfer' = data.items?.some((item: any) => item.transfer_type === 'Employee') ? 'resignation' : 'transfer';
 						setApplicationOption(inferredOption);
@@ -887,7 +895,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 						{/* 1. Requestor Details */}
 						<div className="space-y-6">
 							{/* Hidden inputs for payload */}
-							<input type="hidden" name="ramco_id" value={form.requestor.ramco_id} />
+							<input type="hidden" name="ramco_id" value={requestor?.ramco_id ?? ''} />
 							<input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
 							{/* Row 1: Application Date aligned right */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -900,22 +908,22 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Name</Label>
-									<Input className="h-10 text-black" value={form.requestor.full_name || ''} disabled />
+									<Input className="h-10 text-black" value={requestor?.full_name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Ramco ID</Label>
-									<Input className="h-10 text-black" value={form.requestor.ramco_id || ''} disabled />
+									<Input className="h-10 text-black" value={requestor?.ramco_id || ''} disabled />
 								</div>
 							</div>
 							{/* Row 3: Cost Center & Department */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Cost Center</Label>
-									<Input className="h-10 text-black" value={form.requestor.costcenter?.name || ''} disabled />
+									<Input className="h-10 text-black" value={requestor?.costcenter?.name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Department</Label>
-									<Input className="h-10 text-black" value={form.requestor.department?.name || ''} disabled />
+									<Input className="h-10 text-black" value={requestor?.department?.name || ''} disabled />
 								</div>
 							</div>
 							{/* Application Options moved above next to Request Date */}
