@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import TrainingParticipant from '@/components/training/training-participant';
 import Image from 'next/image';
 import { Check, Pencil, X } from 'lucide-react';
 
@@ -489,14 +490,9 @@ const UserProfile: React.FC<React.PropsWithChildren> = ({ children }) => {
                             )}
                         </div>
                     </TabsContent>
-                    <TabsContent value="training" className="mt-6">
-                        {children ? (
-                            <div className="space-y-4">{children}</div>
-                        ) : (
-                            <div className="rounded-md bg-slate-100 px-4 py-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                                Training records are not available.
-                            </div>
-                        )}
+                    <TabsContent value="training" className="mt-6 space-y-6">
+                        <TrainingParticipant />
+                        {children ? <div className="space-y-4">{children}</div> : null}
                     </TabsContent>
                 </Tabs>
             </div>

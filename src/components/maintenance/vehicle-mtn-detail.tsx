@@ -247,6 +247,11 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
     return computeFromIds(pendingIds);
   }, [pendingUnverifiedIds, serviceHistory, request]);
 
+  // Prefer next pending id; fallback to previous
+  const nextUnverifiedId = useMemo(() => {
+    return nextReqId ?? prevReqId;
+  }, [nextReqId, prevReqId]);
+
   const navigateToRequest = (id: number | null) => {
     if (!id) return;
     // Prefer global pending-unverified IDs when available
@@ -358,7 +363,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
         }
       }
     } catch (_) { /* ignore */ }
-    router.push('/mtn/vehicle?tab=records');
+    router.push('/mtn/vehicle?tab=records&refresh=1');
   };
 
   const resendRecommendationRequest = async () => {
@@ -666,11 +671,8 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
         </div>
       </div>
 
-      <div className='p-6 mx-auto space-y-4'>
+      <div className='p-2 mx-auto space-y-4'>
         {/* Header */}
-
-
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Left pane: Request Overview (merged Vehicle Info / Requester / Request Details) */}
           <div className="flex flex-col space-y-6">
@@ -678,7 +680,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
               <CardContent className="space-y-4 h-full">
                 {/* Vehicle Information */}
                 <div>
-                  <h4 className="text-lg font-bold flex items-center mb-2"><Car className="w-5 h-5 mr-2" />Vehicle Information</h4>
+                  <h4 className="text-lg font-bold dark:text-dark-light flex items-center mb-2"><Car className="w-5 h-5 mr-2" />Vehicle Information</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium dark:text-dark-light">Registration Number</label>
@@ -686,18 +688,16 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                     </div>
                     {request.asset.make && (
                       <div>
-                        <label className="text-sm font-medium dark:text-dark-light">Make & Model</label>
+                        <label className="font-medium dark:text-dark-light">Make & Model</label>
                         <p>{request.asset.make} {typeof request.asset.model === 'string' ? request.asset.model : request.asset.model?.name}</p>
                       </div>
                     )}
                     {request.asset.year && (
                       <div>
-                        <label className="text-sm font-medium dark:text-dark-light">Year</label>
+                        <label className="font-medium dark:text-dark-light">Year</label>
                         <p>{request.asset.year}</p>
                       </div>
                     )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                     {request.asset.category && (
                       <div>
                         <label className="font-medium dark:text-dark-light">Category</label>
@@ -749,7 +749,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 {/* Requester */}
                 <div>
                   <h4 className="text-lg font-bold dark:text-dark-light flex items-center mb-2"><User className="w-5 h-5 mr-2" />Requester</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="font-medium dark:text-dark-light">Name</label>
                       <p className="dark:text-dark-light">{request.requester.name}</p>
@@ -784,10 +784,12 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 {/* Request Details */}
                 <div>
                   <h4 className="text-lg font-bold dark:text-dark-light flex items-center mb-2"><Wrench className="w-5 h-5 mr-2" />Request Details</h4>
-                  <div>
-                    <label className="dark:text-dark-light">Request Submitted: <span className="dark:text-dark-light text-blue-500 font-semibold">{formatDate(request.req_date)}</span></label>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                    <label className="dark:text-dark-light">Request Submitted: </label>
+                    <p className="dark:text-dark-light text-blue-500 font-semibold">{formatDate(request.req_date)}</p>
                   </div>
-                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
                   {typeof request.odo_start !== 'undefined' && request.odo_start !== null && request.odo_start !== '' && (
                         <div>
                           <label className="font-medium dark:text-dark-light">Current ODO (km): </label>
@@ -1034,7 +1036,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 ) : serviceHistory.length === 0 ? (
                   <p className="text-sm text-gray-500">No service records found for this asset.</p>
                 ) : (
-                  <div className="group space-y-2 max-h-[750px] border-0 px-2 overflow-y-hidden hover:overflow-y-auto">
+                  <div className="group space-y-2 max-h-[750px] border-0 overflow-y-hidden hover:overflow-y-auto">
                     {serviceHistory.map(rec => (
                       <div key={rec.req_id} className="p-2 border rounded-lg shadow bg-sky-100 dark:bg-gray-800 hover:bg-sky-200 transition-colors">
                         <div className="flex items-center justify-between">
@@ -1052,8 +1054,8 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                           <div className="text-right">
                             {rec.invoice?.inv_no ? (
                               <div>
-                                <p className="text-sm dark:text-dark-light font-bold">Inv: {rec.invoice.inv_no}</p>
-                                <p className="text-sm dark:text-dark-light font-bold">Amount: RM{rec.invoice.inv_total}</p>
+                                <p className="text-xs dark:text-dark-light font-bold">Inv: {rec.invoice.inv_no}</p>
+                                <p className="text-xs dark:text-dark-light font-bold">Amount: RM{rec.invoice.inv_total}</p>
                               </div>
                             ) : (
                               <p className="text-sm text-red-600">No invoice</p>
@@ -1095,7 +1097,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                                   ) : partsByReq[rec.req_id]?.error ? (
                                     <div className="text-sm text-red-600">{partsByReq[rec.req_id]?.error}</div>
                                   ) : (partsByReq[rec.req_id]?.parts && partsByReq[rec.req_id]!.parts!.length > 0) ? (
-                                    <ul className="list-disc list-inside text-sm">
+                                    <ul className="list-disc list-inside text-xs">
                                       {partsByReq[rec.req_id]!.parts!.map((p, idx) => (
                                         <li key={`part-${rec.req_id}-${idx}`} className="flex justify-between">
                                           <span className="pr-2">{p.part_name || 'Part'}</span>
@@ -1155,6 +1157,17 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
             The service coordinator action has been saved. You can return to the records list.
           </p>
           <DialogFooter>
+            {nextUnverifiedId ? (
+              <Button
+                onClick={() => {
+                  setShowSuccessDialog(false);
+                  navigateToRequest(nextUnverifiedId);
+                }}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                Show unverified application no: #{nextUnverifiedId}
+              </Button>
+            ) : null}
             <Button onClick={handleBackClick} className="bg-blue-600 text-white hover:bg-blue-700">
               Back to Records
             </Button>

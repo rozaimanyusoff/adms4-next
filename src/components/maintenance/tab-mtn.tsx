@@ -46,7 +46,7 @@ const TabMaintenance = () => {
     }, [activeTab, pathname, router]);
 
     return (
-        <div className="p-4">
+        <>
 
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
@@ -111,7 +111,7 @@ const TabMaintenance = () => {
                     <InsuranceModule />
                 </TabsContent>
             </Tabs>
-        </div>
+        </>
     );
 };
 

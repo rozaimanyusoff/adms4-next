@@ -19,7 +19,9 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
             '/pages/error404',
             '/pages/error500',
             '/pages/error503',
-            '/pages/maintenence'
+            '/pages/maintenence',
+            // Public, tokenized portals accessible from email links
+            '/mtn/vehicle/portal'
         ];
 
         // Check if current path is public

@@ -945,7 +945,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [isServiceRequest]);
 
   return (
-    <div className="p-2">
+    <div>
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader>

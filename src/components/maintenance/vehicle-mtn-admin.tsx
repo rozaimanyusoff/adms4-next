@@ -4,7 +4,7 @@ import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2, Search, Filter, Calendar } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -107,6 +107,8 @@ const VehicleMaintenanceAdmin = () => {
   const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   
   // Fetch rows for grid from backend using year + activeCard
   const fetchGridRows = async (year?: number, card?: SummaryCardKey) => {
@@ -200,15 +202,8 @@ const VehicleMaintenanceAdmin = () => {
   };
 
   const handleRowDoubleClick = (request: MaintenanceRequest) => {
-    // Open detailed admin view in a new tab to keep the grid context
+    // Navigate within the same tab to the detail view
     const url = `/mtn/vehicle/${request.req_id}`;
-    try {
-      if (typeof window !== 'undefined') {
-        window.open(url, '_blank');
-        return;
-      }
-    } catch (_) {}
-    // Fallback to in-app navigation if window is unavailable
     router.push(url);
   };
 
@@ -259,6 +254,24 @@ const VehicleMaintenanceAdmin = () => {
     fetchGridRows(yearFilter, activeCard);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yearFilter, activeCard]);
+
+  // If returning from detail with ?refresh=1, reload data once and clean the URL
+  useEffect(() => {
+    const shouldRefresh = searchParams?.get('refresh') === '1';
+    if (shouldRefresh) {
+      fetchSummaryCounts(yearFilter);
+      fetchGridRows(yearFilter, activeCard);
+      // Remove the refresh flag from URL to avoid repeated reloads
+      try {
+        const params = new URLSearchParams(searchParams?.toString());
+        params.delete('refresh');
+        const qs = params.toString();
+        const base = pathname ?? '/mtn/vehicle';
+        router.replace(qs ? `${base}?${qs}` : base);
+      } catch (_) { /* no-op */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const columns: ColumnDef<MaintenanceRequest>[] = [
     {
@@ -373,7 +386,7 @@ const VehicleMaintenanceAdmin = () => {
   ];
 
   return (
-    <div>
+    <>
       {/* Header + Filters */}
       <div className="mb-4">
         <div className="flex items-center justify-between gap-2">
@@ -437,7 +450,7 @@ const VehicleMaintenanceAdmin = () => {
       </div>
 
       {/* Status Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-6">
         <div 
           className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
             activeCard === 'total' ? 'ring-2 ring-gray-500 bg-gray-50 dark:bg-gray-700' : ''
@@ -555,7 +568,7 @@ const VehicleMaintenanceAdmin = () => {
           />
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

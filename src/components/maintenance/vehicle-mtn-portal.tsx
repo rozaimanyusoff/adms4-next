@@ -1,6 +1,6 @@
 'use client';
-import React, { useEffect, useState } from 'react';
-import { authenticatedApi } from '@/config/api';
+import React, { useEffect, useState, useContext } from 'react';
+import { authenticatedApi, api } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 // Card imports removed; details moved into accordion items
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Separator } from '@/components/ui/separator';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
 
   Calendar,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { AuthContext, parseLoginResponse } from '@/store/AuthContext';
 
 interface ServiceType {
   id: number;
@@ -116,6 +118,13 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
   const [pendingLoading, setPendingLoading] = useState(false);
   const [accordionValue, setAccordionValue] = useState<string | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const authContext = useContext(AuthContext);
+  // Inline login modal state
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const fetchRequestDetails = async () => {
     setLoading(true);
@@ -332,6 +341,27 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
     );
   };
 
+  const handleInlineLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const res = await api.post('/api/auth/login', {
+        emailOrUsername: loginUsername,
+        password: loginPassword,
+      });
+      const authData = parseLoginResponse(res.data);
+      authContext?.setAuthData(authData);
+      setShowLoginModal(false);
+      toast.success('Logged in successfully');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Login failed. Please try again.';
+      setLoginError(msg);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return 'Not set';
     const d = new Date(dateString);
@@ -345,6 +375,8 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
   useEffect(() => {
     if (!token) {
       toast.error('Invalid or missing access token.');
+      // Allow manual login without redirect
+      if (!authContext?.authData) setShowLoginModal(true);
       return;
     }
     setShowCredentialModal(false);
@@ -357,6 +389,15 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
     loadPendingRecommendations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, currentYear, action]);
+
+  useEffect(() => {
+    // Prompt login if user not authenticated (avoid global redirect)
+    if (!authContext?.authData) {
+      setShowLoginModal(true);
+    } else {
+      setShowLoginModal(false);
+    }
+  }, [authContext?.authData]);
 
   useEffect(() => {
     // Ensure the accordion item matching current req_id is expanded
@@ -397,9 +438,9 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="max-w-4xl mx-auto p-2">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Vehicle Maintenance Authorization Portal</h1>
+            <h1 className="text-lg font-bold text-gray-900">Vehicle Maintenance Authorization Portal</h1>
             <Button
               type="button"
               variant="destructive"
@@ -418,11 +459,11 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
 
       {/* Removed top card; details now live in the accordion below */}
       {/* Pending recommendations list */}
-      <div className="max-w-4xl mx-auto px-6 pb-8">
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-semibold">Pending {action === 'approve' ? 'Approvals' : 'Recommendations'} ({currentYear})</h3>
-            <div className="flex items-center gap-2">
+      <div className="max-w-4xl mx-auto p-2">
+        <div className="mt-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
+            <h3 className="text-lg font-semibold">Pending {action === 'approve' ? 'Approvals' : 'Recommendations'} ({pendingList.length})</h3>
+            <div className="flex items-center gap-2 mb-4 w-full sm:w-auto sm:justify-end">
               <Button size="sm" onClick={() => bulkDecision('approve')} disabled={selectedIds.size === 0}>
                 {action === 'approve' ? 'Approve selected' : 'Recommend selected'}
               </Button>
@@ -453,7 +494,7 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
                   return `${dd}/${mm}/${yy}`;
                 })();
                 return (
-                  <AccordionItem key={`pending-${reqId}`} value={`pending-${reqId}`} className="border rounded-lg bg-white">
+                  <AccordionItem key={`pending-${reqId}`} value={`pending-${reqId}`} className="border rounded-lg bg-red-50">
                     <AccordionTrigger className="px-4 py-2" onClick={() => fetchPendingDetail(Number(reqId))}>
                       <div className="flex w-full items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -682,6 +723,31 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
             </Button>
             <Button variant="outline" onClick={() => setSuccessOpen(false)}>Dismiss</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inline Login Modal */}
+      <Dialog open={showLoginModal} onOpenChange={setShowLoginModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sign in</DialogTitle>
+            <DialogDescription>Enter your Ramco ID or Email and password to continue.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleInlineLogin} className="space-y-4">
+            <div>
+              <label htmlFor="portal-username" className="block text-sm font-medium text-gray-700">Username or Email</label>
+              <Input id="portal-username" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} required autoFocus />
+            </div>
+            <div>
+              <label htmlFor="portal-password" className="block text-sm font-medium text-gray-700">Password</label>
+              <Input id="portal-password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
+            </div>
+            {loginError && <p className="text-sm text-red-600">{loginError}</p>}
+            <DialogFooter>
+              <Button type="submit" disabled={loginLoading}>{loginLoading ? 'Signing in…' : 'Sign in'}</Button>
+              <Button type="button" variant="outline" onClick={() => setShowLoginModal(false)}>Cancel</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
