@@ -141,6 +141,12 @@ interface MaintenanceRequestDetail {
   form_upload_date: string | null;
   emailStat: number;
   inv_status: number;
+  // Odometer details (may be present for Service requests)
+  odo_start?: number | string | null;
+  odo_end?: number | string | null;
+  mileage?: number | string | null;
+  extra_mileage?: number | string | null;
+  late_notice?: string | null;
   status: 'pending' | 'verified' | 'recommended' | 'approved' | 'pending recommendation' | 'pending approval' | 'cancelled' | 'rejected';
   asset: Asset;
   requester: Requester;
@@ -779,14 +785,40 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 <div>
                   <h4 className="text-lg font-bold dark:text-dark-light flex items-center mb-2"><Wrench className="w-5 h-5 mr-2" />Request Details</h4>
                   <div>
-                    <label className="font-medium dark:text-dark-light">Request Submitted: <span className="dark:text-dark-light">{formatDate(request.req_date)}</span></label>
-
+                    <label className="dark:text-dark-light">Request Submitted: <span className="dark:text-dark-light text-blue-500 font-semibold">{formatDate(request.req_date)}</span></label>
                   </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {typeof request.odo_start !== 'undefined' && request.odo_start !== null && request.odo_start !== '' && (
+                        <div>
+                          <label className="font-medium dark:text-dark-light">Current ODO (km): </label>
+                          <p className="dark:text-dark-light text-blue-500 font-semibold">{formatNumber(request.odo_start)}</p>
+                        </div>
+                      )}
+                  {typeof request.odo_end !== 'undefined' && request.odo_end !== null && request.odo_end !== '' && (
+                        <div>
+                          <label className="font-medium dark:text-dark-light">Service Mileage (km): </label>
+                          <p className="dark:text-dark-light text-blue-500 font-semibold">{formatNumber(request.odo_end)}</p>
+                        </div>
+                      )}
+                  {typeof request.extra_mileage !== 'undefined' && request.extra_mileage !== null && String(request.extra_mileage) !== '' && Number(request.extra_mileage) > 0 && (
+                        <div>
+                          <label className="font-medium dark:text-dark-light">Extra Mileage (km): </label>
+                          <p className="dark:text-dark-light text-blue-500 font-semibold">{formatNumber(request.extra_mileage)}</p>
+                        </div>
+                      )}
+                  {typeof request.late_notice === 'string' && request.late_notice && (
+                    <div className="mt-2">
+                      <label className="font-medium dark:text-dark-light">Late Notice</label>
+                      <div>
+                        <p className='dark:text-dark-light text-blue-500 font-semibold'>{request.late_notice}</p>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="font-medium dark:text-dark-light">Service Types</label>
                     <ul className="mt-2 list-disc list-inside space-y-2 text-gray-800">
                       {request.svc_type.map((service, idx) => (
-                        <li className='dark:text-dark-light font-semibold' key={(service as any).id ?? (service as any).svcTypeId ?? idx}>
+                        <li className='dark:text-dark-light text-blue-500 font-semibold' key={(service as any).id ?? (service as any).svcTypeId ?? idx}>
                           {(service as any).name ?? (service as any).svcType ?? 'Service'}
                         </li>
                       ))}
@@ -794,27 +826,19 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                   </div>
 
                   {request.req_comment ? (
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <label className="font-medium dark:text-dark-light">Request Comment</label>
-                      <div className="bg-gray-50 p-3 rounded-md mt-2">
-                        <p className="text-gray-800">{request.req_comment}</p>
+                      <div>
+                          <p className='dark:text-dark-light text-blue-500 font-semibold'>{request.req_comment}</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <label className="font-medium dark:text-dark-light">Request Comment</label>
-                      <p className="text-gray-500 italic">No comment provided</p>
+                      <p className="italic">No comment provided</p>
                     </div>
                   )}
-
-                  {request.description && (
-                    <div className="mt-3">
-                      <label className="text-sm font-medium dark:text-dark-light">Description</label>
-                      <div className="bg-gray-50 p-3 rounded-md mt-2">
-                        <p className="text-gray-800">{request.description}</p>
-                      </div>
-                    </div>
-                  )}
+                   </div>
                 </div>
               </CardContent>
             </Card>
@@ -1061,7 +1085,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                             <Accordion type="single" collapsible>
                               <AccordionItem value={`inv-${rec.req_id}`}>
                                 <AccordionTrigger onClick={() => ensurePartsLoaded(rec.req_id)}>
-                                  <span>Show invoiced parts</span>
+                                  <span className='text-blue-500 dark:text-dark-light font-semibold'>Show invoiced parts</span>
                                 </AccordionTrigger>
                                 <AccordionContent>
                                   {partsByReq[rec.req_id]?.loading ? (

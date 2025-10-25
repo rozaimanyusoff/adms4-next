@@ -91,23 +91,24 @@ const VehicleMtnRecord: React.FC = () => {
         const vehicleReg = d?.asset?.register_number || d?.vehicle?.register_number || 'N/A';
         const services = Array.isArray(d?.svc_type) ? d.svc_type.map((s: any) => s?.name).filter(Boolean).join(', ') : 'N/A';
         const invoiced = !!d?.invoice;
-        const statusLc = invoiced ? 'invoiced' : String(d?.status || '').toLowerCase();
-        // Date logic per requirements
+        const statusLc = String(d?.status || '').toLowerCase();
+        // Date logic per request:
+        // - approved      -> approval_date
+        // - cancelled     -> drv_date
+        // - rejected      -> drv_date
+        // - form uploaded -> form_upload_date
+        // - invoiced      -> invoice.inv_date
         let dateStr = '-';
-        if (statusLc.includes('invoiced')) {
+        if (invoiced || statusLc.includes('invoiced') || statusLc.includes('invoice')) {
           dateStr = d?.invoice?.inv_date ? formatDMY(d.invoice.inv_date) : '-';
         } else if (statusLc.includes('approved')) {
           dateStr = d?.approval_date ? formatDMY(d.approval_date) : '-';
-        } else if (statusLc.includes('pending verification')) {
-          dateStr = d?.verification_date ? formatDMY(d.verification_date) : '-';
-        } else if (statusLc.includes('pending recommendation')) {
-          dateStr = d?.recommendation_date ? formatDMY(d.recommendation_date) : '-';
-        } else if (statusLc.includes('pending approval')) {
-          dateStr = d?.approval_date ? formatDMY(d.approval_date) : '-';
-        } else if (statusLc.includes('rejected') || statusLc.includes('cancel')) {
-          dateStr = d?.approval_date
-            ? formatDMY(d.approval_date)
-            : (d?.recommendation_date ? formatDMY(d.recommendation_date) : (d?.verification_date ? formatDMY(d.verification_date) : '-'));
+        } else if (statusLc.includes('cancel')) {
+          dateStr = d?.drv_date ? formatDMY(d.drv_date) : '-';
+        } else if (statusLc.includes('rejected')) {
+          dateStr = d?.drv_date ? formatDMY(d.drv_date) : '-';
+        } else if ((statusLc.includes('form') && statusLc.includes('upload')) || statusLc.includes('form uploaded')) {
+          dateStr = d?.form_upload_date ? formatDMY(d.form_upload_date) : '-';
         }
 
         return {

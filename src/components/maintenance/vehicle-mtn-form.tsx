@@ -634,6 +634,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     setAttachments(files);
   }, []);
 
+  const clearAttachments = React.useCallback(() => {
+    setAttachments([]);
+  }, []);
+
   const handleFormUploadChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     setFormUpload(file);
@@ -658,6 +662,17 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     formUploadInputRef.current?.click();
   }, []);
 
+  const refetchById = React.useCallback(async () => {
+    if (!id) return;
+    try {
+      const res: any = await authenticatedApi.get(`/api/mtn/request/${id}`);
+      const data = res?.data?.data ?? res?.data ?? null;
+      setExisting(data);
+    } catch {
+      // silent fail on refetch
+    }
+  }, [id]);
+
   const handleFormUploadSubmit = React.useCallback(async () => {
     if (!id || !formUpload) return;
     setFormUploadSaving(true);
@@ -666,7 +681,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     formData.append('form_upload', formUpload);
     formData.append('form_upload_date', uploadDate);
     try {
-      const res: any = await authenticatedApi.put(`/api/mtn/request/${id}`, formData, {
+      const res: any = await authenticatedApi.put(`/api/mtn/request/${id}/form-upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const payload = res?.data?.data ?? res?.data ?? {};
@@ -685,13 +700,15 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       setFormUploadDate(uploadedDate);
       if (formUploadInputRef.current) formUploadInputRef.current.value = '';
       toast.success('Maintenance form uploaded successfully');
+      // Refetch record to ensure latest status/fields
+      await refetchById();
       onSubmitted?.();
     } catch (error) {
       toast.error('Failed to upload maintenance form');
     } finally {
       setFormUploadSaving(false);
     }
-  }, [id, formUpload, formUploadDate, onSubmitted]);
+  }, [id, formUpload, formUploadDate, refetchById, onSubmitted]);
 
   const carWashIds = React.useMemo(() => {
     const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
@@ -766,6 +783,12 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const onDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   }, []);
+
+  const openAttachmentPreview = React.useCallback((index: number = 0) => {
+    if (!previews || previews.length === 0) return;
+    const url = previews[index];
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, [previews]);
 
   // Derived values for service mileage logic
   const isServiceRequest = svcType === '2';
@@ -1150,38 +1173,54 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 <div
                   onDrop={onDropFiles}
                   onDragOver={onDragOver}
-                  className="h-40 rounded-md border border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground p-3 bg-muted/20"
+                  className={`${attachments.length > 0 ? 'relative h-72 rounded-md border border-muted-foreground/40 bg-muted/20 overflow-hidden' : 'h-40 rounded-md border border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground p-3 bg-muted/20'}`}
                 >
-                  <div>Drag & drop files here</div>
-                  <div>or</div>
-                  <div>
-                    <Input
-                      id="vehicle-mtn-attachments"
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleAttachmentChange}
-                    />
-                  </div>
-                </div>)}
-                {(!isReadOnly && attachments.length > 0) && (
-                  <div className="text-sm text-muted-foreground space-y-2">
-                    <div>Selected files:</div>
-                    <ul className="list-disc list-inside">
-                      {attachments.map((file) => (
-                        <li key={`${file.name}-${file.lastModified}`}>{file.name}</li>
-                      ))}
-                    </ul>
-                    {previews.length > 0 && (
-                      <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mt-2">
-                        {previews.map((src, idx) => (
-                          <img key={`preview-${idx}`} src={src} alt={`preview-${idx}`} className="w-full h-24 object-cover rounded-md border" />
-                        ))}
+                  {attachments.length === 0 ? (
+                    <>
+                      <div className="text-sm">Drag & drop images here</div>
+                      <div className="text-sm">or</div>
+                      <div>
+                        <Input
+                          id="vehicle-mtn-attachments"
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleAttachmentChange}
+                        />
                       </div>
-                    )}
-                  </div>
-                )}
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        onClick={clearAttachments}
+                        className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
+                        aria-label="Remove selected attachments"
+                        size="icon"
+                      >
+                        <X className="h-5 w-5" />
+                      </Button>
+                      {previews.length > 0 ? (
+                        <>
+                          <img
+                            src={previews[0]}
+                            alt="attachment-preview"
+                            className="absolute inset-0 w-full h-full object-contain cursor-zoom-in"
+                            onClick={() => openAttachmentPreview(0)}
+                          />
+                          {previews.length > 1 && (
+                            <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+                              {previews.length} images selected
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">No preview available</div>
+                      )}
+                    </>
+                  )}
+                </div>)}
               </div>
             </div>
 
