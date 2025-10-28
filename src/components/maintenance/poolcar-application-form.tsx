@@ -82,11 +82,15 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   const user = auth?.authData?.user;
 
   const [submitting, setSubmitting] = React.useState(false);
+  const [cancelSubmitting, setCancelSubmitting] = React.useState(false);
   const [agree, setAgree] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [dialogMode, setDialogMode] = React.useState<'submitted' | 'cancelled' | 'returned'>('submitted');
+  const [returnSaved, setReturnSaved] = React.useState(false);
   const [loadingExisting, setLoadingExisting] = React.useState(false);
   const [existing, setExisting] = React.useState<any>(null);
   const [returnDT, setReturnDT] = React.useState<string>('');
+  const [returnOdoEnd, setReturnOdoEnd] = React.useState<string>('');
   const [cancelRemarks, setCancelRemarks] = React.useState<string>('');
   const [cancelChecked, setCancelChecked] = React.useState<boolean>(false);
 
@@ -137,6 +141,9 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   // Guest / non-employee
   const [guestNotes, setGuestNotes] = React.useState<string>('');
 
+  // Readonly mode: after submission (edit mode), disallow updating booking/cancellation blocks
+  const readOnly = !!id;
+
   // Fetch existing data when editing
   React.useEffect(() => {
     if (!id) return;
@@ -183,11 +190,18 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         if (start) setFromDT(formatLocalInputValue(start));
         if (end) setToDT(formatLocalInputValue(end));
 
-        // Optional return date/time
-        const retRaw = (data as any).return_dt || (data as any).pcar_ret_dt || (data as any).pcar_returndt || null;
+        // Optional return date/time (new fields pcar_retdate, pcar_odo_end)
+        const retRaw = (data as any).pcar_retdate || (data as any).return_dt || (data as any).pcar_ret_dt || (data as any).pcar_returndt || null;
         if (retRaw) {
           const rdt = new Date(retRaw);
           if (!isNaN(rdt.getTime())) setReturnDT(formatLocalInputValue(rdt));
+        }
+        if ((data as any).pcar_odo_end != null) {
+          setReturnOdoEnd(String((data as any).pcar_odo_end));
+        }
+        // If already returned, disable save-return by default
+        if ((data as any).status === 'returned' || ((data as any).pcar_odo_end != null && retRaw)) {
+          setReturnSaved(true);
         }
 
         // Core
@@ -354,14 +368,9 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         pcar_pass: passengerPayload,
       };
 
-      // Update-mode specific fields (cancel + return date)
+      // Update-mode specific fields (return date only; cancellation handled via its own button)
       if (id) {
         payload.pcar_id = Number(id);
-        payload.pcar_cancel = !!cancelChecked;
-        payload.pcar_canrem = cancelChecked ? (cancelRemarks || null) : null;
-        if (cancelChecked && !cancelRemarks.trim()) {
-          throw new Error('CANCEL_REASON_REQUIRED');
-        }
         if (returnDT) {
           const rdt = parseLocalDateTime(returnDT);
           if (!isNaN(rdt.getTime())) {
@@ -377,15 +386,47 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         await authenticatedApi.post('/api/mtn/poolcars', payload);
         toast.success('Poolcar application created');
       }
+      setDialogMode('submitted');
       setDialogOpen(true);
     } catch (e: any) {
-      if (e?.message === 'CANCEL_REASON_REQUIRED') {
-        toast.error('Please provide cancellation remarks');
-      } else {
-        toast.error('Failed to submit application');
-      }
+      toast.error('Failed to submit application');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCancelApplication = async () => {
+    if (!id) return;
+    if (existing?.pcar_cancel === '1' || existing?.pcar_cancel === 1) {
+      toast.info('This application is already canceled.');
+      return;
+    }
+    if (!cancelChecked) {
+      toast.error('Please tick Cancel Request to confirm.');
+      return;
+    }
+    if (!cancelRemarks.trim()) {
+      toast.error('Please provide cancellation remarks');
+      return;
+    }
+    setCancelSubmitting(true);
+    try {
+      const payload = {
+        cancel_date: formatDateTimeForPayload(new Date()),
+        pcar_canrem: cancelRemarks.trim(),
+        pcar_cancel: 'cancelled',
+      } as any;
+      await authenticatedApi.put(`/api/mtn/poolcars/${id}`, payload);
+      toast.success('Application canceled');
+      // reflect local state
+      setExisting((s: any) => ({ ...(s || {}), pcar_cancel: 1, pcar_canrem: cancelRemarks.trim() }));
+      if (typeof onSubmitted === 'function') onSubmitted();
+      setDialogMode('cancelled');
+      setDialogOpen(true);
+    } catch (e) {
+      toast.error('Failed to cancel application');
+    } finally {
+      setCancelSubmitting(false);
     }
   };
 
@@ -405,7 +446,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   }, [onClose, onSubmitted]);
 
   return (
-    <div className="p-4">
+    <>
       <Card>
         <CardHeader>
           <CardTitle>{id ? `Edit Poolcar Application #${id}` : 'Create Poolcar Application'}</CardTitle>
@@ -450,13 +491,13 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div className="md:col-span-1">
                 <Label>Booking Option</Label>
-                <RadioGroup value={bookingOption} onValueChange={(v: any) => setBookingOption(v)} className="mt-2 grid-flow-col auto-cols-max items-center">
+                <RadioGroup value={bookingOption} onValueChange={(v: any) => { if (!readOnly) setBookingOption(v); }} className={`mt-2 grid-flow-col auto-cols-max items-center ${readOnly ? 'opacity-70 pointer-events-none' : ''}`}>
                   <div className="flex items-center gap-2">
-                    <RadioGroupItem id="opt-own" value="own" />
+                    <RadioGroupItem id="opt-own" value="own" disabled={readOnly} />
                     <Label htmlFor="opt-own">Own</Label>
                   </div>
                   <div className="flex items-center gap-4">
-                    <RadioGroupItem id="opt-onbehalf" value="onbehalf" />
+                    <RadioGroupItem id="opt-onbehalf" value="onbehalf" disabled={readOnly} />
                     <Label htmlFor="opt-onbehalf">On-Behalf</Label>
                   </div>
                 </RadioGroup>
@@ -466,8 +507,8 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 <SingleSelect
                   options={employeeOptions}
                   value={onBehalf}
-                  onValueChange={setOnBehalf}
-                  disabled={bookingOption !== 'onbehalf'}
+                  onValueChange={(v) => { if (!readOnly) setOnBehalf(v); }}
+                  disabled={readOnly || bookingOption !== 'onbehalf'}
                   placeholder="Select employee"
                 />
               </div>
@@ -476,7 +517,8 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 <SingleSelect
                   options={poolcarTypeOptions}
                   value={poolcarType}
-                  onValueChange={setPoolcarType}
+                  onValueChange={(v) => { if (!readOnly) setPoolcarType(v); }}
+                  disabled={readOnly}
                   placeholder="Select type"
                 />
               </div>
@@ -490,6 +532,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     type="button"
                     className="text-xs text-primary hover:underline"
                     onClick={() => {
+                      if (readOnly) return;
                       const now = new Date();
                       setFromDT(formatLocalInputValue(now));
                     }}
@@ -497,7 +540,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     Today
                   </button>
                 </Label>
-                <Input type="datetime-local" value={fromDT} onChange={e => setFromDT(e.target.value)} />
+                <Input type="datetime-local" value={fromDT} onChange={e => setFromDT(e.target.value)} disabled={readOnly} />
               </div>
               <div>
                 <Label className="flex items-center justify-between">
@@ -507,6 +550,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                       type="button"
                       className="text-xs text-primary hover:underline"
                       onClick={() => {
+                        if (readOnly) return;
                         const base = parseLocalDateTime(fromDT);
                         const origin = isNaN(base.getTime()) ? new Date() : base;
                         const end = new Date(origin.getTime() + 2 * 3600 * 1000);
@@ -519,6 +563,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                       type="button"
                       className="text-xs text-primary hover:underline"
                       onClick={() => {
+                        if (readOnly) return;
                         const now = new Date();
                         setToDT(formatLocalInputValue(now));
                       }}
@@ -527,7 +572,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     </button>
                   </div>
                 </Label>
-                <Input type="datetime-local" value={toDT} min={fromDT} onChange={e => setToDT(e.target.value)} />
+                <Input type="datetime-local" value={toDT} min={fromDT} onChange={e => setToDT(e.target.value)} disabled={readOnly} />
               </div>
               <div>
                 <Label>Duration</Label>
@@ -538,11 +583,11 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>Destination</Label>
-                <Textarea rows={2} value={destination} onChange={e => setDestination(e.target.value)} />
+                <Textarea rows={2} value={destination} onChange={e => setDestination(e.target.value)} disabled={readOnly} />
               </div>
               <div>
                 <Label>Purpose</Label>
-                <Textarea rows={2} value={purpose} onChange={e => setPurpose(e.target.value)} />
+                <Textarea rows={2} value={purpose} onChange={e => setPurpose(e.target.value)} disabled={readOnly} />
               </div>
             </div>
           </div>
@@ -557,19 +602,19 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
               <div className="space-y-2">
                 <div className="font-medium">Additional Requirement</div>
                 <div className="flex items-center gap-2">
-                  <Checkbox id="req-fc" checked={requirements.fleet_card} onCheckedChange={(v: any) => setRequirements(s => ({ ...s, fleet_card: !!v }))} />
+                  <Checkbox id="req-fc" checked={requirements.fleet_card} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, fleet_card: !!v }))} />
                   <Label htmlFor="req-fc">Fleet Card</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Checkbox id="req-tng" checked={requirements.tng} onCheckedChange={(v: any) => setRequirements(s => ({ ...s, tng: !!v }))} />
+                  <Checkbox id="req-tng" checked={requirements.tng} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, tng: !!v }))} />
                   <Label htmlFor="req-tng">Touch n' Go</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Checkbox id="req-st" checked={requirements.smart_tag} onCheckedChange={(v: any) => setRequirements(s => ({ ...s, smart_tag: !!v }))} />
+                  <Checkbox id="req-st" checked={requirements.smart_tag} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, smart_tag: !!v }))} />
                   <Label htmlFor="req-st">Smart TAG Device</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Checkbox id="req-driver" checked={requirements.driver} onCheckedChange={(v: any) => setRequirements(s => ({ ...s, driver: !!v }))} />
+                  <Checkbox id="req-driver" checked={requirements.driver} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, driver: !!v }))} />
                   <Label htmlFor="req-driver">Driver</Label>
                 </div>
               </div>
@@ -585,12 +630,12 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                     <SingleSelect
                       options={employeeOptions}
                       value={passengerPick}
-                      onValueChange={setPassengerPick}
+                      onValueChange={(v) => { if (!readOnly) setPassengerPick(v); }}
                       placeholder="Search employee"
-                      disabled={!poolcarType || passengers.length >= maxPassengers}
+                      disabled={readOnly || !poolcarType || passengers.length >= maxPassengers}
                     />
                   </div>
-                  <Button type="button" size="sm" onClick={addPassenger} disabled={!passengerPick || passengers.length >= maxPassengers}>
+                  <Button type="button" size="sm" onClick={() => { if (!readOnly) addPassenger(); }} disabled={readOnly || !passengerPick || passengers.length >= maxPassengers}>
                     <Plus size={14} />
                   </Button>
                 </div>
@@ -603,7 +648,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                         <span className="inline-flex w-5 justify-center text-xs text-muted-foreground">{idx + 1}.</span>
                         <span>{p.full_name} <span className="text-muted-foreground">({p.ramco_id})</span></span>
                       </div>
-                      <button className="text-red-600 hover:underline text-xs" onClick={() => removePassenger(p.ramco_id)}>
+                      <button className="text-red-600 hover:underline text-xs disabled:opacity-50" disabled={readOnly} onClick={() => { if (!readOnly) removePassenger(p.ramco_id); }}>
                         Remove
                       </button>
                     </div>
@@ -614,13 +659,50 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
               {/* Guests */}
               <div>
                 <div className="font-medium mb-2">Guest / Non-employee</div>
-                <Textarea rows={4} value={guestNotes} onChange={e => setGuestNotes(e.target.value)} placeholder="Names or details of guests" />
+                <Textarea rows={4} value={guestNotes} onChange={e => setGuestNotes(e.target.value)} placeholder="Names or details of guests" disabled={readOnly} />
               </div>
             </div>
           </div>
           <Separator />
-          {/* Status & Assignment - edit mode only, at last before agreement */}
+          {/* Cancellation - edit mode only */}
           {id && (
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cancellation</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                    <div className="md:col-span-1 flex items-center gap-2">
+                      <Checkbox id="cancelReq" checked={cancelChecked} onCheckedChange={(v: any) => setCancelChecked(!!v)} disabled={true} />
+                      <Label htmlFor="cancelReq" className='text-red-500 font-semibold'>Cancel Request</Label>
+                    </div>
+                    <div className="md:col-span-1 md:col-start-2">
+                      <Label className='text-red-500'>Cancel Remarks {cancelChecked ? <span className="text-red-500">*</span> : null}</Label>
+                      <Textarea
+                        rows={2}
+                        value={cancelRemarks}
+                        onChange={e => setCancelRemarks(e.target.value)}
+                        placeholder="Reason for cancellation"
+                        disabled={true}
+                      />
+                    </div>
+                    <div className="md:col-span-1 flex items-end">
+                      <Button
+                        variant="destructive"
+                        disabled={true}
+                        onClick={handleCancelApplication}
+                      >{cancelSubmitting ? 'Cancelling...' : 'Cancel Application'}</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Separator />
+            </div>
+          )}
+
+          {/* Status & Assignment - only after approved */}
+          {id && existing?.approval_stat === 1 && (
             <div>
               <Card>
                 <CardHeader>
@@ -654,63 +736,90 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                   </div>
                   <div>
                     <Label>Fleet Card</Label>
-                    <div className="text-sm mt-1">{existing?.fleetcard_id ? String(existing.fleetcard_id) : '-'}</div>
+                    <div className="text-sm mt-1">{existing?.fleetcard?.card_no || (existing?.fleetcard_id ? String(existing.fleetcard_id) : '-')}</div>
                   </div>
                   <div>
-                    <Label>Touch n' Go Card</Label>
-                    <div className="text-sm mt-1">{existing?.tng_id ? String(existing.tng_id) : '-'}</div>
+                    <Label>TnG Card</Label>
+                    <div className="text-sm mt-1">{existing?.tng?.tng_sn || (existing?.tng_id ? String(existing.tng_id) : '-')}</div>
                   </div>
                   <div>
-                    <Label>TnG Usage</Label>
+                    <Label>TnG Balance</Label>
                     <div className="text-sm mt-1">{existing?.tng_usage ? String(existing.tng_usage) : '-'}</div>
-                  </div>
-                  <div>
-                    <Label>Return Date/Time</Label>
-                    <Input type="datetime-local" value={returnDT} onChange={e => setReturnDT(e.target.value)} />
                   </div>
                   </div>
 
-                  {/* Cancel request */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                    <div className="md:col-span-1 flex items-center gap-2 mt-6">
-                      <Checkbox id="cancelReq" checked={cancelChecked} onCheckedChange={(v: any) => setCancelChecked(!!v)} />
-                      <Label htmlFor="cancelReq" className='text-red-500 font-semibold'>Cancel Request</Label>
+                  <Separator className="my-2" />
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Return Date/Time</Label>
+                      <Input type="datetime-local" value={returnDT} onChange={e => setReturnDT(e.target.value)} />
                     </div>
-                    <div className="md:col-span-2">
-                      <Label>Cancel Remarks {cancelChecked ? <span className="text-red-500">*</span> : null}</Label>
-                      <Textarea
-                        rows={2}
-                        value={cancelRemarks}
-                        onChange={e => setCancelRemarks(e.target.value)}
-                        placeholder="Reason for cancellation"
-                        disabled={!cancelChecked}
-                      />
+                    <div>
+                      <Label>Returned ODO Meter</Label>
+                      <Input type="number" min={0} value={returnOdoEnd} onChange={e => setReturnOdoEnd(e.target.value)} placeholder="e.g. 15000" />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          if (!id) return;
+                          if (!returnDT || !returnOdoEnd) { toast.error('Please enter return date/time and ODO meter'); return; }
+                          const rdt = parseLocalDateTime(returnDT);
+                          if (isNaN(rdt.getTime())) { toast.error('Invalid return date/time'); return; }
+                          try {
+                            const payload = {
+                              pcar_retdate: formatDateTimeForPayload(rdt),
+                              pcar_odo_end: Number(returnOdoEnd),
+                            };
+                            await authenticatedApi.put(`/api/mtn/poolcars/${id}/returned`, payload);
+                            toast.success('Return details saved');
+                            setReturnSaved(true);
+                            setDialogMode('returned');
+                            setDialogOpen(true);
+                          } catch (e) {
+                            toast.error('Failed to save return details');
+                          }
+                        }}
+                        disabled={!returnDT || !returnOdoEnd || returnSaved}
+                      >
+                        Save Return
+                      </Button>
                     </div>
                   </div>
+
                 </CardContent>
               </Card>
               <Separator />
             </div>
           )}
 
-          {/* Agreement & Actions inside card */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Checkbox id="agree" checked={agree} onCheckedChange={(v: any) => setAgree(!!v)} />
-              <Label htmlFor="agree">I confirm the information provided is accurate.</Label>
+          {/* Agreement & Actions inside card - only for create mode (not after submitted) */}
+          {!id && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Checkbox id="agree" checked={agree} onCheckedChange={(v: any) => setAgree(!!v)} />
+                <Label htmlFor="agree">I confirm the information provided is accurate.</Label>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>
+                <Button onClick={handleSubmit} disabled={disabled || !agree || loadingExisting}>{submitting ? 'Submitting...' : 'Submit'}</Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>
-              <Button onClick={handleSubmit} disabled={disabled || !agree || loadingExisting || (!!id && cancelChecked && !cancelRemarks.trim())}>{submitting ? 'Submitting...' : (id ? 'Update' : 'Submit')}</Button>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Application saved</DialogTitle>
+            <DialogTitle>
+              {dialogMode === 'cancelled'
+                ? 'Cancellation submitted'
+                : dialogMode === 'returned'
+                  ? 'Return submitted'
+                  : 'Application saved'}
+            </DialogTitle>
             <DialogDescription>
               The form has been submitted successfully. You may return to the main page when you are ready.
             </DialogDescription>
@@ -720,7 +829,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 };
 

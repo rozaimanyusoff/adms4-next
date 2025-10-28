@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Ban, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react';
+import { Ban, CheckCircle2, CheckCheck, Clock, Plus, RefreshCw } from 'lucide-react';
 import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
 import { AuthContext } from '@/store/AuthContext';
@@ -32,6 +32,7 @@ type PoolcarRecord = {
   approvalStat?: number | string | null;
   approvalDate?: string;
   returnAt?: string;
+  status?: string; // new string status from API: approved | pending | cancelled | rejected
   // keep original for potential drill-down
   __raw?: any;
 };
@@ -150,10 +151,30 @@ function isPendingStatus(status: any) {
   return !Number.isNaN(numeric) ? numeric === 0 : false;
 }
 
+function renderStatusByString(status?: string) {
+  const labelRaw = (status || '').toString().trim();
+  const lowered = labelRaw.toLowerCase();
+  let label = labelRaw || 'Pending';
+  let Icon = Clock;
+  let iconClass = 'text-amber-500';
+  if (lowered === 'approved') { Icon = CheckCircle2; iconClass = 'text-emerald-600'; }
+  else if (lowered === 'returned') { Icon = CheckCheck; iconClass = 'text-emerald-700'; }
+  else if (lowered === 'cancelled' || lowered === 'canceled') { Icon = Ban; iconClass = 'text-red-600'; }
+  else if (lowered === 'rejected') { Icon = Ban; iconClass = 'text-red-600'; }
+  else if (lowered === 'pending' || !lowered) { Icon = Clock; iconClass = 'text-amber-500'; }
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className={`h-4 w-4 ${iconClass}`} />
+      <span className="capitalize">{label || 'Pending'}</span>
+    </div>
+  );
+}
+
 const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'request_date', header: 'Request Date', sortable: true },
   { key: 'type', header: 'Poolcar Type', sortable: true, filter: 'singleSelect' },
+  { key: 'vehicle', header: 'Assigned Poolcar', sortable: true, filter: 'singleSelect' },
   {
     key: 'from',
     header: 'Trip Window',
@@ -166,17 +187,9 @@ const columns: ColumnDef<PoolcarRecord>[] = [
     ),
   },
   { key: 'duration', header: 'Duration', sortable: true },
-  { key: 'returnAt', header: 'Return Date/Time', sortable: true },
   { key: 'destination', header: 'Destination', sortable: true },
-  { key: 'vehicle', header: 'Vehicle', sortable: true, filter: 'singleSelect' },
-  {
-    key: 'approvalStat',
-    header: 'Approval',
-    sortable: false,
-    filter: 'singleSelect',
-    render: (row) => renderStatusCell(row.approvalStat, row.approvalDate),
-  },
-  // Optionally include purpose/passengers/options if needed later
+  { key: 'returnAt', header: 'Return Date/Time', sortable: true },
+  { key: 'status', header: 'Status', sortable: true, filter: 'singleSelect', render: (row) => renderStatusByString(row.status) },
 ];
 
 const PoolcarRecord: React.FC = () => {
@@ -210,8 +223,8 @@ const PoolcarRecord: React.FC = () => {
         id: d.pcar_id,
         request_date: formatDMY(d.pcar_datereq),
         employee: d.pcar_empid?.full_name || d.pcar_empid?.ramco_id || '-',
-        department: d.department?.code || String(d.dept_id ?? '-') ,
-        location: d.location?.name || String(d.loc_id ?? '-') ,
+        department: d.department?.code || String(d.dept_id ?? '-'),
+        location: d.location?.name || String(d.loc_id ?? '-'),
         type: getPoolcarTypeLabel(d.pcar_type),
         from: formatDMYHM(d.pcar_datefr),
         to: formatDMYHM(d.pcar_dateto),
@@ -219,11 +232,13 @@ const PoolcarRecord: React.FC = () => {
         returnAt: formatReturnDateTime(d.pcar_retdate, d.pcar_rettime),
         destination: d.pcar_dest ?? '-',
         purpose: d.pcar_purp ?? '-',
-        vehicle: d.asset?.register_number || String(d.vehicle_id ?? '-') ,
+        // Prefer latest fields: assigned_poolcar.register_number, fallback to asset.register_number or vehicle_id
+        vehicle: d.assigned_poolcar?.register_number || d.asset?.register_number || String(d.vehicle_id ?? '-'),
         options: d.pcar_opt ?? '-',
         passengers: d.pass ?? '-',
         approvalStat: d.approval_stat,
         approvalDate: d.approval_date,
+        status: d.status ? String(d.status) : undefined,
         __raw: d,
       }));
       setRows(mapped);
@@ -328,11 +343,12 @@ const PoolcarRecord: React.FC = () => {
             dataExport={false}
             theme="sm"
             onRowDoubleClick={handleRowDoubleClick}
-            rowClass={(row) =>
-              isPendingStatus(row.approvalStat)
-                ? 'bg-amber-50 dark:bg-amber-900/20'
-                : ''
-            }
+            rowClass={(row) => {
+              const s = (row.status || '').toString().toLowerCase();
+              if (s === 'pending' || isPendingStatus(row.approvalStat)) return 'bg-amber-50 dark:bg-amber-900/20';
+              if (s === 'cancelled') return 'bg-red-50 dark:bg-red-900/20';
+              return '';
+            }}
           />
         </div>
       )}
