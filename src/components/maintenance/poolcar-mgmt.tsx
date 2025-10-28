@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
-import { Ban, CheckCircle2, Clock, RefreshCw, Circle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Ban, CheckCircle2, Clock, RefreshCw, Circle, ChevronLeft, ChevronRight, Loader2, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import PoolcarCalendar from './poolcar-calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -43,6 +44,7 @@ type PoolcarRecord = {
   vehicle?: string;
   approvalStat?: number | string | null;
   approvalDate?: string;
+  status?: string | null;
   returnAt?: string;
   __raw?: any;
 };
@@ -266,7 +268,16 @@ function formatStatus(value: any) {
     };
     return map[numeric] || String(numeric);
   }
-  return String(value);
+  const lowered = String(value).trim().toLowerCase();
+  const mapStr: Record<string, string> = {
+    pending: 'Pending',
+    approved: 'Approved',
+    cancelled: 'Cancelled',
+    canceled: 'Cancelled',
+    rejected: 'Rejected',
+    returned: 'Returned',
+  };
+  return mapStr[lowered] || String(value);
 }
 
 function formatReturnDateTime(date?: string, time?: string) {
@@ -281,6 +292,62 @@ function formatReturnDateTime(date?: string, time?: string) {
     }
   }
   return formatDMYHM(base.toISOString());
+}
+
+function diffHumanDuration(from?: string, to?: string) {
+  if (!from || !to) return '';
+  const a = new Date(from);
+  const b = new Date(to);
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return '';
+  const ms = Math.max(0, b.getTime() - a.getTime());
+  let totalMinutes = Math.round(ms / 60000);
+  const minutes = totalMinutes % 60;
+  totalMinutes = Math.floor(totalMinutes / 60);
+  const hours = totalMinutes % 24;
+  totalMinutes = Math.floor(totalMinutes / 24);
+  const days = totalMinutes % 30;
+  const months = Math.floor(totalMinutes / 30);
+  const parts: string[] = [];
+  if (months > 0) parts.push(`${months}mo`);
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  return parts.join(' ');
+}
+
+function formatRelativeAgo(fromOrTo?: string) {
+  if (!fromOrTo) return '';
+  const base = new Date(fromOrTo);
+  if (isNaN(base.getTime())) return '';
+  const now = new Date();
+  const ms = Math.max(0, now.getTime() - base.getTime());
+  const totalMinutes = Math.floor(ms / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (parts.length === 0) return 'just now';
+  return `${parts.join(' ')} ago`;
+}
+
+function formatWhenRange(from?: string, to?: string) {
+  if (!from) return '-';
+  const start = new Date(from);
+  const end = to ? new Date(to) : null;
+  if (isNaN(start.getTime())) return '-';
+  const dd = String(start.getDate()).padStart(2, '0');
+  const mm = String(start.getMonth() + 1).padStart(2, '0');
+  const yyyy = start.getFullYear();
+  const hh = String(start.getHours()).padStart(2, '0');
+  const min = String(start.getMinutes()).padStart(2, '0');
+  const startPart = `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+  if (!end || isNaN(end.getTime())) return startPart;
+  const hh2 = String(end.getHours()).padStart(2, '0');
+  const min2 = String(end.getMinutes()).padStart(2, '0');
+  return `${startPart} - ${hh2}:${min2}`;
 }
 
 function getPoolcarTypeLabel(val: any): string {
@@ -302,7 +369,7 @@ function renderStatusCell(status: any, date?: string) {
   const label = formatStatus(status);
   const formattedDate = date ? formatDMYHM(date) : '';
   const numeric = Number(status);
-  let Icon = Clock;
+  let Icon: any = Clock;
   let iconClass = 'text-amber-500';
   if (!Number.isNaN(numeric)) {
     if (numeric === 1) {
@@ -311,10 +378,28 @@ function renderStatusCell(status: any, date?: string) {
     } else if (numeric === 2) {
       Icon = Ban;
       iconClass = 'text-red-600';
+    } else if (numeric === 3) {
+      Icon = Ban;
+      iconClass = 'text-red-600';
     }
   } else if (typeof status === 'string') {
     const lowered = status.toLowerCase();
-    if (lowered.includes('approve')) {
+    if (lowered === 'approved') {
+      Icon = CheckCircle2;
+      iconClass = 'text-emerald-600';
+    } else if (lowered === 'pending') {
+      Icon = Clock;
+      iconClass = 'text-amber-500';
+    } else if (lowered === 'rejected') {
+      Icon = Ban;
+      iconClass = 'text-red-600';
+    } else if (lowered === 'cancelled' || lowered === 'canceled') {
+      Icon = Ban;
+      iconClass = 'text-red-600';
+    } else if (lowered === 'returned') {
+      Icon = CheckCheck;
+      iconClass = 'text-emerald-600';
+    } else if (lowered.includes('approve')) {
       Icon = CheckCircle2;
       iconClass = 'text-emerald-600';
     } else if (lowered.includes('reject')) {
@@ -368,11 +453,11 @@ const columns: ColumnDef<PoolcarRecord>[] = [
   { key: 'destination', header: 'Destination', sortable: true, filter: 'input' },
   { key: 'vehicle', header: 'Assigned Poolcar', sortable: true, filter: 'singleSelect' },
   {
-    key: 'approvalStat',
-    header: 'Approval',
+    key: 'status',
+    header: 'Status',
     sortable: false,
     filter: 'singleSelect',
-    render: (row) => renderStatusCell(row.approvalStat, row.approvalDate),
+    render: (row) => renderStatusCell(row.status ?? row.approvalStat, row.approvalDate),
   },
   { key: 'returnAt', header: 'Return Date/Time', sortable: true },
 ];
@@ -401,7 +486,15 @@ const PoolcarMgmt: React.FC = () => {
   const confirmActionRef = React.useRef<(() => void) | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
+  const [assetAssignments, setAssetAssignments] = React.useState<any[]>([]);
+  const [assetAssignmentsLoading, setAssetAssignmentsLoading] = React.useState(false);
   const optionTokens = React.useMemo(() => extractPoolcarOptions(detail?.pcar_opt), [detail?.pcar_opt]);
+  const isRequestorCancelled = React.useMemo(() => {
+    const st = typeof detail?.status === 'string' ? detail.status.toLowerCase().trim() : '';
+    const flag = (detail as any)?.pcar_cancel;
+    const isFlagTrue = flag === 1 || flag === '1' || flag === true || (typeof flag === 'string' && flag.toLowerCase() === 'true');
+    return st === 'cancelled' || isFlagTrue;
+  }, [detail]);
   const showFleetcardRow = optionTokens.has('fleetcard');
   const showTouchngoRow = optionTokens.has('touchngo');
   const showSmarttagRow = optionTokens.has('smarttag');
@@ -439,6 +532,7 @@ const PoolcarMgmt: React.FC = () => {
         vehicle: d.asset?.register_number || String(d.vehicle_id ?? '-') ,
         approvalStat: d.approval_stat,
         approvalDate: d.approval_date,
+        status: d.status ?? null,
         __raw: d,
       }));
       setRows(mapped);
@@ -534,6 +628,30 @@ const PoolcarMgmt: React.FC = () => {
     }
   }, []);
 
+  // Build poolcar combobox options from fleet + availability
+  const poolcarOptions = React.useMemo<ComboboxOption[]>(() => {
+    return fleet.map((a: any) => {
+      const aid = Number(a?.id);
+      const info = availability[aid];
+      const status = String(info?.status || 'available').toLowerCase();
+      const plate = a?.register_number || `Asset #${aid}`;
+      const meta = [a?.brand?.name, a?.model?.name, a?.category?.name].filter(Boolean).join(' • ');
+      const statusLabel = status === 'available' ? 'available' : 'hired';
+      const label = meta ? `${plate} — ${meta}  [${statusLabel}]` : `${plate}  [${statusLabel}]`;
+      const render = (
+        <div className="flex items-center justify-between gap-2 w-full">
+          <span className="truncate">
+            {meta ? `${plate} — ${meta}` : plate}
+          </span>
+          <span className={status === 'available' ? 'text-emerald-600' : 'text-red-600'}>
+            [{statusLabel}]
+          </span>
+        </div>
+      );
+      return { value: String(aid), label, render } as ComboboxOption;
+    });
+  }, [fleet, availability]);
+
   const fetchFleetcardOptionList = React.useCallback(async () => {
     setFleetcardLoading(true);
     try {
@@ -619,6 +737,31 @@ const PoolcarMgmt: React.FC = () => {
     setFormState(nextState);
     initialFormRef.current = cloneAssignmentFormState(nextState);
   }, [detail]);
+
+  // Load applications for the selected poolcar (right pane list)
+  React.useEffect(() => {
+    const aid = formState.selectedAssetId;
+    if (!aid) {
+      setAssetAssignments([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setAssetAssignmentsLoading(true);
+      try {
+        const res = await authenticatedApi.get(`/api/mtn/poolcars?asset=${encodeURIComponent(String(aid))}`);
+        const items = listFromApiPayload(res?.data);
+        if (!cancelled) setAssetAssignments(items);
+      } catch {
+        if (!cancelled) setAssetAssignments([]);
+      } finally {
+        if (!cancelled) setAssetAssignmentsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formState.selectedAssetId]);
 
   React.useEffect(() => {
     if (!selectedId) {
@@ -767,15 +910,18 @@ const PoolcarMgmt: React.FC = () => {
       toast.error('Invalid poolcar request ID.');
       return;
     }
-    const isCancelled =
-      formState.cancelChecked ||
-      (formState.cancelReason && formState.cancelReason.trim().length > 0);
+    // Admin rejection (not requestor cancellation)
+    const isAdminRejected = formState.cancelChecked || (formState.cancelReason && formState.cancelReason.trim().length > 0);
+    if (isRequestorCancelled) {
+      toast.error('This application was cancelled by the requestor. No further changes allowed.');
+      return;
+    }
 
-    const assetId = isCancelled ? null : formState.selectedAssetId;
-    const fleetcardId = isCancelled ? null : parseOptionalNumber(formState.fleetcardSelection);
-    const tngId = parseOptionalNumber(formState.touchngoSelection);
+    const assetId = isAdminRejected ? null : formState.selectedAssetId;
+    const fleetcardId = isAdminRejected ? null : parseOptionalNumber(formState.fleetcardSelection);
+    const tngId = isAdminRejected ? null : parseOptionalNumber(formState.touchngoSelection);
 
-    if (!isCancelled) {
+    if (!isAdminRejected) {
       if (!assetId) {
         toast.error('Select a poolcar asset before saving.');
         return;
@@ -810,13 +956,15 @@ const PoolcarMgmt: React.FC = () => {
       tng_id: tngId,
       fleetcard_id: fleetcardId,
       asset_id: assetId,
-      approval: isCancelled ? null : username,
-      approval_stat: isCancelled ? null : 1,
-      approval_date: isCancelled ? null : formattedNow,
-      pcar_cancel: isCancelled ? true : false,
-      cancel_date: isCancelled ? formattedNow : null,
-      cancel_by: isCancelled ? username : null,
-      pcar_canrem: isCancelled ? (formState.cancelReason?.trim() || null) : null,
+      approval: username,
+      approval_stat: isAdminRejected ? 2 : 1,
+      approval_date: formattedNow,
+      // Do not mark as requestor-cancelled on admin rejection
+      pcar_cancel: false,
+      cancel_date: null,
+      cancel_by: null,
+      // Store admin rejection reason if provided
+      pcar_canrem: isAdminRejected ? (formState.cancelReason?.trim() || null) : null,
     };
 
     setSaving(true);
@@ -979,9 +1127,9 @@ const PoolcarMgmt: React.FC = () => {
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
-                      <div className="text-muted-foreground">Approval</div>
+                      <div className="text-muted-foreground">Status</div>
                       <div className="col-span-2">
-                        {renderStatusCell(d.approval_stat, d.approval_date)}
+                        {renderStatusCell(d.status ?? d.approval_stat, d.approval_date)}
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -996,7 +1144,7 @@ const PoolcarMgmt: React.FC = () => {
             </Card>
           </div>
 
-          {/* Right Area (2/3 width): Fleet with two-side layout */}
+          {/* Right Area: Fleet assignment (combobox only) */}
           <div className="md:col-span-8 space-y-3 flex flex-col">
             <Card className="h-full flex flex-col">
               <CardHeader className="py-3">
@@ -1007,85 +1155,53 @@ const PoolcarMgmt: React.FC = () => {
                   <div className="text-sm text-muted-foreground">Loading fleet...</div>
                 ) : (
                   <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Left division: Summary + scrollable list */}
-                    <div className="flex flex-col h-full">
-                      {/* Summary badges */}
-                      {(() => {
-                        const total = fleet.length;
-                        const isAvailable = (assetId: number) => {
-                          const st = availability[assetId]?.status;
-                          return (st ? String(st).toLowerCase() : 'available') === 'available';
-                        };
-                        const availableCount = fleet.reduce((acc, a) => acc + (isAvailable(Number(a?.id)) ? 1 : 0), 0);
-                        const hiredCount = total - availableCount;
-                        return (
-                          <div className="mb-2 flex items-center gap-2">
-                            <Badge variant="secondary">Total: {total}</Badge>
-                            <Badge variant="secondary" className="bg-emerald-600 text-white border-emerald-600">Available: {availableCount}</Badge>
-                            <Badge variant="destructive" className='text-white'>Hired: {hiredCount}</Badge>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Fleet list fills remaining height */}
-                      <div className="flex-1 border border-border rounded-sm divide-y divide-border overflow-auto">
-                        {fleet.map((a) => {
-                          const aid = Number(a?.id);
-                          const info = availability[aid];
-                          const status = String(info?.status || 'available').toLowerCase();
-                          const isAvail = status === 'available';
-                          const isSelected = formState.selectedAssetId === aid;
-                          return (
-                            <div
-                              key={aid}
-                              className={`p-2 flex items-center justify-between gap-3 transition ${isAvail ? 'cursor-pointer hover:bg-accent/40' : 'cursor-not-allowed opacity-80'} ${isSelected ? 'ring-2 ring-primary/70 bg-primary/5' : ''}`}
-                              onClick={() => {
-                                if (!isAvail) return;
-                                setFormState((prev) => {
-                                  const nextId = prev.selectedAssetId === aid ? null : aid;
-                                  return { ...prev, selectedAssetId: nextId };
-                                });
-                              }}
-                              role={isAvail ? 'button' : undefined}
-                              aria-disabled={!isAvail}
-                              aria-selected={isSelected}
-                            >
-                              <div className="min-w-0">
-                                <div className="font-medium truncate">{a?.register_number || `Asset #${aid}`}</div>
-                                <div className="text-xs text-muted-foreground truncate">
-                                  {a?.brand?.name ?? ''} {a?.model?.name ?? ''} • {a?.category?.name ?? ''}
-                                </div>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                {isAvail ? (
-                                  isSelected ? (
-                                    <Badge variant="secondary" className="bg-primary text-primary-foreground border-primary">selected</Badge>
-                                  ) : (
-                                    <Badge variant="secondary" className="bg-emerald-600 text-white border-emerald-600">available</Badge>
-                                  )
-                                ) : (
-                                  <div className="flex flex-col items-end gap-1">
-                                    <Badge variant="destructive" className='text-white'>hired</Badge>
-                                    {info?.pcar_id && (
-                                      <div className="text-[10px] text-muted-foreground">req #{info.pcar_id}</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {fleet.length === 0 && (
-                          <div className="p-3 text-sm text-muted-foreground">No poolcars found.</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right division: Form area and actions */}
+                    {/* Left: Form area and actions */}
                     <div className="flex flex-col h-full border border-border rounded-sm p-3">
                       <div className="text-sm font-semibold">Assignment Form</div>
                       <div className="text-xs text-muted-foreground">
-                        Select an available poolcar on the left.
+                        Select an available poolcar below.
+                      </div>
+
+                      {/* Poolcar quick selector */}
+                      <div className="mt-2">
+                        <Label className="text-sm font-medium">Poolcar</Label>
+                        {(() => {
+                          const total = fleet.length;
+                          const isAvailable = (assetId: number) => {
+                            const st = availability[assetId]?.status;
+                            return (st ? String(st).toLowerCase() : 'available') === 'available';
+                          };
+                          const availableCount = fleet.reduce((acc, a) => acc + (isAvailable(Number(a?.id)) ? 1 : 0), 0);
+                          const hiredCount = total - availableCount;
+                          return (
+                            <div className="mt-1 mb-2 flex items-center gap-2">
+                              <Badge variant="secondary">Total: {total}</Badge>
+                              <Badge variant="secondary" className="bg-emerald-600 text-white border-emerald-600">Available: {availableCount}</Badge>
+                              <Badge variant="destructive" className='text-white'>Hired: {hiredCount}</Badge>
+                            </div>
+                          );
+                        })()}
+                        <div className="mt-1 min-w-[260px]">
+                          <Combobox
+                            options={poolcarOptions}
+                            value={formState.selectedAssetId ? String(formState.selectedAssetId) : ''}
+                            onValueChange={(value) => {
+                              const aid = Number(value);
+                              if (Number.isNaN(aid)) return;
+                              const st = String(availability[aid]?.status || 'available').toLowerCase();
+                              if (st !== 'available') {
+                                toast.error('Selected poolcar is currently hired');
+                                return;
+                              }
+                              setFormState((prev) => ({ ...prev, selectedAssetId: aid }));
+                            }}
+                            disabled={isRequestorCancelled}
+                            placeholder={poolcarOptions.length ? 'Select poolcar' : 'No poolcars found'}
+                            searchPlaceholder="Search poolcar..."
+                            emptyMessage="No poolcar found."
+                            clearable
+                          />
+                        </div>
                       </div>
 
                       <div className="mt-3 space-y-4 flex-1 overflow-auto">
@@ -1120,6 +1236,7 @@ const PoolcarMgmt: React.FC = () => {
                                     fleetcardSelection: enabled ? prev.fleetcardSelection : '',
                                   }));
                                 }}
+                                disabled={isRequestorCancelled}
                               />
                               <Label htmlFor="option-fleetcard" className="text-sm font-medium">
                                 Fleetcard
@@ -1131,7 +1248,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onValueChange={(value) =>
                                     setFormState((prev) => ({ ...prev, fleetcardSelection: value }))
                                   }
-                                  disabled={!formState.fleetcardChecked || fleetcardLoading}
+                                  disabled={!formState.fleetcardChecked || fleetcardLoading || isRequestorCancelled}
                                   placeholder={fleetcardLoading ? 'Loading...' : 'Select fleetcard'}
                                   searchPlaceholder="Search fleetcard..."
                                   emptyMessage="No fleetcard found."
@@ -1159,6 +1276,7 @@ const PoolcarMgmt: React.FC = () => {
                                     touchngoSelection: enabled ? prev.touchngoSelection : '',
                                   }));
                                 }}
+                                disabled={isRequestorCancelled}
                               />
                               <Label htmlFor="option-touchngo" className="text-sm font-medium">
                                 Touch n&apos; Go
@@ -1170,7 +1288,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onValueChange={(value) =>
                                     setFormState((prev) => ({ ...prev, touchngoSelection: value }))
                                   }
-                                  disabled={!formState.touchngoChecked || tngLoading}
+                                  disabled={!formState.touchngoChecked || tngLoading || isRequestorCancelled}
                                   placeholder={tngLoading ? 'Loading...' : "Select Touch n' Go"}
                                   searchPlaceholder="Search Touch n' Go..."
                                   emptyMessage="No Touch n' Go option available."
@@ -1198,6 +1316,7 @@ const PoolcarMgmt: React.FC = () => {
                                     smarttagSerial: enabled ? prev.smarttagSerial : '',
                                   }));
                                 }}
+                                disabled={isRequestorCancelled}
                               />
                               <Label htmlFor="option-smarttag" className="text-sm font-medium">
                                 Smart TAG device
@@ -1209,7 +1328,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onChange={(event) =>
                                     setFormState((prev) => ({ ...prev, smarttagSerial: event.target.value }))
                                   }
-                                  disabled={!formState.smarttagChecked}
+                                  disabled={!formState.smarttagChecked || isRequestorCancelled}
                                 />
                               </div>
                             </div>
@@ -1224,37 +1343,48 @@ const PoolcarMgmt: React.FC = () => {
                         {(showFleetcardRow || showTouchngoRow || showSmarttagRow) && <Separator />}
 
                         <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <Checkbox
-                              id="option-cancel"
-                              checked={formState.cancelChecked}
-                              onCheckedChange={(checked) => {
-                                const enabled = checked === true;
-                                setFormState((prev) => ({
-                                  ...prev,
-                                  cancelChecked: enabled,
-                                  cancelReason: enabled ? prev.cancelReason : '',
-                                }));
-                              }}
-                            />
-                            <Label htmlFor="option-cancel" className="text-sm font-medium">
-                              Cancellation by admin
-                            </Label>
-                          </div>
-                          <div className="pl-7 space-y-2">
-                            <div className="text-xs text-muted-foreground">
-                              Enable this option to cancel the application and capture the reason.
-                            </div>
-                            <Textarea
-                              placeholder="State the cancellation reason"
-                              value={formState.cancelReason}
-                              onChange={(event) =>
-                                setFormState((prev) => ({ ...prev, cancelReason: event.target.value }))
-                              }
-                              disabled={!formState.cancelChecked}
-                              rows={4}
-                            />
-                          </div>
+                          {(() => {
+                            const isRejected = !!formState.cancelChecked;
+                            return (
+                              <div className={`flex flex-col gap-2 rounded border p-2 ${isRejected ? 'border-red-300 bg-red-50' : 'border-border/50'}`}>
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <Label className="text-sm font-medium">Approval</Label>
+                                  <div className="flex items-center gap-2">
+                                    <span className={isRejected ? 'text-xs text-muted-foreground' : 'text-xs text-emerald-700 font-semibold flex items-center gap-1'}>
+                                      {!isRejected && <CheckCircle2 className="h-4 w-4" />}
+                                      Approved
+                                    </span>
+                                    <Switch
+                                      checked={isRejected}
+                                      onCheckedChange={(checked) => {
+                                        setFormState((prev) => ({
+                                          ...prev,
+                                          cancelChecked: !!checked,
+                                          cancelReason: checked ? prev.cancelReason : '',
+                                        }));
+                                      }}
+                                      disabled={isRequestorCancelled}
+                                    />
+                                    <span className={isRejected ? 'text-xs font-semibold text-red-600' : 'text-xs text-muted-foreground'}>
+                                      Rejected
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className={`text-sm ${isRejected ? 'text-red-600' : ''}`}>Reason (when Rejected)</Label>
+                                  <Textarea
+                                    placeholder="State the cancellation reason"
+                                    value={formState.cancelReason}
+                                    onChange={(event) =>
+                                      setFormState((prev) => ({ ...prev, cancelReason: event.target.value }))
+                                    }
+                                    disabled={!isRejected || isRequestorCancelled}
+                                    rows={4}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -1274,7 +1404,7 @@ const PoolcarMgmt: React.FC = () => {
                             variant="outline"
                             size="sm"
                             onClick={handleResetForm}
-                            disabled={!isFormDirty || saving}
+                            disabled={!isFormDirty || saving || isRequestorCancelled}
                           >
                             Reset
                           </Button>
@@ -1286,7 +1416,7 @@ const PoolcarMgmt: React.FC = () => {
                           >
                             Cancel
                           </Button>
-                          <Button size="sm" onClick={handleSaveForm} disabled={saving}>
+                          <Button size="sm" onClick={handleSaveForm} disabled={saving || isRequestorCancelled}>
                             {saving ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1297,6 +1427,61 @@ const PoolcarMgmt: React.FC = () => {
                             )}
                           </Button>
                         </div>
+                      </div>
+                    </div>
+                    {/* Right: Recent assignments for the selected poolcar */}
+                    <div className="flex flex-col h-full border border-border rounded-sm p-3">
+                      <div className="text-sm font-semibold">Recent Assignments</div>
+                      <div className="text-xs text-muted-foreground">
+                        {formState.selectedAssetId && selectedAsset
+                          ? `for ${selectedAsset.register_number || 'selected poolcar'}`
+                          : 'Select a poolcar to view its recent assignments.'}
+                      </div>
+                      <div className="mt-2 flex-1 overflow-auto max-h-[700px] rounded-sm border border-border/70 bg-muted/20 p-2">
+                        {assetAssignmentsLoading ? (
+                          <div className="p-3 text-xs text-muted-foreground">Loading...</div>
+                        ) : formState.selectedAssetId ? (
+                          Array.isArray(assetAssignments) && assetAssignments.length > 0 ? (
+                            <div className="relative">
+                              <div className="absolute left-3 top-0 bottom-0 w-px bg-border" />
+                              {[...assetAssignments]
+                                .sort((a: any, b: any) => {
+                                  const aa = new Date(a?.pcar_datefr || 0).getTime();
+                                  const bb = new Date(b?.pcar_datefr || 0).getTime();
+                                  return bb - aa;
+                                })
+                                .map((it: any) => {
+                                  const when = formatWhenRange(it?.pcar_datefr, it?.pcar_dateto);
+                                  const dur = diffHumanDuration(it?.pcar_datefr, it?.pcar_dateto);
+                                  const ago = formatRelativeAgo(it?.pcar_dateto || it?.pcar_datefr);
+                                  const dest = it?.pcar_dest || '-';
+                                  const purp = it?.pcar_purp || '-';
+                                  const user = it?.pcar_driver?.full_name || it?.pcar_driver?.ramco_id || '-';
+                                  const key = it?.pcar_id ?? `${when}-${dest}`;
+                                  return (
+                                    <div key={key} className="relative pl-8 py-3">
+                                      <div className="absolute left-2 top-4 h-2 w-2 rounded-full bg-primary ring-2 ring-primary/20" />
+                                      <div className="font-medium text-sm">
+                                        {when} {dur ? <span className="text-blue-500">• {dur}</span> : null} {ago ? <span className="text-blue-500">• {ago}</span> : null}
+                                      </div>
+                                      <div className="mt-1 grid grid-cols-[90px_1fr] gap-x-2 gap-y-1 text-xs">
+                                        <div className="text-muted-foreground">Destination</div>
+                                        <div>{dest}</div>
+                                        <div className="text-muted-foreground">Purpose</div>
+                                        <div className="truncate" title={purp}>{purp}</div>
+                                        <div className="text-muted-foreground">Used by</div>
+                                        <div>{user}</div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          ) : (
+                            <div className="p-3 text-xs text-muted-foreground">No assignments found for this poolcar.</div>
+                          )
+                        ) : (
+                          <div className="p-3 text-xs text-muted-foreground">No poolcar selected.</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1376,7 +1561,7 @@ const PoolcarMgmt: React.FC = () => {
             theme="sm"
             onRowDoubleClick={handleRowDoubleClick}
             rowClass={(row) =>
-              isPendingStatus(row.approvalStat) ? 'bg-amber-50 dark:bg-amber-900/20' : ''
+              isPendingStatus(row.status ?? row.approvalStat) ? 'bg-amber-50 dark:bg-amber-900/20' : ''
             }
           />
         </div>

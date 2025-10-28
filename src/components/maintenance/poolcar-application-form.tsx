@@ -208,6 +208,20 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         setDestination(data.pcar_dest || '');
         setPurpose(data.pcar_purp || '');
 
+        // Cancellation state from backend (pcar_cancel, pcar_canrem)
+        const cancelRaw: any = (data as any).pcar_cancel;
+        const cancelIsTrue = (
+          cancelRaw === 1 ||
+          cancelRaw === '1' ||
+          cancelRaw === true ||
+          (typeof cancelRaw === 'string' && cancelRaw.toLowerCase() === 'true') ||
+          (typeof cancelRaw === 'string' && cancelRaw.toLowerCase() === 'yes')
+        );
+        setCancelChecked(cancelIsTrue);
+        if ((data as any).pcar_canrem != null) {
+          setCancelRemarks(String((data as any).pcar_canrem ?? ''));
+        }
+
         // Requirements
         const optStr: string = data.pcar_opt || '';
         const tokens = optStr.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);

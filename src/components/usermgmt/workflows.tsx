@@ -80,8 +80,8 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
   const [employeeComboboxOpen, setEmployeeComboboxOpen] = useState(false);
   // Per-employee authorize level select state
-  const [empSelectOpen, setEmpSelectOpen] = useState<Record<string, boolean>>({});
-  const [customLevelInputs, setCustomLevelInputs] = useState<Record<string, string>>({});
+  const [empSelectOpen, setEmpSelectOpen] = useState<Record<number, boolean>>({});
+  const [customLevelInputs, setCustomLevelInputs] = useState<Record<number, string>>({});
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -230,26 +230,45 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   const handleAddSelectedEmployee = () => {
     if (!selectedEmployee) return;
-    const exists = formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id);
-    if (exists) {
-      toast.error('Employee already added');
+    // Allow duplicates for the same employee as long as authorize_level differs
+    const usedLevels = formData.employees
+      .filter((e) => e.ramco_id === selectedEmployee.ramco_id)
+      .map((e) => e.authorize_level);
+
+    // Pick first unused standard level; if all used, leave empty to let user choose
+    const defaultLevel = authorizedLevels.find((lvl) => !usedLevels.includes(lvl)) || '';
+
+    // Prevent adding exact duplicate pair (same employee with same level)
+    if (defaultLevel && formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id && e.authorize_level === defaultLevel)) {
+      toast.error('Employee already added with this authorize level');
       return;
     }
+
+    // If all standard levels are used and there is already an empty-level entry, block
+    if (!defaultLevel && formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id && !e.authorize_level)) {
+      toast.error('Please set a unique authorize level for the existing entry first');
+      return;
+    }
+
     setFormData({
       ...formData,
       employees: [
         ...formData.employees,
-        { ramco_id: selectedEmployee.ramco_id, full_name: selectedEmployee.full_name, authorize_level: 'Verify' },
+        {
+          ramco_id: selectedEmployee.ramco_id,
+          full_name: selectedEmployee.full_name,
+          authorize_level: defaultLevel,
+        },
       ],
     });
     setSelectedEmployee(null);
     setEmployeeSearchQuery('');
   };
 
-  const handleRemoveAssignedEmployee = (ramco_id: string) => {
+  const handleRemoveAssignedEmployee = (index: number) => {
     setFormData({
       ...formData,
-      employees: formData.employees.filter((e) => e.ramco_id !== ramco_id),
+      employees: formData.employees.filter((_, i) => i !== index),
     });
   };
 
@@ -558,25 +577,27 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
                   {formData.employees.length > 0 && (
                     <div className="mt-3 space-y-2">
-                      {formData.employees.map((emp) => (
-                        <div key={emp.ramco_id} className="flex items-center justify-between gap-3 p-2 bg-gray-50 border rounded">
+                      {formData.employees.map((emp, idx) => (
+                        <div key={`${emp.ramco_id}-${idx}`} className="flex items-center justify-between gap-3 p-2 bg-gray-50 border rounded">
                           <div className="flex-1">
                             <div className="font-medium text-sm">{emp.full_name}</div>
                             <div className="text-xs text-gray-500">{emp.ramco_id}</div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Select
-                              open={empSelectOpen[emp.ramco_id] || false}
-                              onOpenChange={(o) =>
-                                setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: o }))
-                              }
+                              open={empSelectOpen[idx] || false}
+                              onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
                               value={emp.authorize_level}
                               onValueChange={(val) => {
+                                // Prevent duplicate level for the same employee across entries
+                                const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === val);
+                                if (duplicate) {
+                                  toast.error('This authorize level is already assigned to this employee');
+                                  return;
+                                }
                                 setFormData({
                                   ...formData,
-                                  employees: formData.employees.map((x) =>
-                                    x.ramco_id === emp.ramco_id ? { ...x, authorize_level: val } : x
-                                  ),
+                                  employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: val } : x)),
                                 });
                               }}
                             >
@@ -593,25 +614,25 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                 <div className="p-2 flex items-center gap-2">
                                   <Input
                                     placeholder="Custom level"
-                                    value={customLevelInputs[emp.ramco_id] || ''}
+                                    value={customLevelInputs[idx] || ''}
                                     onChange={(e) =>
-                                      setCustomLevelInputs((prev) => ({
-                                        ...prev,
-                                        [emp.ramco_id]: e.target.value,
-                                      }))
+                                      setCustomLevelInputs((prev) => ({ ...prev, [idx]: e.target.value }))
                                     }
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
-                                        const name = (customLevelInputs[emp.ramco_id] || '').trim();
+                                        const name = (customLevelInputs[idx] || '').trim();
                                         if (!name) return;
+                                        const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === name);
+                                        if (duplicate) {
+                                          toast.error('This authorize level is already assigned to this employee');
+                                          return;
+                                        }
                                         setFormData({
                                           ...formData,
-                                          employees: formData.employees.map((x) =>
-                                            x.ramco_id === emp.ramco_id ? { ...x, authorize_level: name } : x
-                                          ),
+                                          employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: name } : x)),
                                         });
-                                        setCustomLevelInputs((prev) => ({ ...prev, [emp.ramco_id]: '' }));
-                                        setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: false }));
+                                        setCustomLevelInputs((prev) => ({ ...prev, [idx]: '' }));
+                                        setEmpSelectOpen((prev) => ({ ...prev, [idx]: false }));
                                       }
                                     }}
                                     className="h-8"
@@ -619,16 +640,19 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                   <Button
                                     size="sm"
                                     onClick={() => {
-                                      const name = (customLevelInputs[emp.ramco_id] || '').trim();
+                                      const name = (customLevelInputs[idx] || '').trim();
                                       if (!name) return;
+                                      const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === name);
+                                      if (duplicate) {
+                                        toast.error('This authorize level is already assigned to this employee');
+                                        return;
+                                      }
                                       setFormData({
                                         ...formData,
-                                        employees: formData.employees.map((x) =>
-                                          x.ramco_id === emp.ramco_id ? { ...x, authorize_level: name } : x
-                                        ),
+                                        employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: name } : x)),
                                       });
-                                      setCustomLevelInputs((prev) => ({ ...prev, [emp.ramco_id]: '' }));
-                                      setEmpSelectOpen((prev) => ({ ...prev, [emp.ramco_id]: false }));
+                                      setCustomLevelInputs((prev) => ({ ...prev, [idx]: '' }));
+                                      setEmpSelectOpen((prev) => ({ ...prev, [idx]: false }));
                                     }}
                                   >
                                     Add
@@ -641,7 +665,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
-                              onClick={() => handleRemoveAssignedEmployee(emp.ramco_id)}
+                              onClick={() => handleRemoveAssignedEmployee(idx)}
                               title="Remove"
                             >
                               <X className="w-4 h-4" />

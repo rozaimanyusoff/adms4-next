@@ -25,6 +25,8 @@ export interface ComboboxOption {
   value: string
   label: string
   disabled?: boolean
+  // Optional custom renderer for the option row
+  render?: React.ReactNode
 }
 
 interface BaseComboboxProps {
@@ -264,7 +266,7 @@ export function Combobox(props: ComboboxProps) {
                         )}
                       />
                     )}
-                    <span className="flex-1">{option.label}</span>
+                    <span className="flex-1">{option.render ?? option.label}</span>
                     {isMultiple && isSelected && (
                       <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                     )}
