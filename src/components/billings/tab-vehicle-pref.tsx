@@ -2,22 +2,16 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Workshop from "./workshop";
-import FleetCardList from "./fleet-card";
 import TempVehicle from "./temp-vehicle";
 import Link from "next/link";
 
 const VehiclePref: React.FC = () => {
     const tabTitles = [
-        { value: "workshop", label: "Workshop" },
         { value: "svcopt", label: "Service Option" },
-        { value: "fleet", label: "Fleetcard Records" },
         { value: "tempvehicle", label: "Vehicle Records" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
-        workshop: <Workshop />,
-        fleet: <FleetCardList />,
         tempvehicle: <TempVehicle />,
     };
 

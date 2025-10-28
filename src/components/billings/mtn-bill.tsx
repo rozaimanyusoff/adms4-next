@@ -13,7 +13,6 @@ import { toast } from 'sonner';
 import clsx from 'clsx';
 // Removed Recharts chart imports as chart is no longer displayed
 import { downloadMaintenanceReport } from './pdfreport-mtn';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import MtnBillSummary from './mtn-bill-summary';
 
 // Interface for the maintenance bill data based on the provided structure
@@ -459,16 +458,7 @@ const MaintenanceBill: React.FC = () => {
 			{/* Summary Accordion - hidden while editing */}
 			{!selectedRow && (
 				<div className="mb-4">
-					<Accordion type="single" collapsible>
-						<AccordionItem value="mtn-summary" className="rounded">
-							<AccordionTrigger className="px-4 py-2">
-								<span className="font-semibold text-blue-500 dark:text-dark-light">Show Maintenance Summary</span>
-							</AccordionTrigger>
-							<AccordionContent className="px-4 pb-4">
-								<MtnBillSummary />
-							</AccordionContent>
-						</AccordionItem>
-					</Accordion>
+					<MtnBillSummary />
 				</div>
 			)}
 			{/* Data Grid */}

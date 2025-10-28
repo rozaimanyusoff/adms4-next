@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { generateFuelCostCenterReport } from './pdfreport-fuel-costcenter';
+import FuelBillSummary from './fuel-bill-summary';
 
 interface FuelBill {
   stmt_id: number;
@@ -154,8 +155,9 @@ const FuelBill = () => {
   ];
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between mb-4">
+    <>
+      <FuelBillSummary />
+      <div className="flex items-center justify-between my-4">
         <h2 className="text-lg font-bold">Fuel Consumption Bills Summary</h2>
         <Button
           variant={'default'}
@@ -196,7 +198,7 @@ const FuelBill = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

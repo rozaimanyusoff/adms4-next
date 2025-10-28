@@ -117,7 +117,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
     // Asset picker for Edit Detail Row
     const [editAssetPickerOpen, setEditAssetPickerOpen] = useState(false);
-    const [editAssetOptions, setEditAssetOptions] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string } }[]>([]);
+    const [editAssetOptions, setEditAssetOptions] = useState<{
+        id: number;
+        register_number?: string;
+        costcenter?: { id: number; name: string } | null;
+        fuel_type?: string;
+        purpose?: string;
+    }[]>([]);
     const [editAssetSearch, setEditAssetSearch] = useState('');
 
     // Add Fleet Card sidebar state
@@ -129,6 +135,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
     const [editFormData, setEditFormData] = useState({
         card_no: '',
         costcenter_id: '',
+        fuel_type: '',
         purpose: 'project',
         asset_id: '',
     });
@@ -621,6 +628,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             setEditFormData({
                 card_no: detail.fleetcard?.card_no || '',
                 costcenter_id: String(detail.asset?.costcenter?.id || ''),
+                fuel_type: detail.asset?.fuel_type || '',
                 purpose: detail.asset?.purpose || 'project',
                 asset_id: String(detail.asset?.asset_id || ''),
             });
@@ -634,7 +642,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         if (!editAssetPickerOpen) return;
         if (editAssetOptions.length > 0) return;
         authenticatedApi
-            .get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } }[] }>(
+            .get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } | null; fuel_type?: string; purpose?: string }[] }>(
                 '/api/assets',
                 { params: { type: 2, status: 'active' } }
             )
@@ -718,9 +726,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         }
                     }
 
-                    // Update purpose
+                    // Update purpose and fuel type
                     if (updated.asset) {
-                        updated.asset = { ...updated.asset, purpose: payload.purpose };
+                        updated.asset = { ...updated.asset, purpose: payload.purpose, fuel_type: editFormData.fuel_type };
                     }
 
                     // Update asset selection (id + register_number)
@@ -1189,7 +1197,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                                     </Button>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent>
-                                                                    <p>Edit Fleet Card, Cost Center & Purpose</p>
+                                                                    <p>Edit Fleet Card, Cost Center, Fuel Type & Purpose</p>
                                                                 </TooltipContent>
                                                             </Tooltip>
                                                         </TooltipProvider>
@@ -1441,6 +1449,25 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     </div>
 
                                     <div>
+                                        <label className="block text-sm font-medium mb-2">Fuel Type</label>
+                                        <Select
+                                            value={editFormData.fuel_type}
+                                            onValueChange={(value) => setEditFormData(prev => ({ ...prev, fuel_type: value }))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select Fuel Type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectGroup>
+                                                    <SelectLabel>Fuel Type</SelectLabel>
+                                                    <SelectItem value="petrol">Petrol</SelectItem>
+                                                    <SelectItem value="diesel">Diesel</SelectItem>
+                                                </SelectGroup>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div>
                                         <label className="block text-sm font-medium mb-2">Purpose</label>
                                         <Select
                                             value={editFormData.purpose}
@@ -1486,20 +1513,34 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         </div>
                                         <Input placeholder="Search..." value={editAssetSearch} onChange={e => setEditAssetSearch(e.target.value)} className="mb-3" />
                                         <div className="max-h-[600px] overflow-y-auto space-y-2">
-                                            {editAssetOptions.filter(a => (a.register_number || '').toLowerCase().includes(editAssetSearch.toLowerCase())).map(a => (
-                                                <div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
-                                                    <div>
-                                                        <div className="font-medium">{a.register_number || `#${a.id}`}</div>
-                                                        <div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                            {editAssetOptions
+                                                .filter(a => (a.register_number || '').toLowerCase().includes(editAssetSearch.toLowerCase()))
+                                                .map(a => (
+                                                    <div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
+                                                        <div>
+                                                            <div className="font-medium">{a.register_number || `#${a.id}`}</div>
+                                                            <div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                                            <div className="text-xs text-gray-500">Fuel: {a.fuel_type || '-'}</div>
+                                                            <div className="text-xs text-gray-500">Purpose: {a.purpose || '-'}</div>
+                                                        </div>
+                                                        <span
+                                                            className="text-green-500 cursor-pointer"
+                                                            onClick={() => {
+                                                                setEditFormData(prev => ({
+                                                                    ...prev,
+                                                                    asset_id: String(a.id),
+                                                                    costcenter_id: a.costcenter?.id ? String(a.costcenter.id) : '',
+                                                                    fuel_type: a.fuel_type || '',
+                                                                    purpose: a.purpose || 'project',
+                                                                }));
+                                                                setEditAssetPickerOpen(false);
+                                                            }}
+                                                            title="Select this asset"
+                                                        >
+                                                            <ArrowBigLeft />
+                                                        </span>
                                                     </div>
-                                                    <span className="text-green-500 cursor-pointer" onClick={() => {
-                                                        setEditFormData(prev => ({ ...prev, asset_id: String(a.id) }));
-                                                        setEditAssetPickerOpen(false);
-                                                    }} title="Select this asset">
-                                                        <ArrowBigLeft />
-                                                    </span>
-                                                </div>
-                                            ))}
+                                                ))}
                                         </div>
                                     </div>
                                 )}

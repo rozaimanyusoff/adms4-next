@@ -4,17 +4,20 @@ import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FuelBill from "./fuel-bill";
 import FuelDash from "./fuel-dash";
+import FleetCardList from "./fleet-card";
 import Link from "next/link";
 
 const FuelBillTab: React.FC = () => {
     const tabTitles = [
         { value: "fuel-dash", label: "Dashboard" },
         { value: "fuel-bill", label: "Fuel Bills" },
+        { value: "fleet-card", label: "Fleet Cards" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         "fuel-dash": <FuelDash />,
         "fuel-bill": <FuelBill />,
+        "fleet-card": <FleetCardList />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {

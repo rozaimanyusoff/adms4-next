@@ -2,8 +2,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
-import ExcelJS from 'exceljs';
+// import { Download } from 'lucide-react';
+// Excel generation handled by excel-maintenance-report helper
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { downloadMaintenanceVehicleSummary } from './excel-maintenance-report';
 
 type MtnInv = {
   inv_id: number;
@@ -30,13 +32,15 @@ function toNumber(amount: string | number | null | undefined) {
 }
 
 function formatCurrencyMY(amount: number) {
-  return new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', minimumFractionDigits: 2 }).format(amount);
+  // Display as plain number with 2 decimals (no currency symbol)
+  return new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 }
 
 const MtnBillSummary: React.FC = () => {
   const [data, setData] = useState<MtnInv[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -74,17 +78,38 @@ const MtnBillSummary: React.FC = () => {
     return Array.from(map.entries()).sort((a, b) => b[0] - a[0]);
   }, [data]);
 
-  // Build a 2D array for export where the first row is the header
-  const summaryMatrix = useMemo(() => {
-    const header = ['Year', ...monthShort, 'Total'];
-    const rows = byYearMonth.map(([year, months]) => {
-      const total = months.reduce((s, v) => s + v, 0);
-      // For export, use numbers (2 decimals). Empty months as empty string
-      const monthVals = months.map(v => v > 0 ? v : 0);
-      return [year, ...monthVals, total];
+  // summaryMatrix removed (export now handled via selected month range)
+
+  const monthRange = (year: number, monthIdx: number) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const from = `${year}-${pad(monthIdx + 1)}-01`;
+    const last = new Date(year, monthIdx + 1, 0).getDate();
+    const to = `${year}-${pad(monthIdx + 1)}-${pad(last)}`;
+    const url = `/api/bills/mtn/summary/vehicle?from=${from}&to=${to}`;
+    return { from, to, url };
+  };
+
+  const toggleCell = (year: number, monthIdx: number) => {
+    const key = `${year}-${monthIdx}`;
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
     });
-    return { header, rows };
-  }, [byYearMonth]);
+  };
+
+  const handleExportSelection = () => {
+    if (selected.size === 0) return;
+    const sels = Array.from(selected).map(s => {
+      const [y, m] = s.split('-').map(Number);
+      return { y, m };
+    }).sort((a,b) => a.y === b.y ? a.m - b.m : a.y - b.y);
+    const first = sels[0];
+    const last = sels[sels.length - 1];
+    const start = monthRange(first.y, first.m).from;
+    const end = monthRange(last.y, last.m).to;
+    downloadMaintenanceVehicleSummary(start, end);
+  };
 
   if (loading) {
     return (
@@ -104,108 +129,86 @@ const MtnBillSummary: React.FC = () => {
     );
   }
 
-  const exportCSV = () => {
-    const { header, rows } = summaryMatrix;
-    const lines: string[] = [];
-    const esc = (v: any) => {
-      if (typeof v === 'number') return v.toFixed(2);
-      const s = String(v ?? '');
-      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    };
-    lines.push(header.join(','));
-    for (const r of rows) {
-      lines.push(r.map(esc).join(','));
-    }
-    const csv = lines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const ts = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `mtn-invoices-summary-${ts}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportExcel = async () => {
-    const { header, rows } = summaryMatrix;
-
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Summary');
-
-    ws.addRow(header);
-    rows.forEach(r => ws.addRow(r));
-
-    // Style header
-    const headerRow = ws.getRow(1);
-    headerRow.font = { bold: true };
-    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
-    // Column widths and number formats: months + total as RM currency
-    ws.getColumn(1).width = 10; // Year
-    for (let c = 2; c <= header.length; c++) {
-      ws.getColumn(c).width = 14;
-      ws.getColumn(c).numFmt = 'RM #,##0.00';
-    }
-
-    // Freeze header
-    ws.views = [{ state: 'frozen', ySplit: 1 }];
-
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const ts = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `mtn-invoices-summary-${ts}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // (legacy CSV/XLSX exports removed; export handled per selection via helper)
 
   return (
-    <div className="overflow-x-auto">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Maintenance Bills Summary</h3>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="h-4 w-4 mr-2" /> Export CSV
-          </Button>
-          <Button variant="default" size="sm" onClick={exportExcel}>
-            <Download className="h-4 w-4 mr-2" /> Export XLSX
-          </Button>
-        </div>
-      </div>
-      <table className="min-w-full border text-sm border-gray-200 dark:border-gray-700">
-        <thead className="bg-gray-50 dark:bg-gray-800">
-          <tr>
-            <th className="px-2 py-2 text-left border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">Year</th>
-            {monthShort.map((m) => (
-              <th key={m} className="px-2 py-2 text-right border font-normal border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">{m}</th>
-            ))}
-            <th className="px-2 py-2 text-right border font-semibold border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {byYearMonth.map(([year, months]) => {
-            const rowTotal = months.reduce((s, v) => s + v, 0);
-            return (
-              <tr key={year} className="odd:bg-white even:bg-gray-50 dark:odd:bg-gray-900 dark:even:bg-gray-800">
-                <td className="px-2 py-2 border border-gray-200 dark:border-gray-700 font-medium text-gray-900 dark:text-gray-100">{year}</td>
-                {months.map((amt, idx) => (
-                  <td key={`${year}-${idx}`} className="px-2 py-2 border text-right tabular-nums border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100">
-                    {amt > 0 ? formatCurrencyMY(amt) : '-'}
-                  </td>
-                ))}
-                <td className="px-2 py-2 border text-right font-semibold tabular-nums text-green-700 dark:text-green-400 border-gray-200 dark:border-gray-700">
-                  {formatCurrencyMY(rowTotal)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Accordion type="single" collapsible>
+      <AccordionItem value="mtn-summary">
+        <AccordionTrigger>
+          <div className="flex items-center gap-3 w-full">
+            <span className="font-semibold">Maintenance Bill Summary</span>
+            {loading ? <span className="text-xs text-gray-500">Loading…</span> : null}
+          </div>
+        </AccordionTrigger>
+        <AccordionContent>
+          {selected.size > 0 && (
+            <div className="flex justify-end mb-2">
+              <Button size="sm" onClick={handleExportSelection}>
+                Export Selected ({selected.size})
+              </Button>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="min-w-full border text-sm border-gray-200 dark:border-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="px-2 py-2 text-left border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">Year</th>
+                  {monthShort.map((m) => (
+                    <th key={m} className="px-2 py-2 text-right border font-normal border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">{m}</th>
+                  ))}
+                  <th className="px-2 py-2 text-right border font-semibold border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byYearMonth.map(([year, months]) => {
+                  const rowTotal = months.reduce((s, v) => s + v, 0);
+                  return (
+                    <tr key={year} className="odd:bg-white even:bg-gray-50 dark:odd:bg-gray-900 dark:even:bg-gray-800">
+                      <td className="px-2 py-2 border border-gray-200 dark:border-gray-700 font-medium text-gray-900 dark:text-gray-100">{year}</td>
+                      {months.map((amt, idx) => {
+                        const { from, to, url } = monthRange(year, idx);
+                        const key = `${year}-${idx}`;
+                        const canSelect = amt > 0;
+                        const isChecked = selected.has(key);
+                        return (
+                          <td key={`${year}-${idx}`} className="px-2 py-2 border text-right tabular-nums border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100">
+                            <div className="flex items-center justify-end gap-2">
+                              {amt > 0 ? (
+                                <a
+                                  href={url}
+                                  className="text-blue-600 hover:underline"
+                                  title={`Download vehicle maintenance for ${monthShort[idx]} ${year}`}
+                                  onClick={(e) => { e.preventDefault(); downloadMaintenanceVehicleSummary(from, to); }}
+                                >
+                                  {formatCurrencyMY(amt)}
+                                </a>
+                              ) : (
+                                <span className="text-gray-500">-</span>
+                              )}
+                              {canSelect && (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${monthShort[idx]} ${year}`}
+                                  checked={isChecked}
+                                  onChange={() => toggleCell(year, idx)}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="px-2 py-2 border text-right font-semibold tabular-nums text-green-700 dark:text-green-400 border-gray-200 dark:border-gray-700">
+                        {formatCurrencyMY(rowTotal)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 };
 

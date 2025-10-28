@@ -6,6 +6,154 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ExcelJS from 'exceljs';
 
+// Lightweight helper for external callers: download vehicle maintenance summary for a date range
+export async function downloadMaintenanceVehicleSummary(from: string, to: string, opts?: { costCenterId?: string }) {
+    try {
+        let url = `/api/bills/mtn/summary/vehicle?from=${from}&to=${to}`;
+        if (opts?.costCenterId && opts.costCenterId !== 'all') {
+            url += `&cc=${opts.costCenterId}`;
+        }
+        const res = await authenticatedApi.get(url);
+        const json = res.data as VehicleApiResponse;
+        if (!(json.status === 'success' && Array.isArray(json.data))) {
+            throw new Error('Failed to fetch maintenance summary');
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Maintenance by Vehicle');
+
+        const titleRow = worksheet.addRow([`Vehicle Maintenance Summary`]);
+        titleRow.getCell(1).font = { bold: true, size: 14 };
+        titleRow.getCell(1).alignment = { horizontal: 'center' };
+        worksheet.addRow([]);
+        worksheet.addRow([`Date Range: ${from} to ${to}`]);
+        worksheet.addRow([]);
+
+        // Analyze data to determine which year-month combinations exist
+        const yearMonthMap: Record<string, Set<number>> = {};
+        json.data.forEach((vehicle: VehicleData) => {
+            (vehicle.details || []).forEach((yd: YearDetail) => {
+                (yd.maintenance || []).forEach((m: MaintenanceItem) => {
+                    if (m.inv_date) {
+                        const d = new Date(m.inv_date);
+                        const y = d.getFullYear().toString();
+                        const mo = d.getMonth() + 1;
+                        if (!yearMonthMap[y]) yearMonthMap[y] = new Set();
+                        yearMonthMap[y].add(mo);
+                    }
+                });
+            });
+        });
+        const years = Object.keys(yearMonthMap).sort();
+        years.forEach(y => {
+            yearMonthMap[y] = new Set(Array.from(yearMonthMap[y]).sort((a, b) => a - b));
+        });
+        const columns: { year: string, month: number }[] = [];
+        years.forEach(y => Array.from(yearMonthMap[y]).forEach(m => columns.push({ year: y, month: m })));
+
+        // Headers
+        const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'District', 'Owner', 'Classification', 'Record Status'];
+        const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
+        years.forEach(y => {
+            const months = Array.from(yearMonthMap[y]);
+            header1.push(y);
+            for (let i = 1; i < months.length; i++) header1.push('');
+            months.forEach(m => header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' })));
+        });
+        header1.push('Sub Total');
+        header2.push('');
+
+        const totalColumns = header1.length;
+        worksheet.mergeCells(1, 1, 1, totalColumns);
+        worksheet.addRow(header1);
+        worksheet.addRow(header2);
+
+        let col = 14;
+        years.forEach(y => {
+            const months = Array.from(yearMonthMap[y]);
+            if (months.length > 1) {
+                worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number - 1, col + months.length - 1);
+            }
+            col += months.length;
+        });
+        worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number, col);
+        for (let i = 1; i <= 13; i++) {
+            worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
+        }
+
+        const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
+        let no = 1;
+        json.data.forEach((vehicle: VehicleData) => {
+            const amounts: Record<string, number> = {};
+            (vehicle.details || []).forEach((yd: YearDetail) => {
+                (yd.maintenance || []).forEach((m: MaintenanceItem) => {
+                    if (m.inv_date && m.amount) {
+                        const d = new Date(m.inv_date);
+                        const y = d.getFullYear();
+                        const mo = d.getMonth() + 1;
+                        const key = `${y}-${mo}`;
+                        amounts[key] = (amounts[key] || 0) + (parseFloat(m.amount) || 0);
+                    }
+                });
+            });
+            const columnAmounts = columns.map(c => amounts[`${c.year}-${c.month}`] || 0);
+            const subTotal = columnAmounts.reduce((s, v) => s + v, 0);
+            worksheet.addRow([
+                no++,
+                vehicle.vehicle || '',
+                vehicle.category?.name || '',
+                vehicle.brand?.name || '',
+                vehicle.model?.name || '',
+                vehicle.transmission || '',
+                vehicle.fuel || '',
+                vehicle.age || '',
+                vehicle.costcenter?.name || '',
+                vehicle.district?.code || '',
+                vehicle.owner?.name || '',
+                vehicle.classification || '',
+                vehicle.record_status || '',
+                ...columnAmounts,
+                subTotal,
+            ]);
+        });
+
+        const amountStartCol = 14;
+        const totalCol = amountStartCol + columns.length;
+        for (let rowNum = tableStartRow; rowNum <= (worksheet.lastRow?.number || tableStartRow); rowNum++) {
+            for (let colIdx = amountStartCol; colIdx <= totalCol; colIdx++) {
+                worksheet.getRow(rowNum).getCell(colIdx).numFmt = '#,##0.00';
+            }
+        }
+        for (let rowNum = 3; rowNum <= (worksheet.lastRow?.number || tableStartRow); rowNum++) {
+            worksheet.getRow(rowNum).eachCell(cell => {
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            });
+        }
+        worksheet.columns.forEach(col => {
+            let max = 10;
+            col.eachCell?.({ includeEmpty: true }, cell => {
+                max = Math.max(max, (cell.value ? cell.value.toString().length : 0));
+            });
+            col.width = max + 2;
+        });
+        const now = new Date();
+        const ts = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}T${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const urlObj = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = urlObj;
+        a.download = `Vehicle-Maintenance-Report-${ts}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(urlObj);
+    } catch (err) {
+        console.error('downloadMaintenanceVehicleSummary error', err);
+        alert('Error downloading maintenance summary.');
+    }
+}
+
 // Updated interfaces to match actual API response
 interface MaintenanceItem {
     inv_id: number;

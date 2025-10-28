@@ -6,6 +6,191 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ExcelJS from 'exceljs';
 
+// Helper: download vehicle summary Excel for a given date range
+export async function downloadFuelVehicleSummary(from: string, to: string, opts?: { costCenterId?: string }) {
+  try {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    let url = `/api/bills/fuel/summary/vehicle?from=${from}&to=${to}`;
+    if (opts?.costCenterId && opts.costCenterId !== 'all') {
+      url += `&cc=${opts.costCenterId}`;
+    }
+    const res = await authenticatedApi.get(url);
+    const json = res.data as any;
+    if (!(json.status === 'success' && Array.isArray(json.data))) {
+      throw new Error('Failed to fetch data');
+    }
+
+    // Build year-month columns map
+    const yearMonthMap: Record<string, Set<number>> = {};
+    json.data.forEach((item: any) => {
+      (item.details || []).forEach((detail: any) => {
+        const year = detail.year?.toString();
+        if (year && Array.isArray(detail.monthly_expenses)) {
+          if (!yearMonthMap[year]) yearMonthMap[year] = new Set();
+          detail.monthly_expenses.forEach((expense: any) => {
+            if (expense.stmt_date) {
+              const d = new Date(expense.stmt_date);
+              yearMonthMap[year].add(d.getMonth() + 1);
+            }
+          });
+        }
+      });
+    });
+    const years = Object.keys(yearMonthMap).sort();
+    years.forEach(y => {
+      yearMonthMap[y] = new Set(Array.from(yearMonthMap[y]).sort((a, b) => a - b));
+    });
+    const rows: Record<string, any> = {};
+    json.data.forEach((item: any) => {
+      const key = `${item.vehicle}|${item.costcenter?.name}|${item.location?.name}`;
+      if (!rows[key]) {
+        rows[key] = {
+          vehicle: item.vehicle || '',
+          category: item.category?.name || '',
+          brand: item.brand?.name || '',
+          transmission: item.transmission || '',
+          fuel_type: item.fuel || '',
+          age: item.age || '',
+          costcenter: item.costcenter?.name || '',
+          location: item.location?.name || '',
+          model: item.model?.name || '',
+          owner: item.owner?.name || '',
+          classification: item.classification || '',
+          record_status: item.record_status || '',
+          total_litre: item.total_litre || 0,
+          total_amount: item.total_amount || 0,
+          amounts: {} as Record<string, number>
+        };
+      }
+      (item.details || []).forEach((detail: any) => {
+        const year = detail.year?.toString();
+        if (year && Array.isArray(detail.monthly_expenses)) {
+          detail.monthly_expenses.forEach((expense: any) => {
+            if (expense.stmt_date) {
+              const d = new Date(expense.stmt_date);
+              const month = d.getMonth() + 1;
+              const colKey = `${year}-${month}`;
+              rows[key].amounts[colKey] = expense.amount ? Number(expense.amount) : 0;
+            }
+          });
+        }
+      });
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Fuel Summary');
+    const titleRow = worksheet.addRow([`Vehicle Fuel Summary`]);
+    titleRow.getCell(1).font = { bold: true, size: 14 };
+    titleRow.getCell(1).alignment = { horizontal: 'center' };
+    worksheet.addRow([]);
+    worksheet.addRow([`Date Range: ${from} to ${to}`]);
+    worksheet.addRow([]);
+
+    const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'Location', 'Owner', 'Classification', 'Record Status'];
+    const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
+    years.forEach(y => {
+      const months = Array.from(yearMonthMap[y]);
+      header1.push(y);
+      for (let i = 1; i < months.length; i++) header1.push('');
+      months.forEach(m => header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' })));
+    });
+    header1.push('Sub Total');
+    header2.push('');
+
+    const totalColumns = header1.length;
+    worksheet.mergeCells(1, 1, 1, totalColumns);
+    worksheet.addRow(header1);
+    worksheet.addRow(header2);
+
+    let col = 14;
+    years.forEach(y => {
+      const months = Array.from(yearMonthMap[y]);
+      if (months.length > 1) {
+        worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number - 1, col + months.length - 1);
+      }
+      col += months.length;
+    });
+    worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number, col);
+    for (let i = 1; i <= 13; i++) {
+      worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
+    }
+    const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
+    let no = 1;
+    const columns = years.flatMap(y => Array.from(yearMonthMap[y]).map(m => ({ year: y, month: m })));
+    Object.values(rows).forEach((row: any) => {
+      const amounts = columns.map(c => {
+        const val = row.amounts[`${c.year}-${c.month}`];
+        return val !== undefined && val !== '' ? Number(val) : 0;
+      });
+      const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
+      worksheet.addRow([
+        no++,
+        row.vehicle,
+        row.category,
+        row.brand,
+        row.model,
+        row.transmission,
+        row.fuel_type,
+        row.age,
+        row.costcenter,
+        row.location,
+        row.owner,
+        row.classification,
+        row.record_status,
+        ...amounts,
+        subTotal,
+      ]);
+    });
+
+    const amountStartCol = 14;
+    const totalCol = amountStartCol + columns.length;
+    const headerStartRow = 3;
+    worksheet.getRow(headerStartRow).font = { bold: true };
+    worksheet.getRow(headerStartRow + 1).font = { bold: true };
+    const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
+    for (let rowNum = tableStartRow; rowNum <= lastRowNum; rowNum++) {
+      for (let colIdx = amountStartCol; colIdx <= totalCol; colIdx++) {
+        const cell = worksheet.getRow(rowNum).getCell(colIdx);
+        cell.numFmt = '#,##0.00';
+      }
+    }
+    const tableEndRow = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
+    for (let rowNum = 3; rowNum <= tableEndRow; rowNum++) {
+      const row = worksheet.getRow(rowNum);
+      row.eachCell(cell => {
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        };
+      });
+    }
+    worksheet.columns.forEach(col => {
+      let maxLength = 10;
+      col.eachCell?.({ includeEmpty: true }, cell => {
+        maxLength = Math.max(maxLength, (cell.value ? cell.value.toString().length : 0));
+      });
+      col.width = maxLength + 2;
+    });
+    const now = new Date();
+    const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const urlObj = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = urlObj;
+    a.download = `fuel-vehicle-summary-${datetimeStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(urlObj);
+  } catch (err) {
+    console.error('Vehicle summary download error', err);
+    alert('Error downloading summary report.');
+  }
+}
+
 const reportTypes = [
   { value: 'vehicle', label: 'By Vehicle' },
   { value: 'costcenter', label: 'By Cost Center' },

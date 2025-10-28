@@ -5,6 +5,7 @@ import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Plus, MoreVertical, Download } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
+import TelcoBillSummary from './telco-bill-summary';
 import { useRouter } from 'next/navigation';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -103,7 +104,8 @@ const TelcoBill = () => {
 
   return (
     <div className="mt-4">
-      <div className="flex items-center justify-between mb-4">
+      <TelcoBillSummary />
+      <div className="flex items-center justify-between my-4">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold">Telco Bills Summary</h2>
           {selectedRowIds.length > 0 && (
