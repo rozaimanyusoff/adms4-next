@@ -186,26 +186,41 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       // Validate required fields
       if (!formData.module_name || formData.employees.length === 0 || formData.employees.some(e => !e.authorize_level?.trim())) {
         toast.error('Please fill in all required fields');
+        setSaving(false);
         return;
       }
 
-      const payload = {
-        module_name: formData.module_name,
-        description: formData.description,
-        is_active: formData.is_active,
-        employees: formData.employees.map((e) => ({
-          employee_ramco_id: e.ramco_id,
-          authorize_level: e.authorize_level,
-        })),
-      };
-
       if (editingLevel?.id) {
-        // Update existing workflow
-        await authenticatedApi.put(`/api/users/workflows/${editingLevel.id}`, payload);
+        const assignee = formData.employees[0];
+        if (!assignee) {
+          toast.error('Please assign an employee to this workflow level');
+          setSaving(false);
+          return;
+        }
+
+        const updatePayload = {
+          module_name: formData.module_name,
+          description: formData.description,
+          level_name: assignee.authorize_level,
+          level_order: editingLevel.level_order ?? 1,
+          ramco_id: assignee.ramco_id,
+          is_active: formData.is_active,
+        };
+
+        await authenticatedApi.put(`/api/users/workflows/${editingLevel.id}`, updatePayload);
         toast.success('Workflow updated successfully');
       } else {
-        // Create new workflow
-        await authenticatedApi.post('/api/users/workflows', payload);
+        const createPayload = {
+          module_name: formData.module_name,
+          description: formData.description,
+          is_active: formData.is_active,
+          employees: formData.employees.map((e) => ({
+            ramco_id: e.ramco_id,
+            level_name: e.authorize_level,
+          })),
+        };
+
+        await authenticatedApi.post('/api/users/workflows', createPayload);
         toast.success('Workflow created successfully');
       }
 
@@ -308,7 +323,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
             {
               ramco_id: level.employee.ramco_id,
               full_name: level.employee.full_name,
-              authorize_level: 'Verify',
+              authorize_level: level.level_name || 'Verify',
             },
           ]
         : [],

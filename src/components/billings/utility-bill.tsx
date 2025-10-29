@@ -50,6 +50,14 @@ const isPrintingService = (service: string | null | undefined): boolean => {
     serviceLower.includes('scanner');
 };
 
+const getPreviousMonthIso = () => {
+  const now = new Date();
+  now.setMonth(now.getMonth() - 1);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 interface UtilityBill {
   util_id: number;
   // nested account object from backend
@@ -185,6 +193,9 @@ const UtilityBill = () => {
 
   // Dialog state for delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [batchServiceDialogOpen, setBatchServiceDialogOpen] = useState(false);
+  const [batchServiceMonth, setBatchServiceMonth] = useState<string>(getPreviousMonthIso());
+  const [batchServiceGenerating, setBatchServiceGenerating] = useState(false);
 
   // Confirm delete handler (invoked from dialog)
   const handleConfirmDelete = async () => {
@@ -208,6 +219,52 @@ const UtilityBill = () => {
     } finally {
       setLoading(false);
       setDeleteDialogOpen(false);
+    }
+  };
+
+  const selectedServices = useMemo(() => {
+    const serviceSet = new Set<string>();
+    (selectedGridRows || []).forEach((row: any) => {
+      const raw = row?.account?.service || row?.service || '';
+      const normalized = typeof raw === 'string' && raw.trim() ? raw.trim() : 'Utility';
+      serviceSet.add(normalized);
+    });
+    return Array.from(serviceSet);
+  }, [selectedGridRows]);
+
+  const selectedServiceLabel = useMemo(() => {
+    if (selectedServices.length === 0) return '';
+    if (selectedServices.length === 1) return selectedServices[0];
+    return selectedServices.join(', ');
+  }, [selectedServices]);
+
+  const openBatchServiceDialog = () => {
+    if (!selectedGridRows || selectedGridRows.length === 0) {
+      toast.error('Select one or more rows to print by service');
+      return;
+    }
+    setBatchServiceMonth(getPreviousMonthIso());
+    setBatchServiceDialogOpen(true);
+  };
+
+  const handleConfirmBatchServicePrint = async () => {
+    if (!batchServiceMonth) {
+      toast.error('Please choose a billing month');
+      return;
+    }
+
+    try {
+      setBatchServiceGenerating(true);
+      const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
+      await exportUtilityBillBatchByService(selectedGridRows, {
+        billMonthIso: batchServiceMonth,
+        serviceLabel: selectedServiceLabel,
+      });
+      setBatchServiceDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to export utility batch by service', err);
+    } finally {
+      setBatchServiceGenerating(false);
     }
   };
 
@@ -901,19 +958,7 @@ const UtilityBill = () => {
             <Button
               variant="default"
               className='w-70'
-              onClick={async () => {
-                try {
-                  if (!selectedGridRows || selectedGridRows.length === 0) {
-                    toast.error('Select one or more rows to print by service');
-                    return;
-                  }
-                  const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
-                  await exportUtilityBillBatchByService(selectedGridRows);
-                } catch (err) {
-                  console.error('Failed to export utility batch by service', err);
-                  toast.error('Failed to export service batch PDF.');
-                }
-              }}
+              onClick={openBatchServiceDialog}
               disabled={!canExport}
             >
               <Printer size={16} className="mr-1" /> Batch Beneficiary Print
@@ -921,6 +966,61 @@ const UtilityBill = () => {
             <p className="mt-1 text-xs text-red-500 dark:text-gray-400 w-70">
               **Used for print bills from multiple beneficiaries like services (cleaner) & rentals
             </p>
+            <Dialog
+              open={batchServiceDialogOpen}
+              onOpenChange={(open) => {
+                if (!batchServiceGenerating) {
+                  setBatchServiceDialogOpen(open);
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Batch Beneficiary Print</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="text-sm text-muted-foreground">
+                    <p>{selectedGridRows?.length || 0} bill(s) selected.</p>
+                    {selectedServiceLabel && (
+                      <p className="mt-1">
+                        Service{selectedServices.length > 1 ? 's' : ''}: <span className="font-medium">{selectedServiceLabel}</span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="batch-service-month">Billing month *</Label>
+                    <Input
+                      id="batch-service-month"
+                      type="month"
+                      value={batchServiceMonth}
+                      onChange={(e) => setBatchServiceMonth(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setBatchServiceDialogOpen(false)}
+                    disabled={batchServiceGenerating}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleConfirmBatchServicePrint} disabled={batchServiceGenerating || !batchServiceMonth}>
+                    {batchServiceGenerating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Printer size={16} className="mr-2" />
+                        Print Batch
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
           {/* Delete Selected: show when any rows are selected and user is authorized */}
           {selectedRowIds && selectedRowIds.length > 0 && deleteBillAuthorizer.includes(username) && (

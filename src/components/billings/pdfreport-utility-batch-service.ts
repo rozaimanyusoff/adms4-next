@@ -15,8 +15,26 @@ function formatDate(dateInput: string | Date | undefined): string {
   return `${day}/${month}/${year}`;
 }
 
+function formatMonthYearLabel(input?: string | null): string {
+  if (input) {
+    const [year, month] = input.split('-').map((part) => Number(part));
+    if (Number.isFinite(year) && Number.isFinite(month)) {
+      const d = new Date(year, month - 1, 1);
+      return d.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    }
+  }
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return prev.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+}
+
+type BatchExportOptions = {
+  billMonthIso?: string;
+  serviceLabel?: string;
+};
+
 // Accepts the actual selected grid rows so we can discover their beneficiary IDs and util IDs
-export async function exportUtilityBillBatchByService(selectedRows: AnyRow[]) {
+export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], options: BatchExportOptions = {}) {
   try {
     if (!Array.isArray(selectedRows) || selectedRows.length === 0) {
       toast.error('No rows selected for service batch export.');
@@ -101,10 +119,14 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[]) {
     // Title uses month roll-forward style similar to other reports
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    const now = new Date();
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const billMonthYear = `${prev.toLocaleString(undefined, { month: 'long' })} ${now.getFullYear()}`;
-    doc.text(`UTILITY BILLS - ${billMonthYear}`, 15, 64);
+    const services = Array.from(byService.keys()).sort((a, b) => a.localeCompare(b));
+    const serviceTitle = options.serviceLabel
+      ? options.serviceLabel
+      : services.length === 1
+        ? services[0]
+        : 'Mixed Services';
+    const billMonthYear = formatMonthYearLabel(options.billMonthIso);
+    doc.text(`${String(serviceTitle || 'Utility').toUpperCase()} BILLS - ${billMonthYear}`, 15, 64);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.text(`Kindly please make a payment as follows:`, 15, 70);
@@ -113,7 +135,6 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[]) {
     let overallGrandTotal = 0;
 
     // For each service group, render its own compact table and a subtotal
-    const services = Array.from(byService.keys()).sort((a, b) => a.localeCompare(b));
     for (const service of services) {
       const bills = byService.get(service) || [];
       if (!bills.length) continue;
@@ -228,8 +249,8 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[]) {
     const firstMeta = sampleBill?.account?.beneficiary || {};
     const signatures = [
       {
-        name: firstMeta?.entry_by?.full_name || 'MUHAMMAD NURAIMAN BIN ZAMANI',
-        title: firstMeta?.entry_position || 'Senior Technician',
+        name: firstMeta?.entry_by?.full_name || 'MUHAMMAD ARIF BIN ABDUL JALIL',
+        title: firstMeta?.entry_position || 'Senior Executive Administration',
         x: 15,
       },
       { name: 'MUHAMMAD ARIF BIN ABDUL JALIL', title: 'Senior Executive Administration', x: pageWidth / 2 - 28 },

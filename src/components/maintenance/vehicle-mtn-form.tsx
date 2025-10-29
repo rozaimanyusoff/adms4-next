@@ -1416,12 +1416,12 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                               <Badge className="bg-amber-100 text-amber-700">Current</Badge>
                             )}
                           </span>
-                          <span className="text-xs font-normal text-muted-foreground">
+                          <span className="text-xs font-normal">
                             {formatDMY(record.req_date)} · {formatRelativeYM(record.req_date)}
                           </span>
                         </div>
                         {record.svc_type && record.svc_type.length > 0 && (
-                          <ul className="mt-2 list-disc list-inside space-y-1 text-xs text-muted-foreground">
+                          <ul className="mt-2 list-disc list-inside space-y-1 text-xs">
                             {record.svc_type.map((svc, idx) => (
                               <li key={`${record.req_id}-${svc?.id ?? svc?.svcTypeId ?? idx}`}>
                                 {svc?.name || svc?.svcType || ''}
@@ -1430,17 +1430,17 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           </ul>
                         )}
                         {(record.odo_start || record.odo_end || record.mileage) && (
-                          <div className="mt-2 text-xs text-muted-foreground">
+                          <div className="mt-2 text-xs">
                             Odo: {record.odo_start ?? '-'} → {record.odo_end ?? '-'} · Mileage: {record.mileage ?? '-'} km
                           </div>
                         )}
                         {record.invoice && (record.invoice.inv_date || record.invoice.inv_total) && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Invoice: {record.invoice.inv_date ? formatDMY(String(record.invoice.inv_date)) : '-'} · {record.invoice.inv_total ?? '-'}
+                          <div className="mt-1 text-xs">
+                            Invoice: {record.invoice.inv_date ? formatDMY(String(record.invoice.inv_date)) : '-'}
                           </div>
                         )}
                         {record.req_comment && (
-                          <p className="mt-2 text-xs text-muted-foreground">Comment: {record.req_comment}</p>
+                          <p className="mt-2 text-xs">Comment: {record.req_comment}</p>
                         )}
                       </div>
                     ))}
