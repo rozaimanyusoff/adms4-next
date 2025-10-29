@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
 import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
@@ -172,7 +173,10 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                                                     const item = payload?.[0]?.payload;
                                                     return item ? `${item.startLabel} → ${item.dueLabel}` : value;
                                                 }}
-                                                formatter={(value: number) => [`${value} days`, 'Duration']}
+                                                formatter={(value: ValueType, _name: NameType) => {
+                                                    const v = Array.isArray(value) ? value.join(', ') : value;
+                                                    return [`${v} days`, 'Duration'];
+                                                }}
                                             />
                                         }
                                     />
@@ -251,7 +255,11 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                                     <ChartTooltip
                                         content={
                                             <ChartTooltipContent
-                                                formatter={(value: number, name: string) => [`${value} days`, name === 'ideal' ? 'Ideal remaining' : 'Actual remaining']}
+                                                formatter={(value: ValueType, name: NameType) => {
+                                                    const v = Array.isArray(value) ? value.join(', ') : value;
+                                                    const label = String(name) === 'ideal' ? 'Ideal remaining' : 'Actual remaining';
+                                                    return [`${v} days`, label];
+                                                }}
                                             />
                                         }
                                     />

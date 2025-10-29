@@ -92,8 +92,8 @@ export interface ColumnDef<T> {
     colClass?: string;
     /** Function to compute class name for a cell based on row data */
     colClassParams?: (row: T) => string;
-    /** Custom render function for a cell */
-    render?: (row: T) => React.ReactNode;
+    /** Custom render function for a cell. Second arg is 1-based row number in current view/export. */
+    render?: (row: T, index?: number) => React.ReactNode;
     /** Initial visibility of the column */
     columnVisible?: boolean;
 }
@@ -569,9 +569,9 @@ const CustomDataGridInner = <T,>({
     // --- Export Handlers ---
     const handleExportCSV = () => {
         const visibleCols = flatColumns.filter(col => visibleColumns[String(col.key)]);
-        const rows = filteredData.map(row =>
+        const rows = filteredData.map((row, i) =>
             visibleCols.map(col => {
-                const cellContent = col.render ? col.render(row) : row[col.key as keyof typeof row];
+                const cellContent = col.render ? col.render(row, i + 1) : row[col.key as keyof typeof row];
                 return typeof cellContent === 'string' || typeof cellContent === 'number'
                     ? String(cellContent)
                     : String(row[col.key as keyof typeof row] ?? '');
@@ -614,9 +614,9 @@ const CustomDataGridInner = <T,>({
             };
         });
 
-        filteredData.forEach(row => {
+        filteredData.forEach((row, i) => {
             const dataRow = worksheet.addRow(visibleCols.map(col => {
-                const raw = col.render ? col.render(row) : row[col.key as keyof typeof row];
+                const raw = col.render ? col.render(row, i + 1) : row[col.key as keyof typeof row];
                 return typeof raw === 'string' || typeof raw === 'number'
                     ? String(raw)
                     : typeof row[col.key as keyof typeof row] === 'object'
@@ -651,9 +651,9 @@ const CustomDataGridInner = <T,>({
         const doc = new jsPDF();
         const visibleCols = flatColumns.filter(col => visibleColumns[String(col.key)]);
         const headers = [visibleCols.map(col => col.header)];
-        const dataRows = filteredData.map(row =>
+        const dataRows = filteredData.map((row, i) =>
             visibleCols.map(col => {
-                const cellContent = col.render ? col.render(row) : row[col.key as keyof typeof row];
+                const cellContent = col.render ? col.render(row, i + 1) : row[col.key as keyof typeof row];
                 return typeof cellContent === 'string' || typeof cellContent === 'number'
                     ? String(cellContent)
                     : String(row[col.key as keyof typeof row] ?? '');
@@ -1390,6 +1390,7 @@ const CustomDataGridInner = <T,>({
                             <tbody>
                                 {pagedData.map((row, i) => {
                                     const key = resolveRowKey(row, i);
+                                    const displayIndex = (paginationEnabled ? (currentPage - 1) * pageSize : 0) + i + 1;
                                     return (
                                         <React.Fragment key={key}>
                                             <tr
@@ -1473,7 +1474,7 @@ const CustomDataGridInner = <T,>({
                                                             }}
                                                         >
                                                             <span className={textSizeClasses.base}>
-                                                                {col.render ? col.render(row) : String(row[col.key as keyof typeof row] ?? '')}
+                                                                {col.render ? col.render(row, displayIndex) : String(row[col.key as keyof typeof row] ?? '')}
                                                             </span>
                                                         </td>
                                                     );

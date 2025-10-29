@@ -15,7 +15,11 @@ const TabMaintenance = () => {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const allowed = ['dashboard', 'records', 'service-types', 'workshop', 'insurance'] as const;
+    const [activeTab, setActiveTab] = useState<string>(() => {
+        const tab = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : searchParams?.get('tab')) ?? '';
+        return (allowed as readonly string[]).includes(tab) ? tab : 'dashboard';
+    });
     const tabTitles = [
         { value: 'dashboard', label: 'Dashboard' },
         { value: 'records', label: 'Records' },
@@ -24,14 +28,12 @@ const TabMaintenance = () => {
         { value: 'insurance', label: 'Insurance' },
 
     ];
-    // Initialize from ?tab=... if provided
+    // Keep state in sync if URL ?tab changes (e.g., back/forward navigation)
     useEffect(() => {
         const tab = searchParams?.get('tab') ?? null;
-        const allowed = ['dashboard', 'records', 'service-types', 'workshop', 'insurance'];
-        if (typeof tab === 'string' && allowed.includes(tab)) {
+        if (typeof tab === 'string' && (allowed as readonly string[]).includes(tab) && tab !== activeTab) {
             setActiveTab(tab);
         }
-        // Re-run when search params change (e.g., from back/forward navigation)
     }, [searchParams]);
 
     // Optional: keep URL in sync when switching tabs

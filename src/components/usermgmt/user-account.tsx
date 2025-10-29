@@ -328,7 +328,7 @@ const UserManagement = () => {
                 row.usergroups && Array.isArray(row.usergroups) && row.usergroups.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                         {row.usergroups.map((g) => (
-                            <span key={g.id} className="bg-sky-600 text-white text-xs rounded-full px-2 py-0.5">
+                            <span key={g.id} className="bg-sky-600 text-white text-[10px] truncate text-center rounded-full px-2 py-0.5">
                                 {g.name}
                             </span>
                         ))}
@@ -975,7 +975,7 @@ const UserManagement = () => {
     }, [showBulkInviteDialog, bulkInviteFeedback]);
 
     return (
-        <div className="mt-4">
+        <>
             {/* Summary Cards Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <Card
@@ -1610,7 +1610,7 @@ const UserManagement = () => {
                     </AlertDialogContent>
                 </AlertDialog>
             )}
-        </div>
+        </>
     );
 };
 

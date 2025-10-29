@@ -12,6 +12,8 @@ import ActionSidebar from '@/components/ui/action-aside';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { Plus, RefreshCcw, Search, Save, X } from 'lucide-react';
+import { CustomDataGrid } from '@/components/ui/DataGrid';
+import type { ColumnDef } from '@/components/ui/DataGrid';
 
 type Vehicle = {
   id: number | string;
@@ -24,14 +26,32 @@ type Vehicle = {
   classification?: string | { name?: string } | null;
 };
 
-type InsuranceRow = {
-  id: number | string;
+// API response row for listing (based on /api/mtn/insurance)
+type InsuranceApiRow = {
+  rt_id: number;
   insurer: string;
-  policy_no: string;
-  coverage_start?: string;
-  coverage_end?: string;
-  premium_amount?: number | string;
-  coverage_details?: string;
+  ins_policy: string;
+  ins_exp?: string | null;
+  ins_upload?: string | null;
+  rt_exp?: string | null;
+  asset: {
+    id: number;
+    register_number: string;
+    entry_code?: string;
+    classification?: string;
+    purchase_date?: string;
+    age_years?: number;
+    costcenter?: { id: number; name: string };
+    department?: { id: number; name: string };
+    location?: { id: number; name: string };
+    category?: { id: number; name: string };
+    brand?: { id: number; name: string };
+    model?: { id: number; name: string };
+  };
+  // Virtual keys for derived columns (for DataGrid typing only)
+  row_no?: number;
+  ins_remaining?: string;
+  rt_remaining?: string;
 };
 
 type InsuranceForm = {
@@ -63,8 +83,7 @@ type UpdateRow = {
 const InsuranceModule: React.FC = () => {
   // Records
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState<InsuranceRow[]>([]);
-  const [search, setSearch] = useState('');
+  const [records, setRecords] = useState<InsuranceApiRow[]>([]);
 
   // Create aside
   const [openCreate, setOpenCreate] = useState(false);
@@ -87,10 +106,10 @@ const InsuranceModule: React.FC = () => {
   async function loadRecords() {
     setLoading(true);
     try {
-      // Not specified: list endpoint. If backend returns a single object for GET /api/mtn/insurance, coerce to array.
+      // If backend returns a single object for GET /api/mtn/insurance, coerce to array.
       const res: any = await authenticatedApi.get('/api/mtn/insurance');
-      const raw = res?.data?.data || res?.data || [];
-      const data: InsuranceRow[] = Array.isArray(raw) ? raw : [raw];
+      const raw = res?.data?.data ?? res?.data ?? [];
+      const data: InsuranceApiRow[] = Array.isArray(raw) ? raw : [raw];
       setRecords(data.filter(Boolean));
     } catch (err) {
       console.error(err);
@@ -102,15 +121,154 @@ const InsuranceModule: React.FC = () => {
 
   useEffect(() => { loadRecords(); }, []);
 
-  const filtered = useMemo(() => {
-    if (!search) return records;
-    const q = search.toLowerCase();
-    return records.filter(r =>
-      String(r.id).includes(q) ||
-      (r.insurer || '').toLowerCase().includes(q) ||
-      (r.policy_no || '').toLowerCase().includes(q)
+  function fmtDate(value?: string | null) {
+    if (!value) return '-';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value).slice(0, 10);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    } catch {
+      return String(value).slice(0, 10);
+    }
+  }
+
+  // Expiry helpers and summary
+  const isExpired = (value?: string | null) => {
+    if (!value) return false;
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dd = new Date(d);
+    dd.setHours(0, 0, 0, 0);
+    return dd < today;
+  };
+
+  const summary = useMemo(() => {
+    const total = records.length;
+    let expiredIns = 0;
+    let expiredRt = 0;
+    for (const r of records) {
+      if (isExpired(r.ins_exp)) expiredIns += 1;
+      if (isExpired(r.rt_exp)) expiredRt += 1;
+    }
+    return { total, expiredIns, expiredRt };
+  }, [records]);
+
+  // Helpers to compute remaining months and days
+  const startOfDay = (d: Date) => {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const daysInMonth = (year: number, monthZeroBased: number) => new Date(year, monthZeroBased + 1, 0).getDate();
+  const addMonths = (date: Date, months: number) => {
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const d = date.getDate();
+    const totalMonths = m + months;
+    const yy = y + Math.floor(totalMonths / 12);
+    const mm = ((totalMonths % 12) + 12) % 12;
+    const dd = Math.min(d, daysInMonth(yy, mm));
+    const out = new Date(yy, mm, dd);
+    out.setHours(0, 0, 0, 0);
+    return out;
+  };
+  function diffMonthsDays(from: Date, to: Date) {
+    const a = startOfDay(from);
+    const b = startOfDay(to);
+    const forward = b >= a;
+    const start = forward ? a : b;
+    const end = forward ? b : a;
+
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    let anchor = addMonths(start, months);
+    if (anchor > end) {
+      months -= 1;
+      anchor = addMonths(start, months);
+    }
+    const MS_DAY = 24 * 60 * 60 * 1000;
+    const days = Math.max(0, Math.round((end.getTime() - anchor.getTime()) / MS_DAY));
+    return { months, days, forward };
+  }
+  function remainingLabel(target?: string | null) {
+    if (!target) return '-';
+    const t = new Date(target);
+    if (isNaN(t.getTime())) return '-';
+    const now = new Date();
+    const { months, days, forward } = diffMonthsDays(now, t);
+    const label = `${months} mo ${days} d`;
+    return (
+      <span className={forward ? 'text-foreground' : 'text-red-600 dark:text-red-400'}>
+        {forward ? label : `Overdue ${label}`}
+      </span>
     );
-  }, [records, search]);
+  }
+
+  const columns = useMemo<ColumnDef<InsuranceApiRow>[]>(() => [
+    {
+      key: 'row_no',
+      header: 'No',
+      sortable: false,
+      render: (_row, idx) => idx ?? '-',
+    },
+    {
+      key: 'asset',
+      header: 'Register No',
+      sortable: false,
+      render: (row) => row.asset?.register_number || '-',
+      filter: 'input',
+    },
+    { key: 'insurer', header: 'Insurer', sortable: true, filter: 'singleSelect' },
+    { key: 'ins_policy', header: 'Policy No', sortable: true, filter: 'singleSelect' },
+    {
+      key: 'ins_exp',
+      header: 'Insurance Exp',
+      sortable: true,
+      render: (row) => fmtDate(row.ins_exp),
+    },
+    {
+      key: 'ins_remaining',
+      header: 'Ins Remaining',
+      sortable: false,
+      render: (row) => remainingLabel(row.ins_exp),
+    },
+    {
+      key: 'rt_exp',
+      header: 'Roadtax Exp',
+      sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-2">
+          <span>{fmtDate(row.rt_exp)}</span>
+          <Button size="sm" variant="outline" onClick={() => openUpdateAside(row.rt_id)}>Update</Button>
+        </div>
+      ),
+    },
+    {
+      key: 'rt_remaining',
+      header: 'RT Remaining',
+      sortable: false,
+      render: (row) => remainingLabel(row.rt_exp),
+    },
+    {
+      key: 'ins_upload',
+      header: 'Attachment',
+      sortable: false,
+      render: (row) => row.ins_upload ? (
+        <a
+          href={row.ins_upload}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline"
+        >
+          View
+        </a>
+      ) : '-'
+    },
+  ], []);
 
   function openCreateAside() {
     setInsForm(emptyInsurance);
@@ -317,37 +475,24 @@ const InsuranceModule: React.FC = () => {
           <CardTitle className="text-base">Insurance Records</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 mb-3">
-            <div className="relative w-full max-w-md">
-              <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" />
-              <Input placeholder="Search insurer/policy/id" className="pl-7" value={search} onChange={e => setSearch(e.target.value)} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div className="border rounded p-3 flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">Insurance expired</div>
+              <div className="text-base font-semibold">{summary.expiredIns} / {summary.total}</div>
+            </div>
+            <div className="border rounded p-3 flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">Roadtax expired</div>
+              <div className="text-base font-semibold">{summary.expiredRt} / {summary.total}</div>
             </div>
           </div>
-          <div className="border rounded overflow-hidden">
-            <div className="grid grid-cols-12 bg-gray-100 dark:bg-gray-800 text-xs font-medium p-2">
-              <div className="col-span-2">ID</div>
-              <div className="col-span-3">Insurer</div>
-              <div className="col-span-3">Policy No.</div>
-              <div className="col-span-2">Start</div>
-              <div className="col-span-2">End</div>
-            </div>
-            <div className="max-h-96 overflow-auto divide-y">
-              {loading && <div className="p-3 text-sm text-gray-500">Loading...</div>}
-              {!loading && filtered.length === 0 && <div className="p-3 text-sm text-gray-500">No records</div>}
-              {!loading && filtered.map(r => (
-                <div key={r.id} className="grid grid-cols-12 items-center p-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-900">
-                  <div className="col-span-2">{r.id}</div>
-                  <div className="col-span-3 font-medium">{r.insurer}</div>
-                  <div className="col-span-3">{r.policy_no}</div>
-                  <div className="col-span-2">{r.coverage_start?.slice(0,10) || '-'}</div>
-                  <div className="col-span-2 flex items-center gap-2">
-                    {r.coverage_end?.slice(0,10) || '-'}
-                    <Button size="sm" variant="outline" onClick={() => openUpdateAside(r.id)}>Update</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <CustomDataGrid<InsuranceApiRow>
+            columns={columns}
+            data={records}
+            inputFilter={false}
+            pagination={false}
+          />
+          {loading ? <div className="text-sm text-muted-foreground mt-2">Loading...</div> : null}
+          {!loading && records.length === 0 ? <div className="text-sm text-muted-foreground mt-2">No records</div> : null}
         </CardContent>
       </Card>
 
