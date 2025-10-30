@@ -6,6 +6,46 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ExcelJS from 'exceljs';
 
+const toNumber = (value: unknown): number => {
+  if (value === null || value === undefined) return 0;
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getCellText = (cell: ExcelJS.Cell): string => {
+  const { value } = cell;
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    const rich = (value as any).richText;
+    if (Array.isArray(rich)) {
+      return rich.map((rt: any) => rt?.text ?? '').join('');
+    }
+    if ('text' in (value as any) && typeof (value as any).text === 'string') {
+      return (value as any).text;
+    }
+    if ('result' in (value as any)) {
+      return String((value as any).result ?? '');
+    }
+  }
+  return String(value);
+};
+
+const autoFitColumns = (worksheet: ExcelJS.Worksheet, opts?: { minWidth?: number; maxWidth?: number }) => {
+  const minWidth = opts?.minWidth ?? 6;
+  const maxWidth = opts?.maxWidth ?? 32;
+  worksheet.columns.forEach(column => {
+    let maxLength = 0;
+    column.eachCell?.({ includeEmpty: false }, cell => {
+      const textLength = getCellText(cell).trim().length;
+      if (textLength > maxLength) maxLength = textLength;
+    });
+    const width = Math.min(Math.max((maxLength || minWidth) + 2, minWidth), maxWidth);
+    column.width = width;
+  });
+};
+
 // Helper: download vehicle summary Excel for a given date range
 export async function downloadFuelVehicleSummary(from: string, to: string, opts?: { costCenterId?: string }) {
   try {
@@ -57,8 +97,8 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
           owner: item.owner?.name || '',
           classification: item.classification || '',
           record_status: item.record_status || '',
-          total_litre: item.total_litre || 0,
-          total_amount: item.total_amount || 0,
+          total_litre: toNumber(item.total_litre),
+          total_amount: toNumber(item.total_amount),
           amounts: {} as Record<string, number>
         };
       }
@@ -70,7 +110,7 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
               const d = new Date(expense.stmt_date);
               const month = d.getMonth() + 1;
               const colKey = `${year}-${month}`;
-              rows[key].amounts[colKey] = expense.amount ? Number(expense.amount) : 0;
+              rows[key].amounts[colKey] = toNumber(expense.amount);
             }
           });
         }
@@ -117,12 +157,18 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
     const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
     let no = 1;
     const columns = years.flatMap(y => Array.from(yearMonthMap[y]).map(m => ({ year: y, month: m })));
+    const monthTotals = new Array(columns.length).fill(0);
+    let overallTotal = 0;
     Object.values(rows).forEach((row: any) => {
       const amounts = columns.map(c => {
         const val = row.amounts[`${c.year}-${c.month}`];
-        return val !== undefined && val !== '' ? Number(val) : 0;
+        return val !== undefined ? toNumber(val) : 0;
       });
       const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
+      amounts.forEach((amount, idx) => {
+        monthTotals[idx] += amount;
+      });
+      overallTotal += subTotal;
       worksheet.addRow([
         no++,
         row.vehicle,
@@ -141,6 +187,17 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
         subTotal,
       ]);
     });
+    if (no > 1) {
+      const baseColumns = 13;
+      const totalRowValues: any[] = new Array(baseColumns).fill('');
+      totalRowValues[1] = 'Total';
+      const totalsRow = worksheet.addRow([
+        ...totalRowValues,
+        ...monthTotals,
+        overallTotal,
+      ]);
+      totalsRow.font = { bold: true };
+    }
 
     const amountStartCol = 14;
     const totalCol = amountStartCol + columns.length;
@@ -166,13 +223,7 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
         };
       });
     }
-    worksheet.columns.forEach(col => {
-      let maxLength = 10;
-      col.eachCell?.({ includeEmpty: true }, cell => {
-        maxLength = Math.max(maxLength, (cell.value ? cell.value.toString().length : 0));
-      });
-      col.width = maxLength + 2;
-    });
+    autoFitColumns(worksheet);
     const now = new Date();
     const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const buffer = await workbook.xlsx.writeBuffer();
@@ -291,22 +342,35 @@ const FuelConsumptionReport = () => {
             // 3. Add data rows
             const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 5;
             let no = 1;
+            const monthTotals = new Array(columns.length).fill(0);
+            let overallTotal = 0;
             json.data.forEach((item: any) => {
               const row: any[] = [no++, item.costcenter];
               let grandTotal = 0;
+              let columnIdx = 0;
               years.forEach(y => {
                 const detail = (item.details || []).find((d: any) => d.year?.toString() === y);
                 const months = Array.from(yearMonthMap[y]);
                 months.forEach(m => {
                   const monthObj = detail && Array.isArray(detail.months) ? detail.months.find((mo: any) => mo.month === m) : undefined;
-                  const val = monthObj ? parseFloat(monthObj.expenses) : 0;
+                  const val = monthObj ? toNumber(monthObj.expenses) : 0;
                   row.push(val);
                   grandTotal += val;
+                  monthTotals[columnIdx] = (monthTotals[columnIdx] || 0) + val;
+                  columnIdx++;
                 });
               });
               row.push(grandTotal);
+              overallTotal += grandTotal;
               worksheet.addRow(row);
             });
+            if (no > 1) {
+              const totalRowValues: any[] = ['', 'Total'];
+              monthTotals.forEach(total => totalRowValues.push(total));
+              totalRowValues.push(overallTotal);
+              const totalsRow = worksheet.addRow(totalRowValues);
+              totalsRow.font = { bold: true };
+            }
             // Set number format for amount columns and total
             const amountStartCol = 3;
             const amountEndCol = amountStartCol + columns.length;
@@ -334,13 +398,7 @@ const FuelConsumptionReport = () => {
             worksheet.getRow(1).font = { bold: true, size: 14 };
             worksheet.getRow(3).font = { bold: true };
             worksheet.getRow(4).font = { bold: true };
-            worksheet.columns.forEach(col => {
-              let maxLength = 10;
-              col.eachCell?.({ includeEmpty: true }, cell => {
-                maxLength = Math.max(maxLength, (cell.value ? cell.value.toString().length : 0));
-              });
-              col.width = maxLength + 2;
-            });
+            autoFitColumns(worksheet);
             const now = new Date();
             const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
             const buffer = await workbook.xlsx.writeBuffer();
@@ -414,8 +472,8 @@ const FuelConsumptionReport = () => {
                   owner: item.owner?.name || '',
                   classification: item.classification || '',
                   record_status: item.record_status || '',
-                  total_litre: item.total_litre || 0,
-                  total_amount: item.total_amount || 0,
+                  total_litre: toNumber(item.total_litre),
+                  total_amount: toNumber(item.total_amount),
                   amounts: {} as Record<string, number>
                 };
               }
@@ -427,7 +485,7 @@ const FuelConsumptionReport = () => {
                       const d = new Date(expense.stmt_date);
                       const month = d.getMonth() + 1;
                       const colKey = `${year}-${month}`;
-                      rows[key].amounts[colKey] = expense.amount ? Number(expense.amount) : 0;
+                      rows[key].amounts[colKey] = toNumber(expense.amount);
                     }
                   });
                 }
@@ -494,15 +552,22 @@ const FuelConsumptionReport = () => {
             }
             const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
             let no = 1;
+            const monthTotals = new Array(columns.length).fill(0);
+            let overallTotal = 0;
             Object.values(rows).forEach((row: any) => {
               // Amount columns for each year-month
               const amounts = columns.map(c => {
                 const val = row.amounts[`${c.year}-${c.month}`];
-                return val !== undefined && val !== '' ? Number(val) : 0;
+                return val !== undefined ? toNumber(val) : 0;
               });
 
               // Calculate sub total
               const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
+
+              amounts.forEach((amount, idx) => {
+                monthTotals[idx] += amount;
+              });
+              overallTotal += subTotal;
 
               worksheet.addRow([
                 no++,
@@ -522,6 +587,17 @@ const FuelConsumptionReport = () => {
                 subTotal
               ]);
             });
+            if (no > 1) {
+              const basicColumnsCount = 13;
+              const totalRowValues: any[] = new Array(basicColumnsCount).fill('');
+              totalRowValues[1] = 'Total';
+              const totalsRow = worksheet.addRow([
+                ...totalRowValues,
+                ...monthTotals,
+                overallTotal
+              ]);
+              totalsRow.font = { bold: true };
+            }
             // Format number columns
             const basicColumnsCount = 13; // No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, Location, Owner, Classification, Record Status
             const amountStartCol = basicColumnsCount + 1;
@@ -565,13 +641,7 @@ const FuelConsumptionReport = () => {
             worksheet.getRow(headerStartRow + 1).font = { bold: true };
 
             // Auto-fit columns
-            worksheet.columns.forEach(col => {
-              let maxLength = 10;
-              col.eachCell?.({ includeEmpty: true }, cell => {
-                maxLength = Math.max(maxLength, (cell.value ? cell.value.toString().length : 0));
-              });
-              col.width = maxLength + 2;
-            });
+            autoFitColumns(worksheet);
             const now = new Date();
             const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
             const buffer = await workbook.xlsx.writeBuffer();
