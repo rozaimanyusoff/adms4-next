@@ -1,19 +1,18 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import ActionSidebar from '@/components/ui/action-aside';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
-import { Plus, RefreshCcw, Search, Save, X } from 'lucide-react';
+import { Plus, RefreshCcw, Search, Save, X, Pencil, Target, Loader2 } from 'lucide-react';
 import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
+import { Separator } from '@/components/ui/separator';
 
 type Vehicle = {
   id: number | string;
@@ -26,50 +25,49 @@ type Vehicle = {
   classification?: string | { name?: string } | null;
 };
 
-// API response row for listing (based on /api/mtn/insurance)
-type InsuranceApiRow = {
+// API response row for listing (new /api/mtn/roadtax)
+type RoadtaxApiRow = {
   rt_id: number;
-  insurer: string;
-  ins_policy: string;
-  ins_exp?: string | null;
-  ins_upload?: string | null;
-  rt_exp?: string | null;
+  insurance?: {
+    id: number;
+    insurer: string;
+    policy: string;
+    expiry: string | null;
+    upload?: string | null;
+  } | null;
   asset: {
     id: number;
     register_number: string;
-    entry_code?: string;
-    classification?: string;
-    purchase_date?: string;
-    age_years?: number;
-    costcenter?: { id: number; name: string };
-    department?: { id: number; name: string };
-    location?: { id: number; name: string };
-    category?: { id: number; name: string };
-    brand?: { id: number; name: string };
-    model?: { id: number; name: string };
+    costcenter?: { id: number; name: string } | null;
+    department?: { id: number; name: string } | null;
+    location?: { id: number; name: string } | null;
+    category?: { id: number; name: string } | null;
+    brand?: { id: number; name: string } | null;
   };
+  roadtax_expiry?: string | null;
   // Virtual keys for derived columns (for DataGrid typing only)
   row_no?: number;
   ins_remaining?: string;
   rt_remaining?: string;
+  register_no?: string;
+  costcenter_name?: string;
+  department_name?: string;
+  location_name?: string;
+  insurer_name?: string;
+  policy_no?: string;
+  ins_exp?: string;
 };
 
 type InsuranceForm = {
   insurer: string;
-  policy_no: string;
-  coverage_start: string;
-  coverage_end: string;
-  premium_amount: string; // keep as string from input; convert on submit
-  coverage_details: string;
+  policy: string;
+  expiry: string;
 };
 
 const emptyInsurance: InsuranceForm = {
   insurer: '',
-  policy_no: '',
-  coverage_start: '',
-  coverage_end: '',
-  premium_amount: '0.00',
-  coverage_details: '',
+  policy: '',
+  expiry: '',
 };
 
 type UpdateRow = {
@@ -83,17 +81,34 @@ type UpdateRow = {
 const InsuranceModule: React.FC = () => {
   // Records
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState<InsuranceApiRow[]>([]);
+  const [records, setRecords] = useState<RoadtaxApiRow[]>([]);
+  const [rtUpdateMode, setRtUpdateMode] = useState(false);
+  const gridRef = React.useRef<{ clearSelectedRows: () => void; deselectRow: (key: string | number) => void } | null>(null);
+  const [rtSelectedAssets, setRtSelectedAssets] = useState<string[]>([]);
+  const [rtDate, setRtDate] = useState('');
+  const [rtSubmitting, setRtSubmitting] = useState(false);
 
   // Create aside
   const [openCreate, setOpenCreate] = useState(false);
   const [insForm, setInsForm] = useState<InsuranceForm>(emptyInsurance);
+  // simple insurance list below the form
+  type SimpleInsurance = { id: number; insurer: string; policy: string; expiry: string | null };
+  const [insList, setInsList] = useState<SimpleInsurance[]>([]);
+  const [loadingInsList, setLoadingInsList] = useState(false);
+  const [editingInsId, setEditingInsId] = useState<number | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehQuery, setVehQuery] = useState('');
   const [vehSelected, setVehSelected] = useState<Record<string | number, boolean>>({});
-  const [showPersonal, setShowPersonal] = useState(false); // unchecked by default (hide personal)
   const [submitting, setSubmitting] = useState(false);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const vehicleListRef = React.useRef<HTMLDivElement | null>(null);
+  const selectedVehCount = useMemo(() => Object.values(vehSelected).filter(Boolean).length, [vehSelected]);
+  const canSubmit = useMemo(() => !!insForm.insurer && !!insForm.policy && !!insForm.expiry && selectedVehCount > 0, [insForm, selectedVehCount]);
+
+  function resetInsurerForm() {
+    setInsForm(emptyInsurance);
+    setEditingInsId(null);
+  }
 
   // Update aside
   const [openUpdate, setOpenUpdate] = useState(false);
@@ -106,14 +121,14 @@ const InsuranceModule: React.FC = () => {
   async function loadRecords() {
     setLoading(true);
     try {
-      // If backend returns a single object for GET /api/mtn/insurance, coerce to array.
-      const res: any = await authenticatedApi.get('/api/mtn/insurance');
+      // Roadtax listing replaced insurance listing
+      const res: any = await authenticatedApi.get('/api/mtn/roadtax');
       const raw = res?.data?.data ?? res?.data ?? [];
-      const data: InsuranceApiRow[] = Array.isArray(raw) ? raw : [raw];
+      const data: RoadtaxApiRow[] = Array.isArray(raw) ? raw : [raw];
       setRecords(data.filter(Boolean));
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load insurance records');
+      toast.error('Failed to load roadtax records');
     } finally {
       setLoading(false);
     }
@@ -152,8 +167,8 @@ const InsuranceModule: React.FC = () => {
     let expiredIns = 0;
     let expiredRt = 0;
     for (const r of records) {
-      if (isExpired(r.ins_exp)) expiredIns += 1;
-      if (isExpired(r.rt_exp)) expiredRt += 1;
+      if (isExpired(r.insurance?.expiry ?? null)) expiredIns += 1;
+      if (isExpired(r.roadtax_expiry ?? null)) expiredRt += 1;
     }
     return { total, expiredIns, expiredRt };
   }, [records]);
@@ -208,7 +223,23 @@ const InsuranceModule: React.FC = () => {
     );
   }
 
-  const columns = useMemo<ColumnDef<InsuranceApiRow>[]>(() => [
+  // Styled variant for non-expired case
+  function remainingLabelColored(target?: string | null, okClass?: string) {
+    if (!target) return '-';
+    const t = new Date(target);
+    if (isNaN(t.getTime())) return '-';
+    const now = new Date();
+    const { months, days, forward } = diffMonthsDays(now, t);
+    const label = `${months} mo ${days} d`;
+    const ok = okClass || 'text-foreground';
+    return (
+      <span className={forward ? ok : 'text-red-600 dark:text-red-400'}>
+        {forward ? label : `Overdue ${label}`}
+      </span>
+    );
+  }
+
+  const columns = useMemo<ColumnDef<RoadtaxApiRow>[]>(() => [
     {
       key: 'row_no',
       header: 'No',
@@ -216,57 +247,70 @@ const InsuranceModule: React.FC = () => {
       render: (_row, idx) => idx ?? '-',
     },
     {
-      key: 'asset',
-      header: 'Register No',
+      key: 'register_no',
+      header: 'Assets',
       sortable: false,
       render: (row) => row.asset?.register_number || '-',
       filter: 'input',
     },
-    { key: 'insurer', header: 'Insurer', sortable: true, filter: 'singleSelect' },
-    { key: 'ins_policy', header: 'Policy No', sortable: true, filter: 'singleSelect' },
+    {
+      key: 'costcenter_name',
+      header: 'Costcenter',
+      sortable: true,
+      render: (row) => row.asset?.costcenter?.name || '-',
+      filter: 'singleSelect',
+    },
+    {
+      key: 'department_name',
+      header: 'Department',
+      sortable: true,
+      render: (row) => row.asset?.department?.name || '-',
+      filter: 'singleSelect',
+    },
+    {
+      key: 'location_name',
+      header: 'Location',
+      sortable: true,
+      render: (row) => row.asset?.location?.name || '-',
+      filter: 'singleSelect',
+    },
+    {
+      key: 'insurer_name',
+      header: 'Insurer',
+      sortable: true,
+      render: (row) => row.insurance?.insurer || '-',
+      filter: 'singleSelect',
+    },
+    {
+      key: 'policy_no',
+      header: 'Policy',
+      sortable: true,
+      render: (row) => row.insurance?.policy || '-',
+      filter: 'singleSelect',
+    },
     {
       key: 'ins_exp',
-      header: 'Insurance Exp',
+      header: 'Expiry',
       sortable: true,
-      render: (row) => fmtDate(row.ins_exp),
+      render: (row) => fmtDate(row.insurance?.expiry ?? null),
     },
     {
       key: 'ins_remaining',
-      header: 'Ins Remaining',
+      header: 'Remaining',
       sortable: false,
-      render: (row) => remainingLabel(row.ins_exp),
+      render: (row) => remainingLabel(row.insurance?.expiry ?? null),
     },
     {
-      key: 'rt_exp',
-      header: 'Roadtax Exp',
+      key: 'roadtax_expiry',
+      header: 'Roadtax expiry',
       sortable: true,
-      render: (row) => (
-        <div className="flex items-center gap-2">
-          <span>{fmtDate(row.rt_exp)}</span>
-          <Button size="sm" variant="outline" onClick={() => openUpdateAside(row.rt_id)}>Update</Button>
-        </div>
-      ),
+      render: (row) => fmtDate(row.roadtax_expiry ?? null),
     },
     {
       key: 'rt_remaining',
-      header: 'RT Remaining',
+      header: 'Roadtax remaining',
       sortable: false,
-      render: (row) => remainingLabel(row.rt_exp),
-    },
-    {
-      key: 'ins_upload',
-      header: 'Attachment',
-      sortable: false,
-      render: (row) => row.ins_upload ? (
-        <a
-          href={row.ins_upload}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline"
-        >
-          View
-        </a>
-      ) : '-'
+      render: (row) => remainingLabelColored(row.roadtax_expiry ?? null, 'text-green-600 font-semibold'),
     },
   ], []);
 
@@ -274,31 +318,24 @@ const InsuranceModule: React.FC = () => {
     setInsForm(emptyInsurance);
     setVehSelected({});
     setVehQuery('');
+    setEditingInsId(null);
     setOpenCreate(true);
     loadVehicles();
+    loadInsurerList();
   }
 
   function closeCreateAside() {
     setOpenCreate(false);
   }
 
-  // Helper to detect personal classification
-  const isPersonal = React.useCallback((v: any) => {
-    const cls = (v?.classification?.name || v?.classification || '').toString().toLowerCase();
-    return cls === 'personal';
-  }, []);
-
   async function loadVehicles() {
     setLoadingVehicles(true);
     try {
-      const res: any = await authenticatedApi.get('/api/assets?status=active&manager=2');
+      const res: any = await authenticatedApi.get('/api/assets?status=active&manager=2&purpose=project,pool');
       const data: Vehicle[] = res?.data?.data || res?.data || [];
       const arr = Array.isArray(data) ? data : [];
       setVehicles(arr);
-      // Default select all visible (non-personal) vehicles
-      const defaultSel: Record<string | number, boolean> = {};
-      arr.forEach(v => { if (!isPersonal(v)) defaultSel[v.id] = true; });
-      setVehSelected(defaultSel);
+      // No auto-selection by default
     } catch (err) {
       console.error(err);
       toast.error('Failed to load vehicles');
@@ -308,17 +345,77 @@ const InsuranceModule: React.FC = () => {
     }
   }
 
+  async function loadInsurerList() {
+    setLoadingInsList(true);
+    try {
+      const res: any = await authenticatedApi.get('/api/mtn/insurance');
+      const data: SimpleInsurance[] = res?.data?.data ?? res?.data ?? [];
+      setInsList(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load insurers');
+      setInsList([]);
+    } finally {
+      setLoadingInsList(false);
+    }
+  }
+
+  async function startEditIns(item: SimpleInsurance) {
+    try {
+      // Ensure vehicles are loaded so we can reflect selection state
+      if (vehicles.length === 0) {
+        await loadVehicles();
+      }
+      const res: any = await authenticatedApi.get(`/api/mtn/insurance/${item.id}`);
+      const data = res?.data?.data || res?.data;
+      const detail = data || {};
+      setEditingInsId(detail.id ?? item.id);
+      setInsForm({
+        insurer: (detail.insurer ?? item.insurer ?? '').toString().toUpperCase(),
+        policy: (detail.policy ?? item.policy ?? '').toString().toUpperCase(),
+        expiry: detail.expiry ? String(detail.expiry).slice(0, 10) : (item.expiry ? String(item.expiry).slice(0, 10) : ''),
+      });
+
+      // Map assets to checked selection in the right pane
+      const assets: Array<{ asset_id: number | string }> = Array.isArray(detail.assets) ? detail.assets : [];
+      const ids = new Set((assets || []).map(a => a.asset_id));
+      setVehSelected(prev => {
+        // Build mapping for visible vehicles; default false then set true for ids present
+        const next: Record<string | number, boolean> = {};
+        if (vehicles.length > 0) {
+          vehicles.forEach(v => { next[v.id] = ids.has(v.id); });
+        } else {
+          // Vehicles not yet loaded; pre-seed selected for these ids
+          ids.forEach(id => { next[id] = true; });
+        }
+        return next;
+      });
+      setTimeout(() => scrollToFirstSelected(), 50);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to fetch insurer details');
+    }
+  }
+  // Inline edit removed; we leverage the top form for editing
+
   const vehFiltered = useMemo(() => {
-    const list = vehicles.filter(v => (showPersonal ? true : !isPersonal(v)));
-    if (!vehQuery) return list;
-    const q = vehQuery.toLowerCase();
-    return list.filter(v => {
-      const plate = (v.plate_no || v.register_number || '').toLowerCase();
-      const modelName = (v.models?.name || '').toLowerCase();
-      const brandName = (v.brands?.name || '').toLowerCase();
-      return plate.includes(q) || modelName.includes(q) || brandName.includes(q);
+    let list = vehicles.slice();
+    if (vehQuery) {
+      const q = vehQuery.toLowerCase();
+      list = list.filter(v => {
+        const plate = (v.plate_no || v.register_number || '').toLowerCase();
+        const modelName = (v.models?.name || '').toLowerCase();
+        const brandName = (v.brands?.name || '').toLowerCase();
+        return plate.includes(q) || modelName.includes(q) || brandName.includes(q);
+      });
+    }
+    list.sort((a, b) => {
+      const aa = (a.register_number || a.plate_no || '').toString();
+      const bb = (b.register_number || b.plate_no || '').toString();
+      return aa.localeCompare(bb, undefined, { sensitivity: 'base', numeric: true });
     });
-  }, [vehicles, vehQuery, showPersonal, isPersonal]);
+    return list;
+  }, [vehicles, vehQuery]);
 
   // Visible list derived from vehFiltered
   const visibleIds = React.useMemo(() => vehFiltered.map(v => v.id), [vehFiltered]);
@@ -336,10 +433,21 @@ const InsuranceModule: React.FC = () => {
     setVehSelected(prev => ({ ...prev, [id]: value }));
   }
 
+  function scrollToFirstSelected() {
+    const container = vehicleListRef.current;
+    if (!container) return;
+    const first = vehFiltered.find(v => vehSelected[v.id]);
+    if (!first) return;
+    const el = container.querySelector(`[data-veh-id="${first.id}"]`) as HTMLElement | null;
+    if (el) el.scrollIntoView({ block: 'center' });
+  }
+
   async function submitCreate(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    const asset_ids = Object.keys(vehSelected).filter(k => vehSelected[k]).map(k => (isNaN(Number(k)) ? k : Number(k)));
-    if (!insForm.insurer || !insForm.policy_no || !insForm.coverage_start || !insForm.coverage_end) {
+    const asset_ids = Object.keys(vehSelected)
+      .filter(k => vehSelected[k])
+      .map(k => (isNaN(Number(k)) ? String(k) : String(Number(k))));
+    if (!insForm.insurer || !insForm.policy || !insForm.expiry) {
       toast.error('Please complete insurance details');
       return;
     }
@@ -348,30 +456,28 @@ const InsuranceModule: React.FC = () => {
       return;
     }
     const payload = {
-      asset_ids,
-      insurance: {
-        insurer: insForm.insurer,
-        policy_no: insForm.policy_no,
-        coverage_start: insForm.coverage_start,
-        coverage_end: insForm.coverage_end,
-        premium_amount: insForm.premium_amount ? Number(insForm.premium_amount) : 0,
-        coverage_details: insForm.coverage_details,
-      },
+      insurer: insForm.insurer,
+      policy: insForm.policy,
+      // Send as YYYY-MM-DD string
+      expiry: insForm.expiry,
+      assets: asset_ids,
     };
     setSubmitting(true);
     try {
-      const res: any = await authenticatedApi.post('/api/mtn/insurance', payload);
+      let res: any;
+      if (editingInsId) {
+        res = await authenticatedApi.put(`/api/mtn/insurance/${editingInsId}`, payload);
+      } else {
+        res = await authenticatedApi.post('/api/mtn/insurance', payload);
+      }
       const ok = res?.status && res.status < 300;
       if (ok) {
-        toast.success('Insurance created');
-        const created = res?.data?.data || res?.data;
-        setOpenCreate(false);
+        toast.success(editingInsId ? 'Insurance updated' : 'Insurance created');
+        loadInsurerList();
         loadRecords();
-        // Open update aside with returned assets if available
-        const newId = created?.id;
-        if (newId) {
-          await openUpdateAside(newId, created);
-        }
+        setEditingInsId(null);
+        setInsForm(emptyInsurance);
+        setVehSelected({});
       } else {
         toast('Submitted, check server response');
       }
@@ -391,7 +497,7 @@ const InsuranceModule: React.FC = () => {
     try {
       let data = prefetched;
       if (!data) {
-        const res: any = await authenticatedApi.get(`/api/mtn/insurance/${id}`);
+        const res: any = await authenticatedApi.get(`/api/mtn/roadtax/${id}`);
         data = res?.data?.data || res?.data || {};
       }
       const rows: UpdateRow[] = (Array.isArray(data.assets) ? data.assets : []).map((v: any) => ({
@@ -431,11 +537,12 @@ const InsuranceModule: React.FC = () => {
     }));
     setSavingUpdate(true);
     try {
-      const res: any = await authenticatedApi.put(`/api/mtn/insurance`, { id: updateInsuranceId, items });
+      const res: any = await authenticatedApi.put(`/api/mtn/roadtax`, { id: updateInsuranceId, items });
       const ok = res?.status && res.status < 300;
       if (ok) {
         toast.success('Roadtax updated');
         closeUpdateAside();
+        loadRecords();
       } else {
         toast('Submitted, check server response');
       }
@@ -459,42 +566,95 @@ const InsuranceModule: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Insurance</h3>
+        <h3 className="text-lg font-semibold">Roadtax & Insurance</h3>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadRecords} disabled={loading}>
-            <RefreshCcw className="w-4 h-4 mr-1" /> Refresh
-          </Button>
           <Button size="sm" onClick={openCreateAside}>
-            <Plus className="w-4 h-4 mr-1" /> Register Insurance
+            <Pencil className="w-4 h-4 mr-1" /> Insurance & Roadtax Maintenance
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Insurance Records</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <div className="border rounded p-3 flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">Insurance expired</div>
-              <div className="text-base font-semibold">{summary.expiredIns} / {summary.total}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
+        <div className="p-3 flex items-center gap-3">
+          <div className="text-sm">Enable Roadtax Update</div>
+          <Switch checked={rtUpdateMode} onCheckedChange={(v) => setRtUpdateMode(Boolean(v))} />
+        </div>
+        {rtUpdateMode && rtSelectedAssets.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={rtDate}
+                onChange={(e) => setRtDate(e.target.value)}
+                className="w-[12rem]"
+                placeholder="YYYY-MM-DD"
+              />
+              <Button
+                size="sm"
+                disabled={!rtDate || rtSubmitting}
+                onClick={async () => {
+                  if (!rtDate || rtSelectedAssets.length === 0) return;
+                  setRtSubmitting(true);
+                  try {
+                    const payload = { rt_exp: rtDate, assets: rtSelectedAssets };
+                    const res: any = await authenticatedApi.post('/api/mtn/roadtax', payload);
+                    const ok = res?.status && res.status < 300;
+                    if (ok) {
+                      toast.success('Roadtax updated');
+                      setRtDate('');
+                      setRtSelectedAssets([]);
+                      gridRef.current?.clearSelectedRows?.();
+                      loadRecords();
+                      setRtUpdateMode(false);
+                    } else {
+                      toast('Submitted, check server response');
+                    }
+                  } catch (err: any) {
+                    console.error(err);
+                    const msg = err?.response?.data?.message || 'Failed to update roadtax';
+                    toast.error(msg);
+                  } finally {
+                    setRtSubmitting(false);
+                  }
+                }}
+              >
+                {rtSubmitting ? 'Updating...' : 'Update'}
+              </Button>
             </div>
-            <div className="border rounded p-3 flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">Roadtax expired</div>
-              <div className="text-base font-semibold">{summary.expiredRt} / {summary.total}</div>
-            </div>
-          </div>
-          <CustomDataGrid<InsuranceApiRow>
-            columns={columns}
-            data={records}
-            inputFilter={false}
-            pagination={false}
-          />
-          {loading ? <div className="text-sm text-muted-foreground mt-2">Loading...</div> : null}
-          {!loading && records.length === 0 ? <div className="text-sm text-muted-foreground mt-2">No records</div> : null}
-        </CardContent>
-      </Card>
+          )}
+        <div className="shadow rounded-xl p-3 flex items-center justify-between bg-amber-100">
+          <div className="text-sm">Insurance expired</div>
+          <div className="text-base font-semibold">{summary.expiredIns} / {summary.total}</div>
+        </div>
+        <div className="shadow rounded-xl p-3 flex items-center justify-between bg-amber-100">
+          <div className="text-sm">Roadtax expired</div>
+          <div className="text-base font-semibold">{summary.expiredRt} / {summary.total}</div>
+        </div>
+      </div>
+
+      <CustomDataGrid<RoadtaxApiRow>
+        ref={gridRef as any}
+        columns={columns}
+        data={useMemo(() => records.map(r => ({
+          ...r,
+          register_no: r.asset?.register_number || '',
+        })), [records])}
+        inputFilter={false}
+        pagination={false}
+        rowSelection={{
+          enabled: rtUpdateMode,
+          getRowId: (row) => (row as RoadtaxApiRow).rt_id,
+        }}
+        onRowSelected={(_keys, rows) => {
+          const assetIds = rows
+            .map((r: any) => r?.asset?.id)
+            .filter((x: any) => x !== undefined && x !== null)
+            .map((x: any) => String(x));
+          const unique = Array.from(new Set(assetIds));
+          setRtSelectedAssets(unique);
+        }}
+      />
+      {loading ? <div className="text-sm text-muted-foreground mt-2">Loading...</div> : null}
+      {!loading && records.length === 0 ? <div className="text-sm text-muted-foreground mt-2">No records</div> : null}
 
       {openCreate && (
         <ActionSidebar
@@ -509,60 +669,74 @@ const InsuranceModule: React.FC = () => {
                   <Input className="uppercase" value={insForm.insurer} onChange={e => setInsForm(s => ({ ...s, insurer: e.target.value.toUpperCase() }))} />
                 </div>
                 <div>
-                  <Label>Policy No.</Label>
-                  <Input className="uppercase" value={insForm.policy_no} onChange={e => setInsForm(s => ({ ...s, policy_no: e.target.value.toUpperCase() }))} />
-                </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                    <Label>Coverage Start</Label>
-                    <Input type="date" value={insForm.coverage_start} onChange={e => setInsForm(s => ({ ...s, coverage_start: e.target.value }))} />
-                    </div>
-                    <div>
-                    <Label>Coverage End</Label>
-                    <Input type="date" value={insForm.coverage_end} onChange={e => setInsForm(s => ({ ...s, coverage_end: e.target.value }))} />
-                    </div>
-                  </div>
-                <div>
-                  <Label>Coverage Details</Label>
-                  <Textarea rows={3} value={insForm.coverage_details} onChange={e => setInsForm(s => ({ ...s, coverage_details: e.target.value }))} />
+                  <Label>Policy</Label>
+                  <Input className="uppercase" value={insForm.policy} onChange={e => setInsForm(s => ({ ...s, policy: e.target.value.toUpperCase() }))} />
                 </div>
                 <div>
-                  <Label>Premium Amount (MYR)</Label>
-                  <Input
-                    placeholder="0.00"
-                    value={insForm.premium_amount}
-                    onChange={e => {
-                      let v = e.target.value.replace(/[^\d.]/g, '');
-                      const parts = v.split('.');
-                      if (parts.length > 2) v = parts[0] + '.' + parts.slice(1).join('').replace(/\./g, '');
-                      const [intPart, decPart] = v.split('.');
-                      v = intPart.replace(/^0+(?=\d)/, '') + (decPart !== undefined ? ('.' + decPart.slice(0, 2)) : '');
-                      if (v === '' || v === '.') v = '';
-                      setInsForm(s => ({ ...s, premium_amount: v }));
-                    }}
-                    onBlur={e => {
-                      const num = parseFloat(insForm.premium_amount || '0');
-                      const formatted = Number.isFinite(num) ? num.toFixed(2) : '0.00';
-                      setInsForm(s => ({ ...s, premium_amount: formatted }));
-                    }}
-                  />
+                  <Label>Coverage Expiry</Label>
+                  <Input type="date" value={insForm.expiry} onChange={e => setInsForm(s => ({ ...s, expiry: e.target.value }))} />
                 </div>
                 <div className="flex items-center justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={closeCreateAside}>
-                    <X className="w-4 h-4 mr-1" /> Cancel
+                  <Button variant="outline" onClick={resetInsurerForm}>
+                    <X className="w-4 h-4 mr-1" /> Reset
                   </Button>
-                  <Button onClick={submitCreate} disabled={submitting}>
-                    <Save className="w-4 h-4 mr-1" /> {submitting ? 'Submitting...' : 'Submit'}
+                  <Button onClick={submitCreate} disabled={!canSubmit || submitting}>
+                    {submitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                    {submitting ? (editingInsId ? 'Updating...' : 'Submitting...') : (editingInsId ? 'Update' : 'Submit')}
                   </Button>
+                </div>
+
+                {/* Insurer list */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-start gap-2">
+                    <Label className="select-none">Insurers</Label>
+                    <button
+                      onClick={() => !loadingInsList && loadInsurerList()}
+                      aria-label="Refresh insurers"
+                      disabled={loadingInsList}
+                      className="p-1 rounded hover:bg-accent hover:text-accent-foreground disabled:opacity-70"
+                    >
+                      <RefreshCcw className={`w-4 h-4 ${loadingInsList ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="border rounded divide-y max-h-[30rem] overflow-auto hover-scroll">
+                    {loadingInsList && <div className="p-3 text-sm text-gray-500">Loading insurers...</div>}
+                    {!loadingInsList && insList.length === 0 && <div className="p-3 text-sm text-gray-500">No insurers</div>}
+                    {!loadingInsList && insList.map((it) => {
+                      const expired = isExpired(it.expiry ?? null);
+                      const remaining = remainingLabel(it.expiry ?? null);
+                      const isEditing = editingInsId === it.id;
+                      return (
+                        <div
+                          key={it.id}
+                          className={`relative p-3 ${isEditing ? 'bg-primary/5 ring-1 ring-primary/40' : 'bg-background'}`}
+                        >
+                          {/* Watermark for expired */}
+                          {expired && (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-10 text-red-600 font-extrabold text-4xl rotate-[-20deg] select-none">
+                              EXPIRED
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="font-semibold">{it.insurer}</div>
+                              <div className="text-xs text-muted-foreground">Policy: {it.policy || '-'}</div>
+                              <div className="text-xs text-muted-foreground">Expiry: {fmtDate(it.expiry ?? null)} • {remaining}</div>
+                            </div>
+                            <Button size="icon" variant="ghost" onClick={() => startEditIns(it)} title="Edit">
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Assign Vehicles</Label>
-                  <Button size="sm" variant="outline" onClick={loadVehicles} disabled={loadingVehicles}>
-                    <RefreshCcw className="w-3 h-3 mr-1" /> Refresh
-                  </Button>
                 </div>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -574,17 +748,16 @@ const InsuranceModule: React.FC = () => {
                     <span>Selected: {Object.values(vehSelected).filter(Boolean).length}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs">
-                      <span>Show Personal</span>
-                      <Switch checked={showPersonal} onCheckedChange={(v) => setShowPersonal(Boolean(v))} />
-                    </label>
+                    <Button size="sm" variant="outline" onClick={scrollToFirstSelected} title="Jump to first selected">
+                      <Target className="w-3 h-3 mr-1" /> Find Selected
+                    </Button>
                     <label className="flex items-center gap-2 text-xs">
                       <Checkbox checked={allVisibleChecked} onCheckedChange={(v) => toggleAllVisible(Boolean(v))} />
                       <span>Select All</span>
                     </label>
                   </div>
                 </div>
-                <div className="border rounded max-h-[700px] overflow-auto divide-y">
+                <div ref={vehicleListRef} className="border rounded max-h-[700px] overflow-auto divide-y hover-scroll">
                   {loadingVehicles && <div className="p-3 text-sm text-gray-500">Loading vehicles...</div>}
                   {!loadingVehicles && vehFiltered.length === 0 && <div className="p-3 text-sm text-gray-500">No vehicles</div>}
                   {!loadingVehicles && vehFiltered.map(v => {
@@ -597,7 +770,8 @@ const InsuranceModule: React.FC = () => {
                     return (
                       <div
                         key={v.id}
-                        className="flex items-center justify-between p-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900"
+                        data-veh-id={v.id}
+                        className={`flex items-center justify-between p-2 text-sm cursor-pointer ${checked ? 'bg-primary/10' : 'hover:bg-gray-50 dark:hover:bg-gray-900'}`}
                         onClick={() => toggleVeh(v.id, !checked)}
                         role="button"
                         aria-pressed={checked}
@@ -627,6 +801,22 @@ const InsuranceModule: React.FC = () => {
           }
         />
       )}
+
+      {/* Show scrollbars on hover only for insurer/vehicle lists */}
+      <style jsx>{`
+        .hover-scroll { scrollbar-width: none; }
+        .hover-scroll:hover { scrollbar-width: thin; }
+        .hover-scroll::-webkit-scrollbar { width: 0; height: 0; }
+        .hover-scroll:hover::-webkit-scrollbar { width: 8px; height: 8px; }
+        .hover-scroll::-webkit-scrollbar-track { background: transparent; }
+        .hover-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(100,100,100,0.35);
+          border-radius: 6px;
+          border: 2px solid transparent;
+          background-clip: content-box;
+        }
+        .hover-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(100,100,100,0.55); }
+      `}</style>
 
       {openUpdate && (
         <ActionSidebar
