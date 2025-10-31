@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SingleSelect } from "@/components/ui/combobox";
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -120,7 +122,7 @@ const AssessmentForm: React.FC = () => {
                 try {
                     const vresp: any = await authenticatedApi.get('/api/assets', {
                         params: {
-                            type: 2,
+                            manager: 2,
                             classification: 'asset',
                             status: 'active'
                         }
@@ -937,7 +939,7 @@ const AssessmentForm: React.FC = () => {
                         onDragLeave={(e) => { e.preventDefault(); setVehicleImageDragOver(false); }}
                         onDrop={handleVehicleImageDrop}
                     >
-                        <input
+                        <Input
                             id="vehicle-images"
                             type="file"
                             accept="image/*"
@@ -946,7 +948,7 @@ const AssessmentForm: React.FC = () => {
                             onChange={handleVehicleImageSelect}
                         />
                         {/* Dedicated camera capture for mobile (single photo, rear camera) */}
-                        <input
+                        <Input
                             id="vehicle-camera"
                             type="file"
                             accept="image/*"
@@ -954,7 +956,7 @@ const AssessmentForm: React.FC = () => {
                             className="hidden"
                             onChange={handleVehicleImageSelect}
                         />
-                        <label htmlFor="vehicle-images" className="cursor-pointer">
+                        <Label htmlFor="vehicle-images" className="cursor-pointer">
                             <div className="space-y-2">
                                 <div className="text-gray-600">
                                     <svg className="mx-auto h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -966,12 +968,17 @@ const AssessmentForm: React.FC = () => {
                                 </div>
                                 <div className="text-xs text-gray-500">PNG, JPG up to 10MB each</div>
                             </div>
-                        </label>
+                        </Label>
                         <div className="mt-3">
-                            <label htmlFor="vehicle-camera" className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                                onClick={() => document.getElementById('vehicle-camera')?.click()}
+                            >
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 5c-3.859 0-7 3.141-7 7s3.141 7 7 7 7-3.141 7-7-3.141-7-7-7zm0-3c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 4a1 1 0 011 1l.001 2H15a1 1 0 010 2h-1.999L13 13a1 1 0 01-2 0v-2H9a1 1 0 010-2h2V7a1 1 0 011-1z"/></svg>
                                 Use Camera
-                            </label>
+                            </Button>
                         </div>
                     </div>
 
@@ -984,15 +991,17 @@ const AssessmentForm: React.FC = () => {
                                         alt={`Vehicle ${index + 1}`}
                                         className="w-full h-24 object-cover rounded border"
                                     />
-                                    <button
+                                    <Button
                                         type="button"
+                                        variant="destructive"
+                                        size="icon"
                                         onClick={() => removeVehicleImage(index)}
-                                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                                     >
                                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                         </svg>
-                                    </button>
+                                    </Button>
                                     <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">
                                         {file.name}
                                     </div>
@@ -1200,49 +1209,66 @@ const AssessmentForm: React.FC = () => {
                             <div>
                                 {it.qset_type === 'NCR' && (
                                     <div className="flex flex-col items-center gap-2">
-                                        <div className="flex items-center gap-4">
-                                            <button
-                                                type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
-                                                onClick={() => setAnswer(it.qset_id, 0)}
-                                            >
-                                                N/A
-                                            </button>
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Comply'} onChange={() => setAnswer(it.qset_id, 'Comply')} />
-                                                <span>Comply</span>
-                                            </label>
-                                            <label className="flex items-center gap-2">
-                                                <input type="radio" name={`ncr-${it.qset_id}`} checked={answers[it.qset_id] === 'Not-comply'} onChange={() => setAnswer(it.qset_id, 'Not-comply')} />
-                                                <span>Not-comply</span>
-                                            </label>
-                                        </div>
+                                        <RadioGroup
+                                            value={
+                                                answers[it.qset_id] === 0 || answers[it.qset_id] === '0'
+                                                    ? '0'
+                                                    : (answers[it.qset_id] === 'Comply' || answers[it.qset_id] === 'Not-comply'
+                                                        ? (answers[it.qset_id] as string)
+                                                        : undefined)
+                                            }
+                                            onValueChange={(value) => setAnswer(it.qset_id, value === '0' ? 0 : value)}
+                                            className="flex flex-wrap items-center gap-4 md:gap-6"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <RadioGroupItem value="0" id={`ncr-${it.qset_id}-na`} />
+                                                <Label htmlFor={`ncr-${it.qset_id}-na`} className="cursor-pointer text-sm font-medium text-gray-700">
+                                                    N/A
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <RadioGroupItem value="Comply" id={`ncr-${it.qset_id}-comply`} />
+                                                <Label htmlFor={`ncr-${it.qset_id}-comply`} className="cursor-pointer text-sm font-medium text-gray-700">
+                                                    Comply
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <RadioGroupItem value="Not-comply" id={`ncr-${it.qset_id}-not-comply`} />
+                                                <Label htmlFor={`ncr-${it.qset_id}-not-comply`} className="cursor-pointer text-sm font-medium text-gray-700">
+                                                    Not-comply
+                                                </Label>
+                                            </div>
+                                        </RadioGroup>
                                     </div>
                                 )}
 
                                 {it.qset_type === 'Rating' && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="flex items-center gap-2">
-                                            <button
+                                            <Button
                                                 type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                variant="outline"
+                                                size="sm"
+                                                className={`px-2 py-1 text-xs ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 0)}
                                             >
                                                 N/A
-                                            </button>
+                                            </Button>
                                             <div className="flex items-center gap-1">
                                                 {[1, 2, 3, 4].map(n => {
                                                     const selected = Number(answers[it.qset_id]) >= n;
                                                     return (
-                                                        <button
+                                                        <Button
                                                             key={n}
                                                             type="button"
+                                                            variant="ghost"
+                                                            size="icon"
                                                             onClick={() => setAnswer(it.qset_id, n)}
                                                             aria-label={`${n} star`}
-                                                            className="focus:outline-none"
+                                                            className="h-8 w-8 focus:outline-none"
                                                         >
                                                             <Star className={`w-6 h-6 ${selected ? 'text-yellow-500 fill-yellow-400' : 'text-gray-300 fill-transparent'}`} />
-                                                        </button>
+                                                        </Button>
                                                     );
                                                 })}
                                             </div>
@@ -1256,27 +1282,33 @@ const AssessmentForm: React.FC = () => {
                                 {it.qset_type === 'Selection' && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="flex items-center gap-2">
-                                            <button
+                                            <Button
                                                 type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                variant="outline"
+                                                size="sm"
+                                                className={`px-2 py-1 text-xs ${(answers[it.qset_id] === 0 || answers[it.qset_id] === '0') ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 0)}
                                             >
                                                 N/A
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
                                                 type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${answers[it.qset_id] === 'Equipped' ? 'bg-green-600 border-green-600 text-white hover:bg-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                variant="outline"
+                                                size="sm"
+                                                className={`px-2 py-1 text-xs ${answers[it.qset_id] === 'Equipped' ? 'bg-green-600 border-green-600 text-white hover:bg-green-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 'Equipped')}
                                             >
                                                 Equipped
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
                                                 type="button"
-                                                className={`px-2 py-1 text-xs rounded border ${answers[it.qset_id] === 'Missing' ? 'bg-red-600 border-red-600 text-white hover:bg-red-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
+                                                variant="outline"
+                                                size="sm"
+                                                className={`px-2 py-1 text-xs ${answers[it.qset_id] === 'Missing' ? 'bg-red-600 border-red-600 text-white hover:bg-red-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-100'}`}
                                                 onClick={() => setAnswer(it.qset_id, 'Missing')}
                                             >
                                                 Missing
-                                            </button>
+                                            </Button>
                                         </div>
                                     </div>
                                 )}
@@ -1313,14 +1345,16 @@ const AssessmentForm: React.FC = () => {
                                                     <div className="w-full flex justify-center">
                                                         <div className="relative">
                                                             <img src={answers[`fileUrl-${it.qset_id}`]} alt="New proof preview" className="h-28 w-36 object-cover rounded border" />
-                                                            <button
+                                                            <Button
                                                                 type="button"
+                                                                variant="destructive"
+                                                                size="icon"
                                                                 onClick={() => setProofFile(it.qset_id, null)}
-                                                                className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center shadow"
+                                                                className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-red-600 text-[10px] text-white shadow hover:bg-red-700"
                                                                 title="Remove selected image"
                                                             >
                                                                 ×
-                                                            </button>
+                                                            </Button>
                                                             <div className="text-[10px] text-gray-500 mt-1 max-w-[9rem] truncate text-center">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
                                                         </div>
                                                     </div>
@@ -1330,14 +1364,14 @@ const AssessmentForm: React.FC = () => {
                                                 {!answers[`fileUrl-${it.qset_id}`] && (
                                                     <div className="flex flex-col gap-2">
                                                         {/* Hidden inputs */}
-                                                        <input
+                                                        <Input
                                                             id={`file-${it.qset_id}-gallery`}
                                                             type="file"
                                                             accept="image/*"
                                                             className="hidden"
                                                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
                                                         />
-                                                        <input
+                                                        <Input
                                                             id={`file-${it.qset_id}-camera`}
                                                             type="file"
                                                             accept="image/*"
@@ -1346,12 +1380,23 @@ const AssessmentForm: React.FC = () => {
                                                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleFileSelect(e, it.qset_id)}
                                                         />
                                                         <div className="flex flex-wrap items-center gap-2">
-                                                            <label htmlFor={`file-${it.qset_id}-gallery`} className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="cursor-pointer rounded bg-gray-100 px-3 py-1.5 text-sm hover:bg-gray-200"
+                                                                onClick={() => document.getElementById(`file-${it.qset_id}-gallery`)?.click()}
+                                                            >
                                                                 Upload Photo
-                                                            </label>
-                                                            <label htmlFor={`file-${it.qset_id}-camera`} className="cursor-pointer rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700">
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                className="cursor-pointer rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                                                                onClick={() => document.getElementById(`file-${it.qset_id}-camera`)?.click()}
+                                                            >
                                                                 Use Camera
-                                                            </label>
+                                                            </Button>
                                                             <span className="text-[11px] text-gray-500">PNG/JPG, 1 image only</span>
                                                         </div>
 
