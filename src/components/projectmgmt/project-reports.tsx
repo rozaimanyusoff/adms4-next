@@ -2,14 +2,15 @@
 
 import React from 'react';
 import type { ValueType, NameType } from 'recharts/types/component/DefaultTooltipContent';
-import { differenceInCalendarDays, format, isValid, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, isAfter, isValid, parseISO } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip as RechartsTooltip, XAxis, YAxis } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ProjectRecord } from './types';
+import type { ProjectRecord, ProjectTag } from './types';
 import { Badge } from '@/components/ui/badge';
 
 type ProjectReportsProps = {
     projects: ProjectRecord[];
+    tags: ProjectTag[];
 };
 
 const ganttChartConfig: ChartConfig = {
@@ -31,19 +32,29 @@ const burnDownConfig: ChartConfig = {
 };
 
 const assignmentColors: Record<string, string> = {
-    Task: '#6366f1',
+    Project: '#6366f1',
     Support: '#10b981',
+    'Ad-hoc': '#f97316',
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
+const safeParseISO = (value: string) => {
+    try {
+        const parsed = parseISO(value);
+        return isValid(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
     const validProjects = React.useMemo(() => {
         return projects
             .map(project => {
-                const start = parseISO(project.startDate);
-                const due = parseISO(project.dueDate);
-                if (!isValid(start) || !isValid(due)) {
+                const start = safeParseISO(project.startDate);
+                const due = safeParseISO(project.dueDate);
+                if (!start || !due) {
                     return null;
                 }
                 return { ...project, start, due };
@@ -82,7 +93,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
 
         return validProjects.map(project => {
             const totalDuration = Math.max(project.durationDays || differenceInCalendarDays(project.due, project.start) + 1, 1);
-            const completedDays = Math.round((project.progress / 100) * totalDuration);
+            const completedDays = Math.round((project.percentComplete / 100) * totalDuration);
             const actualRemaining = Math.max(totalDuration - completedDays, 0);
 
             const elapsed = differenceInCalendarDays(today, project.start) + 1;
@@ -100,30 +111,38 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
     const typeBreakdown = React.useMemo(() => {
         const counts = validProjects.reduce(
             (acc, project) => {
-                if (project.assignmentType === 'task') {
-                    acc.task.count += 1;
-                    acc.task.progress += project.progress;
-                } else {
-                    acc.support.count += 1;
-                    acc.support.progress += project.progress;
+                switch (project.assignmentType) {
+                    case 'project':
+                        acc.project.count += 1;
+                        acc.project.progress += project.percentComplete;
+                        break;
+                    case 'support':
+                        acc.support.count += 1;
+                        acc.support.progress += project.percentComplete;
+                        break;
+                    case 'ad_hoc':
+                        acc.adHoc.count += 1;
+                        acc.adHoc.progress += project.percentComplete;
+                        break;
                 }
                 return acc;
             },
             {
-                task: { count: 0, progress: 0 },
+                project: { count: 0, progress: 0 },
                 support: { count: 0, progress: 0 },
+                adHoc: { count: 0, progress: 0 },
             },
         );
 
-        const total = counts.task.count + counts.support.count;
+        const total = counts.project.count + counts.support.count + counts.adHoc.count;
         return {
             total,
             items: [
                 {
-                    name: 'Task',
-                    value: counts.task.count,
-                    average: counts.task.count ? Math.round(counts.task.progress / counts.task.count) : 0,
-                    color: assignmentColors.Task,
+                    name: 'Project',
+                    value: counts.project.count,
+                    average: counts.project.count ? Math.round(counts.project.progress / counts.project.count) : 0,
+                    color: assignmentColors.Project,
                 },
                 {
                     name: 'Support',
@@ -131,24 +150,108 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                     average: counts.support.count ? Math.round(counts.support.progress / counts.support.count) : 0,
                     color: assignmentColors.Support,
                 },
+                {
+                    name: 'Ad-hoc',
+                    value: counts.adHoc.count,
+                    average: counts.adHoc.count ? Math.round(counts.adHoc.progress / counts.adHoc.count) : 0,
+                    color: assignmentColors['Ad-hoc'],
+                },
             ],
         };
     }, [validProjects]);
 
     const summaryStats = React.useMemo(() => {
         const total = projects.length;
-        const completed = projects.filter(project => project.status === 'Completed').length;
-        const atRisk = projects.filter(project => project.status === 'At Risk').length;
-        const averageProgress = total ? Math.round(projects.reduce((acc, project) => acc + project.progress, 0) / total) : 0;
+        const completed = projects.filter(project => project.status === 'completed').length;
+        const atRisk = projects.filter(project => project.status === 'at_risk').length;
+        const averageProgress = total ? Math.round(projects.reduce((acc, project) => acc + project.percentComplete, 0) / total) : 0;
         return { total, completed, atRisk, averageProgress };
     }, [projects]);
 
+    const latestLogs = React.useMemo(() => {
+        return projects
+            .map(project => {
+                if (!project.progressLogs.length) {
+                    return null;
+                }
+                const sorted = [...project.progressLogs].sort((a, b) => b.logDate.localeCompare(a.logDate));
+                return { project, log: sorted[0] };
+            })
+            .filter((entry): entry is { project: ProjectRecord; log: ProjectRecord['progressLogs'][number] } => Boolean(entry));
+    }, [projects]);
+
+    const averageRemainingEffort = latestLogs.length
+        ? Math.round(latestLogs.reduce((acc, entry) => acc + entry.log.remainingEffortDays, 0) / latestLogs.length)
+        : 0;
+    const overridesCount = latestLogs.filter(entry => entry.log.statusOverride).length;
+
+    const supportCoverage = React.useMemo(() => {
+        const shifts = projects.flatMap(project =>
+            project.supportShifts.map(shift => ({
+                ...shift,
+                projectName: project.name,
+            })),
+        );
+
+        const totalHours = shifts.reduce((acc, shift) => acc + shift.coverageHours, 0);
+        const upcomingEntry = shifts
+            .map(shift => {
+                const start = safeParseISO(shift.shiftStart);
+                const end = shift.shiftEnd ? safeParseISO(shift.shiftEnd) : null;
+                return { shift, start, end };
+            })
+            .filter((entry): entry is { shift: (typeof shifts)[number]; start: Date; end: Date | null } => Boolean(entry.start))
+            .filter(entry => isAfter(entry.end ?? entry.start, new Date()))
+            .sort((a, b) => a.start.getTime() - b.start.getTime())[0];
+
+        return {
+            totalHours,
+            shiftCount: shifts.length,
+            upcomingShift: upcomingEntry
+                ? {
+                      ...upcomingEntry.shift,
+                      start: upcomingEntry.start,
+                      end: upcomingEntry.end ?? undefined,
+                  }
+                : null,
+        };
+    }, [projects]);
+
+    const tagCoverage = React.useMemo(() => {
+        const usage = new Map<string, { tag: ProjectTag; count: number }>();
+        projects.forEach(project => {
+            project.tags.forEach(link => {
+                const existing = usage.get(link.tag.slug);
+                if (existing) {
+                    existing.count += 1;
+                } else {
+                    usage.set(link.tag.slug, { tag: link.tag, count: 1 });
+                }
+            });
+        });
+        const used = Array.from(usage.values()).sort((a, b) => b.count - a.count);
+        const unused = tags.filter(tag => !usage.has(tag.slug));
+        return { used, unused };
+    }, [projects, tags]);
+
     const upcomingMilestones = React.useMemo(() => {
-        return [...validProjects]
-            .filter(project => project.status !== 'Completed')
-            .sort((a, b) => a.due.getTime() - b.due.getTime())
+        const queue = projects.flatMap(project =>
+            project.milestones.map(milestone => ({
+                project,
+                milestone,
+                targetDate: safeParseISO(milestone.targetDate),
+            })),
+        );
+
+        return queue
+            .filter(({ milestone }) => {
+                if (milestone.status === 'completed') return false;
+                return true;
+            })
+            .filter(item => item.targetDate && isAfter(item.targetDate, new Date()))
+            .sort((a, b) => (a.targetDate?.getTime() ?? 0) - (b.targetDate?.getTime() ?? 0))
             .slice(0, 4);
-    }, [validProjects]);
+    }, [projects]);
 
     return (
         <div className="space-y-6">
@@ -215,19 +318,29 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                             <span>At risk</span>
                             <Badge variant="destructive">{summaryStats.atRisk}</Badge>
                         </div>
+                        <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                            <span>Avg. remaining effort</span>
+                            <span className="font-semibold">{averageRemainingEffort}d</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                            <span>Status overrides</span>
+                            <Badge variant={overridesCount ? 'destructive' : 'secondary'}>{overridesCount}</Badge>
+                        </div>
                     </div>
                     <div>
                         <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Upcoming due dates</h4>
                         <div className="mt-2 space-y-2 text-sm">
                             {upcomingMilestones.length ? (
-                                upcomingMilestones.map(project => (
-                                    <div key={project.id} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                                upcomingMilestones.map(({ project, milestone, targetDate }) => (
+                                    <div key={milestone.id} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
                                         <div>
-                                            <div className="font-medium">{project.name}</div>
-                                            <p className="text-xs text-muted-foreground">{format(project.due, 'MMM d, yyyy')}</p>
+                                            <div className="font-medium">{milestone.name}</div>
+                                            <p className="text-xs text-muted-foreground">
+                                                {project.name} • {targetDate ? format(targetDate, 'MMM d, yyyy') : milestone.targetDate}
+                                            </p>
                                         </div>
                                         <Badge variant="outline" className="capitalize">
-                                            {project.assignmentType}
+                                            {milestone.status.replace('_', ' ')}
                                         </Badge>
                                     </div>
                                 ))
@@ -284,8 +397,9 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                             {typeBreakdown.total ? (
                                 <ChartContainer
                                     config={{
-                                        task: { label: 'Task', color: assignmentColors.Task },
-                                        support: { label: 'Support', color: assignmentColors.Support },
+                                        Project: { label: 'Project', color: assignmentColors.Project },
+                                        Support: { label: 'Support', color: assignmentColors.Support },
+                                        'Ad-hoc': { label: 'Ad-hoc', color: assignmentColors['Ad-hoc'] },
                                     }}
                                     className="!aspect-square h-56"
                                 >
@@ -320,7 +434,64 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects }) => {
                                 </div>
                             ))}
                             {!typeBreakdown.total && <p className="text-xs text-muted-foreground">Create projects to populate workload trends.</p>}
+                            {!!tagCoverage.used.length && (
+                                <div className="mt-4 space-y-2">
+                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Top Tags</h4>
+                                    {tagCoverage.used.slice(0, 4).map(item => (
+                                        <div key={item.tag.id} className="flex items-center justify-between rounded-md border border-dashed border-border/60 px-3 py-2">
+                                            <span className="flex items-center gap-2">
+                                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.tag.colorHex }} />
+                                                {item.tag.name}
+                                            </span>
+                                            <Badge variant="outline" className="border-foreground/40 text-xs">
+                                                {item.count}
+                                            </Badge>
+                                        </div>
+                                    ))}
+                                    {tagCoverage.unused.length > 0 && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Not used:{' '}
+                                            <span className="font-medium">
+                                                {tagCoverage.unused
+                                                    .map(tag => tag.name)
+                                                    .join(', ')}
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
+                    </div>
+                </div>
+                <div className="panel space-y-4 p-5">
+                    <div>
+                        <h3 className="text-base font-semibold">Support Coverage</h3>
+                        <p className="text-sm text-muted-foreground">Shifts captured from active support engagements.</p>
+                    </div>
+                    <div className="space-y-3 text-sm">
+                        <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                            <span>Total shifts</span>
+                            <Badge variant="secondary">{supportCoverage.shiftCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                            <span>Coverage hours</span>
+                            <span className="font-semibold">{supportCoverage.totalHours.toFixed(1)}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Next shift</h4>
+                        {supportCoverage.upcomingShift ? (
+                            <div className="mt-2 space-y-1 rounded-md border border-border/60 px-3 py-2 text-sm">
+                                <div className="font-medium">{supportCoverage.upcomingShift.projectName}</div>
+                                <p className="text-xs text-muted-foreground">
+                                    {format(supportCoverage.upcomingShift.start, 'MMM d, yyyy • HH:mm')}
+                                    {supportCoverage.upcomingShift.end && ` → ${format(supportCoverage.upcomingShift.end, 'HH:mm')}`}
+                                </p>
+                                <p className="text-xs text-muted-foreground">Coverage {supportCoverage.upcomingShift.coverageHours} hours</p>
+                            </div>
+                        ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">No upcoming shifts scheduled.</p>
+                        )}
                     </div>
                 </div>
             </div>
