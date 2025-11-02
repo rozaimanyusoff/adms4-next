@@ -13,6 +13,7 @@ type ProjectOverviewTableProps = {
     assignmentTypeFilter: AssignmentType | 'all';
     onAssignmentTypeFilterChange: (value: AssignmentType | 'all') => void;
     onCreateProject?: () => void;
+    onOpenProject?: (projectId: string) => void;
 };
 
 const TYPE_LABEL: Record<AssignmentType, string> = {
@@ -48,6 +49,7 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
     assignmentTypeFilter,
     onAssignmentTypeFilterChange,
     onCreateProject,
+    onOpenProject,
 }) => {
     const filtered = React.useMemo(() => {
         if (assignmentTypeFilter === 'all') {
@@ -110,7 +112,11 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                             const primaryAssignment = project.assignments[0];
                             const statusMeta = STATUS_META[project.status];
                             return (
-                                <tr key={project.id} className="border-b border-border/40 text-sm transition hover:bg-muted/40">
+                                <tr
+                                    key={project.id}
+                                    className="border-b border-border/40 text-sm transition hover:bg-muted/40 cursor-pointer"
+                                    onDoubleClick={() => onOpenProject && onOpenProject(String(project.id))}
+                                >
                                     <td className="px-4 py-3">
                                         <div className="font-medium">{project.name}</div>
                                         <div className="text-xs uppercase tracking-wide text-muted-foreground">{project.code}</div>

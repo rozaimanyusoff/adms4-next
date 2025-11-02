@@ -20,6 +20,7 @@ import type {
     ProjectDeliverable,
 } from './types';
 import { toast } from 'sonner';
+import { authenticatedApi } from '@/config/api';
 
 const assignorDirectory = ['PMO Lead', 'Service Desk Manager', 'Finance Head', 'Operations Director'];
 const assigneeDirectory = ['Melissa Carter', 'Benjamin Lee', 'April Ramos', 'Liam Patel', 'Natalie Chen', 'Omar Idris'];
@@ -499,44 +500,63 @@ const defaultProjects: ProjectRecord[] = [
     ),
 ];
 
+// Map API project to local ProjectRecord shape
+function mapApiProjectToRecord(item: any): ProjectRecord {
+    const id = String(item?.id ?? generateId('proj'));
+    const startDate = (item?.start_date || '').slice(0, 10);
+    const dueDate = (item?.due_date || '').slice(0, 10);
+    const percentComplete = Number(item?.overall_progress ?? 0) || 0;
+    const allowed: ProjectStatus[] = ['not_started', 'in_progress', 'completed', 'at_risk'];
+    const incoming = String(item?.status || '').toLowerCase();
+    const status = (allowed.includes(incoming as ProjectStatus)
+        ? (incoming as ProjectStatus)
+        : percentComplete >= 100
+            ? 'completed'
+            : percentComplete <= 0
+                ? 'not_started'
+                : 'in_progress');
+    return {
+        id,
+        code: item?.code || '',
+        name: item?.name || '',
+        description: item?.description || '',
+        assignmentType: (item?.assignment_type || 'project') as AssignmentType,
+        status,
+        startDate,
+        dueDate,
+        durationDays: Number(item?.duration_days ?? 0) || 0,
+        percentComplete,
+        createdAt: item?.created_at || new Date().toISOString(),
+        updatedAt: item?.updated_at || item?.created_at || new Date().toISOString(),
+        assignments: [],
+        milestones: [],
+        progressLogs: [],
+        supportShifts: [],
+        tags: [],
+        deliverables: [],
+    };
+}
+
 const ProjectMgmtMain: React.FC = () => {
-    const [projects, setProjects] = React.useState<ProjectRecord[]>(defaultProjects);
+    const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
     const [assignmentFilter, setAssignmentFilter] = React.useState<AssignmentType | 'all'>('all');
     const [isCreating, setIsCreating] = React.useState(false);
+    const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
 
-    const refreshStatuses = React.useCallback(() => {
-        setProjects(prev =>
-            prev.map(project => {
-                const recalculated = inferStatus({
-                    startDate: project.startDate,
-                    dueDate: project.dueDate,
-                    percentComplete: project.percentComplete,
-                });
-
-                if (recalculated === project.status) {
-                    return project;
-                }
-
-                return { ...project, status: recalculated, updatedAt: new Date().toISOString() };
-            }),
-        );
+    const fetchProjects = React.useCallback(async () => {
+        try {
+            const res: any = await authenticatedApi.get('/api/projects');
+            const data = res?.data?.data ?? [];
+            const list = Array.isArray(data) ? data : [];
+            setProjects(list.map(mapApiProjectToRecord));
+        } catch (err: any) {
+            toast.error(err?.message || 'Failed to load projects');
+        }
     }, []);
 
     React.useEffect(() => {
-        refreshStatuses();
-    }, [refreshStatuses]);
-
-    const handleCreateProject = React.useCallback(
-        (values: ProjectFormValues) => {
-            const record = hydrateRecord(values, PROJECT_TAG_LOOKUP);
-            setProjects(prev => [record, ...prev]);
-            toast.success('Project registered', {
-                description: `${record.name} assigned to ${record.assignments[0]?.assignee ?? 'team'}`,
-            });
-            setIsCreating(false);
-        },
-        [],
-    );
+        void fetchProjects();
+    }, [fetchProjects]);
 
     const portfolioSnapshot = React.useMemo(() => {
         const total = projects.length;
@@ -596,7 +616,8 @@ const ProjectMgmtMain: React.FC = () => {
                                     projects={projects}
                                     assignmentTypeFilter={assignmentFilter}
                                     onAssignmentTypeFilterChange={setAssignmentFilter}
-                                    onCreateProject={() => setIsCreating(true)}
+                                    onCreateProject={() => { setEditingProjectId(null); setIsCreating(true); }}
+                                    onOpenProject={(id) => { setEditingProjectId(id); setIsCreating(true); }}
                                 />
                             </>
                         )}
@@ -606,12 +627,13 @@ const ProjectMgmtMain: React.FC = () => {
                                 <button
                                     type="button"
                                     className="inline-flex items-center text-sm font-medium text-primary hover:underline"
-                                    onClick={() => setIsCreating(false)}
+                                    onClick={() => { setIsCreating(false); setEditingProjectId(null); void fetchProjects(); }}
                                 >
                                     ← Back to projects
                                 </button>
                                 <ProjectRegistrationForm
-                                    onSubmit={handleCreateProject}
+                                    onSubmit={() => { /* form posts internally */ }}
+                                    editProjectId={editingProjectId || undefined}
                                     assignorOptions={assignorDirectory}
                                     assigneeOptions={assigneeDirectory}
                                     availableTags={PROJECT_TAGS}

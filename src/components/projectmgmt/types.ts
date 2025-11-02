@@ -74,12 +74,27 @@ export interface ProjectDeliverableAttachment {
 
 export interface ProjectDeliverable {
     id: string;
+    // Optional original server id when editing existing scope
+    serverId?: string | number;
     name: string;
     type: DeliverableType;
     description?: string;
     startDate: string;
     endDate: string;
     attachments: ProjectDeliverableAttachment[];
+    // Progress of this deliverable in percent (0-100)
+    progress?: number;
+    // Working days between start and end excluding weekends
+    mandays?: number;
+    // Scope-specific enrichments (optional, UI-only for now)
+    taskGroups?: string[];
+    assignee?: string;
+    status?: MilestoneStatus;
+    actualStartDate?: string;
+    actualEndDate?: string;
+    actualMandays?: number;
+    // Optional uploaded files (for API FormData construction)
+    fileBlobs?: File[];
 }
 
 export interface ProjectRecord {
@@ -117,11 +132,22 @@ export interface ProjectFormValues {
     tagSlugs: string[];
     deliverables: Array<{
         id: string;
+        serverId?: string | number;
         name: string;
         type: DeliverableType;
         description?: string;
         startDate: string;
         endDate: string;
         attachments: ProjectDeliverableAttachment[];
+        progress?: number;
+        mandays?: number;
+        // Scope-specific enrichments (optional, UI-only for now)
+        taskGroups?: string[];
+        assignee?: string;
+        status?: MilestoneStatus;
+        actualStartDate?: string;
+        actualEndDate?: string;
+        actualMandays?: number;
+        fileBlobs?: File[];
     }>;
 }
