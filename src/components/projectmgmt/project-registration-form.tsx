@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
-import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays } from 'date-fns';
+import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, addWeeks, startOfWeek, format as formatDate } from 'date-fns';
 import type { DeliverableType, ProjectDeliverableAttachment, ProjectFormValues, ProjectTag } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SingleSelect, MultiSelect, type ComboboxOption } from '@/components/ui/combobox';
 import { Plus, Trash2, MoreVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
+import ExcelJS from 'exceljs';
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.css';
 import { authenticatedApi } from '@/config/api';
@@ -130,13 +133,13 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         setValue: setDraftValue,
         watch: watchDraft,
         formState: { errors: draftErrors },
-    } = useForm<{ 
-        name: string; 
-        type: DeliverableType; 
-        description: string; 
-        startDate: string; 
-        endDate: string; 
-        attachments: ProjectDeliverableAttachment[]; 
+    } = useForm<{
+        name: string;
+        type: DeliverableType;
+        description: string;
+        startDate: string;
+        endDate: string;
+        attachments: ProjectDeliverableAttachment[];
         progress: number;
         taskGroups: string[];
         assignee: string;
@@ -216,11 +219,15 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 formData.append('progress', String(val));
                 formData.append('status', status);
                 await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${serverId}`, formData);
+                toast.success('Scope progress updated');
             } catch (err: any) {
                 toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope progress');
             } finally {
                 setSavingProgressId(null);
             }
+        } else {
+            // Local create mode: still give feedback
+            toast.success('Scope progress updated');
         }
     };
 
@@ -359,6 +366,63 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         return diff > 0 ? diff : 0;
     }, [timeline]);
 
+    // Total planned effort (mandays) across all scopes
+    const totalPlannedEffort = useMemo(() => {
+        return (watchDeliverables ?? []).reduce((acc: number, d: any) => acc + (typeof d?.mandays === 'number' ? d.mandays : calcMandays(d?.startDate, d?.endDate)), 0);
+    }, [watchDeliverables]);
+
+    // Ref to capture chart SVG for PNG export
+    const burnupRef = useRef<HTMLDivElement | null>(null);
+
+    const downloadBurnupPNG = async () => {
+        try {
+            const root = burnupRef.current;
+            if (!root) {
+                toast.error('Chart not ready');
+                return;
+            }
+            const svg = root.querySelector('svg');
+            if (!svg) {
+                toast.error('Chart SVG not found');
+                return;
+            }
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(svg);
+            if (!source.match(/^<svg[^>]+xmlns=/)) {
+                source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = () => reject(new Error('Failed loading SVG image'));
+                img.src = url;
+            });
+            const width = Number(svg.getAttribute('width')) || Math.ceil((svg as any).clientWidth) || 900;
+            const height = Number(svg.getAttribute('height')) || Math.ceil((svg as any).clientHeight) || 400;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas not supported');
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--background') || '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            URL.revokeObjectURL(url);
+            const pngUrl = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = pngUrl;
+            a.download = `burnup-${Date.now()}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            toast.success('Burnup chart downloaded');
+        } catch (err: any) {
+            toast.error(err?.message || 'Failed to download chart');
+        }
+    };
+
     const overallProgress = useMemo(() => {
         const list = (watchDeliverables ?? []).map((d: any) => (typeof d?.progress === 'number' ? d.progress : 0));
         if (!list.length) return 0;
@@ -373,6 +437,159 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     const [successOpen, setSuccessOpen] = useState(false);
     const [successInfo, setSuccessInfo] = useState<{ code: string; name: string } | null>(null);
     const [deletingScopeId, setDeletingScopeId] = useState<string | null>(null);
+
+    // Build DataGrid rows for scopes
+    type ScopeRow = {
+        id: string;
+        index: number;
+        serverId?: string;
+        title: string;
+        groupsText: string;
+        assigneeText: string;
+        plannedText: string;
+        actualText: string;
+        mandays: number;
+        progress: number;
+        status: string;
+    };
+
+    const scopeRows: ScopeRow[] = useMemo(() => {
+        const delivs = watchDeliverables ?? [];
+        return (deliverableFields || []).map((field, index) => {
+            const d: any = delivs[index] || {};
+            const groupsText = (d.taskGroups || [])
+                .map((val: string) => TASK_GROUP_OPTIONS.find(o => o.value === val)?.label || val)
+                .join(', ');
+            const assigneeText = (() => {
+                const v = d.assignee;
+                const opt = (assigneeChoices as ComboboxOption[]).find(o => o.value === v);
+                return opt?.label || v || '-';
+            })();
+            const plannedText = `${formatDMY(d.startDate) || '-'} → ${formatDMY(d.endDate) || '-'}`;
+            const actualText = `${formatDMY(d.actualStartDate || '') || '-'} → ${formatDMY(d.actualEndDate || '') || '-'}`;
+            const mandays = typeof d.mandays === 'number' ? d.mandays : calcMandays(d.startDate, d.endDate);
+            const status = d.status || ((d.progress ?? 0) <= 0 ? 'not_started' : (d.progress ?? 0) >= 100 ? 'completed' : 'in_progress');
+            return {
+                id: field.id,
+                index,
+                serverId: d.serverId ? String(d.serverId) : undefined,
+                title: d.name || '-',
+                groupsText,
+                assigneeText,
+                plannedText,
+                actualText,
+                mandays,
+                progress: d.progress ?? 0,
+                status,
+            } as ScopeRow;
+        });
+    }, [deliverableFields, watchDeliverables, assigneeChoices]);
+
+    const scopeColumns: ColumnDef<ScopeRow>[] = [
+        {
+            key: 'index',
+            header: '#',
+            render: (row) => row.index + 1,
+            colClass: 'w-10 text-right text-muted-foreground',
+        },
+        { key: 'title', header: 'Title', columnVisible: true },
+        { key: 'groupsText', header: 'Groups' },
+        { key: 'assigneeText', header: 'Assignee' },
+        {
+            key: 'plannedText',
+            header: 'Dates',
+            render: (row) => (
+                <div className="flex flex-col">
+                    <span className="text-xs">Planned: {row.plannedText}</span>
+                    <span className="text-xs text-muted-foreground">Actual: {row.actualText}</span>
+                </div>
+            ),
+        },
+        { key: 'mandays', header: 'Mandays' },
+        {
+            key: 'progress',
+            header: 'Progress/Status',
+            render: (row) => (
+                <div className="flex flex-col gap-1">
+                    <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={row.progress ?? 0}
+                        disabled={Boolean(savingProgressId) && String(row.serverId || '') === savingProgressId}
+                        onChange={e => handleInlineProgressChange(row.index, Number(e.target.value))}
+                        className="accent-emerald-600"
+                    />
+                    <span className="text-[10px] text-muted-foreground">{row.status}</span>
+                </div>
+            ),
+        },
+        {
+            key: 'id',
+            header: 'Actions',
+            render: (row) => (
+                <div className="flex items-center gap-1 justify-end">
+                    <Button type="button" variant="ghost" size="icon" aria-label="Move up" onClick={() => handleReorder(row.index, row.index - 1)}>
+                        <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label="Move down" onClick={() => handleReorder(row.index, row.index + 1)}>
+                        <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Scope actions">
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => {
+                                const current: any = (watchDeliverables ?? [])[row.index] || {};
+                                setEditingScopeIndex(row.index);
+                                setDraftValue('name', current.name || '');
+                                setDraftValue('description', current.description || '');
+                                setDraftValue('taskGroups', current.taskGroups || []);
+                                setDraftValue('assignee', current.assignee || '');
+                                setDraftValue('startDate', current.startDate || '');
+                                setDraftValue('endDate', current.endDate || '');
+                                setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
+                                setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
+                                setDraftValue('progress', current.progress ?? 0);
+                            }}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                                const current: any = (watchDeliverables ?? [])[row.index] || {};
+                                toast.info(`Add issues for: ${current.name || 'scope'}`);
+                            }}>Add Issues</DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={async () => {
+                                    const current = (watchDeliverables ?? [])[row.index] as any;
+                                    const serverId = current?.serverId;
+                                    if (editProjectId && serverId) {
+                                        try {
+                                            setDeletingScopeId(String(serverId));
+                                            await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
+                                            remove(row.index);
+                                            toast.success('Scope removed');
+                                        } catch (err: any) {
+                                            const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
+                                            toast.error(msg);
+                                        } finally {
+                                            setDeletingScopeId(null);
+                                        }
+                                    } else {
+                                        remove(row.index);
+                                    }
+                                }}
+                            >
+                                Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            ),
+        },
+    ];
 
     const submitHandler = async (values: ProjectFormValues) => {
         const deliverables = (values.deliverables ?? []).map(d => ({
@@ -511,8 +728,8 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 const res: any = await authenticatedApi.post(`/api/projects/${editProjectId}/scopes`, formData);
                 const scope = res?.data?.data ?? res?.data ?? null;
                 const serverId = scope?.id != null ? String(scope.id) : undefined;
-                const plannedStart = scope?.planned_start_date ? String(scope.planned_start_date).slice(0,10) : values.startDate;
-                const plannedEnd = scope?.planned_end_date ? String(scope.planned_end_date).slice(0,10) : values.endDate;
+                const plannedStart = scope?.planned_start_date ? String(scope.planned_start_date).slice(0, 10) : values.startDate;
+                const plannedEnd = scope?.planned_end_date ? String(scope.planned_end_date).slice(0, 10) : values.endDate;
 
                 append({
                     id: generateId('deliverable'),
@@ -590,136 +807,139 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         }
     }
     return (
-        <div className="panel space-y-6 p-5">
+        <div className="space-y-6">
             <div>
                 <h2 className="text-lg font-semibold">{editProjectId ? 'Edit Project' : 'Register Project'}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{editProjectId ? 'Update details, add scopes, and save changes.' : 'Capture core delivery details and planned scopes.'}</p>
             </div>
 
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
-                {/* Project tags and priority (API-aligned) */}
-                <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                        <Label htmlFor="projectTags">Project tags</Label>
-                        <Input id="projectTags" placeholder="e.g. adms4" value={(watch('projectTags' as any) as any) || ''} onChange={e => setValue('projectTags' as any, e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Priority</Label>
-                        <Controller
-                            control={control}
-                            name={'priority' as any}
-                            render={({ field }) => (
-                                <Select value={field.value || 'medium'} onValueChange={field.onChange}>
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select priority" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="low">Low</SelectItem>
-                                        <SelectItem value="medium">Medium</SelectItem>
-                                        <SelectItem value="high">High</SelectItem>
-                                        <SelectItem value="critical">Critical</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            )}
-                        />
-                    </div>
-                </div>
-
-                {/* Main + Aside layout */}
+                {/* Main + Aside layout (align aside with very top, incl. tags) */}
                 <div className="grid gap-6 md:grid-cols-[1fr_360px]">
-                    {/* Main project details */}
+                    {/* Left column: all project fields */}
                     <div className="space-y-6">
+                        {/* Project tags and priority (API-aligned) */}
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
-                                <Label htmlFor="code">Project code (optional)</Label>
-                                <Input id="code" className='uppercase' placeholder="e.g. OPS-2024-08" {...register('code')} />
+                                <Label htmlFor="projectTags">Project tags</Label>
+                                <Input id="projectTags" placeholder="e.g. adms4" value={(watch('projectTags' as any) as any) || ''} onChange={e => setValue('projectTags' as any, e.target.value)} />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="name">Project name</Label>
-                                <Input id="name" className='capitalize' placeholder="e.g. Employee Onboarding Portal" {...register('name', { required: 'Project name is required' })} />
-                                {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Assignment type</Label>
+                                <Label>Priority</Label>
                                 <Controller
                                     control={control}
-                                    name="assignmentType"
-                                    rules={{ required: 'Assignment type is required' }}
+                                    name={'priority' as any}
                                     render={({ field }) => (
-                                        <Select value={field.value} onValueChange={field.onChange}>
+                                        <Select value={field.value || 'medium'} onValueChange={field.onChange}>
                                             <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select type" />
+                                                <SelectValue placeholder="Select priority" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="project">Project</SelectItem>
-                                                <SelectItem value="support">Support</SelectItem>
-                                                <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                <SelectItem value="low">Low</SelectItem>
+                                                <SelectItem value="medium">Medium</SelectItem>
+                                                <SelectItem value="high">High</SelectItem>
+                                                <SelectItem value="critical">Critical</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     )}
                                 />
-                                {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="description">Description</Label>
-                            <Textarea id="description" placeholder="Optional context that helps assignees understand the project" rows={3} {...register('description')} />
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="overallProgress">Overall progress (%)</Label>
-                                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                    <Input id="overallProgress" type="range" min={0} max={100} step={5} value={overallProgress} disabled readOnly />
-                                    <span className="w-12 text-right text-sm text-muted-foreground">{overallProgress}%</span>
+                        {/* Main project details */}
+                        <div className="space-y-6">
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Project code (optional)</Label>
+                                    <Input id="code" className='uppercase' placeholder="e.g. OPS-2024-08" {...register('code')} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">Project name</Label>
+                                    <Input id="name" className='capitalize' placeholder="e.g. Employee Onboarding Portal" {...register('name', { required: 'Project name is required' })} />
+                                    {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Assignment type</Label>
+                                    <Controller
+                                        control={control}
+                                        name="assignmentType"
+                                        rules={{ required: 'Assignment type is required' }}
+                                        render={({ field }) => (
+                                            <Select value={field.value} onValueChange={field.onChange}>
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="project">Project</SelectItem>
+                                                    <SelectItem value="support">Support</SelectItem>
+                                                    <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    />
+                                    {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
-                                <Label>Project start (auto)</Label>
-                                <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
+                                <Label htmlFor="description">Description</Label>
+                                <Textarea id="description" placeholder="Optional context that helps assignees understand the project" rows={3} {...register('description')} />
                             </div>
-                            <div className="space-y-2">
-                                <Label>Project due (auto)</Label>
-                                <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="overallProgress">Overall progress (%)</Label>
+                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                        <Input id="overallProgress" type="range" min={0} max={100} step={5} value={overallProgress} disabled readOnly className="accent-emerald-600" />
+                                        <span className="w-12 text-right text-sm font-semibold text-emerald-600">{overallProgress}%</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Duration (days)</Label>
-                                <Input value={durationDays ? `${durationDays} days` : ''} readOnly placeholder="Auto calculated" />
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-2">
+                                    <Label>Project start (auto)</Label>
+                                    <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Project due (auto)</Label>
+                                    <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Duration (days)</Label>
+                                    <Input value={durationDays ? `${durationDays} days` : ''} readOnly placeholder="Auto calculated" />
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex justify-end gap-2">
-                            {editProjectId && (
-                                <Button
-                                    type="button"
-                                    variant="destructive"
-                                    onClick={async () => {
-                                        const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
-                                        if (!ok) return;
-                                        try {
-                                            await authenticatedApi.delete(`/api/projects/${editProjectId}`);
-                                            toast.success('Project deleted');
-                                        } catch (err:any) {
-                                            toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
-                                        }
-                                    }}
-                                >
-                                    Delete project
+                            <div className="flex justify-end gap-2">
+                                {editProjectId && (
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        onClick={async () => {
+                                            const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
+                                            if (!ok) return;
+                                            try {
+                                                await authenticatedApi.delete(`/api/projects/${editProjectId}`);
+                                                toast.success('Project deleted');
+                                            } catch (err: any) {
+                                                toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
+                                            }
+                                        }}
+                                    >
+                                        Delete project
+                                    </Button>
+                                )}
+                                <Button type="submit" disabled={!isValid || isSubmitting} aria-disabled={!isValid || isSubmitting}>
+                                    {editProjectId ? 'Update project' : 'Save project'}
                                 </Button>
-                            )}
-                            <Button type="submit" disabled={!isValid || isSubmitting} aria-disabled={!isValid || isSubmitting}>
-                                {editProjectId ? 'Update project' : 'Save project'}
-                            </Button>
+                            </div>
                         </div>
                     </div>
 
                     {/* Aside: Scope creator */}
                     <aside className="space-y-4 md:sticky md:top-4 self-start md:border-l md:border-border/60 md:pl-6">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold">Scope</h3>
+                            <h3 className="text-base font-semibold">Manage Project Scopes</h3>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="dl-name">Title</Label>
@@ -870,7 +1090,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             {editingScopeIndex !== null && (
                                 <Button type="button" variant="ghost" onClick={() => { setEditingScopeIndex(null); resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] }); }}>Cancel</Button>
                             )}
-                            <Button type="button" variant="secondary" onClick={editingScopeIndex !== null ? handleDraftSubmit(async (values)=>{
+                            <Button type="button" variant="secondary" onClick={editingScopeIndex !== null ? handleDraftSubmit(async (values) => {
                                 const prog = typeof values.progress === 'number' ? values.progress : 0;
                                 const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
                                 const idx = editingScopeIndex!;
@@ -912,7 +1132,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                         await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${current.serverId}`, formData);
                                         update(idx, payload);
                                         toast.success('Scope updated');
-                                    } catch (err:any) {
+                                    } catch (err: any) {
                                         toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope');
                                         return;
                                     }
@@ -930,132 +1150,244 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                     </aside>
                 </div>
 
-                {/* Scopes list (rows) */}
+                {/* Scopes list using CustomDataGrid */}
                 <div className="space-y-3">
-                    <div>
-                        <h3 className="text-base font-semibold">Scopes</h3>
-                        <p className="text-sm text-muted-foreground">Scopes you add will appear below.</p>
+                    <div className='flex items-center justify-between'>
+                        <div>
+                            <h3 className="text-base font-semibold">Scopes</h3>
+                            <p className="text-sm text-muted-foreground">Scopes you add will appear below.</p>
+                        </div>
+                    {/* Toolbar above grid */}
+                    <div className="flex items-center justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={async () => {
+                                try {
+                                    const workbook = new ExcelJS.Workbook();
+                                    const ws = workbook.addWorksheet('Scopes');
+                                    ws.columns = [
+                                        { header: '#', key: 'num', width: 6 },
+                                        { header: 'Title', key: 'title', width: 36 },
+                                        { header: 'Groups', key: 'groups', width: 40 },
+                                        { header: 'Assignee', key: 'assignee', width: 24 },
+                                        { header: 'Planned Start', key: 'pstart', width: 16 },
+                                        { header: 'Planned End', key: 'pend', width: 16 },
+                                        { header: 'Mandays', key: 'mandays', width: 10 },
+                                        { header: 'Progress', key: 'progress', width: 10 },
+                                        { header: 'Status', key: 'status', width: 14 },
+                                    ];
+                                    scopeRows.forEach((r, i) => {
+                                        const d = (watchDeliverables ?? [])[r.index] as any;
+                                        ws.addRow({
+                                            num: i + 1,
+                                            title: r.title,
+                                            groups: r.groupsText,
+                                            assignee: r.assigneeText,
+                                            pstart: d?.startDate || '',
+                                            pend: d?.endDate || '',
+                                            mandays: r.mandays,
+                                            progress: r.progress,
+                                            status: r.status,
+                                        });
+                                    });
+
+                                    // Gantt (weekly) with colored bars, plus meta columns
+                                    const wsG = workbook.addWorksheet('Gantt');
+                                    const rangeStart = timeline.startDate ? parseISO(timeline.startDate) : null;
+                                    const rangeEnd = timeline.endDate ? parseISO(timeline.endDate) : null;
+                                    if (rangeStart && rangeEnd && isDateValid(rangeStart) && isDateValid(rangeEnd)) {
+                                        const weekStart = startOfWeek(rangeStart, { weekStartsOn: 1 });
+                                        const metaCols = ['Title', 'Planned Start', 'Planned End', 'Mandays', 'Progress (%)'];
+                                        const header = [...metaCols];
+                                        const weeks: Date[] = [];
+                                        let w = new Date(weekStart);
+                                        while (w <= rangeEnd) {
+                                            header.push(`${formatDate(w, "'Wk' ww")} ${formatDate(w, 'dd/MM')}`);
+                                            weeks.push(new Date(w));
+                                            w = addWeeks(w, 1);
+                                        }
+                                        const headerRow = wsG.addRow(header);
+                                        headerRow.font = { bold: true } as any;
+                                        for (let c = 1; c <= header.length; c++) {
+                                            const cell = headerRow.getCell(c);
+                                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } } as any;
+                                            cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } as any;
+                                        }
+
+                                        const palette = ['FF93C5FD','FFF9A8D4','FF86EFAC','FFFDBA74','FFA5B4FC','FF67E8F9','FFFDA4AF','FFBFDBFE'];
+
+                                        scopeRows.forEach((r, i) => {
+                                            const d = (watchDeliverables ?? [])[r.index] as any;
+                                            const row = new Array(header.length).fill('');
+                                            row[0] = r.title;
+                                            row[1] = d?.startDate || '';
+                                            row[2] = d?.endDate || '';
+                                            row[3] = r.mandays;
+                                            row[4] = r.progress;
+                                            const added = wsG.addRow(row);
+                                            const baseColor = palette[i % palette.length];
+                                            if (d?.startDate && d?.endDate) {
+                                                const s = parseISO(d.startDate);
+                                                const e = parseISO(d.endDate);
+                                                if (isDateValid(s) && isDateValid(e)) {
+                                                    const indices: number[] = [];
+                                                    weeks.forEach((wk, idx) => {
+                                                        const wkStart = wk;
+                                                        const wkEnd = addDays(wk, 6);
+                                                        if (wkEnd < s || wkStart > e) return;
+                                                        indices.push(idx);
+                                                    });
+                                                    const totalCells = indices.length;
+                                                    const progressCells = Math.round(((r.progress ?? 0) / 100) * totalCells);
+                                                    indices.forEach((wIdx, order) => {
+                                                        const firstWeekCol = metaCols.length + 1; // 1-based index of first week column
+                                                        const c = wIdx + firstWeekCol; // convert to 1-based
+                                                        const cell = added.getCell(c);
+                                                        cell.value = '';
+                                                        const fillColor = order < progressCells ? 'FFF59E0B' : baseColor; // amber for completed
+                                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } } as any;
+                                                        cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } as any;
+                                                    });
+                                                }
+                                            }
+                                        });
+                                        // Column widths for meta + week columns
+                                        wsG.getColumn(1).width = 36; // Title
+                                        wsG.getColumn(2).width = 14; // Planned Start
+                                        wsG.getColumn(3).width = 14; // Planned End
+                                        wsG.getColumn(4).width = 10; // Mandays
+                                        wsG.getColumn(5).width = 12; // Progress (%)
+                                        for (let c = metaCols.length + 1; c <= header.length; c++) wsG.getColumn(c).width = 4;
+                                        wsG.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+                                    }
+
+                                    const buffer = await workbook.xlsx.writeBuffer();
+                                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `project-scopes-${Date.now()}.xlsx`;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(url);
+                                    toast.success('Excel exported');
+                                } catch (err: any) {
+                                    toast.error(err?.message || 'Failed to export Excel');
+                                }
+                        }}>Export Gantt (Excel)</Button>
+                        <Button type="button" variant="secondary" onClick={downloadBurnupPNG}>Download Burnup (PNG)</Button>
                     </div>
-                    {deliverableFields.length === 0 ? (
+                    </div>
+
+                    {scopeRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No scopes yet. Use the sidebar to add.</p>
                     ) : (
-                        <div className="overflow-hidden rounded-md border border-border/60">
-                            <div className="grid grid-cols-12 bg-muted px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                <div className="col-span-3">Title</div>
-                                <div className="col-span-2">Groups</div>
-                                <div className="col-span-2">Assignee</div>
-                                <div className="col-span-2">Dates</div>
-                                <div className="col-span-1">Mandays</div>
-                                <div className="col-span-1">Progress/Status</div>
-                                <div className="col-span-1 text-right">Actions</div>
-                            </div>
-                            <div className="divide-y">
-                                {deliverableFields.map((field, index) => (
-                                    <div key={field.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm gap-2">
-                                        <div className="col-span-3 truncate">{watchDeliverables?.[index]?.name || '-'}</div>
-                                        <div className="col-span-2 truncate">
-                                            {(watchDeliverables?.[index]?.taskGroups || [])
-                                                .map((val: string) => TASK_GROUP_OPTIONS.find(o => o.value === val)?.label || val)
-                                                .join(', ') || '-'}
-                                        </div>
-                                        <div className="col-span-2 truncate">
-                                            {(() => {
-                                                const v = watchDeliverables?.[index]?.assignee;
-                                                const opt = (assigneeChoices as ComboboxOption[]).find(o => o.value === v);
-                                                return opt?.label || v || '-';
-                                            })()}
-                                        </div>
-                                        <div className="col-span-2">
-                                            <div className="flex flex-col">
-                                                <span className="text-xs">Planned: {formatDMY(watchDeliverables?.[index]?.startDate) || '-'} → {formatDMY(watchDeliverables?.[index]?.endDate) || '-'}</span>
-                                                <span className="text-xs text-muted-foreground">Actual: {formatDMY(watchDeliverables?.[index]?.actualStartDate || '') || '-'} → {formatDMY(watchDeliverables?.[index]?.actualEndDate || '') || '-'}</span>
-                                            </div>
-                                        </div>
-                                        <div className="col-span-1">
-                                            {watchDeliverables?.[index]?.mandays ?? calcMandays(watchDeliverables?.[index]?.startDate, watchDeliverables?.[index]?.endDate)}
-                                        </div>
-                                        <div className="col-span-1">
-                                            <div className="flex flex-col gap-1">
-                                                <input
-                                                    type="range"
-                                                    min={0}
-                                                    max={100}
-                                                    step={5}
-                                                    value={watchDeliverables?.[index]?.progress ?? 0}
-                                                    disabled={Boolean(savingProgressId) && String(watchDeliverables?.[index]?.serverId || '') === savingProgressId}
-                                                    onChange={e => handleInlineProgressChange(index, Number(e.target.value))}
-                                                />
-                                                <span className="text-[10px] text-muted-foreground">
-                                                    {(watchDeliverables?.[index]?.status as string) || ((watchDeliverables?.[index]?.progress ?? 0) <= 0 ? 'not_started' : (watchDeliverables?.[index]?.progress ?? 0) >= 100 ? 'completed' : 'in_progress')}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="col-span-1 flex items-center justify-end gap-1">
-                                            <Button type="button" variant="ghost" size="icon" aria-label="Move up" onClick={() => handleReorder(index, index - 1)}>
-                                                <ArrowUp className="h-4 w-4" />
-                                            </Button>
-                                            <Button type="button" variant="ghost" size="icon" aria-label="Move down" onClick={() => handleReorder(index, index + 1)}>
-                                                <ArrowDown className="h-4 w-4" />
-                                            </Button>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon" aria-label="Scope actions">
-                                                        <MoreVertical className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => {
-                                                        const current: any = watchDeliverables?.[index] || {};
-                                                        setEditingScopeIndex(index);
-                                                        setDraftValue('name', current.name || '');
-                                                        setDraftValue('description', current.description || '');
-                                                        setDraftValue('taskGroups', current.taskGroups || []);
-                                                        setDraftValue('assignee', current.assignee || '');
-                                                        setDraftValue('startDate', current.startDate || '');
-                                                        setDraftValue('endDate', current.endDate || '');
-                                                        setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
-                                                        setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
-                                                        setDraftValue('progress', current.progress ?? 0);
-                                                    }}>Edit</DropdownMenuItem>
-                                                    <DropdownMenuItem onClick={() => {
-                                                        const current: any = watchDeliverables?.[index] || {};
-                                                        toast.info(`Add issues for: ${current.name || 'scope'}`);
-                                                    }}>Add Issues</DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        className="text-destructive focus:text-destructive"
-                                                        onClick={async () => {
-                                                            const current = watchDeliverables?.[index] as any;
-                                                            const serverId = current?.serverId;
-                                                            if (editProjectId && serverId) {
-                                                                try {
-                                                                    setDeletingScopeId(String(serverId));
-                                                                    await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
-                                                                    remove(index);
-                                                                    toast.success('Scope removed');
-                                                                } catch (err: any) {
-                                                                    const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
-                                                                    toast.error(msg);
-                                                                } finally {
-                                                                    setDeletingScopeId(null);
-                                                                }
-                                                            } else {
-                                                                remove(index);
-                                                            }
-                                                        }}
-                                                    >
-                                                        Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-                                    </div>
-                                ))}
+                        <CustomDataGrid
+                            data={scopeRows}
+                            columns={scopeColumns}
+                            pagination={false}
+                            inputFilter={false}
+                            dataExport={false}
+                        />
+                    )}
+                    {/* Burnup Chart */}
+                    {timeline.startDate && timeline.endDate && (
+                        <div className="space-y-2">
+                            <h4 className="text-sm font-semibold">Burnup Chart</h4>
+                            <div className="h-[500px] max-w-5xl mx-auto border rounded-xl p-4" ref={burnupRef}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={(() => {
+                                        const s0 = parseISO(timeline.startDate!);
+                                        const e0 = parseISO(timeline.endDate!);
+                                        if (!isDateValid(s0) || !isDateValid(e0)) return [] as any[];
+                                        const s = startOfWeek(s0, { weekStartsOn: 1 });
+                                        const rows: any[] = [];
+                                        const totalPlanned = totalPlannedEffort;
+                                        const today = new Date();
+
+                                        // helper to compute planned/actual up to a date
+                                        const plannedAt = (date: Date) => {
+                                            const totalDays = Math.max(1, differenceInCalendarDays(e0, s0) + 1);
+                                            const elapsed = Math.min(totalDays, Math.max(0, differenceInCalendarDays(date, s0) + 1));
+                                            return totalPlanned * (elapsed / totalDays);
+                                        };
+                                        const actualAt = (date: Date) => {
+                                            let actual = 0;
+                                            (watchDeliverables ?? []).forEach((d: any) => {
+                                                const mandays = typeof d?.mandays === 'number' ? d.mandays : calcMandays(d?.startDate, d?.endDate);
+                                                const completed = (d?.progress ?? 0) / 100 * mandays;
+                                                if (!d?.startDate || !d?.endDate) return;
+                                                const sd = parseISO(d.startDate);
+                                                const ed = parseISO(d.endDate);
+                                                if (!isDateValid(sd) || !isDateValid(ed)) return;
+                                                const activeEnd = ed < today ? ed : today;
+                                                if (date < sd) return;
+                                                if (date >= sd && date <= activeEnd) {
+                                                    const denom = Math.max(1, differenceInCalendarDays(activeEnd, sd) + 1);
+                                                    const frac = Math.min(1, (differenceInCalendarDays(date, sd) + 1) / denom);
+                                                    actual += completed * frac;
+                                                } else if (date > activeEnd) {
+                                                    actual += completed;
+                                                }
+                                            });
+                                            return actual;
+                                        };
+
+                                        // iterate weeks
+                                        let wStart = s;
+                                        while (wStart <= e0) {
+                                            const wEnd = addDays(wStart, 6) > e0 ? e0 : addDays(wStart, 6);
+                                            const dLabel = `${formatDate(wStart, 'dd/MM')}–${formatDate(wEnd, 'dd/MM')}`;
+                                            const p = plannedAt(wEnd);
+                                            const a = actualAt(wEnd);
+                                            const titles: string[] = (watchDeliverables ?? []).map((d: any) => {
+                                                if (!d?.startDate || !d?.endDate) return '';
+                                                const sd = parseISO(d.startDate);
+                                                const ed = parseISO(d.endDate);
+                                                if (!isDateValid(sd) || !isDateValid(ed)) return '';
+                                                const overlap = !(addDays(wStart, 6) < sd || wStart > ed);
+                                                return overlap ? (d?.name || '') : '';
+                                            }).filter(Boolean);
+                                            rows.push({ date: dLabel, Planned: Number(p.toFixed(2)), Actual: Number(a.toFixed(2)), Scope: totalPlanned, scopeTitles: titles });
+                                            wStart = addWeeks(wStart, 1);
+                                        }
+                                        return rows;
+                                    })()}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="date" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={70} interval={0} />
+                                        <YAxis tick={{ fontSize: 10 }} label={{ value: 'Mandays', angle: -90, position: 'insideLeft', offset: 10 }} />
+                                        <Tooltip content={({ active, payload, label }) => {
+                                            if (!active || !payload?.length) return null as any;
+                                            const planned = payload.find((p: any) => p.dataKey === 'Planned')?.value;
+                                            const actual = payload.find((p: any) => p.dataKey === 'Actual')?.value;
+                                            const scopes = (payload?.[0]?.payload?.scopeTitles as string[] | undefined) ?? [];
+                                            return (
+                                                <div className="rounded border bg-background p-2 text-xs">
+                                                    <div className="font-medium mb-1">{label}</div>
+                                                    <div className="text-blue-600">Planned: {planned}</div>
+                                                    <div className="text-amber-600">Actual: {actual}</div>
+                                                    <div className="text-muted-foreground">Scope: {totalPlannedEffort}</div>
+                                                    {scopes.length ? (
+                                                        <div className="mt-1">
+                                                            <div className="text-foreground font-medium">Scopes:</div>
+                                                            <div className="max-w-[280px] whitespace-normal leading-snug">
+                                                                {scopes.join(', ')}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        }} />
+                                        <Legend verticalAlign="top" align="center" wrapperStyle={{ width: '100%', textAlign: 'center', paddingBottom: 8 }} />
+                                        <Line type="monotone" dataKey="Planned" stroke="#2563eb" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="Actual" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                                    </LineChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
                     )}
                 </div>
 
-                
+
             </form>
             <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
                 <DialogContent>
