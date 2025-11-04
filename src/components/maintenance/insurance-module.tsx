@@ -138,16 +138,24 @@ const InsuranceModule: React.FC = () => {
 
   function fmtDate(value?: string | null) {
     if (!value) return '-';
+    const raw = String(value);
     try {
-      const d = new Date(value);
-      if (isNaN(d.getTime())) return String(value).slice(0, 10);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${dd}/${mm}/${yyyy}`;
+      }
     } catch {
-      return String(value).slice(0, 10);
+      // ignored; fall through to string fallback
     }
+    const isoCandidate = raw.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoCandidate)) {
+      const [yyyy, mm, dd] = isoCandidate.split('-');
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return raw;
   }
 
   // Expiry helpers and summary
@@ -290,7 +298,7 @@ const InsuranceModule: React.FC = () => {
     },
     {
       key: 'ins_exp',
-      header: 'Expiry',
+      header: 'Insurance Expiry',
       sortable: true,
       render: (row) => fmtDate(row.insurance?.expiry ?? null),
     },
@@ -637,6 +645,7 @@ const InsuranceModule: React.FC = () => {
         data={useMemo(() => records.map(r => ({
           ...r,
           register_no: r.asset?.register_number || '',
+          ins_exp: r.ins_exp ?? r.insurance?.expiry ?? undefined,
         })), [records])}
         inputFilter={false}
         pagination={false}

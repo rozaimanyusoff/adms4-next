@@ -62,7 +62,7 @@ const paginationButtonActive = "bg-primary text-primary-foreground border-primar
 /*
 customdatagrid_features_guide.txt
 */
-import React, { useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { useTextSize } from "@/contexts/text-size-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,9 @@ import { createPortal } from 'react-dom';
 import type { FC } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faMinus, faFileExcel, faFileCsv, faFilePdf, faGear } from '@fortawesome/free-solid-svg-icons';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, X } from 'lucide-react';
+import Flatpickr from 'react-flatpickr';
+import 'flatpickr/dist/flatpickr.css';
 
 // Types
 export interface ColumnDef<T> {
@@ -154,6 +156,54 @@ const sortData = <T,>(data: T[], key: keyof T, direction: 'asc' | 'desc') => {
         if (a[key]! > b[key]!) return direction === 'asc' ? 1 : -1;
         return 0;
     });
+};
+
+const startOfDay = (date: Date) => {
+    const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+};
+
+const parseDateString = (input: string): Date | null => {
+    if (!input) return null;
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+        const [, yyyy, mm, dd] = isoMatch;
+        return startOfDay(new Date(Number(yyyy), Number(mm) - 1, Number(dd)));
+    }
+    const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+        const [, dd, mm, yyyy] = slashMatch;
+        return startOfDay(new Date(Number(yyyy), Number(mm) - 1, Number(dd)));
+    }
+    try {
+        const normalized = trimmed.includes(' ') && !trimmed.includes('T')
+            ? trimmed.replace(' ', 'T')
+            : trimmed;
+        const parsed = new Date(normalized);
+        if (!isNaN(parsed.getTime())) {
+            return startOfDay(parsed);
+        }
+    } catch {
+        // ignore parse failure
+    }
+    return null;
+};
+
+const parseUnknownDate = (value: unknown): Date | null => {
+    if (value == null) return null;
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return startOfDay(value);
+    }
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+        return startOfDay(new Date(value));
+    }
+    if (typeof value === 'string') {
+        return parseDateString(value);
+    }
+    return null;
 };
 
 // When building filter options or comparing singleSelect values, prefer a human-readable string.
@@ -274,6 +324,7 @@ const CustomDataGridInner = <T,>({
     const dynamicPaginationButtonActive = "bg-primary text-primary-foreground border-primary font-semibold";
     const dynamicFilterCellInput = `w-full bg-background max-w-full px-1 py-0.5 border border-border ${textSizeClasses.small} rounded-xs text-foreground placeholder:text-muted-foreground`;
     const dynamicFilterCellSelect = `w-full bg-background max-w-full px-1 py-0.5 border border-border capitalize ${textSizeClasses.small} rounded-xs truncate text-foreground`;
+    const dynamicFilterCellDate = `w-full bg-background max-w-full px-2 py-[10px] rounded border border-border ${textSizeClasses.small} rounded-xs truncate text-foreground placeholder:text-muted-foreground`;
     const dynamicTheadFilterRow = `bg-muted ${textSizeClasses.base} border-b border-border`;
     
     // Ref to store row click timestamps for double-click emulation
@@ -304,6 +355,41 @@ const CustomDataGridInner = <T,>({
         }));
     };
     const [columnFilters, setColumnFilters] = useState<Record<string, string | string[]>>({});
+    const updateDateFilter = useCallback((key: string, value: string | null) => {
+        setCurrentPage(1);
+        setColumnFilters(prev => {
+            const current = prev[key];
+            if (!value || value.trim() === "") {
+                if (current === undefined) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            }
+            if (current === value) return prev;
+            const next = { ...prev };
+            next[key] = value;
+            return next;
+        });
+    }, []);
+    const updateDateRangeFilter = useCallback((key: string, values: string[]) => {
+        const sanitized = values.filter(Boolean);
+        setCurrentPage(1);
+        setColumnFilters(prev => {
+            const current = prev[key];
+            if (sanitized.length === 0) {
+                if (current === undefined) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            }
+            if (Array.isArray(current) && current.length === sanitized.length && current.every((val, idx) => val === sanitized[idx])) {
+                return prev;
+            }
+            const next = { ...prev };
+            next[key] = sanitized;
+            return next;
+        });
+    }, []);
     // Dropdown open state for multiSelect filters
     const [openMultiSelect, setOpenMultiSelect] = useState<Record<string, boolean>>({});
     // Track filter text for each multiSelect
@@ -426,16 +512,51 @@ const CustomDataGridInner = <T,>({
 
         // Per-column filters
         Object.entries(columnFilters).forEach(([key, value]) => {
-            if (!value) return;
-            
+            if (value == null) return;
+            if (typeof value === 'string' && value === '') return;
+            if (Array.isArray(value) && value.length === 0) return;
+
             // Find the column configuration to determine filter type
             const column = flatColumns.find(col => String(col.key) === key);
-            
+
             result = result.filter(row => {
                 const cellValue = row[key as keyof T];
-                
-                if (Array.isArray(value)) {
-                    // Multi-select filter
+
+                if (column?.filter === 'date') {
+                    const filterVal = Array.isArray(value) ? value[0] : String(value);
+                    if (!filterVal) return true;
+                    const filterDate = parseDateString(filterVal);
+                    if (!filterDate) return true;
+                    const cellDate = parseUnknownDate(cellValue);
+                    if (!cellDate) return false;
+                    return cellDate.getTime() === filterDate.getTime();
+                }
+
+                if (column?.filter === 'dateRange') {
+                    let rangeValues: string[] = [];
+                    if (Array.isArray(value)) {
+                        rangeValues = value.filter(Boolean).map(v => String(v));
+                    } else if (typeof value === 'string') {
+                        rangeValues = value.split(/\s+to\s+/i).filter(Boolean);
+                    }
+                    if (rangeValues.length === 0) return true;
+
+                    const [startStr, endStr] = [rangeValues[0], rangeValues[1]];
+                    const startDate = startStr ? parseDateString(startStr) : null;
+                    const endDate = endStr ? parseDateString(endStr) : null;
+
+                    if (!startDate && !endDate) return true;
+
+                    const cellDate = parseUnknownDate(cellValue);
+                    if (!cellDate) return false;
+
+                    if (startDate && cellDate < startDate) return false;
+                    if (endDate && cellDate > endDate) return false;
+                    return true;
+                }
+
+                if (column?.filter === 'multiSelect' && Array.isArray(value)) {
+                    if (value.length === 0) return true;
                     return value.some(v => {
                         const filterVal = String(v).toLowerCase();
                         if (Array.isArray(cellValue)) {
@@ -443,21 +564,23 @@ const CustomDataGridInner = <T,>({
                         }
                         return String(cellValue ?? '').toLowerCase() === filterVal;
                     });
-                } else if (column?.filter === 'singleSelect') {
+                }
+
+                if (column?.filter === 'singleSelect') {
                     // Single select filter - exact match against a comparable string
                     const filterVal = String(value);
                     const compareValue = getCellComparableValue(row, column);
                     return compareValue === filterVal;
-                } else {
-                    // Input filter - contains match
-                    const filterVal = String(value).toLowerCase();
-                    if (Array.isArray(cellValue)) {
-                        return cellValue.some(cv => 
-                            String(cv).toLowerCase().includes(filterVal)
-                        );
-                    }
-                    return String(cellValue ?? '').toLowerCase().includes(filterVal);
                 }
+
+                // Input filter (default) - contains match
+                const filterVal = String(value).toLowerCase();
+                if (Array.isArray(cellValue)) {
+                    return cellValue.some(cv =>
+                        String(cv).toLowerCase().includes(filterVal)
+                    );
+                }
+                return String(cellValue ?? '').toLowerCase().includes(filterVal);
             });
         });
 
@@ -1232,24 +1355,33 @@ const CustomDataGridInner = <T,>({
                                                             : allOptions;
 
                                                         return (
-                                                            <Select
-                                                                value={String(columnFilters[col.key as string] ?? "__all__")}
-                                                                onValueChange={val => {
-                                                                    setColumnFilters(prev => {
+                                                        <Select
+                                                            value={String(columnFilters[col.key as string] ?? "__all__")}
+                                                            onValueChange={val => {
+                                                                setColumnFilters(prev => {
+                                                                    const key = String(col.key);
+                                                                    const current = prev[key];
+                                                                    if (val === "__all__") {
+                                                                        if (current === undefined) return prev;
                                                                         const updated = { ...prev };
-                                                                        if (val === "__all__") {
-                                                                            delete updated[col.key as string];
-                                                                        } else {
-                                                                            updated[String(col.key)] = val;
-                                                                        }
+                                                                        delete updated[key];
                                                                         return updated;
-                                                                    });
-                                                                }}
+                                                                    }
+                                                                    if (current === val) return prev;
+                                                                    const updated = { ...prev };
+                                                                    updated[key] = val;
+                                                                    return updated;
+                                                                });
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className={dynamicFilterCellSelect}>
+                                                                <SelectValue placeholder={`All`} />
+                                                            </SelectTrigger>
+                                                            <SelectContent
+                                                                searchable
+                                                                searchPlaceholder={`Search ${col.header}...`}
+                                                                onSearchChange={setSelectSearch}
                                                             >
-                                                                <SelectTrigger className={dynamicFilterCellSelect}>
-                                                                    <SelectValue placeholder={`All`} />
-                                                                </SelectTrigger>
-                                                                <SelectContent searchable searchPlaceholder={`Search ${col.header}...`} onSearchChange={setSelectSearch}>
                                                                     <SelectItem key="__all__" value="__all__">All</SelectItem>
                                                                     {filteredOptions.map(opt => (
                                                                         <SelectItem key={String(opt) || "__invalid__"} value={String(opt) || "__invalid__"}>
@@ -1374,15 +1506,124 @@ const CustomDataGridInner = <T,>({
                                                     );
                                                 })()
                                             )}
-                                            {col.filter === 'date' && (
-                                                <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                            )}
-                                            {col.filter === 'dateRange' && (
-                                                <div className="flex gap-1">
-                                                    <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                                    <Input type="date" className="w-full max-w-full px-1 py-0.5 border text-sm rounded-sm truncate" />
-                                                </div>
-                                            )}
+                                            {col.filter === 'date' && (() => {
+                                                const filterKey = String(col.key);
+                                                const currentValue = columnFilters[filterKey];
+                                                const inputValue = Array.isArray(currentValue)
+                                                    ? (currentValue[0] ?? '')
+                                                    : (currentValue ?? '');
+                                                return isMounted ? (
+                                                    <Flatpickr
+                                                        value={inputValue}
+                                                        options={{
+                                                            dateFormat: 'Y-m-d',
+                                                            allowInput: true,
+                                                            disableMobile: true,
+                                                        }}
+                                                        className={`${dynamicFilterCellDate} form-input`}
+                                                        placeholder={`Select date`}
+                                                        onChange={(selectedDates, _dateStr, instance) => {
+                                                            if (!selectedDates.length) {
+                                                                updateDateFilter(filterKey, null);
+                                                                return;
+                                                            }
+                                                            const formatted = instance.formatDate(selectedDates[0], 'Y-m-d');
+                                                            updateDateFilter(filterKey, formatted);
+                                                        }}
+                                                        onValueUpdate={(_selectedDates, dateStr, instance) => {
+                                                            if (!dateStr || !dateStr.trim()) {
+                                                                if (instance.selectedDates.length) instance.clear();
+                                                                if (columnFilters[filterKey]) {
+                                                                    updateDateFilter(filterKey, null);
+                                                                }
+                                                                return;
+                                                            }
+                                                            const parsed = parseDateString(dateStr);
+                                                            updateDateFilter(
+                                                                filterKey,
+                                                                parsed ? instance.formatDate(parsed, 'Y-m-d') : dateStr
+                                                            );
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <Input
+                                                        type="date"
+                                                        className={dynamicFilterCellDate}
+                                                        value={typeof inputValue === 'string' ? inputValue : ''}
+                                                        readOnly
+                                                    />
+                                                );
+                                            })()}
+                                            {col.filter === 'dateRange' && (() => {
+                                                const filterKey = String(col.key);
+                                                const currentValue = columnFilters[filterKey];
+                                                const rangeValues = Array.isArray(currentValue)
+                                                    ? currentValue.filter(Boolean).map(v => String(v))
+                                                    : typeof currentValue === 'string'
+                                                        ? currentValue.split(/\s+to\s+/i).filter(Boolean)
+                                                        : [];
+                                                const displayValue = rangeValues.length > 0 ? rangeValues.join(' to ') : '';
+                                                return isMounted ? (
+                                                    <Flatpickr
+                                                        value={displayValue}
+                                                        options={{
+                                                            mode: 'range',
+                                                            dateFormat: 'Y-m-d',
+                                                            allowInput: true,
+                                                            disableMobile: true,
+                                                            locale: {
+                                                                rangeSeparator: ' to ',
+                                                            },
+                                                        }}
+                                                        className={`${dynamicFilterCellDate} form-input`}
+                                                        placeholder={`Select range`}
+                                                        onChange={(selectedDates, _dateStr, instance) => {
+                                                            if (!selectedDates.length) {
+                                                                updateDateRangeFilter(filterKey, []);
+                                                                return;
+                                                            }
+                                                            const formatted = selectedDates.map(date =>
+                                                                instance.formatDate(date, 'Y-m-d')
+                                                            );
+                                                            updateDateRangeFilter(filterKey, formatted);
+                                                        }}
+                                                        onValueUpdate={(_selectedDates, dateStr, instance) => {
+                                                            if (!dateStr || !dateStr.trim()) {
+                                                                if (instance.selectedDates.length) instance.clear();
+                                                                if (columnFilters[filterKey]) {
+                                                                    updateDateRangeFilter(filterKey, []);
+                                                                }
+                                                                return;
+                                                            }
+                                                            const parts = dateStr.split(/\s+to\s+/i).filter(Boolean);
+                                                            if (parts.length === 0) {
+                                                                updateDateRangeFilter(filterKey, []);
+                                                                return;
+                                                            }
+                                                            const formatted = parts
+                                                                .map(part => parseDateString(part))
+                                                                .map(part => (part ? instance.formatDate(part, 'Y-m-d') : null))
+                                                                .filter(Boolean) as string[];
+                                                            updateDateRangeFilter(filterKey, formatted);
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className="flex gap-1">
+                                                        <Input
+                                                            type="date"
+                                                            className={dynamicFilterCellDate}
+                                                            value={rangeValues[0] ?? ''}
+                                                            readOnly
+                                                        />
+                                                        <Input
+                                                            type="date"
+                                                            className={dynamicFilterCellDate}
+                                                            value={rangeValues[1] ?? ''}
+                                                            readOnly
+                                                        />
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
                                     ))}
                                 </tr>
