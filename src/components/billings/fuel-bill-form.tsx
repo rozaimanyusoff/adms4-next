@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, PlusCircle, Edit3, ArrowBigRight, ArrowBigLeft } from 'lucide-react';
+import { Loader2, PlusCircle, Edit3, ArrowBigRight, ArrowBigLeft, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -760,7 +760,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         }
     };
 
-    // Handle opening the Add Fleet Card sidebar
+    // Handle opening the Add Fleet Card sidebar to pick new entry for consumer details
     const handleOpenAddFleetCard = async () => {
         try {
             // Fetch all available fleet cards
@@ -779,8 +779,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         }
     };
 
-    // Handle adding a fleet card to the details table
-    const handleAddFleetCard = (fleetCard: FleetCardWithAsset) => {
+    // Handle adding a new bill entry into consumer details
+    const handleAddFleetCard = async (fleetCard: FleetCardWithAsset) => {
         // Note: Cost center data may not be available in the API response for all fleet cards
         // If cost center is needed, it should be assigned manually after adding the fleet card
 
@@ -793,7 +793,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                 card_no: fleetCard.card_no || '',
             },
             asset: {
-                asset_id: fleetCard.asset?.asset_id || 0,
+                asset_id: (fleetCard as any)?.asset?.asset_id || (fleetCard as any)?.asset?.id || 0,
                 register_number: fleetCard.asset?.register_number || '',
                 fuel_type: (fleetCard.asset as any)?.fuel_type || '',
                 costcenter: fleetCard.asset?.costcenter || null,
@@ -807,20 +807,111 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
             amount: '',
         };
 
-        // Add the new detail to the editableDetails array
-        setEditableDetails(prev => [...prev, newDetail]);
+        // If editing an existing statement, persist to backend first
+        if (currentStmtId && currentStmtId > 0) {
+            let loadingToastId: any;
+            try {
+                setLoadingDetails(true);
+                loadingToastId = toast.loading('Adding fleet card...');
+                // Build required payload for backend
+                const payload = {
+                    stmt_id: currentStmtId,
+                    card_id: fleetCard.id,
+                    asset_id: (fleetCard as any)?.asset?.asset_id ?? (fleetCard as any)?.asset?.id ?? null,
+                    cc_id: fleetCard.asset?.costcenter?.id ?? null,
+                    loc_id: (fleetCard.asset?.locations?.id as number | undefined) ?? (fleetCard.asset?.location_id as number | undefined) ?? null,
+                    purpose: fleetCard.asset?.purpose || 'project',
+                    stmt_date: header.stmt_date || '',
+                };
 
-        // Remove the added card from available cards
-        setAvailableFleetCardsToAdd(prev => {
-            const updatedCards = prev.filter(card => card.id !== fleetCard.id);
-            // Close sidebar if no more cards available
-            if (updatedCards.length === 0) {
-                setAddFleetCardSidebarOpen(false);
+                // POST /api/bills/fuel/{stmt_id}/new-bill-entry with required payload
+                const res = await authenticatedApi.post(`/api/bills/fuel/${currentStmtId}/new-bill-entry`, payload);
+
+                // Try to take s_id from server response if present
+                const serverSid: number | undefined = (res as any)?.data?.data?.s_id
+                    ?? (res as any)?.data?.s_id
+                    ?? (res as any)?.data?.entry?.s_id;
+
+                // Optimistically update UI after success (use server s_id when available)
+                const detailToAdd = serverSid ? { ...newDetail, s_id: serverSid } : newDetail;
+                setEditableDetails(prev => [...prev, detailToAdd]);
+                setAvailableFleetCardsToAdd(prev => {
+                    const updatedCards = prev.filter(card => card.id !== fleetCard.id);
+                    if (updatedCards.length === 0) setAddFleetCardSidebarOpen(false);
+                    return updatedCards;
+                });
+
+                const msg = (res && (res as any).data && (res as any).data.message) || `Fleet card ${fleetCard.card_no} added successfully`;
+                toast.success(msg);
+                if (loadingToastId) toast.dismiss(loadingToastId);
+            } catch (error: any) {
+                console.error('Error adding new bill entry:', error);
+                const errorMessage = error?.response?.data?.message || error?.message || 'Failed to add fleet card';
+                toast.error(errorMessage);
+                if (loadingToastId) toast.dismiss(loadingToastId);
+                return; // abort local state update on failure
+            } finally {
+                setLoadingDetails(false);
             }
-            return updatedCards;
-        });
+        } else {
+            // In create mode (no stmt yet), just add locally
+            setEditableDetails(prev => [...prev, newDetail]);
+            setAvailableFleetCardsToAdd(prev => {
+                const updatedCards = prev.filter(card => card.id !== fleetCard.id);
+                if (updatedCards.length === 0) setAddFleetCardSidebarOpen(false);
+                return updatedCards;
+            });
+            toast.success(`Fleet card ${fleetCard.card_no} added. Will be saved on submit.`);
+        }
+    };
 
-        toast.success(`Fleet card ${fleetCard.card_no} added successfully`);
+    // Remove an existing bill entry
+    const handleRemoveDetail = async (detail: FuelDetail) => {
+        const rowSid = detail?.s_id;
+        // Create mode: just remove locally
+        if (!currentStmtId || currentStmtId === 0) {
+            setEditableDetails(prev => prev.filter(d => d.s_id !== rowSid));
+            toast.success('Entry removed. It wasn\'t saved yet.');
+            return;
+        }
+
+        // Edit mode requires s_id to be present
+        if (!rowSid) {
+            toast.error('Cannot remove: missing entry id');
+            return;
+        }
+
+        let loadingToastId: any;
+        try {
+            loadingToastId = toast.loading('Removing entry...');
+            await authenticatedApi.delete(
+                `/api/bills/fuel/${currentStmtId}/remove-bill-entry`,
+                { data: { s_id: rowSid } } as any
+            );
+
+            // Remove locally
+            setEditableDetails(prev => prev.filter(d => d.s_id !== rowSid));
+
+            // Return fleet card to available list if no other rows use it
+            const cardId = detail.fleetcard?.id;
+            if (cardId) {
+                const stillUsed = editableDetails.some(d => d.fleetcard?.id === cardId && d.s_id !== rowSid);
+                const alreadyAvailable = availableFleetCardsToAdd.some(c => c.id === cardId);
+                if (!stillUsed && !alreadyAvailable) {
+                    setAvailableFleetCardsToAdd(prev => ([
+                        ...prev,
+                        { id: cardId, card_no: detail.fleetcard?.card_no || '', asset: detail.asset } as FleetCardWithAsset,
+                    ]));
+                }
+            }
+
+            toast.success('Entry removed successfully');
+        } catch (error: any) {
+            const msg = error?.response?.data?.message || error?.message || 'Failed to remove entry';
+            toast.error(msg);
+        } finally {
+            if (loadingToastId) toast.dismiss(loadingToastId);
+        }
     };
 
     // Get current editing detail
@@ -1198,6 +1289,24 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                                 </TooltipTrigger>
                                                                 <TooltipContent>
                                                                     <p>Edit Fleet Card, Cost Center, Fuel Type & Purpose</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleRemoveDetail(detail)}
+                                                                        className="p-1 h-6 w-6 hover:bg-red-100"
+                                                                    >
+                                                                        <Trash2 size={12} className="text-red-600" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Remove Entry</p>
                                                                 </TooltipContent>
                                                             </Tooltip>
                                                         </TooltipProvider>
