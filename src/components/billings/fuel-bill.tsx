@@ -2,13 +2,15 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, Printer, Download } from 'lucide-react';
+import { Plus, Printer, Download, Trash2 } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { generateFuelCostCenterReport } from './pdfreport-fuel-costcenter';
 import FuelBillSummary from './fuel-bill-summary';
+import { AuthContext } from '@/store/AuthContext';
+import { Switch } from '@/components/ui/switch';
 
 interface FuelBill {
   stmt_id: number;
@@ -53,7 +55,16 @@ const FuelBill = () => {
   const [pdfDoc, setPdfDoc] = useState<any>(null); // To keep the doc for download
   const [pdfStmtNo, setPdfStmtNo] = useState<string | null>(null); // To keep the stmt_no for download filename
   const [loading, setLoading] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string | number>>(new Set());
   const router = useRouter();
+
+  // Delete admins (username matching)
+  const deleteAdmin = ['000277', '000712', '000396'];
+  const auth = React.useContext(AuthContext);
+  const username: string = auth?.authData?.user?.username || (() => {
+    try { return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || ''; } catch { return ''; }
+  })();
 
   // Refetch grid data
   const fetchFuelBills = () => {
@@ -159,12 +170,59 @@ const FuelBill = () => {
       <FuelBillSummary />
       <div className="flex items-center justify-between my-4">
         <h2 className="text-lg font-bold">Fuel Consumption Bills Summary</h2>
-        <Button
-          variant={'default'}
-          onClick={() => window.open(`/billings/fuel/form`, '_blank')}
-        >
-          <Plus size={18} />
-        </Button>
+        <div className="flex items-center gap-2">
+          {deleteAdmin.includes(username) && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center px-3 py-1.5text-sm">
+              <Switch
+                id="delete-mode-switch"
+                checked={deleteMode}
+                onCheckedChange={(checked) => {
+                  setDeleteMode(Boolean(checked));
+                  if (!checked) setSelectedRowKeys(new Set());
+                }}
+                className="scale-90 mr-2"
+              />
+              <label htmlFor="delete-mode-switch" className="pt-1.5 cursor-pointer select-none">Enable Delete</label>
+            </div>
+            <Button
+              variant={'destructive' as any}
+              disabled={!deleteMode || selectedRowKeys.size === 0}
+              onClick={async () => {
+                if (!deleteAdmin.includes(username)) {
+                  toast.error('You are not authorized to delete bills');
+                  return;
+                }
+                const ids = Array.from(selectedRowKeys) as number[];
+                if (ids.length === 0) return;
+                const loadingId = toast.loading(`Deleting ${ids.length} bill(s)...`);
+                try {
+                  await Promise.all(ids.map(id => authenticatedApi.delete(`/api/bills/fuel/${id}`)));
+                  toast.success('Selected bills deleted');
+                  // Clear selection and exit delete mode
+                  setSelectedRowKeys(new Set());
+                  setDeleteMode(false);
+                  fetchFuelBills();
+                } catch (err) {
+                  console.error('Failed to delete selected bills', err);
+                  toast.error('Failed to delete selected bills');
+                } finally {
+                  toast.dismiss(loadingId);
+                }
+              }}
+            >
+              <Trash2 size={16} className="mr-1" /> Delete
+            </Button>
+          </div>
+          )}
+          <Button
+            variant={'default'}
+            onClick={() => window.open(`/billings/fuel/form`, '_blank')}
+          >
+            <Plus size={18} />
+          </Button>
+          
+        </div>
       </div>
       <CustomDataGrid
         columns={columns as ColumnDef<unknown>[]}
@@ -174,6 +232,13 @@ const FuelBill = () => {
         theme="sm"
         dataExport={true}
         onRowDoubleClick={handleRowDoubleClick}
+        rowSelection={{
+          enabled: deleteMode,
+          getRowId: (row: any) => row.stmt_id,
+          onSelect: (keys) => setSelectedRowKeys(new Set(keys)),
+        }}
+        selectedRowKeys={selectedRowKeys}
+        setSelectedRowKeys={setSelectedRowKeys}
       />
       {pdfPreviewUrl && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">

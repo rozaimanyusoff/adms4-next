@@ -95,10 +95,6 @@ interface FuelMtnDetailProps {
     stmtId: number;
 }
 
-
-
-
-
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) => {
     // Add state for current statement ID (can change after creation)
     const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
@@ -181,6 +177,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
         stmt_no: false,
         stmt_date: false,
     });
+
+    // Initial warning dialogs to ensure fleetcard vehicle info is updated before billing
+    const [showInitialWarning, setShowInitialWarning] = useState(true);
+    const [showConfirmProceed, setShowConfirmProceed] = useState(false);
 
     // Save handler for form submission
     const handleSave = async () => {
@@ -923,12 +923,43 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
 
     return (
         <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
+            {/* Initial Fleetcard Update Warning */}
+            <AlertDialog open={showInitialWarning} onOpenChange={setShowInitialWarning}>
+                <AlertDialogContent className="sm:max-w-xl md:max-w-2xl bg-gradient-to-br from-rose-300/40 to-rose-500/30 dark:from-red-900/40 dark:to-slate-900/30 text-red-600 dark:text-red-100 backdrop-blur-sm">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl md:text-2xl font-extrabold text-red-600 dark:text-red-100">Before You Proceed</AlertDialogTitle>
+                        <AlertDialogDescription className="text-base md:text-lg text-red-600 dark:text-red-100/90">
+                            Please ensure each fleet card has the correct vehicle assigned in the Fleet Card records. Update vehicle, cost center, fuel type, and purpose there first before making bill entries in this form.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { try { window.close(); } catch {} }}>Exit</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => { setShowInitialWarning(false); setShowConfirmProceed(true); }}>Proceed</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Proceed Confirmation */}
+            <AlertDialog open={showConfirmProceed} onOpenChange={setShowConfirmProceed}>
+                <AlertDialogContent className="sm:max-w-xl bg-gradient-to-br from-red-500/15 to-red-400/10 dark:from-red-900/30 dark:to-slate-900/30 text-red-900 dark:text-red-100 backdrop-blur-xs">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-lg md:text-xl font-bold text-red-900 dark:text-red-100">Confirm Fleet Info Updated</AlertDialogTitle>
+                        <AlertDialogDescription className="text-base md:text-lg text-red-900/90 dark:text-red-100/90">
+                            I confirm that I have reviewed and updated the fleet card information before proceeding with bill entry.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setShowConfirmProceed(false)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => setShowConfirmProceed(false)}>I Confirm</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <nav className="w-full bg-white dark:bg-gray-900 shadow-sm mb-6">
                 <div className="max-w-6xl mx-auto px-4 py-4 flex justify-center items-center">
                     <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">Fuel Consumption Billing Form</h1>
                 </div>
             </nav>
-            <div className="flex gap-6 px-6 mx-auto">
+            <div className="max-w-8xl mx-auto px-3 sm:px-4 md:px-6 flex flex-col lg:flex-row gap-4 lg:gap-6">
                 <div className="pt-4 w-full space-y-6">
                     <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
@@ -967,14 +998,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 </p>
                             </div>
                         )}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                             <div className="flex flex-col">
                                 <label className={`font-medium mb-1 ${errors.vendor ? 'text-red-500' : 'text-gray-800'}`}>
                                     Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
                                 </label>
                                 <div className="flex items-center gap-3">
                                     <Select value={selectedVendor} onValueChange={handleVendorChange}>
-                                        <SelectTrigger className={`w-full bg-gray-100 border-0 rounded-none ${(!currentStmtId || currentStmtId === 0) && !selectedVendor ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
+                                        <SelectTrigger className={`w-full ${(!currentStmtId || currentStmtId === 0) && !selectedVendor ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
                                             <SelectValue placeholder="Select Issuer" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1007,7 +1038,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     type="text"
                                     value={header.stmt_no}
                                     onChange={e => handleHeaderChange('stmt_no', e.target.value)}
-                                    className={`w-full text-right border-0 rounded-none bg-gray-100 uppercase ${(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
+                                    className={`w-full text-right uppercase ${(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
                                 />
                             </div>
 
@@ -1020,7 +1051,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     type="date"
                                     value={header.stmt_date}
                                     onChange={e => handleHeaderChange('stmt_date', e.target.value)}
-                                    className={`w-full text-right border-0 rounded-none bg-gray-100 ${(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
+                                    className={`w-full text-right ${(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
                                 />
                             </div>
                             <div className="flex flex-col">
@@ -1029,21 +1060,21 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                     type="text"
                                     value={editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
                                     readOnly
-                                    className="w-full text-right border-0 rounded-none bg-gray-100"
+                                    className="w-full text-right"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-4 mt-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mt-4">
                             <div className="flex-1">
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-4">
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Sub-Total</span>
                                         <Input
                                             type="text"
                                             value={summary.stmt_stotal !== undefined && summary.stmt_stotal !== null && summary.stmt_stotal !== '' && !isNaN(Number(summary.stmt_stotal)) ? Number(summary.stmt_stotal).toFixed(2) : '0.00'}
                                             readOnly
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right bg-gray-100"
                                         />
                                     </div>
 
@@ -1054,7 +1085,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
                                             onKeyDown={handleNumericInput}
                                             onChange={e => handleSummaryChange('stmt_disc', validateNumericInput(e.target.value))}
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right"
                                         />
                                     </div>
                                     <div className="flex flex-col">
@@ -1063,11 +1094,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             type="text"
                                             value={summary.stmt_total !== undefined && summary.stmt_total !== null && summary.stmt_total !== '' && !isNaN(Number(summary.stmt_total)) ? Number(summary.stmt_total).toFixed(2) : '0.00'}
                                             readOnly
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right bg-gray-100"
                                         />
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-2">
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Petrol Amount</span>
                                         <Input
@@ -1079,7 +1110,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     .toFixed(2);
                                             })()}
                                             readOnly
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right bg-gray-100"
                                         />
                                     </div>
                                     <div className="flex flex-col">
@@ -1093,7 +1124,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     .toFixed(2);
                                             })()}
                                             readOnly
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right bg-gray-100"
                                         />
                                     </div>
                                     <div className="flex flex-col">
@@ -1102,20 +1133,20 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                             type="text"
                                             value={editableDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0)}
                                             readOnly
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right bg-gray-100"
                                         />
                                     </div>
                                 </div>
                             </div>
                             {/* Stack for RON95, RON97, Diesel */}
-                            <div className="flex-col space-y-2">
+                            <div className="flex-col space-y-2 w-full md:w-auto md:min-w-[280px] mt-4 md:mt-0">
                                 <div className="flex items-center gap-2">
                                     <label className="text-xs min-w-[90px]">RON95 (RM/Litre)</label>
                                     <Input
                                         type="text"
                                         value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
                                         onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
-                                        className="w-full text-right border-0 rounded-none bg-gray-100"
+                                        className="w-full text-right bg-gray-100"
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1124,7 +1155,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         type="text"
                                         value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
                                         onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
-                                        className="w-full text-right border-0 rounded-none bg-gray-100"
+                                        className="w-full text-right bg-gray-100"
                                     />
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1133,7 +1164,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         type="text"
                                         value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
                                         onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
-                                        className="w-full text-right border-0 rounded-none bg-gray-100"
+                                        className="w-full text-right bg-gray-100"
                                     />
                                 </div>
                             </div>
@@ -1180,13 +1211,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         </div>
                     </div>
                     <div>
-                        <div className="flex items-center justify-between mb-2 gap-2">
-                            <div className="flex items-center gap-4">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+                            <div className="flex items-center gap-4 flex-wrap">
                                 <h3 className="text-xl font-semibold flex items-center gap-2">
                                     Consumer Details
                                     {loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
                                 </h3>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger>
@@ -1233,7 +1264,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                 placeholder="Search Asset or Card..."
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
-                                className="w-56"
+                                className="w-full sm:w-56"
                             />
                         </div>
                         {(showEmptyRowsOnly || search) && (
@@ -1447,8 +1478,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         </div>
                     </div>
                 </div>
-                <div className="pt-4 max-w-sm space-y-6">
-                    <div className="w-full md:w-72 lg:w-80 xl:w-96 border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
+                <div className="pt-4 w-full lg:max-w-sm space-y-6">
+                    <div className="w-full border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
                         <h3 className="text-lg font-semibold mb-4">Amount by Cost Center</h3>
                         <table className="min-w-full border text-xs">
                             <thead className="bg-gray-200">
