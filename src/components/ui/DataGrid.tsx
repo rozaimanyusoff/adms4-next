@@ -323,7 +323,7 @@ const CustomDataGridInner = <T,>({
     const dynamicPaginationButton = `px-2 py-1 ${textSizeClasses.small} border border-border rounded-sm disabled:opacity-50 text-foreground`;
     const dynamicPaginationButtonActive = "bg-primary text-primary-foreground border-primary font-semibold";
     const dynamicFilterCellInput = `w-full bg-background max-w-full px-1 py-0.5 border border-border ${textSizeClasses.small} rounded-xs text-foreground placeholder:text-muted-foreground`;
-    const dynamicFilterCellSelect = `w-full bg-background max-w-full px-1 py-0.5 border border-border capitalize ${textSizeClasses.small} rounded-xs truncate text-foreground`;
+    const dynamicFilterCellSelect = `w-full bg-background max-w-full px-2 py-[10px] rounded border border-border capitalize ${textSizeClasses.small} rounded-xs truncate text-foreground`;
     const dynamicFilterCellDate = `w-full bg-background max-w-full px-2 py-[10px] rounded border border-border ${textSizeClasses.small} rounded-xs truncate text-foreground placeholder:text-muted-foreground`;
     const dynamicTheadFilterRow = `bg-muted ${textSizeClasses.base} border-b border-border`;
     
@@ -1422,18 +1422,18 @@ const CustomDataGridInner = <T,>({
                                                         openMultiSelect[String(col.key)] && buttonRef.current
                                                             ? createPortal(
                                                                 <div
-                                                                    className="absolute z-50 bg-popover text-popover-foreground border border-border mt-1 w-full min-w-40 rounded-xs shadow-xl"
+                                                                    className="absolute z-50 bg-popover text-popover-foreground border border-border mt-1 w-full min-w-[400px] rounded-xs shadow-xl text-xs"
                                                                     style={{
                                                                         position: 'absolute',
                                                                         top: dropdownPosition?.top ?? 0,
                                                                         left: dropdownPosition?.left ?? 0,
-                                                                        width: buttonRef.current?.offsetWidth ?? 200,
+                                                                        width: Math.max(buttonRef.current?.offsetWidth ?? 0, 260),
                                                                     }}
                                                                 >
                                                                     <Input
                                                                         type="text"
                                                                         placeholder="Type to filter..."
-                                                                        className="w-full form-input bg-background max-w-full px-2 py-1 border-b border-border rounded-xs text-sm sticky top-0 truncate text-foreground placeholder:text-muted-foreground"
+                                                                        className="w-full form-input bg-background max-w-full px-2 py-1 border-b border-border rounded-xs text-xs sticky top-0 truncate text-foreground placeholder:text-muted-foreground"
                                                                         value={multiSelectSearch[col.key as string] || ''}
                                                                         onChange={e =>
                                                                             setMultiSelectSearch(prev => ({
@@ -1448,11 +1448,11 @@ const CustomDataGridInner = <T,>({
                                                                                 String(opt).toLowerCase().includes((multiSelectSearch[col.key as string] || '').toLowerCase())
                                                                             )
                                                                             .map(opt => (
-                                                                                <label key={String(opt)} className="block text-sm px-2 cursor-pointer hover:bg-gray-200 dark:hover:bg-amber-600">
+                                                                                <label key={String(opt)} className="flex items-center gap-1 text-xs px-2 py-1 cursor-pointer hover:bg-gray-200 dark:hover:bg-amber-600">
                                                                                     <Input
                                                                                         type="checkbox"
                                                                                         value={String(opt)}
-                                                                                        className="form-checkbox w-4 h-4 border-stone-300 dark:border-gray-400 mr-1"
+                                                                                        className="form-checkbox w-4 h-4 border-stone-300 dark:border-gray-400"
                                                                                         checked={Array.isArray(columnFilters[col.key as string]) && (columnFilters[col.key as string] as string[]).includes(String(opt))}
                                                                                         onChange={e => {
                                                                                             setColumnFilters(prev => {

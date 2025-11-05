@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, Pencil } from "lucide-react";
@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import {
     Select,
     SelectContent,
@@ -42,15 +44,22 @@ interface Employee {
     department?: Department;
     costcenter?: CostCenter;
     location?: Location;
+    positionName?: string;
+    nameSearch?: string;
 }
 
 const OrgEmp: React.FC = () => {
+    const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
     const [data, setData] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
+    const [hideResigned, setHideResigned] = useState(true);
+    const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
+    const [bulkResignationDate, setBulkResignationDate] = useState("");
+    const [isBulkUpdating, setIsBulkUpdating] = useState(false);
     const [formData, setFormData] = useState<Partial<Employee>>({
         ramco_id: '',
         full_name: '',
@@ -70,20 +79,34 @@ const OrgEmp: React.FC = () => {
                 costcenter: undefined,
     });
 
+    const dataGridRef = useRef<{ deselectRow: (key: string | number) => void; clearSelectedRows: () => void } | null>(null);
+
     const fetchData = async () => {
+        setLoading(true);
         try {
             const [empRes, deptRes, posRes, distRes] = await Promise.all([
                 authenticatedApi.get<any>("/api/assets/employees"),
                 authenticatedApi.get<any>("/api/assets/departments"),
                 authenticatedApi.get<any>("/api/assets/positions"),
-                        authenticatedApi.get<any>("/api/assets/locations"),
+                authenticatedApi.get<any>("/api/assets/locations"),
             ]);
-            setData(Array.isArray(empRes.data.data) ? empRes.data.data : []);
+            const employees = Array.isArray(empRes.data?.data) ? empRes.data.data : Array.isArray(empRes.data) ? empRes.data : [];
+            const normalizedEmployees = employees.map((emp: Employee) => ({
+                ...emp,
+                positionName: emp.position?.name || "",
+                nameSearch: [emp.full_name, emp.email, emp.contact].filter(Boolean).join(" "),
+            }));
+            setAllEmployees(normalizedEmployees);
             setDepartments(Array.isArray(deptRes.data) ? deptRes.data : (deptRes.data && deptRes.data.data ? deptRes.data.data : []));
             setPositions(Array.isArray(posRes.data) ? posRes.data : (posRes.data && posRes.data.data ? posRes.data.data : []));
             setLocations(Array.isArray(distRes.data) ? distRes.data : (distRes.data && distRes.data.data ? distRes.data.data : []));
         } catch (error) {
-                setData([]); setDepartments([]); setPositions([]); setLocations([]);
+            setAllEmployees([]);
+            setData([]);
+            setDepartments([]);
+            setPositions([]);
+            setLocations([]);
+            setSelectedEmployees([]);
         } finally {
             setLoading(false);
         }
@@ -171,23 +194,130 @@ const OrgEmp: React.FC = () => {
         return true;
     };
 
-    const columns: ColumnDef<Employee>[] = [
+    const isEmployeeResigned = (employee: Employee) => {
+        const status = employee.employment_status ? employee.employment_status.trim().toLowerCase() : "";
+        if (status && status !== "active") return true;
+        return isValidResignationDate(employee.resignation_date, employee.employment_status);
+    };
+
+    const filterEmployees = useCallback((list: Employee[]) => {
+        return hideResigned ? list.filter(emp => !isEmployeeResigned(emp)) : list;
+    }, [hideResigned]);
+
+    useEffect(() => {
+        setData(filterEmployees(allEmployees));
+    }, [allEmployees, filterEmployees]);
+
+    const employeeById = useMemo(() => {
+        const map = new Map<string, Employee>();
+        data.forEach(emp => {
+            map.set(String(emp.id), emp);
+        });
+        return map;
+    }, [data]);
+
+    const updateSelectedEmployees = useCallback((keys: (string | number)[], rows?: Employee[]) => {
+        if (Array.isArray(rows) && rows.length) {
+            setSelectedEmployees(rows);
+            return;
+        }
+        const next = (keys ?? [])
+            .map(key => employeeById.get(String(key)))
+            .filter((emp): emp is Employee => Boolean(emp));
+        setSelectedEmployees(next);
+    }, [employeeById]);
+
+    const selectedCount = selectedEmployees.length;
+    const hasSelection = selectedCount > 0;
+    const canBulkUpdate = hasSelection && Boolean(bulkResignationDate) && !isBulkUpdating;
+
+    const handleDateChange = (value: string) => {
+        if (!value) {
+            setBulkResignationDate("");
+            return;
+        }
+        const parts = value.split("-");
+        if (parts.length === 3) {
+            const [yyyy, mm, dd] = parts;
+            if (yyyy && mm && dd) {
+                setBulkResignationDate(`${yyyy}-${mm}-${dd}`);
+                return;
+            }
+        }
+        setBulkResignationDate(value);
+    };
+
+    const handleBulkResignationUpdate = async () => {
+        if (!hasSelection) {
+            toast.error("Select at least one employee to update.");
+            return;
+        }
+        if (!bulkResignationDate) {
+            toast.error("Choose a resignation date.");
+            return;
+        }
+        const ramcoIds = selectedEmployees.map(emp => emp.ramco_id).filter(Boolean);
+        if (ramcoIds.length === 0) {
+            toast.error("Selected employees are missing Ramco IDs.");
+            return;
+        }
+        setIsBulkUpdating(true);
+        try {
+            await authenticatedApi.put("/api/assets/employees/update-resign", {
+                ramco_id: ramcoIds,
+                resignation_date: bulkResignationDate,
+                employment_status: "resigned",
+            });
+            await fetchData();
+            setSelectedEmployees([]);
+            dataGridRef.current?.clearSelectedRows?.();
+            toast.success("Resignation date updated.");
+        } catch (error) {
+            console.error("Failed to update resignation dates", error);
+            toast.error("Failed to update resignation dates.");
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    };
+
+    const positionFilterOptions = useMemo(() => {
+        const fromPositions = positions.map(pos => pos.name).filter(Boolean);
+        const fromEmployees = allEmployees.map(emp => emp.position?.name || emp.positionName || "").filter(Boolean);
+        return Array.from(new Set([...fromPositions, ...fromEmployees]));
+    }, [positions, allEmployees]);
+
+    const columns: ColumnDef<Employee>[] = useMemo(() => [
         { key: "id", header: "ID" },
         { key: "ramco_id", header: "Ramco ID", filter: 'input' },
-        { key: "full_name", header: "Full Name", filter: 'input' },
-        { key: "email", header: "Email" },
-        { key: "contact", header: "Contact" },
+        {
+            key: "nameSearch" as keyof Employee,
+            header: "Full Name",
+            filter: 'input',
+            render: (row: Employee) => (
+                <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-foreground">{row.full_name || "-"}</span>
+                    {row.email ? <span className="text-xs text-muted-foreground break-all">{row.email}</span> : null}
+                    {row.contact ? <span className="text-xs text-muted-foreground">{row.contact}</span> : null}
+                </div>
+            ),
+        },
         { key: "gender", header: "Gender", filter: 'singleSelect' },
         /* { key: "dob", header: "DOB", render: (row: Employee) => formatDateDMY(row.dob) }, */
         { key: "hire_date", header: "Hire Date", render: (row: Employee) => formatDateDMY(row.hire_date) },
         { key: "service_length" as any, header: "Service Length", render: (row: Employee) => getServiceLength(row.hire_date) },
         { key: "department", header: "Department", render: (row: Employee) => row.department?.code || "-", filter: 'singleSelect' },
         { key: "costcenter", header: "Cost Center", render: (row: Employee) => row.costcenter?.name || "-", filter: 'singleSelect' },
-    { key: "location", header: "Location", render: (row: Employee) => row.location?.name || "-", filter: 'singleSelect' },
+        {
+            key: "positionName" as keyof Employee,
+            header: "Position",
+            render: (row: Employee) => row.position?.name || "-",
+            filter: 'multiSelect',
+            filterParams: { options: positionFilterOptions },
+        },
+        { key: "location", header: "Location", render: (row: Employee) => row.location?.name || "-", filter: 'singleSelect' },
         { key: "employment_type", header: "Type", filter: 'singleSelect' },
         { key: "employment_status", header: "Status", filter: 'singleSelect' },
         /* { key: "grade", header: "Grade" }, */
-        /* { key: "position", header: "Position", render: (row: Employee) => row.position?.name || "-" }, */
         { key: "resignation_date", header: "Resignation Date", render: (row: Employee) => isValidResignationDate(row.resignation_date, row.employment_status) ? formatDateDMY(row.resignation_date) : "-" },
         {
             key: "actions" as keyof Employee,
@@ -200,17 +330,65 @@ const OrgEmp: React.FC = () => {
                 />
             ),
         },
-    ];
+    ], [positionFilterOptions]);
 
+    const hideResignedSwitchId = "hide-resigned-switch";
     return (
         <div className="mt-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold mb-4">Employees</h2>
-                <Button onClick={() => setIsModalOpen(true)} className="mb-4 bg-blue-600 hover:bg-blue-700">
-                    <Plus size={22} />
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h2 className="text-xl font-bold">Employees</h2>
+                <div className="flex items-center gap-4 flex-wrap justify-end">
+                    <div className="flex items-center gap-2">
+                        <Label htmlFor={hideResignedSwitchId} className="text-sm font-medium text-muted-foreground">
+                            Hide resigned employees
+                        </Label>
+                        <Switch
+                            id={hideResignedSwitchId}
+                            checked={hideResigned}
+                            onCheckedChange={setHideResigned}
+                        />
+                    </div>
+                    <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+                        <Plus size={22} />
+                    </Button>
+                </div>
+            </div>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+                {hasSelection ? (
+                    <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
+                ) : (
+                    <span className="text-sm text-muted-foreground">Select employees to update resignation date.</span>
+                )}
+                <Input
+                    type="date"
+                    value={bulkResignationDate}
+                    onChange={e => handleDateChange(e.target.value)}
+                    className="w-48"
+                    disabled={isBulkUpdating}
+                />
+                <Button
+                    onClick={handleBulkResignationUpdate}
+                    disabled={!canBulkUpdate}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                >
+                    {isBulkUpdating ? "Updating..." : "Update Resignation Date"}
                 </Button>
             </div>
-            {loading ? <p>Loading...</p> : <CustomDataGrid columns={columns} data={data} inputFilter={false} />}
+            {loading ? <p>Loading...</p> : (
+                <CustomDataGrid
+                    ref={dataGridRef}
+                    columns={columns}
+                    data={data}
+                    inputFilter={false}
+                    pagination={false}
+                    rowSelection={{
+                        enabled: true,
+                        getRowId: (row: Employee) => row.id,
+                        onSelect: (keys, rows) => updateSelectedEmployees(keys, rows as Employee[]),
+                    }}
+                    onRowSelected={(keys, rows) => updateSelectedEmployees(keys, rows as Employee[])}
+                />
+            )}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                 <DialogContent>
                     <DialogHeader>

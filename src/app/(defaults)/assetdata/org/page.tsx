@@ -1,13 +1,13 @@
-import TabOrg from '@components/assetmgmt/taborg';
+import OrgTab from '@components/assetmgmt/taborg';
 import { Metadata } from 'next';
 import React from 'react';
 
 export const metadata: Metadata = {
-    title: 'Organization Data',
+    title: 'Organizations Data',
 };
 
-const AssetOrg = () => {
-    return <TabOrg />;
+const Organizations = () => {
+    return <OrgTab />;
 };
 
-export default AssetOrg;
+export default Organizations;

@@ -1,48 +1,50 @@
-"use client";
-
+'use client';
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import OrgDept from "./org-dept";
-import OrgSection from "./org-section";
+import DashEmp from "./dash-emp";
+import OrgEmp from "./org-employees";
 import OrgPos from "./org-pos";
 import OrgCostCenter from "./org-costcenter";
-import SiteDistrict from "./site-district";
-import OrgTeam from "./org-team";
-import Link from "next/link";
+import OrgDept from "./org-dept";
+import OrgSection from "./org-section";
+import OrgLocations from "./org-locations";
 
-const TabOrg: React.FC = () => {
+const OrgTab = () => {
     const tabTitles = [
+        { value: "dash", label: "Dashboard" },
+        { value: "emp", label: "Employees" },
         { value: "pos", label: "Position" },
         { value: "dept", label: "Department" },
         { value: "sect", label: "Section" },
         { value: "costctr", label: "Cost Center" },
-        { value: "team", label: "District" },
+        { value: "loc", label: "Location" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
+        dash: <DashEmp />,
+        emp: <OrgEmp />,
         pos: <OrgPos />,
         dept: <OrgDept />,
         sect: <OrgSection />,
         costctr: <OrgCostCenter />,
-        team: <SiteDistrict />,
+        loc: <OrgLocations />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        // Retrieve the last active tab from localStorage or default to "assets"
-        return localStorage.getItem("orgTabs") || "pos";
+        return localStorage.getItem("empmgmtTabs") || "dash";
     });
 
     useEffect(() => {
-        // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("orgTabs", activeTab);
+        localStorage.setItem("empmgmtTabs", activeTab);
     }, [activeTab]);
 
     return (
-        <div className="p-4">
+        <div className="mt-4">
             <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
                 <li>
                     <Link href="#" className="text-primary hover:underline">
-                        Asset Management
+                        Employees Data
                     </Link>
                 </li>
                 <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
@@ -65,4 +67,4 @@ const TabOrg: React.FC = () => {
     );
 };
 
-export default TabOrg;
+export default OrgTab;
