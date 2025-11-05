@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ExcelJS from 'exceljs';
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, FileSpreadsheet } from "lucide-react";
 import {
     Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -56,6 +57,7 @@ const OrgEmp: React.FC = () => {
     const [departments, setDepartments] = useState<Department[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
+    const [costcenters, setCostcenters] = useState<CostCenter[]>([]);
     const [hideResigned, setHideResigned] = useState(true);
     const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
     const [bulkResignationDate, setBulkResignationDate] = useState("");
@@ -84,11 +86,12 @@ const OrgEmp: React.FC = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [empRes, deptRes, posRes, distRes] = await Promise.all([
+            const [empRes, deptRes, posRes, distRes, costRes] = await Promise.all([
                 authenticatedApi.get<any>("/api/assets/employees"),
                 authenticatedApi.get<any>("/api/assets/departments"),
                 authenticatedApi.get<any>("/api/assets/positions"),
                 authenticatedApi.get<any>("/api/assets/locations"),
+                authenticatedApi.get<any>("/api/assets/costcenters"),
             ]);
             const employees = Array.isArray(empRes.data?.data) ? empRes.data.data : Array.isArray(empRes.data) ? empRes.data : [];
             const normalizedEmployees = employees.map((emp: Employee) => ({
@@ -100,12 +103,14 @@ const OrgEmp: React.FC = () => {
             setDepartments(Array.isArray(deptRes.data) ? deptRes.data : (deptRes.data && deptRes.data.data ? deptRes.data.data : []));
             setPositions(Array.isArray(posRes.data) ? posRes.data : (posRes.data && posRes.data.data ? posRes.data.data : []));
             setLocations(Array.isArray(distRes.data) ? distRes.data : (distRes.data && distRes.data.data ? distRes.data.data : []));
+            setCostcenters(Array.isArray(costRes.data) ? costRes.data : (costRes.data && costRes.data.data ? costRes.data.data : []));
         } catch (error) {
             setAllEmployees([]);
             setData([]);
             setDepartments([]);
             setPositions([]);
             setLocations([]);
+            setCostcenters([]);
             setSelectedEmployees([]);
         } finally {
             setLoading(false);
@@ -116,24 +121,23 @@ const OrgEmp: React.FC = () => {
 
     const handleSubmit = async () => {
         try {
+            const normalizeDate = (v?: string | null) => (v ? String(v).slice(0, 10) : null);
             const payload = {
-                ramco_id: formData.ramco_id,
-                full_name: formData.full_name,
-                email: formData.email,
-                contact: formData.contact,
-                gender: formData.gender,
-                dob: formData.dob,
-                avatar: formData.avatar,
-                hire_date: formData.hire_date,
-                resignation_date: formData.resignation_date,
-                employment_type: formData.employment_type,
-                employment_status: formData.employment_status,
-                grade: formData.grade,
-                departmentId: formData.department?.id,
-                positionId: formData.position?.id,
-                    locationId: formData.location?.id,
-                costcenterId: formData.costcenter?.id,
-            };
+                ramco_id: formData.ramco_id ?? null,
+                full_name: formData.full_name ?? null,
+                email: formData.email ?? null,
+                contact: formData.contact ?? null,
+                gender: formData.gender ?? null,
+                dob: normalizeDate(formData.dob) as string | null,
+                avatar: formData.avatar ? formData.avatar : null,
+                hire_date: normalizeDate(formData.hire_date) as string | null,
+                resignation_date: normalizeDate(formData.resignation_date) as string | null,
+                department_id: formData.department?.id ?? null,
+                position_id: formData.position?.id ?? null,
+                location_id: formData.location?.id ?? null,
+                costcenter_id: formData.costcenter?.id ?? null,
+            } as any;
+
             if (formData.id) {
                 await authenticatedApi.put(`/api/assets/employees/${formData.id}`, payload);
             } else {
@@ -169,19 +173,20 @@ const OrgEmp: React.FC = () => {
         if (isNaN(d.getTime())) return "";
         return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
     };
-    // Add service length helper
+    // Add service length helper (years only)
     const getServiceLength = (hireDate?: string) => {
         if (!hireDate) return "-";
         const start = new Date(hireDate);
         const now = new Date();
         if (isNaN(start.getTime())) return "-";
         let years = now.getFullYear() - start.getFullYear();
-        let months = now.getMonth() - start.getMonth();
-        if (months < 0) {
+        const monthDiff = now.getMonth() - start.getMonth();
+        const dayDiff = now.getDate() - start.getDate();
+        if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
             years--;
-            months += 12;
         }
-        return `${years}y ${months}m`;
+        if (years < 0) years = 0;
+        return `${years}y`;
     };
     // Add helper to check for valid resignation date
     const isValidResignationDate = (dateStr?: string, status?: string) => {
@@ -280,6 +285,95 @@ const OrgEmp: React.FC = () => {
         }
     };
 
+    // Export Employees (full API dataset) to Excel
+    const exportEmployeesExcel = async () => {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const ws = workbook.addWorksheet('Employees');
+
+            const headers = [
+                'ID', 'RAMCO ID', 'Full Name', 'Email', 'Contact', 'Gender',
+                'DOB', 'Hire Date', 'Resignation Date',
+                'Employment Type', 'Employment Status', 'Grade',
+                'Department Code', 'Department Name',
+                'Position', 'Cost Center', 'Location Code', 'Location Name'
+            ];
+            const headerRow = ws.addRow(headers);
+            headerRow.eachCell(cell => {
+                cell.font = { bold: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } } as any;
+                cell.border = {
+                    top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+                };
+            });
+
+            const fmt = (d?: string | null) => {
+                if (!d) return '';
+                const dt = new Date(d);
+                if (isNaN(dt.getTime())) return '';
+                const y = dt.getFullYear();
+                const m = String(dt.getMonth() + 1).padStart(2, '0');
+                const day = String(dt.getDate()).padStart(2, '0');
+                return `${y}-${m}-${day}`;
+            };
+
+            const rows = (allEmployees || []).map(emp => [
+                emp.id ?? '',
+                emp.ramco_id ?? '',
+                emp.full_name ?? '',
+                emp.email ?? '',
+                emp.contact ?? '',
+                emp.gender ?? '',
+                fmt(emp.dob),
+                fmt(emp.hire_date),
+                fmt(emp.resignation_date as any),
+                emp.employment_type ?? '',
+                emp.employment_status ?? '',
+                emp.grade ?? '',
+                emp.department?.code ?? '',
+                emp.department?.name ?? '',
+                emp.position?.name ?? '',
+                emp.costcenter?.name ?? '',
+                emp.location?.code ?? '',
+                emp.location?.name ?? ''
+            ]);
+
+            rows.forEach(r => {
+                const row = ws.addRow(r);
+                row.eachCell(cell => {
+                    cell.border = {
+                        top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+                    };
+                });
+            });
+
+            // Simple auto fit widths
+            ws.columns?.forEach((col, idx) => {
+                let max = headers[idx].length;
+                rows.forEach(r => {
+                    const val = r[idx] != null ? String(r[idx]) : '';
+                    max = Math.max(max, val.length);
+                });
+                col.width = Math.min(Math.max(12, max + 2), 40);
+            });
+
+            const buf = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
+            a.href = url;
+            a.download = `employees_${ts}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Export employees error', err);
+            toast.error('Failed to export employees');
+        }
+    };
+
     const positionFilterOptions = useMemo(() => {
         const fromPositions = positions.map(pos => pos.name).filter(Boolean);
         const fromEmployees = allEmployees.map(emp => emp.position?.name || emp.positionName || "").filter(Boolean);
@@ -319,17 +413,6 @@ const OrgEmp: React.FC = () => {
         { key: "employment_status", header: "Status", filter: 'singleSelect' },
         /* { key: "grade", header: "Grade" }, */
         { key: "resignation_date", header: "Resignation Date", render: (row: Employee) => isValidResignationDate(row.resignation_date, row.employment_status) ? formatDateDMY(row.resignation_date) : "-" },
-        {
-            key: "actions" as keyof Employee,
-            header: "Actions",
-            render: (row: Employee) => (
-                <Pencil
-                    size={20}
-                    className="inline-flex items-center justify-center rounded hover:bg-yellow-100 cursor-pointer text-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                    onClick={() => { setFormData(row); setIsModalOpen(true); }}
-                />
-            ),
-        },
     ], [positionFilterOptions]);
 
     const hideResignedSwitchId = "hide-resigned-switch";
@@ -348,6 +431,10 @@ const OrgEmp: React.FC = () => {
                             onCheckedChange={setHideResigned}
                         />
                     </div>
+                    <Button variant="outline" onClick={exportEmployeesExcel} className=" hover:bg-blue-50 gap-2">
+                        <FileSpreadsheet size={22} className="text-green-500" />
+                        Export
+                    </Button>
                     <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700">
                         <Plus size={22} />
                     </Button>
@@ -381,6 +468,7 @@ const OrgEmp: React.FC = () => {
                     data={data}
                     inputFilter={false}
                     pagination={false}
+                    onRowDoubleClick={(row: Employee) => { setFormData(row); setIsModalOpen(true); }}
                     rowSelection={{
                         enabled: true,
                         getRowId: (row: Employee) => row.id,
@@ -399,62 +487,56 @@ const OrgEmp: React.FC = () => {
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                     >
                         <div className="mb-4">
-                            <Label htmlFor="ramco_id" className="block text-sm font-medium text-gray-700">Ramco ID</Label>
+                            <Label htmlFor="ramco_id" className="block text-sm font-medium text-white-dark">Ramco ID</Label>
                             <Input
                                 id="ramco_id"
                                 value={formData.ramco_id || ""}
                                 onChange={e => setFormData({ ...formData, ramco_id: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="full_name" className="block text-sm font-medium text-gray-700">Full Name</Label>
+                            <Label htmlFor="full_name" className="block text-sm font-medium text-white-dark">Full Name</Label>
                             <Input
                                 id="full_name"
                                 value={formData.full_name || ""}
                                 onChange={e => setFormData({ ...formData, full_name: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</Label>
+                            <Label htmlFor="email" className="block text-sm font-medium text-white-dark">Email</Label>
                             <Input
                                 id="email"
                                 value={formData.email || ""}
                                 onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact</Label>
+                            <Label htmlFor="contact" className="block text-sm font-medium text-white-dark">Contact</Label>
                             <Input
                                 id="contact"
                                 value={formData.contact || ""}
                                 onChange={e => setFormData({ ...formData, contact: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="gender" className="block text-sm font-medium text-gray-700">Gender</Label>
+                            <Label htmlFor="gender" className="block text-sm font-medium text-white-dark">Gender</Label>
                             <Input
                                 id="gender"
                                 value={formData.gender || ""}
                                 onChange={e => setFormData({ ...formData, gender: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="dob" className="block text-sm font-medium text-gray-700">Date of Birth</Label>
+                            <Label htmlFor="dob" className="block text-sm font-medium text-white-dark">Date of Birth</Label>
                             <Input
                                 id="dob"
                                 type="date"
                                 value={formData.dob ? new Date(formData.dob).toISOString().slice(0, 10) : ""}
                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="avatar" className="block text-sm font-medium text-gray-700">Avatar URL</Label>
+                            <Label htmlFor="avatar" className="block text-sm font-medium text-white-dark">Avatar URL</Label>
                             <Input
                                 id="avatar"
                                 value={formData.avatar || ""}
@@ -462,17 +544,16 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="hire_date" className="block text-sm font-medium text-gray-700">Hire Date</Label>
+                            <Label htmlFor="hire_date" className="block text-sm font-medium text-white-dark">Hire Date</Label>
                             <Input
                                 id="hire_date"
                                 type="date"
                                 value={formData.hire_date ? new Date(formData.hire_date).toISOString().slice(0, 10) : ""}
                                 onChange={e => setFormData({ ...formData, hire_date: e.target.value })}
-                                required
                             />
                         </div>
                         <div className="mb-4">
-                            <Label htmlFor="resignation_date" className="block text-sm font-medium text-gray-700">Resignation Date</Label>
+                            <Label htmlFor="resignation_date" className="block text-sm font-medium text-white-dark">Resignation Date</Label>
                             <Input
                                 id="resignation_date"
                                 type="date"
@@ -481,7 +562,7 @@ const OrgEmp: React.FC = () => {
                             />
                         </div>
                         <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Department</Label>
+                            <Label className="block text-sm font-medium text-white-dark">Department</Label>
                             <Select
                                 value={formData.department?.id?.toString() || ""}
                                 onValueChange={val => {
@@ -505,7 +586,7 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Position</Label>
+                            <Label className="block text-sm font-medium text-white-dark">Position</Label>
                             <Select
                                 value={formData.position?.id?.toString() || ""}
                                 onValueChange={val => {
@@ -529,7 +610,7 @@ const OrgEmp: React.FC = () => {
                             </Select>
                         </div>
                         <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Location</Label>
+                            <Label className="block text-sm font-medium text-white-dark">Location</Label>
                                 <Select
                                     value={formData.location?.id?.toString() || ""}
                                     onValueChange={val => {
@@ -553,11 +634,11 @@ const OrgEmp: React.FC = () => {
                                 </Select>
                         </div>
                         <div className="mb-4">
-                            <Label className="block text-sm font-medium text-gray-700">Cost Center</Label>
+                            <Label className="block text-sm font-medium text-white-dark">Cost Center</Label>
                             <Select
                                 value={formData.costcenter?.id?.toString() || ""}
                                 onValueChange={val => {
-                                    const selected = formData.costcenter?.id === Number(val) ? undefined : formData.costcenter;
+                                    const selected = costcenters.find(c => c.id === Number(val));
                                     setFormData({ ...formData, costcenter: selected });
                                 }}
                             >
@@ -567,9 +648,9 @@ const OrgEmp: React.FC = () => {
                                 <SelectContent>
                                     <SelectGroup>
                                         <SelectLabel>Cost Centers</SelectLabel>
-                                        {departments.map(costcenter => (
-                                            <SelectItem key={costcenter.id} value={costcenter.id.toString()}>
-                                                {costcenter.name}
+                                        {costcenters.map(cc => (
+                                            <SelectItem key={cc.id} value={cc.id.toString()}>
+                                                {cc.name}
                                             </SelectItem>
                                         ))}
                                     </SelectGroup>

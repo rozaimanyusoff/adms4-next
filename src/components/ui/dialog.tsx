@@ -61,7 +61,7 @@ function DialogContent({
           // Centered content with transitions
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl p-6 duration-200 sm:max-w-lg",
           // Sky-tinted translucent background with minimal blur (more see-through)
-          "bg-gradient-to-br from-sky-50/60 to-white/50 dark:from-sky-900/25 dark:to-slate-900/25 backdrop-blur-xs",
+          "bg-white/70 dark:bg-gray-900/70 dark:text-dark-light backdrop-blur-lg",
           // No border or ring; keep a soft shadow only
           "shadow-[0_8px_32px_rgba(0,0,0,0.10)]",
           className
@@ -69,7 +69,7 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-4 right-4 inline-flex items-center justify-center rounded-md bg-white dark:bg-slate-800/40 backdrop-blur hover:bg-white/60 dark:hover:bg-slate-800/60 transition-colors opacity-80 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 p-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+        <DialogPrimitive.Close className="absolute top-4 right-4 inline-flex items-center justify-center rounded-md text-white bg-red-500 dark:bg-slate-800/40 backdrop-blur hover:bg-red-600 dark:hover:bg-slate-800/60 transition-colors opacity-80 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 p-1 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
           <XIcon />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
