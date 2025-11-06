@@ -12,16 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import {
-    Select,
-    SelectContent,
-    SelectGroup,
-    SelectItem,
-    SelectLabel,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { SingleSelect, type ComboboxOption } from "@/components/ui/combobox";
 
 interface Department { id: number; name: string; code: string; }
 interface Position { id: number; name: string; }
@@ -82,6 +74,46 @@ const OrgEmp: React.FC = () => {
     });
 
     const dataGridRef = useRef<{ deselectRow: (key: string | number) => void; clearSelectedRows: () => void } | null>(null);
+
+    const departmentOptions = useMemo<ComboboxOption[]>(() =>
+        departments
+            .filter(dep => dep && dep.id != null)
+            .map(dep => ({
+                value: String(dep.id),
+                label: [dep.name, dep.code].filter(Boolean).join(" - ") || `Department ${dep.id}`,
+            })),
+        [departments]
+    );
+
+    const positionOptions = useMemo<ComboboxOption[]>(() =>
+        positions
+            .filter(pos => pos && pos.id != null)
+            .map(pos => ({
+                value: String(pos.id),
+                label: pos.name || `Position ${pos.id}`,
+            })),
+        [positions]
+    );
+
+    const locationOptions = useMemo<ComboboxOption[]>(() =>
+        locations
+            .filter(loc => loc && loc.id != null)
+            .map(loc => ({
+                value: String(loc.id),
+                label: [loc.name, loc.code].filter(Boolean).join(" - ") || `Location ${loc.id}`,
+            })),
+        [locations]
+    );
+
+    const costCenterOptions = useMemo<ComboboxOption[]>(() =>
+        costcenters
+            .filter(cc => cc && cc.id != null)
+            .map(cc => ({
+                value: String(cc.id),
+                label: cc.name || `Cost Center ${cc.id}`,
+            })),
+        [costcenters]
+    );
 
     const fetchData = async () => {
         setLoading(true);
@@ -485,8 +517,9 @@ const OrgEmp: React.FC = () => {
                     </DialogHeader>
                     <form
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
+                        className="grid grid-cols-1 gap-4 md:grid-cols-2"
                     >
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="ramco_id" className="block text-sm font-medium text-white-dark">Ramco ID</Label>
                             <Input
                                 id="ramco_id"
@@ -494,7 +527,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, ramco_id: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="full_name" className="block text-sm font-medium text-white-dark">Full Name</Label>
                             <Input
                                 id="full_name"
@@ -502,7 +535,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, full_name: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="email" className="block text-sm font-medium text-white-dark">Email</Label>
                             <Input
                                 id="email"
@@ -510,7 +543,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, email: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="contact" className="block text-sm font-medium text-white-dark">Contact</Label>
                             <Input
                                 id="contact"
@@ -518,7 +551,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, contact: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="gender" className="block text-sm font-medium text-white-dark">Gender</Label>
                             <Input
                                 id="gender"
@@ -526,7 +559,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, gender: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="dob" className="block text-sm font-medium text-white-dark">Date of Birth</Label>
                             <Input
                                 id="dob"
@@ -535,7 +568,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, dob: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="avatar" className="block text-sm font-medium text-white-dark">Avatar URL</Label>
                             <Input
                                 id="avatar"
@@ -543,7 +576,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, avatar: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="hire_date" className="block text-sm font-medium text-white-dark">Hire Date</Label>
                             <Input
                                 id="hire_date"
@@ -552,7 +585,7 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, hire_date: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label htmlFor="resignation_date" className="block text-sm font-medium text-white-dark">Resignation Date</Label>
                             <Input
                                 id="resignation_date"
@@ -561,103 +594,65 @@ const OrgEmp: React.FC = () => {
                                 onChange={e => setFormData({ ...formData, resignation_date: e.target.value })}
                             />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label className="block text-sm font-medium text-white-dark">Department</Label>
-                            <Select
-                                value={formData.department?.id?.toString() || ""}
+                            <SingleSelect
+                                options={departmentOptions}
+                                value={formData.department?.id != null ? String(formData.department.id) : ""}
                                 onValueChange={val => {
-                                    const selected = departments.find(d => d.id === Number(val));
+                                    const selected = departments.find(d => String(d.id) === val);
                                     setFormData({ ...formData, department: selected });
                                 }}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Departments</SelectLabel>
-                                        {departments.map(dept => (
-                                            <SelectItem key={dept.id} value={dept.id.toString()}>
-                                                {dept.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select a department"
+                                searchPlaceholder="Search departments..."
+                                clearable
+                            />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label className="block text-sm font-medium text-white-dark">Position</Label>
-                            <Select
-                                value={formData.position?.id?.toString() || ""}
+                            <SingleSelect
+                                options={positionOptions}
+                                value={formData.position?.id != null ? String(formData.position.id) : ""}
                                 onValueChange={val => {
-                                    const selected = positions.find(p => p.id === Number(val));
+                                    const selected = positions.find(p => String(p.id) === val);
                                     setFormData({ ...formData, position: selected });
                                 }}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a position" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Positions</SelectLabel>
-                                        {positions.map(pos => (
-                                            <SelectItem key={pos.id} value={pos.id.toString()}>
-                                                {pos.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select a position"
+                                searchPlaceholder="Search positions..."
+                                clearable
+                            />
                         </div>
-                        <div className="mb-4">
+                        <div className="flex flex-col gap-2">
                             <Label className="block text-sm font-medium text-white-dark">Location</Label>
-                                <Select
-                                    value={formData.location?.id?.toString() || ""}
-                                    onValueChange={val => {
-                                        const selected = locations.find(l => l.id === Number(val));
-                                        setFormData({ ...formData, location: selected });
-                                    }}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select a location" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectGroup>
-                                            <SelectLabel>Locations</SelectLabel>
-                                            {locations.map(loc => (
-                                                <SelectItem key={loc.id} value={loc.id.toString()}>
-                                                    {loc.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectGroup>
-                                    </SelectContent>
-                                </Select>
-                        </div>
-                        <div className="mb-4">
-                            <Label className="block text-sm font-medium text-white-dark">Cost Center</Label>
-                            <Select
-                                value={formData.costcenter?.id?.toString() || ""}
+                            <SingleSelect
+                                options={locationOptions}
+                                value={formData.location?.id != null ? String(formData.location.id) : ""}
                                 onValueChange={val => {
-                                    const selected = costcenters.find(c => c.id === Number(val));
+                                    const selected = locations.find(l => String(l.id) === val);
+                                    setFormData({ ...formData, location: selected });
+                                }}
+                                placeholder="Select a location"
+                                searchPlaceholder="Search locations..."
+                                clearable
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label className="block text-sm font-medium text-white-dark">Cost Center</Label>
+                            <SingleSelect
+                                options={costCenterOptions}
+                                value={formData.costcenter?.id != null ? String(formData.costcenter.id) : ""}
+                                onValueChange={val => {
+                                    const selected = costcenters.find(c => String(c.id) === val);
                                     setFormData({ ...formData, costcenter: selected });
                                 }}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select a cost center" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectGroup>
-                                        <SelectLabel>Cost Centers</SelectLabel>
-                                        {costcenters.map(cc => (
-                                            <SelectItem key={cc.id} value={cc.id.toString()}>
-                                                {cc.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select a cost center"
+                                searchPlaceholder="Search cost centers..."
+                                clearable
+                            />
                         </div>
-                        <Button type="submit" className="mt-4">Submit</Button>
+                        <div className="md:col-span-2 flex justify-end pt-2">
+                            <Button type="submit" className="min-w-[120px]">Submit</Button>
+                        </div>
                     </form>
                 </DialogContent>
             </Dialog>
