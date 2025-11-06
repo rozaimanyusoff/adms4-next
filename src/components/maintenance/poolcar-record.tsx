@@ -292,7 +292,7 @@ const PoolcarRecord: React.FC = () => {
 
   if (showForm) {
     return (
-      <div className="p-4 space-y-4">
+      <div className="py-4 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Poolcar Application Form</h2>
           <Button
@@ -311,7 +311,7 @@ const PoolcarRecord: React.FC = () => {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="py-4 space-y-4">
       {/* Calendar Accordion */}
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="calendar">

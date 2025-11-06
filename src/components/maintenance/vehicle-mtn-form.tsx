@@ -14,6 +14,16 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Loader2, X } from 'lucide-react';
 
 // Users in this list will not be filtered by ?ramco
@@ -145,6 +155,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [showSuccess, setShowSuccess] = React.useState<boolean>(false);
   const [successTitle, setSuccessTitle] = React.useState<string>('Form submitted');
   const [successDescription, setSuccessDescription] = React.useState<string>('Your maintenance request has been successfully submitted.');
+  // Terms alert on open
+  const [termsOpen, setTermsOpen] = React.useState<boolean>(false);
   const [serviceOptionsError, setServiceOptionsError] = React.useState<string | null>(null);
   const [serviceHistory, setServiceHistory] = React.useState<ServiceHistoryRecord[]>([]);
   const [serviceHistoryLoading, setServiceHistoryLoading] = React.useState<boolean>(false);
@@ -173,6 +185,27 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   // Selected vehicle details for payload convenience
   const selectedVehicle = React.useMemo(() => (assetId ? vehicleById[assetId] : null), [vehicleById, assetId]);
+
+  // Open terms dialog when form mounts
+  React.useEffect(() => {
+    setTermsOpen(true);
+  }, []);
+
+  const handleTermsDecline = React.useCallback(() => {
+    setTermsOpen(false);
+    if (onClose) {
+      onClose();
+      return;
+    }
+    if (typeof window !== 'undefined' && window.history && window.history.length > 0) {
+      window.history.back();
+    }
+  }, [onClose]);
+
+  const handleTermsAgree = React.useCallback(() => {
+    setAgree(true);
+    setTermsOpen(false);
+  }, []);
 
   const focusFirstError = React.useCallback((e: typeof errors) => {
     if (e.asset && vehicleRef.current) { vehicleRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
@@ -1486,6 +1519,35 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
         .hide-scrollbar { scrollbar-width: none; }
         .hide-scrollbar:hover { scrollbar-width: thin; }
       `}</style>
+
+      {/* Terms & Conditions Alert shown on open */}
+      <AlertDialog open={termsOpen} onOpenChange={setTermsOpen}>
+        <AlertDialogContent className="sm:max-w-2xl max-w-[calc(100%-2rem)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Terma & Syarat</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="max-h-[70vh] overflow-y-auto text-base sm:text-lg leading-relaxed space-y-4">
+                <p>Mohon baca dan fahami terma berikut sebelum meneruskan.</p>
+                <ol className="list-decimal pl-6 space-y-3">
+                  <li>
+                    Setelah servis kenderaan selesai, pemohon DIWAJIBKAN memuat naik borang yang telah diisi oleh
+                    bengkel serta-merta, melalui aplikasi ADMS4 yang sama digunakan semasa memohon.
+                  </li>
+                  <li>
+                    Kegagalan pemohon memuatnaik borang akan mengakibatkan pemohon mengalami kesulitan bagi
+                    permohonan servis seterusnya.
+                  </li>
+                </ol>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleTermsDecline}>Tidak Setuju</AlertDialogCancel>
+            <AlertDialogAction onClick={handleTermsAgree}>Setuju</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
         <DialogContent>
           <DialogHeader>

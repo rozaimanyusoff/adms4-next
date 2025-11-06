@@ -196,7 +196,7 @@ const VehicleMtnRecord: React.FC = () => {
 
   if (showForm) {
     return (
-      <div className="p-4 space-y-4">
+      <div className="py-4 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Vehicle Maintenance Form</h2>
           <Button
@@ -214,7 +214,7 @@ const VehicleMtnRecord: React.FC = () => {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="py-4 space-y-4">
       <Accordion type="single" collapsible defaultValue={undefined}>
         <AccordionItem value="summary">
           <AccordionTrigger>

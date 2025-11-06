@@ -197,7 +197,7 @@ export async function downloadServiceFormPdf(reqId: string | number) {
   //disclaimer
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(PDF_STYLE.typography.base - 1);
-  const disclaimerText = '* Borang ini hanya sah digunakan dalam tempoh 3 hari sahaja dari tarikh kelulusan, dan hanya sah digunakan mengikut butiran servis yang diluluskan sahaja. Sekiranya terdapat keperluan lain (yang berkaitan dengan penyelenggaraan ini), sila buat permohonan baru.';
+  const disclaimerText = '* Borang ini hanya sah digunakan dalam tempoh 5 hari sahaja dari tarikh kelulusan, dan hanya sah digunakan mengikut butiran servis yang diluluskan sahaja. Sekiranya terdapat keperluan lain (yang berkaitan dengan penyelenggaraan ini), sila buat permohonan baru.';
   doc.text(disclaimerText, margin, y, { maxWidth: pageWidth - margin * 2 });
   y += 10;
 
@@ -312,15 +312,15 @@ export async function downloadServiceFormPdf(reqId: string | number) {
   // Footer notes
   const notesLeft = [
     'Notis kepada pemohon/pemandu:',
-    '1) Borang penyelenggaraan ini hanya dikeluarkan setelah mendapat kelulusan sahaja. Oleh itu, tiada tanda tangan kelulusan diperlukan.',
+    '1) Borang servis kenderaan ini hanya dikeluarkan setelah mendapat kelulusan sahaja. Oleh itu, tiada tanda tangan kelulusan diperlukan.',
 
-    '2) Setelah penyelenggaraan selesai, pemohon hendaklah mengambil gambar borang yang penuh dan jelas serta memuat naik melalui pautan yang sertakan dalam emel “Muatnaik Borang Servis” dengan serta-merta.',
+    '2) Setelah servis kenderaan selesai, pemohon DIWAJIBKAN memuat naik borang yang telah diisi oleh bengkel serta-merta, melalui aplikasi ADMS4 yang sama digunakan semasa memohon.',
 
     '3) Pemohon hendaklah merujuk kepada pihak HRA terlebih dahulu sekiranya terdapat penambahan terhadap kerja penyelenggaraan, selain dari perkara yang tertera dalam borang ini.',
   ];
   const notesRight = [
     'Notis kepada bengkel:',
-    '1) Sekiranya kos servis melebihi RM2,000.00, pihak bengkel hendaklah memaklumkan pihak pengurusan RTSB sebelum urusan selanjutnya dapat dilakukan.',
+    '1) Sekiranya kos servis melebihi RM2,000.00, pihak bengkel hendaklah menghubungi Penyelia Pentadbiran RTSB sebelum sebarang urusan selanjutnya dijalankan.',
     
     '2) Borang ini perlu dilampirkan bersama invois untuk tujuan pembayaran.',
   ];

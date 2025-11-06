@@ -42,14 +42,27 @@ export default function AssetTransfer() {
             .catch(() => setLoading(false));
     }, [username]);
 
-    const columns: ColumnDef<any>[] = [
+    // Base renderers
+    const renderNewOwners = (row: any) => Array.isArray(row.new_owner) && row.new_owner.length > 0
+        ? row.new_owner.map((n: any) => n.full_name || n.ramco_id).join(", ")
+        : "-";
+    const renderDate = (row: any) => row.transfer_date ? new Date(row.transfer_date).toLocaleDateString() : "-";
+
+    // Columns per grid
+    const columnsTransferTo: ColumnDef<any>[] = [
+        { key: "id", header: "ID" },
+        { key: "new_owner", header: "New Owner", render: renderNewOwners },
+        { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
+        { key: "transfer_date", header: "Transfer Date", render: renderDate },
+        { key: "transfer_status", header: "Status" },
+    ];
+
+    const columnsTransferBy: ColumnDef<any>[] = [
         { key: "id", header: "ID" },
         { key: "transfer_by", header: "Transfer By", render: row => row.transfer_by?.full_name || row.transfer_by?.ramco_id || "-" },
-        { key: "department", header: "Department", render: row => row.department?.code || row.department?.name || row.department_id || "-" },
-        { key: "costcenter", header: "Cost Center", render: row => row.costcenter?.name || row.costcenter_id || "-" },
-        { key: "new_owner", header: "New Owner", render: row => Array.isArray(row.new_owner) && row.new_owner.length > 0 ? row.new_owner.map((n: any) => n.full_name || n.ramco_id).join(", ") : "-" },
+        { key: "new_owner", header: "New Owner", render: renderNewOwners },
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
-        { key: "transfer_date", header: "Transfer Date", render: row => row.transfer_date ? new Date(row.transfer_date).toLocaleDateString() : "-" },
+        { key: "transfer_date", header: "Transfer Date", render: renderDate },
         { key: "transfer_status", header: "Status" },
     ];
 
@@ -66,9 +79,27 @@ export default function AssetTransfer() {
         return counts;
     }, [data]);
 
+    // Precompute filtered datasets so hooks order remains stable
+    const transferToRows = React.useMemo(() => {
+        const me = String(username || '');
+        // Rows I initiated (make asset transfer to new owner)
+        return (data || []).filter((row: any) => String(row?.transfer_by?.ramco_id || '') === me);
+    }, [data, username]);
+
+    const transferByRows = React.useMemo(() => {
+        const me = String(username || '');
+        // Rows others initiated to me (I'm in new_owner, but not the initiator)
+        return (data || []).filter((row: any) => {
+            const byMe = String(row?.transfer_by?.ramco_id || '') === me;
+            const owners = Array.isArray(row?.new_owner) ? row.new_owner : [];
+            const iAmOwner = owners.some((o: any) => String(o?.ramco_id || '') === me);
+            return iAmOwner && !byMe;
+        });
+    }, [data, username]);
+
     if (showForm) {
         return (
-            <div className="p-4">
+            <div className="py-4">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-2xl font-bold">Asset Transfer Form</h2>
                     {/* Back button with unsaved changes confirmation */}
@@ -113,7 +144,7 @@ export default function AssetTransfer() {
     }
 
     return (
-        <div className="p-4">
+        <>
             <div className="mb-6">
                 <h2 className="text-2xl font-bold">Asset Transfer Management</h2>
             </div>
@@ -152,8 +183,9 @@ export default function AssetTransfer() {
                     </CardContent>
                 </Card>
             </div>
+            {/* Transfer To (initiated by me) */}
             <div className="flex justify-between items-center mb-2">
-                <h2 className="text-xl font-bold">Asset Transfer Requests</h2>
+                <h2 className="text-xl font-bold">Transfer To</h2>
                 <Button
                     type="button"
                     variant="default"
@@ -165,11 +197,22 @@ export default function AssetTransfer() {
                 </Button>
             </div>
             <CustomDataGrid
-                columns={columns}
-                data={data}
+                columns={columnsTransferTo}
+                data={transferToRows}
                 inputFilter={false}
                 onRowDoubleClick={handleRowDoubleClick}
             />
-        </div>
+
+            {/* Transfer By (requests from others to me) */}
+            <div className="flex justify-between items-center mt-8 mb-2">
+                <h2 className="text-xl font-bold">Transfer By</h2>
+            </div>
+            <CustomDataGrid
+                columns={columnsTransferBy}
+                data={transferByRows}
+                inputFilter={false}
+                onRowDoubleClick={handleRowDoubleClick}
+            />
+        </>
     );
 }

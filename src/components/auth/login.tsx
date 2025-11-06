@@ -67,6 +67,7 @@ const ComponentLogin = () => {
     const RATE_LIMIT_ROUTE = '/api/auth/login';
     const [rateLimit, setRateLimit] = useState<{ blocked: boolean; blockedUntilMs: number | null }>({ blocked: false, blockedUntilMs: null });
     const [countdownMs, setCountdownMs] = useState(0);
+    const [attempts, setAttempts] = useState<{ remaining: number; limit: number; current?: number; resetAt?: number } | null>(null);
 
     const parseBlockedUntilMs = useCallback((payload: any, retryAfterHeader?: string | null): number | null => {
         const now = Date.now();
@@ -110,10 +111,11 @@ const ComponentLogin = () => {
             type RateLimitStatus = {
                 blocked?: boolean;
                 remainingMs?: number;
-                blockedUntil?: number | string;
+                blockedUntil?: number | string | null;
                 retryAfter?: number | string;
+                attempts?: { current?: number; remaining?: number; limit?: number; resetAt?: number };
             };
-            const data = (res.data ?? {}) as RateLimitStatus;
+            const data = ((res.data as any)?.data ?? res.data ?? {}) as RateLimitStatus;
             const inferredBlocked = Boolean(data?.blocked);
             const fromRemaining = typeof data?.remainingMs === 'number' && data.remainingMs > 0;
             const blockedUntilMs = (inferredBlocked || fromRemaining)
@@ -121,13 +123,22 @@ const ComponentLogin = () => {
                 : parseBlockedUntilMs(data, null);
             const blocked = Boolean(blockedUntilMs && blockedUntilMs > Date.now());
             setRateLimit({ blocked, blockedUntilMs: blocked ? blockedUntilMs : null });
+            if (data?.attempts) {
+                const rem = typeof data.attempts.remaining === 'number' ? data.attempts.remaining : NaN;
+                const lim = typeof data.attempts.limit === 'number' ? data.attempts.limit : NaN;
+                if (!Number.isNaN(rem) && !Number.isNaN(lim)) {
+                    setAttempts({ remaining: rem, limit: lim, current: data.attempts.current, resetAt: data.attempts.resetAt });
+                }
+            }
             if (blockedUntilMs) {
                 setCountdownMs(Math.max(0, blockedUntilMs - Date.now()));
             } else if (!blocked) {
                 setCountdownMs(0);
             }
+            return data;
         } catch (error) {
             console.error('Failed to fetch rate limit status', error);
+            return null;
         }
     }, [RATE_LIMIT_ROUTE, parseBlockedUntilMs]);
 
@@ -313,6 +324,7 @@ const ComponentLogin = () => {
                 router.push(redirectPath);
                 setRateLimit({ blocked: false, blockedUntilMs: null });
                 setCountdownMs(0);
+                setAttempts(null);
             }
         } catch (error: any) {
             if (error.response?.status === 429) {
@@ -326,12 +338,26 @@ const ComponentLogin = () => {
                 });
                 const remaining = Math.max(0, effectiveUntil - Date.now());
                 setCountdownMs(remaining);
-                const apiMessage = error.response?.data?.message;
-                setResponseMessage(apiMessage || 'Too many login attempts. Please wait before trying again.');
+                // Also refresh attempts left
+                const status = await fetchRateLimitStatus();
+                const a = (status as any)?.attempts;
+                if (a && typeof a.remaining === 'number' && typeof a.limit === 'number') {
+                    setResponseMessage(`Too many attempts. Try again later. Attempts left: ${a.remaining}/${a.limit}`);
+                } else {
+                    const apiMessage = error.response?.data?.message;
+                    setResponseMessage(apiMessage || 'Too many login attempts. Please wait before trying again.');
+                }
             } else {
                 console.error('Login failed:', error);
-                const errorMessage = error.response?.data?.message || 'An unexpected error occurred. Please try again.';
-                setResponseMessage(errorMessage);
+                // After wrong credentials, fetch rate-limit status and show remaining attempts instead
+                const status = await fetchRateLimitStatus();
+                const a = (status as any)?.attempts;
+                if (a && typeof a.remaining === 'number' && typeof a.limit === 'number') {
+                    setResponseMessage(`Invalid username or password. Attempts left: ${a.remaining}/${a.limit}`);
+                } else {
+                    const errorMessage = error.response?.data?.message || 'Invalid username or password.';
+                    setResponseMessage(errorMessage);
+                }
             }
         }
     };

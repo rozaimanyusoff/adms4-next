@@ -813,7 +813,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Checkbox id="agree" checked={agree} onCheckedChange={(v: any) => setAgree(!!v)} />
-                <Label htmlFor="agree">I confirm the information provided is accurate.</Label>
+                <Label htmlFor="agree">I agree to comply with the company's Terms & Conditions and all rules set by the company.</Label>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>

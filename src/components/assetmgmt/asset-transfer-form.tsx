@@ -829,7 +829,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
 	return (
-		<div className='max-w-7xl mx-auto p-4'>
+		<>
 			{/* AlertDialogs for confirmation */}
 			<AlertDialog open={openSubmitDialog} onOpenChange={(open) => { if (!open && !submitting) setOpenSubmitDialog(false); }}>
 				<AlertDialogContent>
@@ -1569,7 +1569,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 					</form>
 				</CardContent>
 			</Card>
-		</div>
+		</>
 	);
 };
 
