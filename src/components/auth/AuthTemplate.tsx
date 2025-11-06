@@ -1,5 +1,5 @@
 import React from "react";
-import { Eye, EyeOff, Facebook, Twitter, Instagram, Youtube } from "lucide-react";
+import { Facebook, Twitter, Instagram, Youtube } from "lucide-react";
 import Link from "next/link";
 
 interface AuthTemplateProps {
@@ -9,11 +9,11 @@ interface AuthTemplateProps {
 }
 
 const getDescriptionClass = (description?: string) => {
-    if (!description) return "text-gray-600";
+    if (!description) return "text-white/75";
     const desc = description.toLowerCase();
-    if (desc.includes("error") || desc.includes("fail") || desc.includes("invalid")) return "text-danger";
-    if (desc.includes("success")) return "text-success";
-    return "text-gray-600";
+    if (desc.includes("error") || desc.includes("fail") || desc.includes("invalid")) return "text-red-300";
+    if (desc.includes("success")) return "text-emerald-300";
+    return "text-white/75";
 };
 
 const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
@@ -39,12 +39,19 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
                 </div>
             </div>
             {/* Right Side: Auth Form */}
-            <div className="relative z-10 flex flex-col justify-center w-full max-w-lg ml-auto px-8 py-16 bg-slate-200/80 rounded-l-3xl shadow-2xl min-h-screen max-lg:w-full max-lg:rounded-none">
-                <h2 className="text-3xl font-bold mb-8 text-gray-800 text-center">{title}</h2>
-                {description && <p className={"mb-6 text-center " + getDescriptionClass(description)}>{description}</p>}
-                {children}
-                <div className="mt-8 text-xs text-center text-gray-600">
-                    By using ADMS you agree to <Link href="#" className="underline">Terms of Service</Link> | <Link href="#" className="underline">Privacy Policy</Link>
+            <div className="relative z-10 flex flex-1 justify-end max-lg:justify-center">
+                <div className="relative flex flex-col justify-center w-full max-w-xl px-8 py-16 min-h-screen overflow-hidden rounded-l-3xl border border-white/20 bg-white/10 text-slate-100 shadow-[0_25px_45px_rgba(0,0,0,0.35)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/15 max-lg:w-full max-lg:rounded-none max-lg:border-l-0">
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/20 via-white/5 to-transparent" />
+                    <div className="pointer-events-none absolute -top-28 -right-20 h-56 w-56 rounded-full bg-blue-400/40 blur-3xl" />
+                    <div className="pointer-events-none absolute -bottom-24 -left-20 h-52 w-52 rounded-full bg-purple-400/30 blur-3xl" />
+                    <div className="relative z-10 flex flex-col">
+                        <h2 className="text-3xl font-bold mb-6 text-white text-center drop-shadow-md">{title}</h2>
+                        {description && <p className={"mb-6 text-center " + getDescriptionClass(description)}>{description}</p>}
+                        {children}
+                        <div className="mt-8 text-xs text-center text-white/70">
+                            By using ADMS you agree to <Link href="#" className="underline">Terms of Service</Link> | <Link href="#" className="underline">Privacy Policy</Link>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
