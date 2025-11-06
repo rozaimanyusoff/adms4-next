@@ -17,6 +17,7 @@ const getDescriptionClass = (description?: string) => {
 };
 
 const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
+    const logoSrc = process.env.NEXT_PUBLIC_BRAND_LOGO_DARK;
     return (
         <div className="relative min-h-screen flex items-stretch">
             {/* Background Image */}
@@ -40,13 +41,18 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
             </div>
             {/* Right Side: Auth Form */}
             <div className="relative z-10 flex flex-1 justify-end max-lg:justify-center">
-                <div className="relative flex flex-col justify-center w-full max-w-xl px-8 py-16 min-h-screen overflow-hidden rounded-l-3xl border border-white/20 bg-white/10 text-slate-100 shadow-[0_25px_45px_rgba(0,0,0,0.35)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/15 max-lg:w-full max-lg:rounded-none max-lg:border-l-0">
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/20 via-white/5 to-transparent" />
-                    <div className="pointer-events-none absolute -top-28 -right-20 h-56 w-56 rounded-full bg-blue-400/40 blur-3xl" />
-                    <div className="pointer-events-none absolute -bottom-24 -left-20 h-52 w-52 rounded-full bg-purple-400/30 blur-3xl" />
+                <div className="relative flex flex-col justify-center w-full max-w-xl px-8 py-16 min-h-screen overflow-hidden rounded-l-3xl border border-white/20 bg-white/50 text-slate-100 shadow-[0_25px_45px_rgba(0,0,0,0.35)] backdrop-blur-md supports-[backdrop-filter]:bg-white/10 max-lg:w-full max-lg:rounded-none max-lg:border-l-0">
+                    <div className="pointer-events-none absolute inset-0 bg-white/20" />
+                    <div className="pointer-events-none absolute -top-28 -right-20 h-56 w-56 rounded-full bg-gray-500/40 blur-3xl" />
+                    <div className="pointer-events-none absolute -bottom-24 -left-20 h-52 w-52 rounded-full bg-gray-700/30 blur-3xl" />
+                    {logoSrc ? (
+                        <div className="absolute top-8 right-10 flex justify-end max-lg:left-1/2 max-lg:-translate-x-1/2 max-lg:top-6 max-lg:right-auto">
+                            <img src={logoSrc} alt="Brand logo" className="h-16 w-auto drop-shadow-lg max-lg:h-12" />
+                        </div>
+                    ) : null}
                     <div className="relative z-10 flex flex-col">
                         <h2 className="text-3xl font-bold mb-6 text-white text-center drop-shadow-md">{title}</h2>
-                        {description && <p className={"mb-6 text-center " + getDescriptionClass(description)}>{description}</p>}
+                        {description && <p className={"mb-6 text-center text-sm " + getDescriptionClass(description)}>{description}</p>}
                         {children}
                         <div className="mt-8 text-xs text-center text-white/70">
                             By using ADMS you agree to <Link href="#" className="underline">Terms of Service</Link> | <Link href="#" className="underline">Privacy Policy</Link>

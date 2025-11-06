@@ -2,7 +2,7 @@
 
 import { Metadata } from 'next';
 import Link from 'next/link';
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
@@ -64,6 +64,122 @@ const ComponentLogin = () => {
     const [credentials, setCredentials] = useState({ emailOrUsername: '', password: '' });
     const [showSecurityWarning, setShowSecurityWarning] = useState(false);
     const authContext = useContext(AuthContext);
+    const RATE_LIMIT_ROUTE = '/api/auth/login';
+    const [rateLimit, setRateLimit] = useState<{ blocked: boolean; blockedUntilMs: number | null }>({ blocked: false, blockedUntilMs: null });
+    const [countdownMs, setCountdownMs] = useState(0);
+
+    const parseBlockedUntilMs = useCallback((payload: any, retryAfterHeader?: string | null): number | null => {
+        const now = Date.now();
+        if (payload?.blockedUntil != null) {
+            if (typeof payload.blockedUntil === 'number') {
+                const numeric = payload.blockedUntil;
+                return numeric > 1e12 ? numeric : numeric * 1000;
+            }
+            const parsed = Date.parse(payload.blockedUntil);
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+        if (typeof payload?.remainingMs === 'number') {
+            return now + Math.max(0, payload.remainingMs);
+        }
+        if (payload?.retryAfter != null) {
+            const retryVal = payload.retryAfter;
+            if (typeof retryVal === 'number') {
+                return now + (retryVal > 10_000 ? retryVal : retryVal * 1000);
+            }
+            const retryNum = Number(retryVal);
+            if (!Number.isNaN(retryNum)) {
+                return now + (retryNum > 10_000 ? retryNum : retryNum * 1000);
+            }
+        }
+        if (retryAfterHeader) {
+            const numeric = Number(retryAfterHeader);
+            if (!Number.isNaN(numeric)) {
+                return now + numeric * 1000;
+            }
+            const parsedHeaderDate = Date.parse(retryAfterHeader);
+            if (!Number.isNaN(parsedHeaderDate)) {
+                return parsedHeaderDate;
+            }
+        }
+        return null;
+    }, []);
+
+    const fetchRateLimitStatus = useCallback(async () => {
+        try {
+            const res = await api.get('/api/auth/rate-limit-status', { params: { route: RATE_LIMIT_ROUTE } });
+            type RateLimitStatus = {
+                blocked?: boolean;
+                remainingMs?: number;
+                blockedUntil?: number | string;
+                retryAfter?: number | string;
+            };
+            const data = (res.data ?? {}) as RateLimitStatus;
+            const inferredBlocked = Boolean(data?.blocked);
+            const fromRemaining = typeof data?.remainingMs === 'number' && data.remainingMs > 0;
+            const blockedUntilMs = (inferredBlocked || fromRemaining)
+                ? parseBlockedUntilMs(data, null) ?? (typeof data?.remainingMs === 'number' ? Date.now() + data.remainingMs : null)
+                : parseBlockedUntilMs(data, null);
+            const blocked = Boolean(blockedUntilMs && blockedUntilMs > Date.now());
+            setRateLimit({ blocked, blockedUntilMs: blocked ? blockedUntilMs : null });
+            if (blockedUntilMs) {
+                setCountdownMs(Math.max(0, blockedUntilMs - Date.now()));
+            } else if (!blocked) {
+                setCountdownMs(0);
+            }
+        } catch (error) {
+            console.error('Failed to fetch rate limit status', error);
+        }
+    }, [RATE_LIMIT_ROUTE, parseBlockedUntilMs]);
+
+    useEffect(() => {
+        fetchRateLimitStatus();
+    }, [fetchRateLimitStatus]);
+
+    useEffect(() => {
+        if (!rateLimit.blocked) {
+            setCountdownMs(0);
+            return;
+        }
+        const updateCountdown = () => {
+            if (!rateLimit.blockedUntilMs) {
+                setCountdownMs(0);
+                return;
+            }
+            const remaining = Math.max(0, rateLimit.blockedUntilMs - Date.now());
+            setCountdownMs(remaining);
+            if (remaining <= 0) {
+                fetchRateLimitStatus();
+            }
+        };
+        updateCountdown();
+        const intervalId = setInterval(updateCountdown, 1000);
+        return () => clearInterval(intervalId);
+    }, [rateLimit.blocked, rateLimit.blockedUntilMs, fetchRateLimitStatus]);
+
+    useEffect(() => {
+        if (!rateLimit.blocked) return;
+        const pollId = setInterval(() => {
+            fetchRateLimitStatus();
+        }, 8000);
+        return () => clearInterval(pollId);
+    }, [rateLimit.blocked, fetchRateLimitStatus]);
+
+    useEffect(() => {
+        if (!rateLimit.blocked && responseMessage && responseMessage.includes('Too many login attempts')) {
+            setResponseMessage(null);
+        }
+    }, [rateLimit.blocked, responseMessage]);
+
+    const formatCountdown = (ms: number) => {
+        if (ms <= 0) return '0s';
+        const totalSeconds = Math.ceil(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (minutes > 0) {
+            return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+        }
+        return `${seconds}s`;
+    };
 
     useEffect(() => {
         // Redirect to lastNav if user is already authenticated
@@ -138,11 +254,11 @@ const ComponentLogin = () => {
 
     const getMessageClass = (message: string | null) => {
         if (message?.toLowerCase().includes('error') || message?.toLowerCase().includes('invalid')) {
-            return 'text-red-500';
+            return 'text-rose-200';
         } else if (message?.toLowerCase().includes('success')) {
-            return 'text-green-600';
+            return 'text-emerald-200';
         } else {
-            return 'text-black';
+            return 'text-white';
         }
     };
 
@@ -195,11 +311,28 @@ const ComponentLogin = () => {
                 // Safely access lastNav or fallback to /analytics
                 const redirectPath = response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/users/profile';
                 router.push(redirectPath);
+                setRateLimit({ blocked: false, blockedUntilMs: null });
+                setCountdownMs(0);
             }
         } catch (error: any) {
-            console.error('Login failed:', error);
-            const errorMessage = error.response?.data?.message || 'An unexpected error occurred. Please try again.';
-            setResponseMessage(errorMessage);
+            if (error.response?.status === 429) {
+                const retryAfterHeader = error.response.headers?.['retry-after'] ?? error.response.headers?.['Retry-After'];
+                const blockedUntilMs = parseBlockedUntilMs(error.response?.data, retryAfterHeader);
+                const fallbackUntil = Date.now() + 30_000;
+                const effectiveUntil = blockedUntilMs ?? fallbackUntil;
+                setRateLimit({
+                    blocked: true,
+                    blockedUntilMs: effectiveUntil,
+                });
+                const remaining = Math.max(0, effectiveUntil - Date.now());
+                setCountdownMs(remaining);
+                const apiMessage = error.response?.data?.message;
+                setResponseMessage(apiMessage || 'Too many login attempts. Please wait before trying again.');
+            } else {
+                console.error('Login failed:', error);
+                const errorMessage = error.response?.data?.message || 'An unexpected error occurred. Please try again.';
+                setResponseMessage(errorMessage);
+            }
         }
     };
 
@@ -207,35 +340,36 @@ const ComponentLogin = () => {
         <AuthTemplate title="Sign in" description={responseMessage || "Login to your ADMS account."}>
             <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
-                    <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-gray-700 mb-1">Email or Username</label>
+                    <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-white/90 mb-1">Email or Username</label>
                     <Input
+                        variant="translucent"
                         id="emailOrUsername"
                         name="emailOrUsername"
                         type="text"
                         required
                         placeholder="Enter your email or username"
-                        className='dark:text-dark'
                         value={credentials.emailOrUsername}
                         onChange={(e) => setCredentials(prev => ({ ...prev, emailOrUsername: e.target.value }))}
                     />
                 </div>
                 <div>
-                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                    <label htmlFor="password" className="block text-sm font-semibold text-white/90 mb-1">Password</label>
                     <div className="relative">
                         <Input
+                            variant="translucent"
                             id="password"
                             name="password"
                             type={showPassword ? "text" : "password"}
                             required
                             placeholder="Enter your password"
-                            className='dark:text-dark pr-10'
+                            className='pr-10'
                             value={credentials.password}
                             onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
                         />
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                            className="absolute inset-y-0 right-0 flex items-center pr-5 text-white/70 hover:text-white"
                         >
                             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                         </button>
@@ -246,7 +380,7 @@ const ComponentLogin = () => {
                     <>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <label className="flex items-center text-sm text-gray-700 cursor-pointer gap-2">
+                                <label className="flex items-center text-sm text-white/80 cursor-pointer gap-2">
                                     <Checkbox
                                         id="rememberMe"
                                         name="rememberMe"
@@ -269,14 +403,14 @@ const ComponentLogin = () => {
                                             setRememberMe(false);
                                             localStorage.removeItem('rememberedCredentials');
                                         }}
-                                        className="text-gray-400 hover:text-gray-600 text-sm ml-1"
+                                        className="text-white/60 hover:text-white/85 text-sm ml-1"
                                         title="Clear remembered credentials"
                                     >
                                         ×
                                     </button>
                                 )}
                             </div>
-                            <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">Lost your password?</Link>
+                            <Link href="/auth/forgot-password" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-2 hover:underline">Lost your password?</Link>
                         </div>
 
                         {/* Security Warning for Remember Me */}
@@ -317,13 +451,24 @@ const ComponentLogin = () => {
                 {process.env.NEXT_PUBLIC_REMEMBER_ME_ENABLED !== 'true' && (
                     <div className="flex items-center justify-between">
                         <div></div> {/* Empty space for layout consistency */}
-                        <Link href="/auth/forgot-password" className="text-sm text-blue-600 hover:underline">Lost your password?</Link>
+                        <Link href="/auth/forgot-password" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-4 hover:underline">Lost your password?</Link>
                     </div>
                 )}
-                <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Sign in now</Button>
+                {rateLimit.blocked && (
+                    <p className="text-xs text-amber-200 text-center font-medium">
+                        Too many attempts. Try again in {formatCountdown(Math.max(countdownMs, 0))}.
+                    </p>
+                )}
+                <Button
+                    type="submit"
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={rateLimit.blocked}
+                >
+                    Sign in now
+                </Button>
                 <div className="text-center mt-4">
-                    <span className="text-sm text-gray-700">Not a member? </span>
-                    <Link href="/auth/register" className="text-sm text-blue-600 hover:underline font-semibold">Sign up</Link>
+                    <span className="text-sm text-white/80">Not a member? </span>
+                    <Link href="/auth/register" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-4 hover:underline font-semibold">Sign up</Link>
                 </div>
             </form>
         </AuthTemplate>

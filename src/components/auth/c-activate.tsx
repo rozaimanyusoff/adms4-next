@@ -194,8 +194,9 @@ const ComponentActivate = () => {
         <AuthTemplate title="Activate Account" description={responseMessage.text || "Set your account password to activate your ADMS account."}>
             <form className="space-y-3" onSubmit={!isValidated ? handleValidate : handleActivate}>
                 <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                    <label htmlFor="email" className="block text-sm font-medium text-white/90">Email</label>
                     <Input
+                        variant="translucent"
                         id="email"
                         type="email"
                         placeholder="Enter Email"
@@ -206,8 +207,9 @@ const ComponentActivate = () => {
                 </div>
 
                 <div>
-                    <label htmlFor="contact" className="block text-sm font-medium text-gray-700">Contact</label>
+                    <label htmlFor="contact" className="block text-sm font-medium text-white/90">Contact</label>
                     <Input
+                        variant="translucent"
                         id="contact"
                         type="text"
                         placeholder="Enter Contact"
@@ -221,12 +223,13 @@ const ComponentActivate = () => {
                 {isValidated && (
                     <>
                         <div>
-                            <label htmlFor="username" className="text-sm font-medium text-gray-700">Username</label>
+                            <label htmlFor="username" className="text-sm font-medium text-white/90">Username</label>
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <div className="relative flex items-center">
                                             <Input
+                                                variant="translucent"
                                                 id="username"
                                                 type="text"
                                                 placeholder="Enter Ramco ID (for employees) or blank for non-employees"
@@ -257,12 +260,13 @@ const ComponentActivate = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+                            <label htmlFor="password" className="block text-sm font-medium text-white/90">Password</label>
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <div className="relative">
                                             <Input
+                                                variant="translucent"
                                                 id="password"
                                                 type={showPassword.password ? 'text' : 'password'}
                                                 placeholder="Enter Password"
@@ -270,7 +274,7 @@ const ComponentActivate = () => {
                                                 onChange={handleChange}
                                             />
                                             <span
-                                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500 hover:text-red-500 hover:shadow-2xl cursor-pointer"
+                                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-white/70 hover:text-rose-300 hover:shadow-2xl cursor-pointer"
                                                 onClick={() => togglePassword('password')}
                                                 tabIndex={0}
                                                 aria-label="Show/hide password"
@@ -289,9 +293,10 @@ const ComponentActivate = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                            <label htmlFor="confirmPassword" className="block text-sm font-medium text-white/90">Confirm Password</label>
                             <div className="relative">
                                 <Input
+                                    variant="translucent"
                                     id="confirmPassword"
                                     type={showPassword.confirmPassword ? 'text' : 'password'}
                                     placeholder="Confirm Password"
@@ -299,7 +304,7 @@ const ComponentActivate = () => {
                                     onChange={handleChange}
                                 />
                                 <span
-                                    className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500 hover:text-red-500"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-5 text-white/70 hover:text-rose-300"
                                     onClick={() => togglePassword('confirmPassword')}
                                 >
                                     {showPassword.confirmPassword ? <EyeOff /> : <Eye />}

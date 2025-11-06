@@ -204,8 +204,9 @@ const ComponentResetPassword = () => {
             {!isValidated ? (
                 <form className="space-y-6" onSubmit={handleValidationSubmit}>
                     <div>
-                        <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+                        <label htmlFor="email" className="block text-sm font-semibold text-white/90 mb-1">Email</label>
                         <Input
+                            variant="translucent"
                             id="email"
                             name="email"
                             type="email"
@@ -215,8 +216,9 @@ const ComponentResetPassword = () => {
                         />
                     </div>
                     <div>
-                        <label htmlFor="contact" className="block text-sm font-semibold text-gray-700 mb-1">Contact</label>
+                        <label htmlFor="contact" className="block text-sm font-semibold text-white/90 mb-1">Contact</label>
                         <Input
+                            variant="translucent"
                             id="contact"
                             name="contact"
                             type="text"
@@ -229,18 +231,19 @@ const ComponentResetPassword = () => {
                     </div>
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Verify Identity</Button>
                     <div className="text-center mt-4">
-                        <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>
+                        <Link href="/auth/login" className="text-blue-300 hover:text-blue-200 underline-offset-2 hover:underline">Back to Login</Link>
                     </div>
                 </form>
             ) : (
                 <form className="space-y-6" onSubmit={handlePasswordSubmit}>
                     <div>
-                        <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">New Password</label>
+                        <label htmlFor="password" className="block text-sm font-semibold text-white/90 mb-1">New Password</label>
                         <TooltipProvider>
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <div className="relative">
                                         <Input
+                                            variant="translucent"
                                             id="password"
                                             name="password"
                                             type={showPassword ? "text" : "password"}
@@ -250,7 +253,7 @@ const ComponentResetPassword = () => {
                                         />
                                         <span
                                             onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                                            className="absolute inset-y-0 right-0 flex items-center pr-5 text-white/70 hover:text-white"
                                             tabIndex={0}
                                             aria-label="Show/hide password"
                                         >
@@ -265,9 +268,10 @@ const ComponentResetPassword = () => {
                         </TooltipProvider>
                     </div>
                     <div>
-                        <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-1">Confirm Password</label>
+                        <label htmlFor="confirmPassword" className="block text-sm font-semibold text-white/90 mb-1">Confirm Password</label>
                         <div className="relative">
                             <Input
+                                variant="translucent"
                                 id="confirmPassword"
                                 name="confirmPassword"
                                 type={showPassword ? "text" : "password"}
@@ -277,7 +281,7 @@ const ComponentResetPassword = () => {
                             />
                             <span
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-gray-500"
+                                className="absolute inset-y-0 right-0 flex items-center pr-5 text-white/70 hover:text-white"
                                 tabIndex={0}
                                 aria-label="Show/hide password"
                             >
@@ -287,7 +291,7 @@ const ComponentResetPassword = () => {
                     </div>
                     <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition">Reset Password</Button>
                     <div className="text-center mt-4">
-                        <Link href="/auth/login" className="text-blue-600 hover:underline">Back to Login</Link>
+                        <Link href="/auth/login" className="text-blue-300 hover:text-blue-200 underline-offset-2 hover:underline">Back to Login</Link>
                     </div>
                 </form>
             )}

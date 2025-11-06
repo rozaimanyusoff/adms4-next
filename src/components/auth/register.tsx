@@ -2,7 +2,7 @@
 
 import { Metadata } from 'next';
 import Link from 'next/link';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
@@ -12,8 +12,6 @@ import { api } from '@/config/api';
 import SliderPuzzleCaptcha from './SliderPuzzleCaptcha';
 import { Eye, EyeOff } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
-import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from '@components/ui/tooltip';
-
 
 interface RegisterResponse {
     message: string;
@@ -64,8 +62,6 @@ const ComponentRegister = () => {
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'Enter a valid email address.';
         if (!contact.trim()) errors.contact = 'Please enter your contact number.';
         if (!/^[0-9]{8,12}$/.test(contact)) errors.contact = 'Contact must be 8-12 digits.';
-        // Optionally, require username for Employee
-        // if (userType === '1' && !username.trim()) errors.username = 'Please provide your Ramco ID.';
         setFieldErrors(errors);
         if (Object.keys(errors).length > 0) return;
 
@@ -90,7 +86,7 @@ const ComponentRegister = () => {
     };
 
     // Auto verification effect: trigger when contact changes and prerequisites filled
-    React.useEffect(() => {
+    useEffect(() => {
         const ready = formData.userType === '1' && formData.name.trim() && formData.email.trim() && formData.contact.trim();
         if (!ready) {
             setMatched(false);
@@ -105,27 +101,29 @@ const ComponentRegister = () => {
             try {
                 const res = await api.post<{ status: string; message?: string; data?: { matched?: boolean; ramco_id?: string; confidence?: string; employee_full_name?: string } }>(
                     '/api/auth/register/verifyme',
-                    { name: formData.name, email: formData.email, contact: formData.contact }
+                    { name: formData.name.trim(), email: formData.email.trim(), contact: formData.contact.trim() }
                 );
-                if (cancelled) return;
-                if (res.data?.status === 'success' && res.data?.data?.matched && res.data.data.ramco_id) {
-                    setMatched(true);
-                    setServerRamcoId(String(res.data.data.ramco_id));
-                    if (res.data.data.employee_full_name) {
-                        setEmployeeFullName(res.data.data.employee_full_name);
+
+                if (!cancelled) {
+                    if (res.data.status === 'success' && res.data.data?.matched && res.data.data?.ramco_id) {
+                        setMatched(true);
+                        setServerRamcoId(res.data.data.ramco_id);
+                        setEmployeeFullName(res.data.data.employee_full_name || formData.name);
+                        setResponseMessage('Employee verified. Please confirm your Ramco ID.');
+                    } else {
+                        setMatched(false);
+                        setServerRamcoId('');
+                        setEmployeeFullName('');
+                        setVerifyError(res.data.message || 'Could not verify employee. Please check your details.');
                     }
-                } else {
+                }
+            } catch (err: any) {
+                if (!cancelled) {
                     setMatched(false);
                     setServerRamcoId('');
                     setEmployeeFullName('');
-                    setVerifyError(res.data?.message || 'Verification failed: details not matched');
+                    setVerifyError(err.response?.data?.message || 'Verification failed. Please try again later.');
                 }
-            } catch (err: any) {
-                if (cancelled) return;
-                setMatched(false);
-                setServerRamcoId('');
-                setEmployeeFullName('');
-                setVerifyError(err?.response?.data?.message || 'Server error during verification');
             } finally {
                 if (!cancelled) setVerifying(false);
             }
@@ -140,15 +138,9 @@ const ComponentRegister = () => {
         }
     };
 
-    const [nameTooltipOpen, setNameTooltipOpen] = useState(false);
-    const [emailTooltipOpen, setEmailTooltipOpen] = useState(false);
-    const [contactTooltipOpen, setContactTooltipOpen] = useState(false);
-    const [userTypeTooltipOpen, setUserTypeTooltipOpen] = useState(false);
-
     // Auto-fill name when Ramco ID matches server-provided ID
-    React.useEffect(() => {
+    useEffect(() => {
         if (formData.userType === '1' && matched && formData.username === serverRamcoId && serverRamcoId && employeeFullName) {
-            // Normalize name (title case) to enforce clean display, but preserve server version if contains capitals intentionally
             const clean = employeeFullName.trim();
             if (formData.name !== clean) {
                 setFormData(prev => ({ ...prev, name: clean }));
@@ -160,165 +152,133 @@ const ComponentRegister = () => {
     }, [formData.userType, matched, formData.username, serverRamcoId, employeeFullName]);
 
     return (
-        <TooltipProvider>
-            <AuthTemplate title="Register" description={responseMessage || "Create your account by filling the form below."}>
-                <form className="space-y-6" onSubmit={handleRegister}>
-                    {/* User Type moved to top */}
-                    <div>
-                        <Tooltip open={userTypeTooltipOpen} onOpenChange={setUserTypeTooltipOpen} delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <div tabIndex={0} onFocus={() => setUserTypeTooltipOpen(true)} onBlur={() => setUserTypeTooltipOpen(false)}>
-                                    <Select
-                                        value={formData.userType}
-                                        onValueChange={value => setFormData(prev => ({ ...prev, userType: value }))}
-                                    >
-                                        <SelectTrigger id="userType" name="userType" className="w-full">
-                                            <SelectValue placeholder="Select user type" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="1">Employee</SelectItem>
-                                            <SelectItem value="2">Non-Employee</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-xs text-wrap">
-                                Employees must use their company email. This helps admin approve your registration.
-                            </TooltipContent>
-                        </Tooltip>
-                    </div>
-                    <div>
-                        <Tooltip open={nameTooltipOpen} onOpenChange={setNameTooltipOpen} delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <div className="relative">
-                                    <Input
-                                        id="name"
-                                        name="name"
-                                        type="text"
-                                        required
-                                        value={formData.name}
-                                        onChange={e => { if (!nameLocked) handleChange(e); }}
-                                        placeholder="Enter your full name"
-                                        onFocus={() => setNameTooltipOpen(true)}
-                                        onBlur={() => setNameTooltipOpen(false)}
-                                        disabled={!formData.userType || nameLocked}
-                                        className={nameLocked ? 'pr-24' : ''}
-                                    />
-                                    {nameLocked && (
-                                        <span className="absolute top-1/2 -translate-y-1/2 right-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-300 font-medium">
-                                            verified
-                                        </span>
-                                    )}
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-xs text-wrap">
-                                {nameLocked ? 'Name auto-filled from HR record and locked.' : 'Please use your real full name for admin approval.'}
-                            </TooltipContent>
-                        </Tooltip>
-                        {fieldErrors.name && <div className="text-xs text-red-600 mt-1">{fieldErrors.name}</div>}
-                    </div>
-                    <div>
-                        <Tooltip open={emailTooltipOpen} onOpenChange={setEmailTooltipOpen} delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <Input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    placeholder="Enter your email"
-                                    onFocus={() => setEmailTooltipOpen(true)}
-                                    onBlur={() => setEmailTooltipOpen(false)}
-                                    disabled={!formData.name.trim() || !formData.userType}
-                                />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-xs text-wrap">
-                                Use a valid email. Employees must use their company email (not Gmail/Yahoo/Hotmail).
-                            </TooltipContent>
-                        </Tooltip>
-                        {fieldErrors.email && <div className="text-xs text-red-600 mt-1">{fieldErrors.email}</div>}
-                    </div>
-                    <div>
-                        <Tooltip open={contactTooltipOpen} onOpenChange={setContactTooltipOpen} delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <Input
-                                    id="contact"
-                                    name="contact"
-                                    type="text"
-                                    required
-                                    placeholder="Enter your contact"
-                                    pattern="[0-9]*"
-                                    maxLength={12}
-                                    value={formData.contact}
-                                    onChange={handleChange}
-                                    onKeyPress={handleKeyPress}
-                                    onFocus={() => setContactTooltipOpen(true)}
-                                    onBlur={() => setContactTooltipOpen(false)}
-                                    disabled={!formData.email.trim()}
-                                />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-xs text-wrap">
-                                Enter your contact number (8-12 digits, numbers only).
-                            </TooltipContent>
-                        </Tooltip>
-                        {fieldErrors.contact && <div className="text-xs text-red-600 mt-1">{fieldErrors.contact}</div>}
-                    </div>
-                    {formData.userType === '1' && matched && (
-                        <div className="space-y-1">
-                            <Input
-                                id="username"
-                                name="username"
-                                type="text"
-                                value={formData.username}
-                                onChange={e => {
-                                    handleChange(e);
-                                }}
-                                maxLength={serverRamcoId.length || 12}
-                                placeholder="Enter your Ramco ID"
-                            />
-                            {formData.username && formData.username !== serverRamcoId && (
-                                <div className="text-xs text-red-600">Ramco ID must match verified record.</div>
-                            )}
-                            {formData.username && formData.username === serverRamcoId && (
-                                <div className="text-xs text-green-600 font-semibold">Ramco ID matched.</div>
-                            )}
-                            {verifying && <div className="text-xs text-gray-500">Re-verifying...</div>}
-                            {verifyError && !matched && <div className="text-xs text-red-600">{verifyError}</div>}
-                        </div>
-                    )}
-                    {formData.userType === '1' && !matched && (formData.name || formData.email || formData.contact) && (
-                        <div className="text-xs text-gray-500 -mt-2">{verifying ? 'Verifying employee details...' : (verifyError || 'Fill all fields to verify as employee.')}</div>
-                    )}
-                    {/* Show slider only when all required fields are filled */}
-                    {(
-                        formData.name.trim() &&
-                        formData.email.trim() &&
-                        formData.contact.trim() &&
-                        formData.userType &&
-                        (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId))
-                    ) ? (
-                        <>
-                            <div className="flex justify-center items-center w-full my-4">
-                                <SliderPuzzleCaptcha onSuccess={() => setSliderVerified(true)} />
-                            </div>
-                            <div className="text-center text-xs text-gray-500 mb-2">Slide the handle to join the word <b>RTSB</b> and verify you are not a robot.</div>
-                        </>
-                    ) : null}
-                    <Button
-                        type="submit"
-                        size="default"
-                        className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition"
-                        disabled={!(sliderVerified && (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId)))}
+        <AuthTemplate title="Register" description={responseMessage || "Create your account by filling the form below"}>
+            <form className="space-y-6" onSubmit={handleRegister}>
+                <div>
+                    <Select
+                        value={formData.userType}
+                        onValueChange={value => setFormData(prev => ({ ...prev, userType: value }))}
                     >
-                        Register
-                    </Button>
-                    <div className="text-center mt-4">
-                        <Link href="/auth/login" className="text-blue-600 hover:underline">Already have an account? Login</Link>
+                        <SelectTrigger
+                            id="userType"
+                            name="userType"
+                            className="w-full border-white/40 bg-white/10 text-white focus-visible:ring-white/45 focus-visible:border-white/70 data-[placeholder]:text-white/70"
+                        >
+                            <SelectValue placeholder="Select user type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="1">Employee</SelectItem>
+                            <SelectItem value="2">Non-Employee</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <div className="relative">
+                        <Input
+                            variant="translucent"
+                            id="name"
+                            name="name"
+                            type="text"
+                            required
+                            value={formData.name}
+                            onChange={e => { if (!nameLocked) handleChange(e); }}
+                            placeholder="Enter your full name"
+                            disabled={!formData.userType || nameLocked}
+                            className={nameLocked ? 'pr-24' : ''}
+                        />
+                        {nameLocked && (
+                            <span className="absolute top-1/2 -translate-y-1/2 right-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-300 font-medium">
+                                verified
+                            </span>
+                        )}
                     </div>
-                </form>
-            </AuthTemplate>
-        </TooltipProvider>
+                    {fieldErrors.name && <div className="text-xs text-red-600 mt-1">{fieldErrors.name}</div>}
+                </div>
+                <div>
+                    <Input
+                        variant="translucent"
+                        id="email"
+                        name="email"
+                        type="email"
+                        required
+                        value={formData.email}
+                        onChange={handleChange}
+                        placeholder="Enter your email"
+                        disabled={!formData.name.trim() || !formData.userType}
+                    />
+                    {fieldErrors.email && <div className="text-xs text-red-600 mt-1">{fieldErrors.email}</div>}
+                </div>
+                <div>
+                    <Input
+                        variant="translucent"
+                        id="contact"
+                        name="contact"
+                        type="text"
+                        required
+                        placeholder="Enter your contact"
+                        pattern="[0-9]*"
+                        maxLength={12}
+                        value={formData.contact}
+                        onChange={handleChange}
+                        onKeyPress={handleKeyPress}
+                        disabled={!formData.email.trim()}
+                    />
+                    {fieldErrors.contact && <div className="text-xs text-red-600 mt-1">{fieldErrors.contact}</div>}
+                </div>
+                {formData.userType === '1' && matched && (
+                    <div className="space-y-1">
+                        <Input
+                            variant="translucent"
+                            id="username"
+                            name="username"
+                            type="text"
+                            value={formData.username}
+                            onChange={handleChange}
+                            maxLength={serverRamcoId.length || 12}
+                            placeholder="Enter your Ramco ID"
+                        />
+                        {formData.username && formData.username !== serverRamcoId && (
+                            <div className="text-xs text-red-600">Ramco ID must match verified record.</div>
+                        )}
+                        {formData.username && formData.username === serverRamcoId && (
+                            <div className="text-xs text-green-600 font-semibold">Ramco ID matched.</div>
+                        )}
+                        {verifying && <div className="text-xs text-white/70">Re-verifying...</div>}
+                        {verifyError && !matched && <div className="text-xs text-red-600">{verifyError}</div>}
+                    </div>
+                )}
+                {formData.userType === '1' && !matched && (formData.name || formData.email || formData.contact) && (
+                    <div className="text-xs text-white/70 -mt-2">
+                        {verifying ? 'Verifying employee details...' : (verifyError || 'Fill all fields to verify as employee.')}
+                    </div>
+                )}
+
+                {(formData.name.trim() &&
+                    formData.email.trim() &&
+                    formData.contact.trim() &&
+                    formData.userType &&
+                    (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId))
+                ) ? (
+                    <>
+                        <div className="flex justify-center items-center w-full my-4">
+                            <SliderPuzzleCaptcha onSuccess={() => setSliderVerified(true)} />
+                        </div>
+                        <div className="text-center text-sm text-white/70 mb-2">Slide the handle to join the word <b>RTSB</b> and verify you are not a robot.</div>
+                    </>
+                ) : null}
+                <Button
+                    type="submit"
+                    size="default"
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition"
+                    disabled={!(sliderVerified && (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId)))}
+                >
+                    Register
+                </Button>
+                <div className="text-center mt-4">
+                    <Link href="/auth/login" className="text-blue-300 hover:text-blue-200 text-sm hover:underline underline-offset-4">Already have an account? Login</Link>
+                </div>
+            </form>
+        </AuthTemplate>
     );
 };
 

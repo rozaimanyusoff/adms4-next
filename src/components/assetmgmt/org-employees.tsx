@@ -115,6 +115,11 @@ const OrgEmp: React.FC = () => {
         [costcenters]
     );
 
+    const employmentStatusOptions = useMemo<ComboboxOption[]>(() => [
+        { value: "active", label: "Active" },
+        { value: "resigned", label: "Resigned" },
+    ], []);
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -168,6 +173,7 @@ const OrgEmp: React.FC = () => {
                 position_id: formData.position?.id ?? null,
                 location_id: formData.location?.id ?? null,
                 costcenter_id: formData.costcenter?.id ?? null,
+                employment_status: formData.employment_status || null,
             } as any;
 
             if (formData.id) {
@@ -647,6 +653,18 @@ const OrgEmp: React.FC = () => {
                                 }}
                                 placeholder="Select a cost center"
                                 searchPlaceholder="Search cost centers..."
+                                clearable
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label className="block text-sm font-medium text-white-dark">Status</Label>
+                            <SingleSelect
+                                options={employmentStatusOptions}
+                                value={formData.employment_status ? formData.employment_status.toLowerCase() : ""}
+                                onValueChange={val => {
+                                    setFormData({ ...formData, employment_status: val });
+                                }}
+                                placeholder="Select employment status"
                                 clearable
                             />
                         </div>
