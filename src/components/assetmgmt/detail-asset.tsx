@@ -415,19 +415,19 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
     if (loading) return (
         <div className="w-full">
             {/* Navigation Bar */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-700 rounded-lg shadow-lg px-6 py-4 mb-6">
+            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-slate-900 to-slate-700 rounded-lg shadow-lg px-4 sm:px-6 pr-14 sm:pr-6 py-4 mb-6">
                 <div className="flex items-center gap-4">
                     <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
                         <Monitor className="w-5 h-5 text-white" />
                     </div>
                     <span className="text-xl font-semibold text-white">Asset Management</span>
                 </div>
-                <div className="flex items-center gap-3 relative">
-                    <div className="w-64 relative">
+                <div className="flex items-center gap-2 w-full sm:w-auto relative">
+                    <div className="flex-1 min-w-0 sm:w-64 relative">
                         <Input
                             type="text"
                             placeholder="Search register number..."
-                            className="w-64 bg-white/10 border-white/20 text-white placeholder:text-white/70"
+                            className="w-full sm:w-64 bg-white/10 border-white/20 text-white placeholder:text-white/70"
                             value={searchValue}
                             onChange={e => setSearchValue(e.target.value)}
                             onFocus={() => setShowDropdown(searchResults.length > 0)}
@@ -484,17 +484,18 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                     >
                         <ChevronRight size={20} />
                     </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="border-red-400/50 bg-red-500/80 text-white hover:bg-red-600"
-                        title="Close"
-                        onClick={() => window.close()}
-                    >
-                        <X className="w-5 h-5" />
-                    </Button>
                 </div>
+                {/* Close button pinned to top-right of bar */}
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="absolute right-2 top-2 sm:right-3 sm:top-3 border-red-400/50 bg-red-500/80 text-white hover:bg-red-600"
+                    title="Close"
+                    onClick={() => window.close()}
+                >
+                    <X className="w-5 h-5" />
+                </Button>
             </div>
             <div className="flex justify-center items-center py-12">
                 <div className="text-center">
@@ -507,16 +508,16 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
     if (!asset || error || !id || id === 'null' || id === 'undefined') return (
         <div className="w-full">
             {/* Navbar always visible */}
-            <div className="flex items-center justify-between bg-gradient-to-b from-gray-200 to-gray-100 rounded shadow px-4 py-3 mb-6">
+            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-b from-gray-200 to-gray-100 rounded shadow px-4 sm:px-6 pr-14 sm:pr-6 py-3 mb-6">
                 <div className="flex items-center gap-4">
                     <span className="text-lg font-semibold">Asset Detail</span>
                 </div>
-                <div className="flex items-center gap-2 relative">
-                    <div className="w-64 relative">
+                <div className="flex items-center gap-2 w-full sm:w-auto relative">
+                    <div className="flex-1 min-w-0 sm:w-64 relative">
                         <Input
                             type="text"
                             placeholder="Search registered number..."
-                            className="w-64"
+                            className="w-full sm:w-64"
                             value={searchValue}
                             onChange={e => setSearchValue(e.target.value)}
                             onFocus={() => setShowDropdown(searchResults.length > 0)}
@@ -573,41 +574,42 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                     >
                         <ChevronRight size={20} />
                     </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full bg-red-500 hover:bg-red-600 text-white dark:border-neutral-700"
-                        title="Close"
-                        onClick={() => window.close()}
-                    >
-                        <span className="sr-only">Close</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </Button>
                 </div>
+                {/* Close button pinned to top-right of bar */}
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-2 top-2 sm:right-3 sm:top-3 rounded-full bg-red-500 hover:bg-red-600 text-white dark:border-neutral-700"
+                    title="Close"
+                    onClick={() => window.close()}
+                >
+                    <span className="sr-only">Close</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </Button>
             </div>
-            <div className="p-8 text-red-500">{error || 'Invalid asset selected. Please use navigation or search.'}</div>
+            <div className="p-4 md:p-8 text-red-500">{error || 'Invalid asset selected. Please use navigation or search.'}</div>
         </div>
     );
 
     return (
-        <div className="w-full min-h-screen bg-gray-50">
+        <div className="w-full min-h-screen bg-gray-50 overflow-x-hidden">
             {/* Navigation Bar */}
-            <div className="flex items-center justify-between bg-gradient-to-r from-slate-900 to-slate-700 rounded-0 shadow px-6 py-4 mb-6">
+            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-slate-900 to-slate-700 rounded-0 shadow px-4 sm:px-6 pr-14 sm:pr-6 py-4 mb-6">
                 <div className="flex items-center gap-4">
                     <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
                         {(asset?.type?.name ?? asset?.types?.name) === 'Motor Vehicles' ? <Car className="w-5 h-5 text-white" /> : <Monitor className="w-5 h-5 text-white" />}
                     </div>
                     <span className="text-xl font-semibold text-white">Asset Management</span>
                 </div>
-                <div className="flex items-center gap-3 relative">
-                    <div className="w-64 relative">
+                <div className="flex items-center gap-2 w-full sm:w-auto relative">
+                    <div className="flex-1 min-w-0 sm:w-64 relative">
                         <Input
                             type="text"
                             placeholder="Search register number..."
-                            className="w-64 bg-white/10 border-white/20 text-white placeholder:text-white/70"
+                            className="w-full sm:w-64 bg-white/10 border-white/20 text-white placeholder:text-white/70"
                             value={searchValue}
                             onChange={e => setSearchValue(e.target.value)}
                             onFocus={() => setShowDropdown(searchResults.length > 0)}
@@ -664,23 +666,24 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                     >
                         <ChevronRight size={20} />
                     </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="border-red-400/50 bg-red-500/80 text-white hover:bg-red-600"
-                        title="Close"
-                        onClick={() => window.close()}
-                    >
-                        <X className="w-5 h-5" />
-                    </Button>
                 </div>
+                {/* Close button pinned to top-right of bar */}
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="absolute right-2 top-2 sm:right-3 sm:top-3 border-red-400/50 bg-red-500/80 text-white hover:bg-red-600"
+                    title="Close"
+                    onClick={() => window.close()}
+                >
+                    <X className="w-5 h-5" />
+                </Button>
             </div>
 
-            <div className="max-w-10/12 mx-auto px-6 space-y-6">
+            <div className="lg:max-w-10/12 mx-auto px-2 sm:px-6 space-y-4">
                 {/* Asset Overview Hero Section */}
                 <Card className="overflow-hidden bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-none shadow-lg">
-                    <CardContent className="p-8">
+                    <CardContent className="p-4 md:p-8">
                         <div className="flex flex-col lg:flex-row gap-8 items-start">
                             {/* Asset Icon/Image */}
                             <div className="flex-shrink-0">
@@ -878,8 +881,8 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
 
                 {/* Tab Navigation */}
                 <Card className="overflow-hidden">
-                    <div className="border-b border-gray-200 bg-gray-50">
-                        <nav className="flex space-x-8 px-6" aria-label="Tabs">
+                    <div className="border-b border-gray-200 bg-gray-50 overflow-x-auto">
+                        <nav className="flex space-x-4 sm:space-x-6 lg:space-x-8 px-4 sm:px-6 min-w-max" aria-label="Tabs">
                             {[
                                 { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
                                 { id: 'details', name: 'Asset Details', icon: Info },
@@ -915,7 +918,7 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                     </div>
 
                     {/* Tab Content */}
-                    <CardContent className="p-6">
+                    <CardContent>
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
