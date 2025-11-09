@@ -24,9 +24,12 @@ authenticatedApi.interceptors.request.use((config) => {
   if (!config.headers) {
     config.headers = {};
   }
-  const token = localStorage.getItem('authData') ? JSON.parse(localStorage.getItem('authData') || '{}').token : null;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Respect an existing Authorization header (e.g., tokenized portal via `_cred`)
+  if (!config.headers.Authorization) {
+    const token = localStorage.getItem('authData') ? JSON.parse(localStorage.getItem('authData') || '{}').token : null;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });

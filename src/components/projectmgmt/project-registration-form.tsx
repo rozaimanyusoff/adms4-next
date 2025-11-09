@@ -20,6 +20,7 @@ import { authenticatedApi } from '@/config/api';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 type ProjectRegistrationFormProps = {
     onSubmit: (values: ProjectFormValues) => void;
@@ -808,16 +809,16 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     }
     return (
         <div className="space-y-6">
-            <div>
-                <h2 className="text-lg font-semibold">{editProjectId ? 'Edit Project' : 'Register Project'}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{editProjectId ? 'Update details, add scopes, and save changes.' : 'Capture core delivery details and planned scopes.'}</p>
-            </div>
-
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
                 {/* Main + Aside layout (align aside with very top, incl. tags) */}
                 <div className="grid gap-6 md:grid-cols-[1fr_360px]">
-                    {/* Left column: all project fields */}
-                    <div className="space-y-6">
+                    {/* Left column: Register Project */}
+                    <Card className="self-start shadow-none bg-stone-50">
+                        <CardHeader>
+                            <CardTitle className="text-base">{editProjectId ? 'Edit Project' : 'Register Project'}</CardTitle>
+                            <CardDescription>{editProjectId ? 'Update details, add scopes, and save changes.' : 'Capture core delivery details and planned scopes.'}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
                         {/* Project tags and priority (API-aligned) */}
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
@@ -933,14 +934,17 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                     {editProjectId ? 'Update project' : 'Save project'}
                                 </Button>
                             </div>
-                        </div>
-                    </div>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                    {/* Aside: Scope creator */}
-                    <aside className="space-y-4 md:sticky md:top-4 self-start md:border-l md:border-border/60 md:pl-6">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-base font-semibold">Manage Project Scopes</h3>
-                        </div>
+                    {/* Aside: Manage Project Scopes */}
+                    <Card className="md:sticky md:top-4 self-start shadow-none bg-stone-50">
+                        <CardHeader>
+                            <CardTitle className="text-base">Manage Project Scopes</CardTitle>
+                            <CardDescription>Add and edit scope items for this project.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="dl-name">Title</Label>
                             <Input id="dl-name" className='capitalize' placeholder="e.g. API contract design" {...registerDraft('name', { required: 'Title is required' })} />
@@ -1147,7 +1151,8 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                 {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
                             </Button>
                         </div>
-                    </aside>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Scopes list using CustomDataGrid */}

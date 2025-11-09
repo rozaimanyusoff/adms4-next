@@ -5,18 +5,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashAsset from "./dash-asset";
 import CoreAsset from "./record-asset";
 import AssetManager from "./asset-manager";
+import AssetTransferChecklist from "./asset-transfer-checklist";
+import CoreType from "./assetdata-types";
+import CoreCategory from "./assetdata-categories";
+import BrandsView from "./assetdata-brands";
+import CoreModel from "./assetdata-models";
+import SpecPropertiesManager from "./spec-properties";
 
 const AssetMgmtMain = () => {
     const tabTitles = [
         { value: "dash", label: "Dashboard" },
-        { value: "records", label: "Records" },
+        { value: "records", label: "Asset Records" },
         { value: "manager", label: "Asset Manager" },
+        { value: "checklist", label: "Transfer Checklist" },
+        { value: "types", label: "Types & Categories" },
+        { value: "brands", label: "Brands" },
+        { value: "models", label: "Models" },
+        { value: "specs", label: "Specifications" }
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         dash: <DashAsset />,
         records: <CoreAsset />,
         manager: <AssetManager />,
+        checklist: <AssetTransferChecklist />,
+        types: <CoreType />,
+        brands: <BrandsView />,
+        models: <CoreModel />,
+        specs: <SpecPropertiesManager />
     };
 
     const validTabValues = tabTitles.map(t => t.value);

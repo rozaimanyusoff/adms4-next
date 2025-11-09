@@ -1147,7 +1147,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
 																	onClick={e => e.stopPropagation()}
 																	onFocus={e => e.stopPropagation()}
-																	disabled={isReadOnly || isAcceptedItem}
+																	disabled={isAcceptedItem}
 																/>
 																{!itemEffectiveDates[item.id] && (
 																	<span className="ml-2 text-xs text-red-500">Required</span>
@@ -1162,7 +1162,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	<span className="-rotate-12 text-4xl md:text-6xl font-extrabold tracking-wider text-green-600/45">ACCEPTED • COMPLETED</span>
 																</div>
 															)}
-															<fieldset disabled={isReadOnly}>
 															<div className="relative z-10">
 																{/* EMPLOYEE DETAILS SECTION */}
 																{item.transfer_type === 'Employee' && (
@@ -1482,9 +1481,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																{/* Comment before Attachments */}
 
 															</div>
-													</div>
-													</fieldset>
-												</AccordionContent>
+														</div>
+													</AccordionContent>
 												</AccordionItem>
 											</Accordion>
 										);
@@ -1698,25 +1696,26 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 									onClose={() => setSidebarOpen(false)}
 									size="sm"
 								/>
-						)}
-					</form>
+							)}
+						</div>
 
-					<div className="flex justify-center gap-2 mt-4">
-						<Button
-							type="button"
-							onClick={() => setOpenSubmitDialog(true)}
-							disabled={isReadOnly || submitting || loading || selectedItems.length === 0 || !allItemsHaveReason}
-						>
-							{submitting ? (
-								<span className="inline-flex items-center">
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
-								</span>
-							) : 'Submit'}
-						</Button>
-						<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={isReadOnly || submitting}>Reset</Button>
-						<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
-					</div>
-					{/* Workflow section removed as requested */}
+						<div className="flex justify-center gap-2 mt-4">
+							<Button
+								type="button"
+								onClick={() => setOpenSubmitDialog(true)}
+								disabled={isReadOnly || submitting || loading || selectedItems.length === 0 || !allItemsHaveReason}
+							>
+								{submitting ? (
+									<span className="inline-flex items-center">
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+									</span>
+								) : 'Submit'}
+							</Button>
+							<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={isReadOnly || submitting}>Reset</Button>
+							<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
+						</div>
+						{/* Workflow section removed as requested */}
+					</form>
 				</CardContent>
 			</Card>
 		</>

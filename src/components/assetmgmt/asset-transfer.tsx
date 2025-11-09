@@ -8,20 +8,32 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import AssetTransferForm from "./asset-transfer-form";
+import AssetTransferReceiveForm from "./asset-transfer-receive-form";
+import { Badge } from "@/components/ui/badge";
 
 
 export default function AssetTransfer() {
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState<string | number | undefined>(undefined);
     const [formDirty, setFormDirty] = useState(false);
+    const [showReceiveForm, setShowReceiveForm] = useState(false);
+    const [receiveItem, setReceiveItem] = useState<any | null>(null);
+    const [receiveTransferId, setReceiveTransferId] = useState<string | number | undefined>(undefined);
+    const [receiveItemId, setReceiveItemId] = useState<string | number | undefined>(undefined);
     const [confirmBackOpen, setConfirmBackOpen] = useState(false);
 
     const handleRowDoubleClick = (row: any) => {
-        // Open the asset transfer form inline for editing
-        // Prefer parent transfer id if present (for item-level rows)
-        const parentId = row?.transfer_id ?? row?.id ?? row?.request_no;
-        if (row && parentId) {
-            setEditId(parentId);
+        // If this is an item row (has transfer_id and asset), open the Receive form
+        if (row && (row.transfer_id || row.asset)) {
+            setReceiveItem(row);
+            setReceiveTransferId(row.transfer_id ?? row.id);
+            setReceiveItemId(row.id);
+            setShowReceiveForm(true);
+            return;
+        }
+        // Otherwise open the parent transfer edit form
+        if (row && (row.id || row.request_no)) {
+            setEditId(row.id ?? row.request_no);
             setShowForm(true);
         }
     };
@@ -34,20 +46,24 @@ export default function AssetTransfer() {
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
 
-    useEffect(() => {
+    const refreshTransfers = React.useCallback(() => {
         if (!username) return;
         setLoading(true);
         authenticatedApi
             .get(`/api/assets/transfers?ramco=${encodeURIComponent(username)}`)
             .then((res: any) => {
                 setData(res?.data?.data || []);
-                setLoading(false);
             })
-            .catch(() => setLoading(false));
+            .catch(() => { /* ignore */ })
+            .then(() => setLoading(false));
     }, [username]);
 
-    // Fetch transfer items where current user is a new owner (for bottom grid)
     useEffect(() => {
+        refreshTransfers();
+    }, [refreshTransfers]);
+
+    // Fetch transfer items where current user is a new owner (for bottom grid)
+    const refreshTransferItems = React.useCallback(() => {
         if (!username) return;
         setLoadingBy(true);
         const urlItems = `/api/assets/transfers/items?new_owner=${encodeURIComponent(username)}`;
@@ -56,11 +72,18 @@ export default function AssetTransfer() {
             .then((res: any) => {
                 setDataBy(res?.data?.data || []);
             })
-            .catch(() => {
-                // ignore errors but ensure loader is hidden
-            })
+            .catch(() => { /* ignore */ })
             .then(() => setLoadingBy(false));
     }, [username]);
+
+    useEffect(() => {
+        refreshTransferItems();
+    }, [refreshTransferItems]);
+
+    const refreshAll = React.useCallback(() => {
+        refreshTransfers();
+        refreshTransferItems();
+    }, [refreshTransfers, refreshTransferItems]);
 
     // Base renderers
     const renderNewOwners = (row: any) => {
@@ -72,25 +95,73 @@ export default function AssetTransfer() {
         const unique = Array.from(new Set(labels));
         return unique.join(", ");
     };
-    const renderDate = (row: any) => row.transfer_date ? new Date(row.transfer_date).toLocaleDateString() : "-";
+    const renderDate = (row: any) => row.acceptance_date ? new Date(row.acceptance_date).toLocaleDateString() : "-";
+
+    // Format: d/m/yyyy h:mm am/pm
+    const formatApplicationDate = (value: any) => {
+        if (!value) return "-";
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return "-";
+        const day = d.getDate();
+        const month = d.getMonth() + 1;
+        const year = d.getFullYear();
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'pm' : 'am';
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        return `${day}/${month}/${year} ${hours}:${minutes} ${ampm}`;
+    };
+    const renderApplicationDate = (row: any) => formatApplicationDate(row.transfer_date);
+    const renderAcceptanceStatus = (row: any) => {
+        if (row?.acceptance_date) {
+            const d = new Date(row.acceptance_date);
+            const when = isNaN(d.getTime()) ? '' : d.toLocaleString();
+            return (
+                <div className="flex items-center justify-center">
+                    <Badge className="truncate bg-green-600 text-white">Accepted{when && <span className="pl-1">on {when}</span>}</Badge>
+
+                </div>
+            );
+        }
+        return <Badge variant="secondary" className="truncate bg-amber-500 text-white">Pending Acceptance</Badge>;
+    };
+
+    const renderApprovalStatus = (row: any) => {
+        const approvedDate = row?.approved_date ? new Date(row.approved_date) : null;
+        const approvedBy = row?.approved_by?.full_name || row?.approved_by?.name || row?.approved_by || '';
+        if (approvedDate && !isNaN(approvedDate.getTime())) {
+            const when = approvedDate.toLocaleDateString();
+            return (
+                <div className="flex items-center justify-center">
+                    <Badge className="truncate bg-green-600 text-white">
+                        Approved{approvedBy ? <span className="pl-1">by {String(approvedBy)}</span> : null}{when ? <span className="pl-1">on {when}</span> : null}
+                    </Badge>
+                </div>
+            );
+        }
+        return <Badge variant="secondary" className="truncate bg-amber-500 text-white">Pending Approval</Badge>;
+    };
 
     // Columns per grid
     const columnsTransferTo: ColumnDef<any>[] = [
-        { key: "id", header: "ID" },
+        { key: "id", header: "Transfer ID" },
         { key: "new_owner", header: "New Owner", filter: 'input', render: renderNewOwners },
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
-        { key: "transfer_date", header: "Transfer Date", render: renderDate },
+        { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
+        { key: "approval_status", header: "Approval Status", render: renderApprovalStatus },
         { key: "transfer_status", header: "Status" },
     ];
 
     const columnsTransferByItems: ColumnDef<any>[] = [
         { key: "id", header: "Item ID" },
         { key: "transfer_id", header: "Transfer ID" },
-        { key: "transfer_by", header: "Transfer By", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
+        { key: "transfer_by", header: "Transfer By", colClass: "truncate", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
         { key: "type", header: "Type", filter: 'singleSelect', render: row => row.type?.name || "-" },
         { key: "asset", header: "Register Number", render: row => row.asset?.register_number || row.asset?.id || "-" },
         { key: "current_owner", header: "Current Owner", render: row => row.current_owner?.full_name || row.current_owner?.name || row.current_owner?.ramco_id || "-" },
         { key: "effective_date", header: "Effective Date", render: row => row.effective_date ? new Date(row.effective_date).toLocaleDateString() : "-" },
+        { key: "status", header: "Status", render: renderAcceptanceStatus },
     ];
 
     // Summary counts for each status
@@ -159,7 +230,39 @@ export default function AssetTransfer() {
                         </div>
                     )}
                 </div>
-                <AssetTransferForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} onDirtyChange={setFormDirty} />
+                <AssetTransferForm
+                    id={editId}
+                    onClose={() => { setShowForm(false); setEditId(undefined); }}
+                    onDirtyChange={setFormDirty}
+                    onSubmitted={refreshAll}
+                />
+            </div>
+        );
+    }
+
+    if (showReceiveForm) {
+        // Use the list from /api/assets/transfers/items?new_owner={username}
+        // Navigate strictly by ascending item id
+        const rowsSorted = [...transferByRows].sort((a: any, b: any) => Number(a?.id ?? 0) - Number(b?.id ?? 0));
+        const currentId = receiveItemId ?? receiveItem?.id;
+        const currentIndex = rowsSorted.findIndex((r: any) => String(r.id) === String(currentId ?? ''));
+        const prevRow = currentIndex > 0 ? rowsSorted[currentIndex - 1] : null;
+        const nextRow = currentIndex >= 0 && currentIndex < rowsSorted.length - 1 ? rowsSorted[currentIndex + 1] : null;
+        const goPrev = prevRow ? () => { setReceiveItem(prevRow); setReceiveTransferId(prevRow.transfer_id ?? prevRow.id); setReceiveItemId(prevRow.id); } : undefined;
+        const goNext = nextRow ? () => { setReceiveItem(nextRow); setReceiveTransferId(nextRow.transfer_id ?? nextRow.id); setReceiveItemId(nextRow.id); } : undefined;
+        return (
+            <div className="py-4">
+                <AssetTransferReceiveForm
+                    item={receiveItem}
+                    transferId={receiveTransferId}
+                    itemId={receiveItemId}
+                    onPrev={goPrev}
+                    onNext={goNext}
+                    prevDisabled={!prevRow}
+                    nextDisabled={!nextRow}
+                    onClose={() => { setShowReceiveForm(false); setReceiveItem(null); setReceiveTransferId(undefined); setReceiveItemId(undefined); }}
+                    onDirtyChange={() => { /* no-op for now */ }}
+                />
             </div>
         );
     }
@@ -220,6 +323,7 @@ export default function AssetTransfer() {
             <CustomDataGrid
                 columns={columnsTransferTo}
                 data={transferToRows}
+                pagination={false}
                 inputFilter={false}
                 onRowDoubleClick={handleRowDoubleClick}
             />
@@ -231,6 +335,7 @@ export default function AssetTransfer() {
             <CustomDataGrid
                 columns={columnsTransferByItems}
                 data={transferByRows}
+                pagination={false}
                 inputFilter={false}
                 onRowDoubleClick={handleRowDoubleClick}
             />

@@ -26,18 +26,22 @@ export interface Workflows {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  department_id?: number | null;
+  authorize_level?: string | null;
   employee?: {
     ramco_id: string;
     full_name: string;
   };
 }
 
-type AuthorizeLevel = string;
+type AuthorizeLevel = string; // stores numeric codes as strings: '1','2','3','0'
 
 interface AssignedEmployee {
   ramco_id: string;
   full_name: string;
   authorize_level: AuthorizeLevel;
+  department_id?: number | null;
+  level_name: string;
 }
 
 interface WorkflowsForm {
@@ -51,9 +55,30 @@ interface WorkflowsForm {
 interface Employee {
   ramco_id: string;
   full_name: string;
+  department?: {
+    id: number;
+    name: string;
+  } | null;
 }
 
-const authorizedLevels: string[] = ['Verify', 'Recommend', 'Approval'];
+const authorizedLevels: { value: string; label: string }[] = [
+  { value: '1', label: 'hod' },
+  { value: '2', label: 'supervisor' },
+  { value: '3', label: 'applicant' },
+  { value: '0', label: 'none' },
+];
+const levelNames: string[] = ['verifier', 'recommender', 'approver'];
+
+// Helper: map backend/string to code
+const mapAuthorizeLevelToCode = (input: any): string | undefined => {
+  if (input === null || input === undefined) return undefined;
+  const s = String(input).toLowerCase().trim();
+  // direct code match
+  if (authorizedLevels.some(a => a.value === s)) return s;
+  // label match
+  const match = authorizedLevels.find(a => a.label === s);
+  return match?.value;
+};
 
 interface WorkflowsProps {
   className?: string;
@@ -81,7 +106,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const [employeeComboboxOpen, setEmployeeComboboxOpen] = useState(false);
   // Per-employee authorize level select state
   const [empSelectOpen, setEmpSelectOpen] = useState<Record<number, boolean>>({});
-  const [customLevelInputs, setCustomLevelInputs] = useState<Record<number, string>>({});
+  // Removed custom authorize level input; using fixed options
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -184,7 +209,11 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       setSaving(true);
 
       // Validate required fields
-      if (!formData.module_name || formData.employees.length === 0 || formData.employees.some(e => !e.authorize_level?.trim())) {
+      if (
+        !formData.module_name ||
+        formData.employees.length === 0 ||
+        formData.employees.some(e => !e.authorize_level?.trim() || !e.level_name?.trim())
+      ) {
         toast.error('Please fill in all required fields');
         setSaving(false);
         return;
@@ -201,9 +230,11 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
         const updatePayload = {
           module_name: formData.module_name,
           description: formData.description,
-          level_name: assignee.authorize_level,
+          level_name: assignee.level_name,
+          authorize_level: Number(assignee.authorize_level),
           level_order: editingLevel.level_order ?? 1,
           ramco_id: assignee.ramco_id,
+          department_id: assignee.department_id ?? null,
           is_active: formData.is_active,
         };
 
@@ -216,7 +247,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           is_active: formData.is_active,
           employees: formData.employees.map((e) => ({
             ramco_id: e.ramco_id,
-            level_name: e.authorize_level,
+            department_id: e.department_id ?? null,
+            level_name: e.level_name,
+            authorize_level: Number(e.authorize_level),
           })),
         };
 
@@ -251,7 +284,10 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       .map((e) => e.authorize_level);
 
     // Pick first unused standard level; if all used, leave empty to let user choose
-    const defaultLevel = authorizedLevels.find((lvl) => !usedLevels.includes(lvl)) || '';
+    const defaultLevel = (authorizedLevels.find((lvl) => !usedLevels.includes(lvl.value))?.value) || '';
+    // Pick first unused workflow level name
+    const usedLevelNames = formData.employees.map((e) => e.level_name);
+    const defaultLevelName = levelNames.find((n) => !usedLevelNames.includes(n)) || '';
 
     // Prevent adding exact duplicate pair (same employee with same level)
     if (defaultLevel && formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id && e.authorize_level === defaultLevel)) {
@@ -273,6 +309,8 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           ramco_id: selectedEmployee.ramco_id,
           full_name: selectedEmployee.full_name,
           authorize_level: defaultLevel,
+          department_id: selectedEmployee.department?.id ?? null,
+          level_name: defaultLevelName,
         },
       ],
     });
@@ -323,7 +361,10 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
             {
               ramco_id: level.employee.ramco_id,
               full_name: level.employee.full_name,
-              authorize_level: level.level_name || 'Verify',
+              // if API returns authorize_level, use it; otherwise default
+              authorize_level: mapAuthorizeLevelToCode((level as any).authorize_level) || '1',
+              department_id: (level as any).department_id ?? null,
+              level_name: level.level_name || 'verifier',
             },
           ]
         : [],
@@ -434,7 +475,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
         .map((l) => ({
           ramco_id: l.employee!.ramco_id,
           full_name: l.employee!.full_name,
-          authorize_level: l.level_name || 'Verify',
+          authorize_level: mapAuthorizeLevelToCode((l as any).authorize_level) || '1',
+          department_id: (l as any).department_id ?? null,
+          level_name: l.level_name || 'verifier',
         })),
     });
     setIsDialogOpen(true);
@@ -599,7 +642,37 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             <div className="text-xs text-gray-500">{emp.ramco_id}</div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Select
+                            <div className="flex flex-col gap-2">
+                              {/* Level name (workflow stage) */}
+                              <Select
+                              value={emp.level_name}
+                              onValueChange={(val) => {
+                                // Optional: prevent duplicate workflow stages
+                                const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
+                                if (duplicateStage) {
+                                  toast.error('This level name is already used');
+                                  return;
+                                }
+                                setFormData({
+                                  ...formData,
+                                  employees: formData.employees.map((x, i) => (i === idx ? { ...x, level_name: val } : x)),
+                                });
+                              }}
+                              >
+                                <SelectTrigger className="w-[220px]">
+                                  <SelectValue placeholder="Level" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {levelNames.map((lvl) => (
+                                    <SelectItem key={lvl} value={lvl}>
+                                      {lvl}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+
+                              {/* Authorize level (role) */}
+                              <Select
                               open={empSelectOpen[idx] || false}
                               onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
                               value={emp.authorize_level}
@@ -615,66 +688,19 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                   employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: val } : x)),
                                 });
                               }}
-                            >
-                              <SelectTrigger className="w-[200px]">
-                                <SelectValue placeholder="Authorize level" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {authorizedLevels.map((lvl) => (
-                                  <SelectItem key={lvl} value={lvl}>
-                                    {lvl}
-                                  </SelectItem>
-                                ))}
-                                <div className="border-t my-1" />
-                                <div className="p-2 flex items-center gap-2">
-                                  <Input
-                                    placeholder="Custom level"
-                                    value={customLevelInputs[idx] || ''}
-                                    onChange={(e) =>
-                                      setCustomLevelInputs((prev) => ({ ...prev, [idx]: e.target.value }))
-                                    }
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        const name = (customLevelInputs[idx] || '').trim();
-                                        if (!name) return;
-                                        const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === name);
-                                        if (duplicate) {
-                                          toast.error('This authorize level is already assigned to this employee');
-                                          return;
-                                        }
-                                        setFormData({
-                                          ...formData,
-                                          employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: name } : x)),
-                                        });
-                                        setCustomLevelInputs((prev) => ({ ...prev, [idx]: '' }));
-                                        setEmpSelectOpen((prev) => ({ ...prev, [idx]: false }));
-                                      }
-                                    }}
-                                    className="h-8"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    onClick={() => {
-                                      const name = (customLevelInputs[idx] || '').trim();
-                                      if (!name) return;
-                                      const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === name);
-                                      if (duplicate) {
-                                        toast.error('This authorize level is already assigned to this employee');
-                                        return;
-                                      }
-                                      setFormData({
-                                        ...formData,
-                                        employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: name } : x)),
-                                      });
-                                      setCustomLevelInputs((prev) => ({ ...prev, [idx]: '' }));
-                                      setEmpSelectOpen((prev) => ({ ...prev, [idx]: false }));
-                                    }}
-                                  >
-                                    Add
-                                  </Button>
-                                </div>
-                              </SelectContent>
-                            </Select>
+                              >
+                                <SelectTrigger className="w-[220px]">
+                                  <SelectValue placeholder="Authorize level" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {authorizedLevels.map((lvl) => (
+                                    <SelectItem key={lvl.value} value={lvl.value}>
+                                      {lvl.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                             <Button
                               type="button"
                               variant="ghost"
