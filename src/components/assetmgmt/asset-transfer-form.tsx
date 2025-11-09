@@ -89,14 +89,14 @@ const REASONS_ORGANIZATIONAL = [
 ];
 
 const REASONS_CONDITION = [
-    { label: 'Asset Problem / Maintenance', value: 'asset_problem_maintenance' },
+	{ label: 'Asset Problem / Maintenance', value: 'asset_problem_maintenance' },
 ];
 
 // Map reason values to human-friendly labels for payload
 const REASON_VALUE_TO_LABEL: Record<string, string> = Object.fromEntries([
-    ...REASONS_OPERATIONAL,
-    ...REASONS_ORGANIZATIONAL,
-    ...REASONS_CONDITION,
+	...REASONS_OPERATIONAL,
+	...REASONS_ORGANIZATIONAL,
+	...REASONS_CONDITION,
 ].map(r => [r.value, r.label]));
 
 // Define the Requestor interface if not already imported
@@ -146,13 +146,15 @@ interface Location {
 
 // Change AssetTransferForm to a self-contained component
 interface AssetTransferFormProps {
-	id?: string | number | null;
-	onClose?: () => void;
-	// Notify parent when form has unsaved changes/items
-	onDirtyChange?: (dirty: boolean) => void;
+    id?: string | number | null;
+    onClose?: () => void;
+    // Notify parent when form has unsaved changes/items
+    onDirtyChange?: (dirty: boolean) => void;
+    // Callback when a submit succeeds to refresh parent grids
+    onSubmitted?: () => void;
 }
 
-const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDirtyChange }) => {
+const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDirtyChange, onSubmitted }) => {
 	const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
 	const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
 	const [supervised, setSupervised] = React.useState<any[]>([]);
@@ -174,6 +176,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const [workflow, setWorkflow] = React.useState<any>({});
 	const [requestStatus, setRequestStatus] = React.useState<'draft' | 'submitted'>('draft');
 	const [initialForm, setInitialForm] = React.useState<any>({ requestor: {}, reason: {} });
+	const [openSuccessDialog, setOpenSuccessDialog] = React.useState(false);
 	const [submitError, setSubmitError] = React.useState<string | null>(null);
 	// Add a loading state for sidebar data
 	const [sidebarLoading, setSidebarLoading] = React.useState(false);
@@ -305,8 +308,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			setSubmitting(true);
 			await authenticatedApi.post('/api/assets/transfers', formData);
 			toast.success((status || requestStatus) === 'draft' ? 'Draft saved successfully!' : 'Transfer submitted successfully!');
+			// Notify parent to refresh its data and show success dialog
+			try { onSubmitted && onSubmitted(); } catch {}
 			clearFormAndItems();
-			handleCancel();
+			setOpenSuccessDialog(true);
 		} catch (err) {
 			setSubmitError('Failed to submit transfer. Please try again.');
 		} finally {
@@ -649,6 +654,23 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		}
 	}
 
+	// When a new owner is selected, fetch their org info and auto-fill cost center, department and location
+	async function autofillNewOwnerRelated(itemId: number | string, ownerStaffId: string) {
+		if (!ownerStaffId) return;
+		try {
+			const res: any = await authenticatedApi.get(`/api/assets/employees/lookup/${ownerStaffId}`);
+			const data = res?.data?.data || {};
+			const ccId = data?.costcenter?.id ? String(data.costcenter.id) : '';
+			const deptId = data?.department?.id ? String(data.department.id) : '';
+			const locId = data?.location?.id ? String(data.location.id) : '';
+			if (ccId) detectNewChanges(String(itemId), 'new', 'costCenter', ccId);
+			if (deptId) detectNewChanges(String(itemId), 'new', 'department', deptId);
+			if (locId) detectNewChanges(String(itemId), 'new', 'location', locId);
+		} catch (err) {
+			// Silent fail — leave selections as-is
+		}
+	}
+
 	// Utility function to safely render a value as string
 	function renderValue(val: any, fallback: string = '-') {
 		if (val == null) return fallback;
@@ -712,6 +734,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		return () => { cancelled = true; };
 	}, [form?.requestor?.department?.id]);
 
+	// Require at least one reason per selected item before enabling submit
+	const allItemsHaveReason = React.useMemo(() => {
+		if (!selectedItems || selectedItems.length === 0) return false;
+		return selectedItems.every((it: any) => {
+			const reasons = itemReasons[it.id] || {};
+			return Object.entries(reasons).some(([key, val]) => {
+				if (key === 'othersText' || key === 'comment') return false;
+				return val === true || val === 'true' || val === 1;
+			});
+		});
+	}, [selectedItems, itemReasons]);
+
 	const handleSubmitConfirmed = () => {
 		setOpenSubmitDialog(false);
 		if (formRef.current) {
@@ -732,64 +766,98 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				.then((res: any) => {
 					const data = res?.data?.data;
 					if (data) {
-						// Prefill form state for edit mode
+						// Prefill form state for edit mode (map API fields)
+						const mappedRequestor: Requestor = {
+							ramco_id: data?.transfer_by_user?.ramco_id || data?.transfer_by || '',
+							full_name: data?.transfer_by_user?.full_name || '',
+							position: null,
+							department: data?.department
+								? { id: data.department.id, name: data.department.name || data.department.code || '', code: data.department.code || '' }
+								: null,
+							costcenter: data?.costcenter ? { id: data.costcenter.id, name: data.costcenter.name } : null,
+							location: null,
+							email: undefined,
+							contact: undefined,
+						};
+
 						setForm((prev: any) => ({
 							...prev,
 							...data,
-							requestor: {
-								...(prev?.requestor || {}),
-								...(data?.requestor || {}),
-							},
+							requestor: mappedRequestor,
 						}));
+						if (data?.transfer_date) setDateRequest(data.transfer_date);
 						// Determine transfer type based on existing data
 						const inferredOption: 'resignation' | 'transfer' = data.items?.some((item: any) => item.transfer_type === 'Employee') ? 'resignation' : 'transfer';
 						setApplicationOption(inferredOption);
 						// Map items to selectedItems
 						if (Array.isArray(data.items)) {
-							setSelectedItems(data.items.map((item: any) => ({
-								...item,
-								id: item.id,
-								transfer_type: item.transfer_type,
-								register_number: typeof item.identifier === 'string' ? item.identifier : undefined,
-								ramco_id: typeof item.identifier === 'object' ? item.identifier.ramco_id : undefined,
-								full_name: typeof item.identifier === 'object' ? item.identifier.name : undefined,
-								asset_type: item.asset_type || getAssetTypeName(item),
-								owner: item.curr_owner,
-								costcenter: item.curr_costcenter,
-								department: item.curr_department,
-								location: item.curr_location,
-								type: item.type || item.types || null,
-								category: item.category || item.categories || null,
-								brand: item.brand || item.brands || null,
-								model: item.model || item.models || null,
-							})));
+							setSelectedItems(
+								data.items.map((item: any) => {
+									const asset = item.asset || {};
+									const currentOwner = item.current_owner ? { ramco_id: item.current_owner.ramco_id, name: item.current_owner.full_name } : null;
+									return {
+										...item,
+										id: item.id,
+										transfer_type: 'Asset',
+										// S/N strictly from register_number
+										register_number: asset.register_number || '',
+										asset_type: asset?.type?.name || '',
+										// For summary blocks
+										owner: currentOwner,
+										costcenter: item.current_costcenter || null,
+										department: item.current_department || null,
+										location: item.current_location || null,
+										// Asset details
+										type: asset.type || null,
+										category: asset.category || null,
+										brand: asset.brand || null,
+										model: asset.model || null,
+									};
+								})
+							);
 							// Prefill effective dates
 							setItemEffectiveDates(
 								Object.fromEntries(data.items.map((item: any) => [item.id, item.effective_date ? item.effective_date.slice(0, 10) : '']))
 							);
 							// Prefill transfer details (current/new)
 							setItemTransferDetails(
-								Object.fromEntries(data.items.map((item: any) => [item.id, {
-									current: {
-										ownerName: item.curr_owner?.name || '',
-										ownerStaffId: item.curr_owner?.ramco_id || '',
-										costCenter: item.curr_costcenter?.id ? String(item.curr_costcenter.id) : '',
-										department: item.curr_department?.id ? String(item.curr_department.id) : '',
-										location: item.curr_location?.id ? String(item.curr_location.id) : '',
-									},
-									new: {
-										ownerName: item.new_owner?.name || '',
-										ownerStaffId: item.new_owner?.ramco_id || '',
-										costCenter: item.new_costcenter?.id ? String(item.new_costcenter.id) : '',
-										department: item.new_department?.id ? String(item.new_department.id) : '',
-										location: item.new_location?.id ? String(item.new_location.id) : '',
-									},
-									effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
-								}]))
+								Object.fromEntries(
+									data.items.map((item: any) => [
+										item.id,
+										{
+											current: {
+												ownerName: (item.current_owner?.full_name || '') as string,
+												ownerStaffId: (item.current_owner?.ramco_id || '') as string,
+												costCenter: String(item.current_costcenter?.id || ''),
+												department: String(item.current_department?.id || ''),
+												location: String(item.current_location?.id || ''),
+											},
+											new: {
+												ownerName: (item.new_owner?.full_name || '') as string,
+												ownerStaffId: (item.new_owner?.ramco_id || '') as string,
+												costCenter: String(item.new_costcenter?.id || ''),
+												department: String(item.new_department?.id || ''),
+												location: String(item.new_location?.id || ''),
+											},
+											effectiveDate: item.effective_date ? item.effective_date.slice(0, 10) : '',
+										},
+									])
+								)
 							);
 							// Prefill reasons
 							setItemReasons(
-								Object.fromEntries(data.items.map((item: any) => [item.id, Object.fromEntries((item.reasons || '').split(',').filter(Boolean).map((r: string) => [r, true]))]))
+								Object.fromEntries(
+									data.items.map((item: any) => {
+										// API provides `reason` as labels; toggle the ones we recognize by label
+										const reasonStr = String(item.reason || item.reasons || '').trim();
+										const labels = reasonStr ? reasonStr.split(',').map((s: string) => s.trim()) : [];
+										const toggles: Record<string, boolean> = {};
+										for (const [val, label] of Object.entries(REASON_VALUE_TO_LABEL)) {
+											if (labels.includes(label)) toggles[val] = true;
+										}
+										return [item.id, toggles];
+									})
+								)
 							);
 							// Prefill returnToAssetManager
 							setReturnToAssetManager(
@@ -828,11 +896,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	if (loading) return <div className="p-8 text-center">Loading...</div>;
 	if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
 
+	// Read-only rules and watermark
+	const isApproved = String(form?.transfer_status || '').toLowerCase() === 'approved';
+	const isSubmitted = requestStatus === 'submitted';
+	const allAccepted = isApproved && selectedItems.length > 0 && selectedItems.every((it: any) => Boolean(it.acceptance_date));
+	const isReadOnly = isSubmitted || isApproved;
+	const watermarkText = isApproved ? (allAccepted ? 'Accepted' : 'Pending Acceptance') : undefined;
+
 	return (
 		<>
 			{/* AlertDialogs for confirmation */}
 			<AlertDialog open={openSubmitDialog} onOpenChange={(open) => { if (!open && !submitting) setOpenSubmitDialog(false); }}>
-				<AlertDialogContent>
+				<AlertDialogContent className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border border-white/30 shadow-2xl ring-1 ring-white/20">
 					<AlertDialogHeader>
 						<AlertDialogTitle>Submit Transfer Request?</AlertDialogTitle>
 						<AlertDialogDescription>
@@ -861,8 +936,30 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				</AlertDialogContent>
 			</AlertDialog>
 			{/* Save Draft dialog removed */}
+
+			{/* Success dialog after submission */}
+			<AlertDialog open={openSuccessDialog} onOpenChange={(open) => { if (!open) setOpenSuccessDialog(false); }}>
+				<AlertDialogContent className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border border-white/30 shadow-2xl ring-1 ring-white/20">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Submission Successful</AlertDialogTitle>
+						<AlertDialogDescription>
+							Your asset transfer request has been submitted successfully.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogAction asChild>
+							<button
+								className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+								onClick={() => { setOpenSuccessDialog(false); handleCancel(); }}
+							>
+								Close
+							</button>
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 			<AlertDialog open={openCancelDialog} onOpenChange={(open) => { if (!open) setOpenCancelDialog(false); }}>
-				<AlertDialogContent>
+				<AlertDialogContent className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border border-white/30 shadow-2xl ring-1 ring-white/20">
 					<AlertDialogHeader>
 						<AlertDialogTitle>Leave Form?</AlertDialogTitle>
 						<AlertDialogDescription>
@@ -890,10 +987,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				<CardHeader>
 					<CardTitle className='text-lg'>Requestor</CardTitle>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="relative">
+					{watermarkText && (
+						<div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+							<div className="text-6xl md:text-8xl font-extrabold uppercase tracking-widest text-gray-300/40 dark:text-white/10 select-none -rotate-12">
+								{watermarkText}
+							</div>
+						</div>
+					)}
 					<form className="text-sm space-y-6" onSubmit={e => { e.preventDefault(); setOpenSubmitDialog(true); }} ref={formRef}>
+
 						{/* 1. Requestor Details */}
-						<div className="space-y-6">
+						<div className="space-y-2">
 							{/* Hidden inputs for payload */}
 							<input type="hidden" name="ramco_id" value={requestor?.ramco_id ?? ''} />
 							<input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
@@ -901,29 +1006,29 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div className="sm:col-start-2">
 									<Label className="text-sm">Application Date</Label>
-									<Input className="h-10 text-black" value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
+									<Input value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
 								</div>
 							</div>
 							{/* Row 2: Name & Ramco ID */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Name</Label>
-									<Input className="h-10 text-black" value={requestor?.full_name || ''} disabled />
+									<Input value={requestor?.full_name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Ramco ID</Label>
-									<Input className="h-10 text-black" value={requestor?.ramco_id || ''} disabled />
+									<Input value={requestor?.ramco_id || ''} disabled />
 								</div>
 							</div>
 							{/* Row 3: Cost Center & Department */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div>
 									<Label className="text-sm">Cost Center</Label>
-									<Input className="h-10 text-black" value={requestor?.costcenter?.name || ''} disabled />
+									<Input value={requestor?.costcenter?.name || ''} disabled />
 								</div>
 								<div>
 									<Label className="text-sm">Department</Label>
-									<Input className="h-10 text-black" value={requestor?.department?.name || ''} disabled />
+									<Input value={requestor?.department?.name || ''} disabled />
 								</div>
 							</div>
 							{/* Application Options moved above next to Request Date */}
@@ -932,20 +1037,36 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 						{/* 2. Transfer Items */}
 						<Separator className="my-2" />
 						<div className="p-0">
-							<div className="font-semibold flex items-center justify-between text-lg gap-2">
-								Transfer Items
+								<div className="font-semibold flex items-center justify-between text-lg gap-2">
+									<div className="flex items-center gap-3">
+										<span>Transfer Items</span>
+										{/* Status badges */}
+										{isApproved && (
+											<>
+												<Badge className="bg-green-600 text-white">Approved</Badge>
+												{allAccepted ? (
+													<Badge className="bg-green-700 text-white">Accepted</Badge>
+												) : (
+													<Badge className="bg-amber-500 text-white">Pending Acceptance</Badge>
+												)}
+											</>
+										)}
+										{!isApproved && isSubmitted && (
+											<Badge variant="secondary">Submitted</Badge>
+										)}
+									</div>
 								<TooltipProvider>
 									<Tooltip open={showAddItemsTooltip}>
 										<TooltipTrigger asChild>
 											<span>
-												<Button
+											<Button
 													type="button"
 													onClick={handleOpenSidebar}
 													size="icon"
 													variant="default"
 													className=""
 													title="Add Items"
-													disabled={sidebarLoading}
+													disabled={sidebarLoading || isReadOnly}
 												>
 													{sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
 												</Button>
@@ -965,6 +1086,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 										if (typeof item.id === 'undefined' || item.id === null) return null;
 										const isEmployee = item.transfer_type === 'Employee';
 										const typeLabel = isEmployee ? 'Employee' : 'Asset';
+										const isAcceptedItem = Boolean(item.acceptance_date && item.acceptance_by);
 										// Find employee details for Employee accordions
 										const allEmployees = supervised.flatMap(g => g.employee || []);
 										const employeeDetails = allEmployees.find(e =>
@@ -978,12 +1100,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 												// controlled expansion so we can style the expanded item
 												value={expandedItems[item.id] ? `item-${item.id}` : undefined}
 												onValueChange={(val: string | undefined) => setExpandedItems(prev => ({ ...prev, [item.id]: !!val }))}
-												className={`px-4 rounded ring-1 ${expandedItems[item.id] ? 'ring-blue-300' : 'ring-gray-200'}`}
+												className={`px-4 rounded ring-2 ${item.acceptance_date && item.acceptance_by ? 'ring-green-400' : (expandedItems[item.id] ? 'ring-blue-300' : 'ring-gray-200')}`}
 											>
 												<AccordionItem value={`item-${item.id}`}>
 													<AccordionTrigger className="no-underline hover:no-underline px-0">
-																		<div className="grid w-full items-center gap-2 grid-cols-[1fr_auto]">
-											<div className="flex items-center gap-2">
+														<div className="grid w-full items-center gap-2 grid-cols-[1fr_auto]">
+															<div className="flex items-center gap-2">
 																<Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
 																	<X />
 																</Button>
@@ -1014,7 +1136,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	</Tooltip>
 																</TooltipProvider>
 															</div>
-											<div className="justify-self-end flex items-center gap-2">
+															<div className="justify-self-end flex items-center gap-2">
+																{/* Watermark replaces badge; nothing here */}
 																<Label className="font-medium mb-0 mr-2 text-xs">Effective Date <span className="text-red-500" aria-hidden="true">*</span></Label>
 																<Input
 																	type="date"
@@ -1024,6 +1147,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
 																	onClick={e => e.stopPropagation()}
 																	onFocus={e => e.stopPropagation()}
+																	disabled={isReadOnly || isAcceptedItem}
 																/>
 																{!itemEffectiveDates[item.id] && (
 																	<span className="ml-2 text-xs text-red-500">Required</span>
@@ -1032,309 +1156,335 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 														</div>
 													</AccordionTrigger>
 													<AccordionContent>
-														<div className={`p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
-															{/* EMPLOYEE DETAILS SECTION */}
-															{item.transfer_type === 'Employee' && (
-																<div className="py-2 rounded">
-																	<div className="font-semibold text-sm mb-2">Employee Details</div>
-																	<div className="flex items-center justify-between text-sm">
-																		<div>
-																			<span className="text-muted-foreground">Position:</span>
-																			<span className="ml-1">{renderValue(employeeDetails?.position?.name)}</span>
-																		</div>
-																		<div>
-																			<span className="text-muted-foreground">Email:</span>
-																			<span className="ml-1">{renderValue(employeeDetails?.email)}</span>
-																		</div>
-																		<div>
-																			<span className="text-muted-foreground">Contact:</span>
-																			<span className="ml-1">{renderValue(employeeDetails?.contact)}</span>
-																		</div>
-																	</div>
+														<div className={`relative p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
+															{item.acceptance_date && item.acceptance_by && (
+																<div className="pointer-events-none select-none absolute inset-0 z-20 flex items-center justify-center">
+																	<span className="-rotate-12 text-4xl md:text-6xl font-extrabold tracking-wider text-green-600/45">ACCEPTED • COMPLETED</span>
 																</div>
 															)}
-															{/* ASSET DETAILS SECTION */}
-															{item.transfer_type === 'Asset' && (
-																<div className="py-2 rounded">
-																	<div className="font-semibold mb-1">Asset Details</div>
-																	<div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-																		<div className="flex items-center gap-2">
-																			<span className="text-muted-foreground">Type & Category:</span>
-																			<span className="font-medium text-blue-600">
-																				{item.type?.name || item.asset_type || '-'} & {renderValue(item.category?.name) || '-'}
-																			</span>
-																		</div>
-																		<div className="flex items-center gap-2">
-																			<span className="text-muted-foreground">Brand & Model:</span>
-																			<span className="font-medium text-blue-600">
-																				{renderValue(item.brand?.name) || '-'} & {renderValue(item.model?.name) || '-'}
-																			</span>
+															<fieldset disabled={isReadOnly}>
+															<div className="relative z-10">
+																{/* EMPLOYEE DETAILS SECTION */}
+																{item.transfer_type === 'Employee' && (
+																	<div className="py-2 rounded">
+																		<div className="font-semibold text-sm mb-2">Employee Details</div>
+																		<div className="flex items-center justify-between text-sm">
+																			<div>
+																				<span className="text-muted-foreground">Position:</span>
+																				<span className="ml-1">{renderValue(employeeDetails?.position?.name)}</span>
+																			</div>
+																			<div>
+																				<span className="text-muted-foreground">Email:</span>
+																				<span className="ml-1">{renderValue(employeeDetails?.email)}</span>
+																			</div>
+																			<div>
+																				<span className="text-muted-foreground">Contact:</span>
+																				<span className="ml-1">{renderValue(employeeDetails?.contact)}</span>
+																			</div>
 																		</div>
 																	</div>
-																</div>
-															)}
-											{/* Transfer Details */}
-											<hr className="my-2 border-gray-300" />
-											<div>
-												<div className="mb-2">
-													<div className="flex items-center justify-between gap-4">
-														<div className="font-semibold">Transfer Details</div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="font-medium">Return to Asset Manager</div>
-                                        <Switch checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManagerFor(item.id, checked)} />
-                                    </div>
-													</div>
-													{/* Show only Transfer Details error for this item */}
-													{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
-														&& submitError.toLowerCase().includes('transfer detail') && (
-															<div className="text-red-600 text-xs font-semibold mt-1">
-																{submitError}
-															</div>
-													)}
-												</div>
+																)}
+																{/* ASSET DETAILS SECTION */}
+																{item.transfer_type === 'Asset' && (
+																	<div className="py-2 rounded">
+																		<div className="font-semibold mb-1">Asset Details</div>
+																		<div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+																			<div className="flex items-center gap-2">
+																				<span className="text-muted-foreground">Type & Category:</span>
+																				<span className="font-medium text-blue-600">
+																					{item.type?.name || item.asset_type || '-'} & {renderValue(item.category?.name) || '-'}
+																				</span>
+																			</div>
+																			<div className="flex items-center gap-2">
+																				<span className="text-muted-foreground">Brand & Model:</span>
+																				<span className="font-medium text-blue-600">
+																					{renderValue(item.brand?.name) || '-'} & {renderValue(item.model?.name) || '-'}
+																				</span>
+																			</div>
+																		</div>
+																	</div>
+																)}
+																{/* Transfer Details */}
+																<hr className="my-2 border-gray-300" />
+																<div>
+																	<div className="mb-2">
+																		<div className="flex items-center justify-between gap-4">
+																			<div className="font-semibold">Transfer Details</div>
+																			<div className="flex items-center gap-2">
+																				<div className="font-medium">Return to Asset Manager</div>
+																				<Switch disabled={isAcceptedItem} checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManagerFor(item.id, checked)} />
+																			</div>
+																		</div>
+																		{/* Show only Transfer Details error for this item */}
+																		{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
+																			&& submitError.toLowerCase().includes('transfer detail') && (
+																				<div className="text-red-600 text-xs font-semibold mt-1">
+																					{submitError}
+																				</div>
+																			)}
+																	</div>
 
-																{/* Effective Date moved to header; Transfer type radio controls present in header */}
+																	{/* Description for Transfer Details */}
+																	<div className="text-xs text-red-500 font-semibold -mt-1.5 mb-4">
+																		Select who this asset will be transferred to. Picking a new owner can auto-fill the new Cost Center, Department, and Location; adjust them if needed.
+																	</div>
 
-																<table className="w-full text-left align-middle">
-																	<thead className="bg-transparent py-0">
-																		<tr>
-																			<th className="bg-transparent py-1 w-[20%]"></th>
-																			<th className="bg-transparent py-1 px-8">Current</th>
-																			<th className="bg-transparent py-1">New</th>
-																		</tr>
-																	</thead>
-																	<tbody>
-																		{/* Only show Owner row for assets */}
-																		{!isEmployee && (
+																	{/* Effective Date moved to header; Transfer type radio controls present in header */}
+
+																	<table className="w-full text-left align-middle">
+																		<thead className="bg-transparent py-0">
+																			<tr>
+																				<th className="bg-transparent py-1 w-[20%]"></th>
+																				<th className="bg-transparent py-1 px-8">Current</th>
+																				<th className="bg-transparent py-1">New</th>
+																			</tr>
+																		</thead>
+																		<tbody>
+																			{/* Only show Owner row for assets */}
+																			{!isEmployee && (
+																				<tr className="border-b-0">
+																					<td className="py-0.5">
+																						<Label className="flex items-center gap-2">
+																							<Checkbox
+																								checked={!!itemTransferDetails[item.id]?.new.ownerChecked}
+																								disabled={!!returnToAssetManager[item.id]}
+																								onCheckedChange={checked => {
+																									if (checked === false) {
+																										// clearNewOwnerField(item.id);
+																									} else {
+																										detectNewChanges(item.id, 'new', 'ownerName', selectedOwnerName || '');
+																									}
+																								}}
+																							/>
+																							Owner
+																						</Label>
+																					</td>
+																					<td className="py-0.5 px-8">
+																						<div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.owner?.full_name)}</div>
+																					</td>
+																					<td className="py-0.5">
+																						{/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
+																						<div>
+																							{/* Use Combobox SingleSelect for new owner - show employee full names but store ramco_id as value */}
+																							<Combobox
+																								options={employees.map(emp => ({ value: emp.ramco_id, label: emp.full_name }))}
+																								value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
+																								onValueChange={(val: string) => {
+																									// set staff id and ownerName where appropriate
+																									detectNewChanges(item.id, 'new', 'ownerName', employees.find(e => e.ramco_id === val)?.full_name || '');
+																									detectNewChanges(item.id, 'new', 'ownerStaffId', val);
+																									// Auto-fill related fields (cost center, department, location)
+																									autofillNewOwnerRelated(item.id, val);
+																								}}
+																								placeholder="Search new owner"
+																								searchPlaceholder="Search employees..."
+																								emptyMessage="No employees"
+																								disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																								className="w-full border border-gray-200 rounded-md bg-white"
+																							/>
+																						</div>
+																					</td>
+																				</tr>
+																			)}
+																			{/* Cost Center, Department, Location rows remain for both */}
 																			<tr className="border-b-0">
 																				<td className="py-0.5">
 																					<Label className="flex items-center gap-2">
 																						<Checkbox
-																							checked={!!itemTransferDetails[item.id]?.new.ownerChecked}
-																							disabled={!!returnToAssetManager[item.id]}
-																							onCheckedChange={checked => {
-																								if (checked === false) {
-																									// clearNewOwnerField(item.id);
-																								} else {
-																									detectNewChanges(item.id, 'new', 'ownerName', selectedOwnerName || '');
-																								}
-																							}}
+																							checked={!!itemTransferDetails[item.id]?.new.costCenter}
+																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																							onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'costCenter', ''); }}
+
 																						/>
-																						Owner
+																						Cost Center
 																					</Label>
 																				</td>
-																				<td className="py-0.5 px-8">
-																					<div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.owner?.full_name)}</div>
-																				</td>
+																				<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.costcenter?.name)}</div></td>
 																				<td className="py-0.5">
-																					{/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
-																					<div>
-																						{/* Use Combobox SingleSelect for new owner - show employee full names but store ramco_id as value */}
-																						<Combobox
-																							options={employees.map(emp => ({ value: emp.ramco_id, label: emp.full_name }))}
-																							value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
-																							onValueChange={(val: string) => {
-																								// set staff id and ownerName where appropriate
-																								detectNewChanges(item.id, 'new', 'ownerName', employees.find(e => e.ramco_id === val)?.full_name || '');
-																								detectNewChanges(item.id, 'new', 'ownerStaffId', val);
-																							}}
-																							placeholder="Search new owner"
-																							searchPlaceholder="Search employees..."
-																							emptyMessage="No employees"
-																							disabled={!!returnToAssetManager[item.id]}
-																							className="w-full border border-gray-200 rounded-md bg-white"
-																						/>
-																					</div>
+																					<SingleSelect
+																						options={costCenters.map(cc => ({ value: String(cc.id), label: cc.name }))}
+																						value={itemTransferDetails[item.id]?.new.costCenter || ''}
+																						onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)}
+																						placeholder="New Cost Center"
+																						disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																						className="w-full border border-gray-200 rounded-md bg-white"
+																					/>
 																				</td>
 																			</tr>
-																		)}
-																		{/* Cost Center, Department, Location rows remain for both */}
-																		<tr className="border-b-0">
-																			<td className="py-0.5">
-																				<Label className="flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemTransferDetails[item.id]?.new.costCenter}
-																						disabled={!!returnToAssetManager[item.id]}
-																						onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'costCenter', ''); }}
+																			<tr className="border-b-0">
+																				<td className="py-0.5">
+																					<Label className="flex items-center gap-2">
+																						<Checkbox
+																							checked={!!itemTransferDetails[item.id]?.new.department}
+																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																							onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'department', ''); }}
 
+																						/>
+																						Department
+																					</Label>
+																				</td>
+																				<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.department?.name)}</div></td>
+																				<td className="py-0.5">
+																					<SingleSelect
+																						options={departments.map(dept => ({ value: String(dept.id), label: dept.code || dept.name }))}
+																						value={itemTransferDetails[item.id]?.new.department || ''}
+																						onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)}
+																						placeholder="New Department"
+																						disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																						className="w-full border border-gray-200 rounded-md bg-white"
 																					/>
-																					Cost Center
-																				</Label>
-																			</td>
-																			<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.costcenter?.name)}</div></td>
-																			<td className="py-0.5">
-																				<SingleSelect
-																					options={costCenters.map(cc => ({ value: String(cc.id), label: cc.name }))}
-																					value={itemTransferDetails[item.id]?.new.costCenter || ''}
-																					onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)}
-																					placeholder="New Cost Center"
-																					disabled={!!returnToAssetManager[item.id]}
-																					className="w-full border border-gray-200 rounded-md bg-white"
-																				/>
-																			</td>
-																		</tr>
-																		<tr className="border-b-0">
-																			<td className="py-0.5">
-																				<Label className="flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemTransferDetails[item.id]?.new.department}
-																						disabled={!!returnToAssetManager[item.id]}
-																						onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'department', ''); }}
+																				</td>
+																			</tr>
+																			<tr className="border-b-0">
+																				<td className="py-0.5">
+																					<Label className="flex items-center gap-2">
+																						<Checkbox
+																							checked={!!itemTransferDetails[item.id]?.new.location}
+																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																							onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
 
+																						/>
+																						Location
+																					</Label>
+																				</td>
+																				<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.location?.name)}</div></td>
+																				<td className="py-0.5">
+																					<SingleSelect
+																						options={locations.map(loc => ({ value: String(loc.id), label: loc.code || loc.name }))}
+																						value={itemTransferDetails[item.id]?.new.location || ''}
+																						onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)}
+																						placeholder="New Location"
+																						disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
+																						className="w-full border border-gray-200 rounded-md bg-white"
 																					/>
-																					Department
-																				</Label>
-																			</td>
-																			<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.department?.name)}</div></td>
-																			<td className="py-0.5">
-																				<SingleSelect
-																					options={departments.map(dept => ({ value: String(dept.id), label: dept.code || dept.name }))}
-																					value={itemTransferDetails[item.id]?.new.department || ''}
-																					onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)}
-																					placeholder="New Department"
-																					disabled={!!returnToAssetManager[item.id]}
-																					className="w-full border border-gray-200 rounded-md bg-white"
-																				/>
-																			</td>
-																		</tr>
-																		<tr className="border-b-0">
-																			<td className="py-0.5">
-																				<Label className="flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemTransferDetails[item.id]?.new.location}
-																						disabled={!!returnToAssetManager[item.id]}
-																						onCheckedChange={checked => { if (!checked) detectNewChanges(item.id, 'new', 'location', ''); }}
-
-																					/>
-																					Location
-																				</Label>
-																			</td>
-																			<td className="py-0.5 px-8"><div className="w-full py-1.5 text-sm text-gray-900">{renderValue(item.location?.name)}</div></td>
-																			<td className="py-0.5">
-																				<SingleSelect
-																					options={locations.map(loc => ({ value: String(loc.id), label: loc.code || loc.name }))}
-																					value={itemTransferDetails[item.id]?.new.location || ''}
-																					onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)}
-																					placeholder="New Location"
-																					disabled={!!returnToAssetManager[item.id]}
-																					className="w-full border border-gray-200 rounded-md bg-white"
-																				/>
-																			</td>
-																		</tr>
-																	</tbody>
-																</table>
-															</div>
-															<hr className="my-2 border-gray-300" />
-															{/* Reason for Transfer */}
-															<div>
-																<div className="font-semibold mb-2 flex items-center justify-start gap-6">
-																	Reason for Transfer
-																	{/* Show only Reason for Transfer error for this item */}
-																	{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
-																		&& submitError.toLowerCase().includes('reason for transfer') && (
-																			<div className="text-red-600 text-xs font-semibold">
-																				{submitError}
-																			</div>
-																		)}
+																				</td>
+																			</tr>
+																		</tbody>
+																	</table>
 																</div>
-
-																<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-																	{/* Operational Reasons (combined groups) */}
-																	<div>
-																		<div className="font-semibold mb-2">Operational</div>
-																		<div className="flex flex-col gap-2">
-																			{REASONS_OPERATIONAL.map(reason => (
-																				<Label key={reason.value} className="inline-flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemReasons[item.id]?.[reason.value]}
-																						onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-																					/>
-																					{reason.label}
-																				</Label>
-																			))}
-																		</div>
-																	</div>
-
-																	{/* Organizational Reasons */}
-																	<div>
-																		<div className="font-semibold mb-2">Organizational</div>
-																		<div className="flex flex-col gap-2">
-																			{REASONS_ORGANIZATIONAL.map(reason => (
-																				<Label key={reason.value} className="inline-flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemReasons[item.id]?.[reason.value]}
-																						onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-																					/>
-																					{reason.label}
-																				</Label>
-																			))}
-																		</div>
-																	</div>
-
-																	{/* Condition Reasons */}
-																	<div>
-																		<div className="font-semibold mb-2">Condition</div>
-																		<div className="flex flex-col gap-2">
-																			{REASONS_CONDITION.map(reason => (
-																				<Label key={reason.value} className="inline-flex items-center gap-2">
-																					<Checkbox
-																						checked={!!itemReasons[item.id]?.[reason.value]}
-																						onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
-																					/>
-																					{reason.label}
-																				</Label>
-																			))}
-																		</div>
-																	</div>
-																</div>
-																{form.reason.others && (
-																	<div className="mt-2 px-2">
-																		<Textarea
-																			className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
-																			placeholder="Please specify..."
-																			value={form.reason.othersText}
-																			onChange={e => handleInput('reason', 'othersText', e.target.value)}
-																		/>
-																	</div>
-																)}
-
-																<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
-																	<div className="flex-1">
-																		<Label className="font-semibold mb-1">Other Reason</Label>
-																		<Textarea className="w-full min-h-[90px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." />
-																	</div>
-																	<div className="flex-1">
-																		<Label className="font-semibold mb-1">Attachments</Label>
-																		<div className="border-2 border-dashed rounded-md p-1 text-center bg-white">
-																			<input
-																				id={`attachment-${item.id}`}
-																				type="file"
-																				accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-																				className="hidden"
-																				onChange={(e) => {
-																					const f = e.target.files?.[0] || null;
-																					handleItemAttachment(item.id, f);
-																					if (f) setItemAttachmentNames(prev => ({ ...prev, [item.id]: f.name }));
-																				}}
-																			/>
-																			<Label htmlFor={`attachment-${item.id}`} className="cursor-pointer inline-block w-full">
-																				<div className="py-1">
-																					<div className="text-sm text-gray-600">Drag & drop a file here or click to browse</div>
-																					<div className="mt-1 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
+																<hr className="my-2 border-gray-300" />
+																{/* Reason for Transfer */}
+																<div>
+																	<div className="font-semibold mb-2 flex items-center justify-start gap-6">
+																		Reason for Transfer
+																		{/* Show only Reason for Transfer error for this item */}
+																		{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
+																			&& submitError.toLowerCase().includes('reason for transfer') && (
+																				<div className="text-red-600 text-xs font-semibold">
+																					{submitError}
 																				</div>
-																			</Label>
-																			<div className="text-sm text-gray-700">
-																				{itemAttachments[item.id]?.name || itemAttachmentNames[item.id] || <span className="text-gray-400">No file chosen</span>}
+																			)}
+																	</div>
+
+																	{/* Description for Reason for Transfer */}
+																	<div className={`text-xs ${allItemsHaveReason ? 'text-muted-foreground' : 'text-red-500 font-semibold'} -mt-1.5 mb-4`}>
+																		Choose the reason(s) for this transfer. You can select multiple options and add more context in Other Reason.
+																	</div>
+
+																	<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+																		{/* Operational Reasons (combined groups) */}
+																		<div>
+																			<div className="font-semibold mb-2">Operational</div>
+																			<div className="flex flex-col gap-2">
+																				{REASONS_OPERATIONAL.map(reason => (
+																					<Label key={reason.value} className="inline-flex items-center gap-2">
+																						<Checkbox
+																							checked={!!itemReasons[item.id]?.[reason.value]}
+																							onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+																							disabled={isAcceptedItem}
+																						/>
+																						{reason.label}
+																					</Label>
+																				))}
+																			</div>
+																		</div>
+
+																		{/* Organizational Reasons */}
+																		<div>
+																			<div className="font-semibold mb-2">Organizational</div>
+																			<div className="flex flex-col gap-2">
+																				{REASONS_ORGANIZATIONAL.map(reason => (
+																					<Label key={reason.value} className="inline-flex items-center gap-2">
+																						<Checkbox
+																							checked={!!itemReasons[item.id]?.[reason.value]}
+																							onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+																							disabled={isAcceptedItem}
+																						/>
+																						{reason.label}
+																					</Label>
+																				))}
+																			</div>
+																		</div>
+
+																		{/* Condition Reasons */}
+																		<div>
+																			<div className="font-semibold mb-2">Condition</div>
+																			<div className="flex flex-col gap-2">
+																				{REASONS_CONDITION.map(reason => (
+																					<Label key={reason.value} className="inline-flex items-center gap-2">
+																						<Checkbox
+																							checked={!!itemReasons[item.id]?.[reason.value]}
+																							onCheckedChange={checked => handleItemReasonInput(item.id, reason.value, checked)}
+																							disabled={isAcceptedItem}
+																						/>
+																						{reason.label}
+																					</Label>
+																				))}
+																			</div>
+																		</div>
+																	</div>
+																	{form.reason.others && (
+																		<div className="mt-2 px-2">
+																			<Textarea
+																				className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
+																				placeholder="Please specify..."
+																				value={form.reason.othersText}
+																				onChange={e => handleInput('reason', 'othersText', e.target.value)}
+																				disabled={isAcceptedItem}
+																			/>
+																		</div>
+																	)}
+
+																	<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
+																		<div className="flex-1">
+																			<Label className="font-semibold mb-1">Other Reason</Label>
+																			<Textarea className="w-full min-h-[90px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." disabled={isAcceptedItem} />
+																		</div>
+																		<div className="flex-1">
+																			<Label className="font-semibold mb-1">Attachments</Label>
+																			<div className="border-2 border-dashed rounded-md p-1 text-center bg-white">
+																				<input
+																					id={`attachment-${item.id}`}
+																					type="file"
+																					accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+																					className="hidden"
+																					onChange={(e) => {
+																						const f = e.target.files?.[0] || null;
+																						handleItemAttachment(item.id, f);
+																						if (f) setItemAttachmentNames(prev => ({ ...prev, [item.id]: f.name }));
+																					}}
+																					disabled={isAcceptedItem}
+																				/>
+																				<Label htmlFor={`attachment-${item.id}`} className="cursor-pointer inline-block w-full">
+																					<div className="py-1">
+																						<div className="text-sm text-gray-600">Drag & drop a file here or click to browse</div>
+																						<div className="mt-1 text-xs text-gray-400">Supported: pdf, jpg, png, docx</div>
+																					</div>
+																				</Label>
+																				<div className="text-sm text-gray-700">
+																					{itemAttachments[item.id]?.name || itemAttachmentNames[item.id] || <span className="text-gray-400">No file chosen</span>}
+																				</div>
 																			</div>
 																		</div>
 																	</div>
 																</div>
+
+																{/* Comment before Attachments */}
+
 															</div>
-
-															{/* Comment before Attachments */}
-
-														</div>
-													</AccordionContent>
+													</div>
+													</fieldset>
+												</AccordionContent>
 												</AccordionItem>
 											</Accordion>
 										);
@@ -1548,25 +1698,25 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 									onClose={() => setSidebarOpen(false)}
 									size="sm"
 								/>
-							)}
-						</div>
-									<div className="flex justify-center gap-2 mt-4">
-										<Button
-											type="button"
-											onClick={() => setOpenSubmitDialog(true)}
-											disabled={submitting || loading || selectedItems.length === 0}
-										>
-											{submitting ? (
-												<span className="inline-flex items-center">
-													<Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
-												</span>
-											) : 'Submit'}
-										</Button>
-										<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={submitting}>Reset</Button>
-										<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
-									</div>
-						{/* Workflow section removed as requested */}
+						)}
 					</form>
+
+					<div className="flex justify-center gap-2 mt-4">
+						<Button
+							type="button"
+							onClick={() => setOpenSubmitDialog(true)}
+							disabled={isReadOnly || submitting || loading || selectedItems.length === 0 || !allItemsHaveReason}
+						>
+							{submitting ? (
+								<span className="inline-flex items-center">
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+								</span>
+							) : 'Submit'}
+						</Button>
+						<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={isReadOnly || submitting}>Reset</Button>
+						<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
+					</div>
+					{/* Workflow section removed as requested */}
 				</CardContent>
 			</Card>
 		</>

@@ -18,15 +18,19 @@ export default function AssetTransfer() {
 
     const handleRowDoubleClick = (row: any) => {
         // Open the asset transfer form inline for editing
-        if (row && (row.id || row.request_no)) {
-            setEditId(row.id ?? row.request_no);
+        // Prefer parent transfer id if present (for item-level rows)
+        const parentId = row?.transfer_id ?? row?.id ?? row?.request_no;
+        if (row && parentId) {
+            setEditId(parentId);
             setShowForm(true);
         }
     };
 
 
     const [data, setData] = useState<any[]>([]);
+    const [dataBy, setDataBy] = useState<any[]>([]); // item-level rows for To Receive
     const [loading, setLoading] = useState(false);
+    const [loadingBy, setLoadingBy] = useState(false);
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
 
@@ -42,28 +46,51 @@ export default function AssetTransfer() {
             .catch(() => setLoading(false));
     }, [username]);
 
+    // Fetch transfer items where current user is a new owner (for bottom grid)
+    useEffect(() => {
+        if (!username) return;
+        setLoadingBy(true);
+        const urlItems = `/api/assets/transfers/items?new_owner=${encodeURIComponent(username)}`;
+        authenticatedApi
+            .get(urlItems)
+            .then((res: any) => {
+                setDataBy(res?.data?.data || []);
+            })
+            .catch(() => {
+                // ignore errors but ensure loader is hidden
+            })
+            .then(() => setLoadingBy(false));
+    }, [username]);
+
     // Base renderers
-    const renderNewOwners = (row: any) => Array.isArray(row.new_owner) && row.new_owner.length > 0
-        ? row.new_owner.map((n: any) => n.full_name || n.ramco_id).join(", ")
-        : "-";
+    const renderNewOwners = (row: any) => {
+        if (!Array.isArray(row?.new_owner) || row.new_owner.length === 0) return "-";
+        // Deduplicate owners (multiple items may reference the same person)
+        const labels = row.new_owner
+            .map((n: any) => n.full_name || n.name || n.ramco_id)
+            .filter(Boolean);
+        const unique = Array.from(new Set(labels));
+        return unique.join(", ");
+    };
     const renderDate = (row: any) => row.transfer_date ? new Date(row.transfer_date).toLocaleDateString() : "-";
 
     // Columns per grid
     const columnsTransferTo: ColumnDef<any>[] = [
         { key: "id", header: "ID" },
-        { key: "new_owner", header: "New Owner", render: renderNewOwners },
+        { key: "new_owner", header: "New Owner", filter: 'input', render: renderNewOwners },
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
         { key: "transfer_date", header: "Transfer Date", render: renderDate },
         { key: "transfer_status", header: "Status" },
     ];
 
-    const columnsTransferBy: ColumnDef<any>[] = [
-        { key: "id", header: "ID" },
-        { key: "transfer_by", header: "Transfer By", render: row => row.transfer_by?.full_name || row.transfer_by?.ramco_id || "-" },
-        { key: "new_owner", header: "New Owner", render: renderNewOwners },
-        { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
-        { key: "transfer_date", header: "Transfer Date", render: renderDate },
-        { key: "transfer_status", header: "Status" },
+    const columnsTransferByItems: ColumnDef<any>[] = [
+        { key: "id", header: "Item ID" },
+        { key: "transfer_id", header: "Transfer ID" },
+        { key: "transfer_by", header: "Transfer By", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
+        { key: "type", header: "Type", filter: 'singleSelect', render: row => row.type?.name || "-" },
+        { key: "asset", header: "Register Number", render: row => row.asset?.register_number || row.asset?.id || "-" },
+        { key: "current_owner", header: "Current Owner", render: row => row.current_owner?.full_name || row.current_owner?.name || row.current_owner?.ramco_id || "-" },
+        { key: "effective_date", header: "Effective Date", render: row => row.effective_date ? new Date(row.effective_date).toLocaleDateString() : "-" },
     ];
 
     // Summary counts for each status
@@ -87,15 +114,9 @@ export default function AssetTransfer() {
     }, [data, username]);
 
     const transferByRows = React.useMemo(() => {
-        const me = String(username || '');
-        // Rows others initiated to me (I'm in new_owner, but not the initiator)
-        return (data || []).filter((row: any) => {
-            const byMe = String(row?.transfer_by?.ramco_id || '') === me;
-            const owners = Array.isArray(row?.new_owner) ? row.new_owner : [];
-            const iAmOwner = owners.some((o: any) => String(o?.ramco_id || '') === me);
-            return iAmOwner && !byMe;
-        });
-    }, [data, username]);
+        // Backend already filters by new_owner=me; show all returned items
+        return Array.isArray(dataBy) ? dataBy : [];
+    }, [dataBy]);
 
     if (showForm) {
         return (
@@ -205,10 +226,10 @@ export default function AssetTransfer() {
 
             {/* Transfer By (requests from others to me) */}
             <div className="flex justify-between items-center mt-8 mb-2">
-                <h2 className="text-xl font-bold">Transfer By</h2>
+                <h2 className="text-xl font-bold">To Received</h2>
             </div>
             <CustomDataGrid
-                columns={columnsTransferBy}
+                columns={columnsTransferByItems}
                 data={transferByRows}
                 inputFilter={false}
                 onRowDoubleClick={handleRowDoubleClick}
