@@ -135,7 +135,7 @@ export default function AssetTransfer() {
             return (
                 <div className="flex items-center justify-center">
                     <Badge className="truncate bg-green-600 text-white">
-                        Approved{approvedBy ? <span className="pl-1">by {String(approvedBy)}</span> : null}{when ? <span className="pl-1">on {when}</span> : null}
+                        Approved {when ? <span className="pl-1">on {when}</span> : null}
                     </Badge>
                 </div>
             );
@@ -261,6 +261,13 @@ export default function AssetTransfer() {
                     prevDisabled={!prevRow}
                     nextDisabled={!nextRow}
                     onClose={() => { setShowReceiveForm(false); setReceiveItem(null); setReceiveTransferId(undefined); setReceiveItemId(undefined); }}
+                    onAccepted={() => {
+                        refreshTransferItems();
+                        setShowReceiveForm(false);
+                        setReceiveItem(null);
+                        setReceiveTransferId(undefined);
+                        setReceiveItemId(undefined);
+                    }}
                     onDirtyChange={() => { /* no-op for now */ }}
                 />
             </div>
@@ -309,7 +316,7 @@ export default function AssetTransfer() {
             </div>
             {/* Transfer To (initiated by me) */}
             <div className="flex justify-between items-center mb-2">
-                <h2 className="text-xl font-bold">Transfer To</h2>
+                <h2 className="text-xl font-bold">Transfer Application</h2>
                 <Button
                     type="button"
                     variant="default"
@@ -330,7 +337,7 @@ export default function AssetTransfer() {
 
             {/* Transfer By (requests from others to me) */}
             <div className="flex justify-between items-center mt-8 mb-2">
-                <h2 className="text-xl font-bold">To Received</h2>
+                <h2 className="text-xl font-bold">Asset To Received</h2>
             </div>
             <CustomDataGrid
                 columns={columnsTransferByItems}

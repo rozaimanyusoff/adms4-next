@@ -11,6 +11,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { AuthContext } from '@/store/AuthContext';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 type ReceiveItem = {
   id: number | string;
@@ -36,6 +45,11 @@ type ReceiveItem = {
   acceptance_checklist_items?: Array<{ id: number; type_id: number; item: string }> | null;
   acceptance_attachments?: string | null;
   acceptance_remarks?: string | null;
+
+  // Approval fields (may be provided by API)
+  approved_by?: string | null;
+  approved_date?: string | null;
+
   created_at?: string;
   updated_at?: string;
 };
@@ -45,6 +59,7 @@ interface Props {
   itemId?: number | string;
   transferId?: number | string;
   onClose?: () => void;
+  onAccepted?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -54,13 +69,14 @@ interface Props {
 
 const label = (v?: string | null) => (v && String(v).trim().length > 0 ? v : '-');
 
-const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, transferId, onClose, onDirtyChange, onPrev, onNext, prevDisabled, nextDisabled }) => {
+const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, transferId, onClose, onAccepted, onDirtyChange, onPrev, onNext, prevDisabled, nextDisabled }) => {
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
   const [item, setItem] = React.useState<ReceiveItem | null>(itemProp ?? null);
   const [checklist, setChecklist] = React.useState<Array<{ id: number; item: string; is_required: boolean }>>([]);
   const [checkState, setCheckState] = React.useState<Record<number, { done: boolean; remarks?: string }>>({});
   const [attachment, setAttachment] = React.useState<File | null>(null);
+  const [successDialogOpen, setSuccessDialogOpen] = React.useState(false);
 
   const auth = React.useContext(AuthContext);
 
@@ -133,6 +149,8 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
     return checklist.every(c => !c.is_required || !!checkState[c.id]?.done);
   }, [checklist, checkState]);
   const isAccepted = Boolean(item?.acceptance_date);
+  const awaitingApproval = Boolean(item) && !item?.approved_by && !item?.approved_date;
+  const isReadOnly = awaitingApproval || isAccepted;
   const acceptanceByFullName = item?.new_owner?.full_name || item?.new_owner?.name || item?.acceptance_by || '';
   const existingAttachmentNames = React.useMemo(() => {
     const aa: any = (item as any)?.acceptance_attachments;
@@ -196,13 +214,23 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
       }
 
       toast.success('Acceptance submitted successfully.');
-      onClose?.();
+      setItem(prev => prev ? { ...prev, acceptance_date: acceptanceDate, acceptance_by: acceptanceBy } : prev);
+      setSuccessDialogOpen(true);
     } catch (e) {
       toast.error('Failed to submit acceptance');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSuccessClose = React.useCallback(() => {
+    setSuccessDialogOpen(false);
+    if (onAccepted) {
+      onAccepted();
+    } else {
+      onClose?.();
+    }
+  }, [onAccepted, onClose]);
 
   return (
     <Card className='shadow-none'>
@@ -211,7 +239,9 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
           <CardTitle className="text-base">Asset Receive & Acceptance Form</CardTitle>
         </div>
         <div className="flex-1 flex justify-center">
-          {isAccepted ? (
+          {awaitingApproval ? (
+            <Badge className="px-3 text-sm bg-amber-500 text-white">Pending Approval</Badge>
+          ) : isAccepted ? (
             <Badge className="px-3 text-sm bg-green-600">Accepted</Badge>
           ) : (
             <Badge variant="secondary" className="px-3">Pending Acceptance</Badge>
@@ -241,6 +271,12 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
         </div>
       </CardHeader>
       <CardContent className="space-y-8">
+
+      {awaitingApproval && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This transfer is still pending approval. You will be able to acknowledge the asset once it has been approved.
+        </div>
+      )}
 
       {error && <div className="text-red-600 text-sm">{error}</div>}
 
@@ -364,7 +400,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                   )}
                   {checklist.map(c => (
                     <div key={c.id} className="flex items-start gap-2 p-2 rounded border border-border">
-                      <Checkbox id={`chk_${c.id}`} checked={!!checkState[c.id]?.done} disabled={isAccepted} onCheckedChange={(val) => setCheckState(s => ({ ...s, [c.id]: { ...s[c.id], done: !!val } }))} />
+                      <Checkbox id={`chk_${c.id}`} checked={!!checkState[c.id]?.done} disabled={isReadOnly} onCheckedChange={(val) => setCheckState(s => ({ ...s, [c.id]: { ...s[c.id], done: !!val } }))} />
                       <div className="flex-1">
                         <Label htmlFor={`chk_${c.id}`} className="text-sm my-0">
                           {c.item}
@@ -375,7 +411,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                           placeholder="Remarks (optional)"
                           value={isAccepted ? (checkState[c.id]?.remarks || item?.acceptance_remarks || '') : (checkState[c.id]?.remarks || '')}
                           onChange={e => setCheckState(s => ({ ...s, [c.id]: { ...s[c.id], remarks: e.target.value } }))}
-                          disabled={isAccepted}
+                          disabled={isReadOnly}
                         />
                       </div>
                     </div>
@@ -388,7 +424,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
               <Input
                 type="file"
                 onChange={(e) => setAttachment((e.target.files && e.target.files[0]) || null)}
-                disabled={isAccepted}
+                disabled={isReadOnly}
               />
               {isAccepted ? (
                 <div className="text-xs text-muted-foreground mt-1">
@@ -415,9 +451,28 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
         {/* Actions at bottom */}
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" onClick={onClose}>Back</Button>
-          <Button disabled={loading || !item || !allRequiredComplete || isAccepted} onClick={handleAcknowledge}>Submit Acceptance</Button>
+          <Button disabled={loading || !item || !allRequiredComplete || isReadOnly} onClick={handleAcknowledge}>Submit Acceptance</Button>
         </div>
       </CardContent>
+      <AlertDialog open={successDialogOpen} onOpenChange={(open) => {
+        if (!open && successDialogOpen) {
+          handleSuccessClose();
+        }
+      }}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Acceptance Updated</AlertDialogTitle>
+            <AlertDialogDescription>
+              The asset acceptance was recorded successfully. Close this dialog to return to the transfer list and refresh your assignments.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction asChild>
+              <Button>Close &amp; Return</Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };
