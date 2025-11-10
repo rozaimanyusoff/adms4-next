@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import AssetTransferForm from "./asset-transfer-form";
 import AssetTransferReceiveForm from "./asset-transfer-receive-form";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 
 export default function AssetTransfer() {
@@ -22,13 +23,27 @@ export default function AssetTransfer() {
     const [receiveItemId, setReceiveItemId] = useState<string | number | undefined>(undefined);
     const [confirmBackOpen, setConfirmBackOpen] = useState(false);
 
+    const fetchReceiveItem = React.useCallback(async (transferId?: string | number, itemId?: string | number) => {
+        if (!transferId || !itemId) return;
+        try {
+            const res: any = await authenticatedApi.get(
+                `/api/assets/transfers/${encodeURIComponent(String(transferId))}/items/${encodeURIComponent(String(itemId))}`
+            );
+            setReceiveItem(res?.data?.data ?? res?.data ?? null);
+        } catch (e) {
+            toast.error("Failed to load transfer item details");
+        }
+    }, []);
+
     const handleRowDoubleClick = (row: any) => {
         // If this is an item row (has transfer_id and asset), open the Receive form
         if (row && (row.transfer_id || row.asset)) {
+            const transferIdValue = row.transfer_id ?? row.id;
             setReceiveItem(row);
-            setReceiveTransferId(row.transfer_id ?? row.id);
+            setReceiveTransferId(transferIdValue);
             setReceiveItemId(row.id);
             setShowReceiveForm(true);
+            fetchReceiveItem(transferIdValue, row.id);
             return;
         }
         // Otherwise open the parent transfer edit form
@@ -118,13 +133,13 @@ export default function AssetTransfer() {
             const d = new Date(row.acceptance_date);
             const when = isNaN(d.getTime()) ? '' : d.toLocaleString();
             return (
-                <div className="flex items-center justify-center">
-                    <Badge className="truncate bg-green-600 text-white">Accepted{when && <span className="pl-1">on {when}</span>}</Badge>
+                <div className="flex items-center">
+                    <Badge className="truncate bg-green-600 hover:bg-green-700 text-white">Accepted{when && <span className="pl-1">on {when}</span>}</Badge>
 
                 </div>
             );
         }
-        return <Badge variant="secondary" className="truncate bg-amber-500 text-white">Pending Acceptance</Badge>;
+        return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Acceptance</Badge>;
     };
 
     const renderApprovalStatus = (row: any) => {
@@ -133,14 +148,14 @@ export default function AssetTransfer() {
         if (approvedDate && !isNaN(approvedDate.getTime())) {
             const when = approvedDate.toLocaleDateString();
             return (
-                <div className="flex items-center justify-center">
-                    <Badge className="truncate bg-green-600 text-white">
+                <div className="flex items-center">
+                    <Badge className="truncate bg-green-600 hover:bg-green-700 text-white">
                         Approved {when ? <span className="pl-1">on {when}</span> : null}
                     </Badge>
                 </div>
             );
         }
-        return <Badge variant="secondary" className="truncate bg-amber-500 text-white">Pending Approval</Badge>;
+        return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Approval</Badge>;
     };
 
     // Columns per grid
@@ -248,8 +263,20 @@ export default function AssetTransfer() {
         const currentIndex = rowsSorted.findIndex((r: any) => String(r.id) === String(currentId ?? ''));
         const prevRow = currentIndex > 0 ? rowsSorted[currentIndex - 1] : null;
         const nextRow = currentIndex >= 0 && currentIndex < rowsSorted.length - 1 ? rowsSorted[currentIndex + 1] : null;
-        const goPrev = prevRow ? () => { setReceiveItem(prevRow); setReceiveTransferId(prevRow.transfer_id ?? prevRow.id); setReceiveItemId(prevRow.id); } : undefined;
-        const goNext = nextRow ? () => { setReceiveItem(nextRow); setReceiveTransferId(nextRow.transfer_id ?? nextRow.id); setReceiveItemId(nextRow.id); } : undefined;
+        const goPrev = prevRow ? () => {
+            const transferIdValue = prevRow.transfer_id ?? prevRow.id;
+            setReceiveItem(prevRow);
+            setReceiveTransferId(transferIdValue);
+            setReceiveItemId(prevRow.id);
+            fetchReceiveItem(transferIdValue, prevRow.id);
+        } : undefined;
+        const goNext = nextRow ? () => {
+            const transferIdValue = nextRow.transfer_id ?? nextRow.id;
+            setReceiveItem(nextRow);
+            setReceiveTransferId(transferIdValue);
+            setReceiveItemId(nextRow.id);
+            fetchReceiveItem(transferIdValue, nextRow.id);
+        } : undefined;
         return (
             <div className="py-4">
                 <AssetTransferReceiveForm
@@ -337,7 +364,7 @@ export default function AssetTransfer() {
 
             {/* Transfer By (requests from others to me) */}
             <div className="flex justify-between items-center mt-8 mb-2">
-                <h2 className="text-xl font-bold">Asset To Received</h2>
+                <h2 className="text-xl font-bold">Asset To Receive</h2>
             </div>
             <CustomDataGrid
                 columns={columnsTransferByItems}

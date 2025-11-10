@@ -80,6 +80,13 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
 
   const auth = React.useContext(AuthContext);
 
+  // Keep internal item state in sync with prop changes (e.g. parent refresh after API fetch)
+  React.useEffect(() => {
+    if (itemProp) {
+      setItem(itemProp);
+    }
+  }, [itemProp]);
+
   // Optional fetch if itemId and transferId are provided and item not passed
   React.useEffect(() => {
     if (itemProp) return; // already have data
@@ -303,6 +310,19 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
               <div>
                 <div className="text-muted-foreground">Transfer By</div>
                 <div className="font-medium">{transferByName}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Approved</div>
+                {item?.approved_date ? (
+                  <div className="font-medium">
+                    Approved
+                    <div className="text-xs text-muted-foreground">
+                      {`By ${item?.approved_by || '-'}`} on {new Date(item.approved_date).toLocaleString()}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="font-medium">{awaitingApproval ? 'Pending Approval' : '-'}</div>
+                )}
               </div>
             </div>
           </CardContent>

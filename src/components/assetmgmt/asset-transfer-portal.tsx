@@ -274,9 +274,9 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-5xl mx-auto p-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
             <h1 className="text-lg font-bold text-gray-900">Asset Transfer Authorization Portal</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2 sm:justify-end">
               <Button
                 type="button"
                 variant="destructive"
@@ -293,7 +293,7 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
 
       <div className="max-w-5xl mx-auto p-2">
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             <Button size="sm" variant="destructive" onClick={() => bulkApproveReject('reject')} disabled={Boolean(bulkLoading) || (!loggedIn && !token)}>
               {bulkLoading === 'reject' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Rejecting…</>) : `Bulk Reject (${selectedIds.size})`}
             </Button>
@@ -314,9 +314,9 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
               const currentLoading = actionLoading && actionLoading.id === data.id ? actionLoading.kind : null;
               return (
                 <AccordionItem key={data.id} value={`transfer-${data.id}`} className="border rounded-lg mb-2">
-                  <AccordionTrigger className="px-4 py-2">
-                    <div className="flex w-full items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
+                  <AccordionTrigger className="px-4 py-2 bg-stone-100">
+                    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="flex flex-wrap items-center gap-2 text-left sm:flex-nowrap">
                         <Checkbox
                           checked={selectedIds.has(data.id)}
                           onCheckedChange={(v) => toggleSelected(data.id, Boolean(v))}
@@ -324,18 +324,18 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
                           aria-label={`Select transfer ${data.id}`}
                         />
                         <span className="text-xs text-muted-foreground">Asset</span>
-                        <span className="text-sm">
+                        <span className="text-sm min-w-0">
                           S/N: {it?.asset?.register_number || '-'}{' '}
                           <span className="text-blue-600">[ {it?.asset?.type?.name || '-'} ]</span>
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm">Effective Date <span className="text-red-500">*</span></label>
+                      <div className="flex w-full flex-col gap-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
+                        <label className="text-sm font-medium">Effective Date <span className="text-red-500">*</span></label>
                         <Input
                           type="date"
                           value={effDate}
                           onChange={(e) => setEffectiveDates((prev) => ({ ...prev, [data.id]: e.target.value }))}
-                          className="h-8 w-[170px]"
+                          className="h-9 w-full sm:w-[170px]"
                         />
                       </div>
                     </div>
