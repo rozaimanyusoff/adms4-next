@@ -9,7 +9,6 @@ import { Button } from '@components/ui/button';
 import AuthTemplate from './AuthTemplate';
 import Footer from '@components/layouts/footer';
 import { api } from '@/config/api';
-import SliderPuzzleCaptcha from './SliderPuzzleCaptcha';
 import { Eye, EyeOff } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
 
@@ -34,7 +33,7 @@ const ComponentRegister = () => {
     const [serverRamcoId, setServerRamcoId] = useState<string>('');
     const [employeeFullName, setEmployeeFullName] = useState<string>('');
     const [nameLocked, setNameLocked] = useState<boolean>(false);
-    const [sliderVerified, setSliderVerified] = useState(false);
+    // Captcha temporarily disabled; rely on RAMCO validation instead
 
     const handleChange = (e: { target: { id: string; value: string } }) => {
         const { id, value } = e.target;
@@ -253,24 +252,13 @@ const ComponentRegister = () => {
                     </div>
                 )}
 
-                {(formData.name.trim() &&
-                    formData.email.trim() &&
-                    formData.contact.trim() &&
-                    formData.userType &&
-                    (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId))
-                ) ? (
-                    <>
-                        <div className="flex justify-center items-center w-full my-4">
-                            <SliderPuzzleCaptcha onSuccess={() => setSliderVerified(true)} />
-                        </div>
-                        <div className="text-center text-sm text-white/70 mb-2">Slide the handle to join the word <b>RTSB</b> and verify you are not a robot.</div>
-                    </>
-                ) : null}
+                {/* Captcha disabled temporarily */}
                 <Button
                     type="submit"
                     size="default"
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition"
-                    disabled={!(sliderVerified && (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId)))}
+                    disabled={!((formData.name.trim() && formData.email.trim() && formData.contact.trim() && formData.userType) &&
+                        (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId)))}
                 >
                     Register
                 </Button>

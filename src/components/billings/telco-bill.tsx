@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreVertical, Download } from 'lucide-react';
+import { Plus, MoreVertical, Download, ArrowLeft } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import TelcoBillSummary from './telco-bill-summary';
 import { useRouter } from 'next/navigation';
+import TelcoBillForm from './telco-bill-form';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -40,6 +41,8 @@ const TelcoBill = () => {
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
   const router = useRouter();
+  const [showForm, setShowForm] = useState(false);
+  const [formUtilId, setFormUtilId] = useState<number>(0);
 
   const fetchTelcoBills = () => {
     setLoading(true);
@@ -76,7 +79,8 @@ const TelcoBill = () => {
 
   const handleRowDoubleClick = (row: TelcoBill & { rowNumber: number }) => {
     if (row.id) {
-      window.open(`/billings/telco/form?id=${row.id}`, '_blank');
+      setFormUtilId(row.id);
+      setShowForm(true);
     }
   };
 
@@ -103,51 +107,72 @@ const TelcoBill = () => {
   ];
 
   return (
-    <div className="mt-4">
-      <TelcoBillSummary />
-      <div className="flex items-center justify-between my-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold">Telco Bills Summary</h2>
-          {selectedRowIds.length > 0 && (
-            <Button
-              variant="secondary"
-              className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
-              onClick={async () => {
-                if (selectedRowIds.length > 0) {
-                  // Directly call the batch export function
-                  const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-telco-costcenter');
-                  exportTelcoBillSummaryPDFs(selectedRowIds);
-                }
-              }}
-            >
-              <Download size={16} className="mr-1" /> Export PDF
+    <>
+      {showForm ? (
+
+        <div>
+          <div className="flex justify-end mb-2">
+            <Button variant="ghost" className="gap-1 hover:bg-red-500 hover:text-white" onClick={() => setShowForm(false)} aria-label="Back to list">
+              <ArrowLeft size={18} />
+              Back
             </Button>
-          )}
+          </div>
+          <TelcoBillForm
+            utilId={formUtilId}
+            onClose={() => setShowForm(false)}
+            onSaved={() => {
+              fetchTelcoBills();
+            }}
+          />
         </div>
-        <Button
-          variant={'default'}
-          onClick={() => window.open(`/billings/telco/form`, '_blank')}
-        >
-          <Plus size={18} />
-        </Button>
-      </div>
-      <CustomDataGrid
-        columns={columns as ColumnDef<unknown>[]}
-        data={rows}
-        pagination={false}
-        inputFilter={false}
-        theme="sm"
-        dataExport={false}
-        onRowDoubleClick={handleRowDoubleClick}
-        rowSelection={{
-          enabled: true,
-          getRowId: (row: any) => row.id,
-          onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
-            setSelectedRowIds(selectedKeys.map(Number));
-          },
-        }}
-      />
-    </div>
+
+      ) : (
+        <>
+          <TelcoBillSummary />
+          <div className="flex items-center justify-between my-4">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold">Telco Bills Summary</h2>
+              {selectedRowIds.length > 0 && (
+                <Button
+                  variant="secondary"
+                  className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
+                  onClick={async () => {
+                    if (selectedRowIds.length > 0) {
+                      const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-telco-costcenter');
+                      exportTelcoBillSummaryPDFs(selectedRowIds);
+                    }
+                  }}
+                >
+                  <Download size={16} className="mr-1" /> Export PDF
+                </Button>
+              )}
+            </div>
+            <Button
+              variant={'default'}
+              onClick={() => { setFormUtilId(0); setShowForm(true); }}
+            >
+              <Plus size={18} />
+            </Button>
+          </div>
+          <CustomDataGrid
+            columns={columns as ColumnDef<unknown>[]}
+            data={rows}
+            pagination={false}
+            inputFilter={false}
+            theme="sm"
+            dataExport={false}
+            onRowDoubleClick={handleRowDoubleClick}
+            rowSelection={{
+              enabled: true,
+              getRowId: (row: any) => row.id,
+              onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
+                setSelectedRowIds(selectedKeys.map(Number));
+              },
+            }}
+          />
+        </>
+      )}
+    </>
   );
 };
 

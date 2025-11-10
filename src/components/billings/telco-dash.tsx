@@ -131,7 +131,7 @@ const TelcoDash: React.FC = () => {
     }, [selectedYear, selectedProvider]);
 
     return (
-        <div className="space-y-6">
+        <>
             <Card className="space-y-6">
                 <CardHeader>
                     <CardTitle>Telco Billing - Monthly Grand Total</CardTitle>
@@ -207,7 +207,7 @@ const TelcoDash: React.FC = () => {
                 </CardContent>
             </Card>
             <TelcoReportControls onExport={params => { /* TODO: implement export logic */ }} />
-        </div>
+        </>
     );
 };
 

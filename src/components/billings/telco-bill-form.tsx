@@ -57,9 +57,11 @@ interface TelcoBillDetailItem {
 
 interface TelcoBillFormProps {
     utilId: number;
+    onClose?: () => void;
+    onSaved?: () => void;
 }
 
-const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
+const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved }) => {
     // Track edits for details table
     const [detailsEdits, setDetailsEdits] = useState<Record<string, { usage: string; disc: string; amt: string }>>({});
     const [grandTotal, setGrandTotal] = useState('0.00');
@@ -68,6 +70,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
     const [rounding, setRounding] = useState('0.00');
     const [costCenterFilter, setCostCenterFilter] = useState('');
     const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [data, setData] = useState<TelcoBillDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -151,12 +154,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                 await authenticatedApi.put(`/api/telco/bills/${utilId}`, payload);
                 toast.success('Telco bill updated successfully.');
             }
-            setTimeout(() => {
-                if (window.opener && typeof window.opener.reloadTelcoBillGrid === 'function') {
-                    window.opener.reloadTelcoBillGrid();
-                }
-                window.close();
-            }, 1000);
+            setShowSuccessDialog(true);
         } catch (err: any) {
             toast.error('Failed to save telco bill.');
         }
@@ -168,11 +166,28 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
 
     const confirmCancel = () => {
         setShowCancelDialog(false);
-        window.close();
+        if (onClose) {
+            onClose();
+        } else {
+            window.close();
+        }
     };
 
     const cancelCancel = () => {
         setShowCancelDialog(false);
+    };
+
+    const handleSuccessClose = () => {
+        setShowSuccessDialog(false);
+        if (onSaved) onSaved();
+        if (onClose) {
+            onClose();
+        } else {
+            if (window.opener && typeof window.opener.reloadTelcoBillGrid === 'function') {
+                window.opener.reloadTelcoBillGrid();
+            }
+            window.close();
+        }
     };
 
 
@@ -306,24 +321,37 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
     if (loading) return <div className="p-4">Loading...</div>;
     if ((utilId && utilId > 0) && !data) return <div className="p-4">No data found.</div>;
 
+    // Selected account info for subtitle under Bill Info
+    const selectedAccountDisplay: any = (() => {
+        if (utilId && utilId > 0 && data?.account) return data.account;
+        if (accountInfo) return accountInfo;
+        const found = accounts.find(a => a.id === selectedAccountId);
+        return found || null;
+    })();
+
     return (
-        <div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
-            <nav className="w-full bg-white dark:bg-gray-900 shadow-sm mb-6">
-                <div className="max-w-6xl mx-auto px-4 py-4 flex justify-center items-center">
-                    <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">Telco Billing Form</h1>
-                </div>
-            </nav>
-            <div className="flex gap-6 px-6 mx-auto">
-                <div className="pt-4 w-full space-y-6">
+        <>
+            <div className="flex flex-col lg:flex-row gap-6 mx-auto">
+                <div className="w-full space-y-6">
                     <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
-                        <h3 className="text-lg font-semibold mb-2">Bill Info</h3>
+                        <h3 className="text-lg font-semibold mb-1">Bill Info</h3>
+                        {selectedAccountDisplay && (
+                            <div className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+                                <span className="font-medium">Selected Account:</span>
+                                <span className="ml-1 text-blue-600 font-semibold">
+                                    {selectedAccountDisplay.account_master}
+                                    {selectedAccountDisplay.provider ? ` — ${selectedAccountDisplay.provider}` : ''}
+                                    {selectedAccountDisplay.description ? ` — ${selectedAccountDisplay.description}` : ''}
+                                </span>
+                            </div>
+                        )}
                         <form onSubmit={handleSubmit}>
                             <div className='flex flex-col md:flex-row justify-between gap-4'>
                                 {/* Account No as styled list */}
                                 <div className="flex flex-col md:w-1/3">
                                     <span className="font-medium mb-1">Account No</span>
                                     <ul
-                                        className="border rounded bg-gray-100 max-h-60 overflow-y-auto divide-y"
+                                        className="border rounded max-h-60 overflow-y-auto divide-y"
                                         ref={el => {
                                             // Scroll selected/highlighted account into view in edit mode
                                             if (el && utilId && utilId > 0 && selectedAccountId) {
@@ -344,7 +372,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                             const highlightClass = isEditMode && isSelected
                                                 ? 'bg-blue-600 text-white font-semibold'
                                                 : isSelected
-                                                    ? 'bg-indigo-200 dark:bg-gray-700 font-semibold'
+                                                    ? 'bg-blue-600 text-white dark:bg-gray-700 font-semibold'
                                                     : '';
                                             return (
                                                 <li
@@ -359,10 +387,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                     </ul>
                                 </div>
                                 {/* Bill No, Bill Date, Status stacked in next column */}
-                                <div className="flex flex-col gap-2 md:w-1/3">
+                                <div className="grid grid-cols-1 md:w-1/3 space-y-2">
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Bill No</span>
-                                        <Input type="text" value={billNo} onChange={e => setBillNo(e.target.value)} className="w-full border-0 rounded-none bg-gray-100" />
+                                        <Input type="text" value={billNo} onChange={e => setBillNo(e.target.value)} className="w-full" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Bill Date</span>
@@ -370,7 +398,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                             type="date"
                                             value={billDate ? billDate.slice(0, 10) : ''}
                                             onChange={e => setBillDate(e.target.value)}
-                                            className="w-full border-0 rounded-none bg-gray-100"
+                                            className="w-full"
                                         />
                                     </div>
                                     <div className="flex flex-col">
@@ -385,7 +413,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                                 }
                                             }}
                                         >
-                                            <SelectTrigger className="w-full text-right border-0 rounded-none bg-gray-100">
+                                            <SelectTrigger className="w-full text-right">
                                                 <SelectValue placeholder="Select status" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -407,7 +435,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                                 // You may want to handle file upload logic here or store in state
                                                 // Example: setDocumentFile(file);
                                             }}
-                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                            className="w-full text-right"
                                         />
                                     </div>
                                 </div>
@@ -415,19 +443,19 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                 <div className='grid grid-cols-1 space-y-2 md:w-1/3'>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Sub-Total</span>
-                                        <Input type="text" value={subTotal === '' ? '0.00' : subTotal} readOnly className="w-full text-right border-0 rounded-none bg-gray-100" />
+                                        <Input type="text" value={subTotal === '' ? '0.00' : subTotal} readOnly className="w-full text-right" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Tax</span>
-                                        <Input type="text" value={tax === '' ? '0.00' : tax} onChange={e => setTax(e.target.value.replace(/[^0-9.]/g, ''))} className="w-full text-right border-0 rounded-none bg-gray-100" />
+                                        <Input type="text" value={tax === '' ? '0.00' : tax} onChange={e => setTax(e.target.value.replace(/[^0-9.]/g, ''))} className="w-full text-right" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Rounding</span>
-                                        <Input type="text" value={rounding === '' ? '0.00' : rounding} onChange={e => setRounding(e.target.value.replace(/[^0-9.\-]/g, ''))} className="w-full text-right border-0 rounded-none bg-gray-100" />
+                                        <Input type="text" value={rounding === '' ? '0.00' : rounding} onChange={e => setRounding(e.target.value.replace(/[^0-9.\-]/g, ''))} className="w-full text-right" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Grand Total</span>
-                                        <Input type="text" value={grandTotal === '' ? '0.00' : grandTotal} readOnly className="w-full text-right border-0 rounded-none bg-gray-100" />
+                                        <Input type="text" value={grandTotal === '' ? '0.00' : grandTotal} readOnly className="w-full text-right" />
                                     </div>
                                 </div>
                             </div>
@@ -450,16 +478,29 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
+                        <AlertDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Success</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        {(!utilId || utilId === 0) ? 'Telco bill has been created.' : 'Telco bill has been updated.'}
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogAction onClick={handleSuccessClose}>Close</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                     <div>
-                        <div className="flex items-center justify-between mb-2 gap-2">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
                             <h3 className="text-xl font-semibold flex items-center gap-2">Details</h3>
                             <input
                                 type="text"
                                 placeholder="Search Cost Center..."
                                 value={costCenterFilter}
                                 onChange={e => setCostCenterFilter(e.target.value)}
-                                className="ml-4 px-2 py-1 border rounded text-sm w-56"
+                                className="sm:ml-4 px-2 py-1 border rounded text-sm w-full sm:w-56"
                             />
                         </div>
                         <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
@@ -555,7 +596,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                         </div>
                     </div>
                 </div>
-                <div className="pt-4 max-w-sm space-y-6">
+                <div className="w-full lg:max-w-sm space-y-6">
                     <div className="w-full md:w-72 lg:w-80 xl:w-96 border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
                         {selectedAccountId && accountInfo && (
                             <div>
@@ -587,7 +628,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId }) => {
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
