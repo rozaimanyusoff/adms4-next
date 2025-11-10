@@ -3,6 +3,7 @@ import { authenticatedApi } from '@/config/api';
 import { Loader2, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
@@ -58,7 +59,7 @@ interface TelcoBillDetailItem {
 interface TelcoBillFormProps {
     utilId: number;
     onClose?: () => void;
-    onSaved?: () => void;
+    onSaved?: (id?: number) => void;
 }
 
 const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved }) => {
@@ -70,12 +71,14 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     const [rounding, setRounding] = useState('0.00');
     const [costCenterFilter, setCostCenterFilter] = useState('');
     const [showCancelDialog, setShowCancelDialog] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccessDialog, setShowSuccessDialog] = useState(false);
     const [data, setData] = useState<TelcoBillDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [accounts, setAccounts] = useState<TelcoAccount[]>([]);
     const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+    const [accountSearch, setAccountSearch] = useState('');
     const [accountSubs, setAccountSubs] = useState<any[]>([]);
     const [accountInfo, setAccountInfo] = useState<any>(null);
     // Calculate row amounts, grand total, and cost center summary
@@ -90,6 +93,17 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     // Save handler for form submission
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        // Basic client-side validations with toast feedback
+        const errs: string[] = [];
+        if (!selectedAccountId) errs.push('Please select an account.');
+        if (!billNo || billNo.trim() === '') errs.push('Bill No is required.');
+        if (!billDate || String(billDate).trim() === '') errs.push('Bill Date is required.');
+        if (isNaN(parseFloat(subTotal)) || parseFloat(subTotal) <= 0) errs.push('Sub-Total must be greater than 0.');
+        if (isNaN(parseFloat(grandTotal)) || parseFloat(grandTotal) <= 0) errs.push('Grand Total must be greater than 0.');
+        if (errs.length > 0) {
+            toast.error(errs.join('\n'));
+            return;
+        }
         // Build payload from form state
         const selectedAccount = accounts.find(acc => acc.id === selectedAccountId);
         const payload: any = {
@@ -147,16 +161,25 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
             })
         };
         try {
+            setIsSubmitting(true);
             if (!utilId || utilId === 0) {
-                await authenticatedApi.post('/api/telco/bills', payload);
+                const res = await authenticatedApi.post('/api/telco/bills', payload);
                 toast.success('Telco bill created successfully.');
+                // Attempt to capture new ID from response for highlighting
+                const newId = (res as any)?.data?.data?.id ?? (res as any)?.data?.id;
+                (window as any).__lastCreatedTelcoBillId = newId ?? null;
             } else {
-                await authenticatedApi.put(`/api/telco/bills/${utilId}`, payload);
+                const res = await authenticatedApi.put(`/api/telco/bills/${utilId}`, payload);
                 toast.success('Telco bill updated successfully.');
+                const updatedId = utilId;
+                (window as any).__lastCreatedTelcoBillId = updatedId ?? null;
             }
             setShowSuccessDialog(true);
         } catch (err: any) {
-            toast.error('Failed to save telco bill.');
+            const msg = err?.response?.data?.message || err?.message || 'Failed to save telco bill.';
+            toast.error(String(msg));
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -179,7 +202,8 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
 
     const handleSuccessClose = () => {
         setShowSuccessDialog(false);
-        if (onSaved) onSaved();
+        const lastId = (window as any).__lastCreatedTelcoBillId ?? (utilId || undefined);
+        if (onSaved) onSaved(lastId);
         if (onClose) {
             onClose();
         } else {
@@ -272,8 +296,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                     setBillDate(res.data.data.bill_date ?? '');
                     setLoading(false);
                 })
-                .catch(() => {
+                .catch((err) => {
                     setError('Failed to load telco bill details.');
+                    const msg = err?.response?.data?.message || err?.message || 'Failed to load telco bill details.';
+                    toast.error(String(msg));
                     setLoading(false);
                 });
         } else {
@@ -291,8 +317,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
             .then(res => {
                 setAccounts(res.data.data);
             })
-            .catch(() => {
+            .catch((err) => {
                 setAccounts([]);
+                const msg = err?.response?.data?.message || err?.message || 'Failed to load telco accounts.';
+                toast.error(String(msg));
             });
     }, []);
 
@@ -307,9 +335,11 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                         setAccountInfo(resp.data);
                         setAccountSubs(resp.data.subs || []);
                     })
-                    .catch(() => {
+                    .catch((err) => {
                         setAccountInfo(null);
                         setAccountSubs([]);
+                        const msg = err?.response?.data?.message || err?.message || 'Failed to load account subscribers.';
+                        toast.error(String(msg));
                     });
             } else {
                 setAccountInfo(null);
@@ -321,30 +351,51 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     if (loading) return <div className="p-4">Loading...</div>;
     if ((utilId && utilId > 0) && !data) return <div className="p-4">No data found.</div>;
 
+    // Enable Save only when required fields are present and totals are positive
+    const canSave = (
+        billNo.trim() !== '' &&
+        (billDate || '').toString().trim() !== '' &&
+        !isNaN(parseFloat(subTotal)) && parseFloat(subTotal) > 0 &&
+        !isNaN(parseFloat(grandTotal)) && parseFloat(grandTotal) > 0
+    );
+
+    const isEditMode = !!(utilId && utilId > 0);
+
     // Selected account info for subtitle under Bill Info
+    // Prefer the unified object from the accounts list (has account_master/description consistently)
     const selectedAccountDisplay: any = (() => {
-        if (utilId && utilId > 0 && data?.account) return data.account;
+        if (selectedAccountId) {
+            const foundFromList = accounts.find(a => a.id === selectedAccountId);
+            if (foundFromList) return foundFromList;
+        }
         if (accountInfo) return accountInfo;
-        const found = accounts.find(a => a.id === selectedAccountId);
-        return found || null;
+        if (utilId && utilId > 0 && data?.account) return data.account;
+        return null;
     })();
 
     return (
-        <>
-            <div className="flex flex-col lg:flex-row gap-6 mx-auto">
-                <div className="w-full space-y-6">
-                    <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
-                        <h3 className="text-lg font-semibold mb-1">Bill Info</h3>
-                        {selectedAccountDisplay && (
-                            <div className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-                                <span className="font-medium">Selected Account:</span>
-                                <span className="ml-1 text-blue-600 font-semibold">
-                                    {selectedAccountDisplay.account_master}
-                                    {selectedAccountDisplay.provider ? ` — ${selectedAccountDisplay.provider}` : ''}
-                                    {selectedAccountDisplay.description ? ` — ${selectedAccountDisplay.description}` : ''}
-                                </span>
-                            </div>
-                        )}
+        <div className="flex flex-col lg:flex-row gap-6 mx-auto">
+            <div className="w-full space-y-6">
+                <Card className='bg-stone-50 dark:bg-stone-800 shadow-none'>
+                    <CardHeader className="pb-2">
+                        <CardTitle>Bill Info</CardTitle>
+                            {selectedAccountDisplay && (() => {
+                                const accNo = selectedAccountDisplay.account_master || selectedAccountDisplay.account_no || '';
+                                const provider = selectedAccountDisplay.provider || '';
+                                const desc = selectedAccountDisplay.description || '';
+                                return (
+                                    <CardDescription>
+                                        <span className="font-medium text-foreground">Selected Account:</span>
+                                        <span className="ml-1 text-blue-600 font-semibold">
+                                            {accNo}
+                                            {provider ? ` — ${provider}` : ''}
+                                            {desc ? ` — ${desc}` : ''}
+                                        </span>
+                                    </CardDescription>
+                                );
+                            })()}
+                    </CardHeader>
+                    <CardContent>
                         <form onSubmit={handleSubmit}>
                             <div className='flex flex-col md:flex-row justify-between gap-4'>
                                 {/* Account No as styled list */}
@@ -362,10 +413,38 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                             }
                                         }}
                                     >
-                                        {accounts.length === 0 && (
+                                        {/* Inline search inside the list */}
+                                        <li className="px-2 py-2 sticky top-0 bg-white dark:bg-gray-900 z-10">
+                                            <Input
+                                                type="text"
+                                                placeholder="Search account..."
+                                                value={accountSearch}
+                                                onChange={e => setAccountSearch(e.target.value)}
+                                                className="h-8"
+                                            />
+                                        </li>
+                                        {accounts.filter(acc => {
+                                            const q = accountSearch.toLowerCase().trim();
+                                            if (!q) return true;
+                                            return (
+                                                String(acc.account_master || '').toLowerCase().includes(q) ||
+                                                String(acc.description || '').toLowerCase().includes(q) ||
+                                                String(acc.provider || '').toLowerCase().includes(q)
+                                            );
+                                        }).length === 0 && (
                                             <li className="px-3 py-2 text-gray-400">No accounts found</li>
                                         )}
-                                        {accounts.map(acc => {
+                                        {accounts
+                                            .filter(acc => {
+                                                const q = accountSearch.toLowerCase().trim();
+                                                if (!q) return true;
+                                                return (
+                                                    String(acc.account_master || '').toLowerCase().includes(q) ||
+                                                    String(acc.description || '').toLowerCase().includes(q) ||
+                                                    String(acc.provider || '').toLowerCase().includes(q)
+                                                );
+                                            })
+                                            .map(acc => {
                                             // On edit mode, highlight matched acc.id with bg-blue-600 text-white
                                             const isEditMode = utilId && utilId > 0;
                                             const isSelected = selectedAccountId === acc.id;
@@ -447,11 +526,11 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Tax</span>
-                                        <Input type="text" value={tax === '' ? '0.00' : tax} onChange={e => setTax(e.target.value.replace(/[^0-9.]/g, ''))} className="w-full text-right" />
+                                        <Input type="text" value={tax === '' ? '0.00' : tax} onFocus={e => e.currentTarget.select()} onChange={e => setTax(e.target.value.replace(/[^0-9.]/g, ''))} className="w-full text-right" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Rounding</span>
-                                        <Input type="text" value={rounding === '' ? '0.00' : rounding} onChange={e => setRounding(e.target.value.replace(/[^0-9.\-]/g, ''))} className="w-full text-right" />
+                                        <Input type="text" value={rounding === '' ? '0.00' : rounding} onFocus={e => e.currentTarget.select()} onChange={e => setRounding(e.target.value.replace(/[^0-9.\-]/g, ''))} className="w-full text-right" />
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="font-medium mb-1">Grand Total</span>
@@ -460,7 +539,14 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                 </div>
                             </div>
                             <div className="flex gap-2 mt-6 justify-center">
-                                <Button type="submit" variant="default">Save</Button>
+                                <Button type="submit" variant="default" disabled={!canSave || isSubmitting} aria-disabled={!canSave || isSubmitting}>
+                                    {isSubmitting ? (
+                                        <span className="inline-flex items-center gap-2">
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                            {isEditMode ? 'Updating...' : 'Saving...'}
+                                        </span>
+                                    ) : (isEditMode ? 'Update' : 'Save')}
+                                </Button>
                                 <Button type="button" variant="destructive" onClick={handleCancel}>Cancel</Button>
                             </div>
                         </form>
@@ -491,115 +577,122 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
+                    </CardContent>
+                </Card>
+                <div>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+                        <h3 className="text-xl font-semibold flex items-center gap-2">Details</h3>
+                        <input
+                            type="text"
+                            placeholder="Search Cost Center..."
+                            value={costCenterFilter}
+                            onChange={e => setCostCenterFilter(e.target.value)}
+                            className="sm:ml-4 px-2 py-1 border rounded text-sm w-full sm:w-56"
+                        />
                     </div>
-                    <div>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
-                            <h3 className="text-xl font-semibold flex items-center gap-2">Details</h3>
-                            <input
-                                type="text"
-                                placeholder="Search Cost Center..."
-                                value={costCenterFilter}
-                                onChange={e => setCostCenterFilter(e.target.value)}
-                                className="sm:ml-4 px-2 py-1 border rounded text-sm w-full sm:w-56"
-                            />
-                        </div>
-                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
-                            <table className="min-w-full border text-sm">
-                                <thead className="bg-gray-200 sticky -top-1 z-10">
-                                    <tr>
-                                        <th className="border px-2 py-1.5">#</th>
-                                        <th className="border px-2 py-1.5">Sub Number</th>
-                                        <th className="border px-2 py-1.5">Costcenter</th>
-                                        <th className="border px-2 py-1.5">Plan</th>
-                                        <th className="border px-2 py-1.5">Usage</th>
-                                        <th className="border px-2 py-1.5">Discount/Adj.</th>
-                                        <th className="border px-2 py-1.5">Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(
-                                        (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || [])
-                                            .filter((detail: any) => {
-                                                const subNo = detail.subs?.sub_no || detail.sub_no || '';
-                                                return subNo.toLowerCase().includes(costCenterFilter.toLowerCase());
-                                            })
-                                    ).map((detail: any, idx: number) => {
-                                        const editKey = String(detail.util2_id || detail.id);
-                                        const usageVal = detailsEdits[editKey]?.usage ?? (detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00');
-                                        const discVal = detailsEdits[editKey]?.disc ?? (detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00');
-                                        // Calculate amount for each row
-                                        let plan = (!utilId || utilId <= 0) ? parseFloat(accountInfo?.plan ?? '0') || 0 : parseFloat(detail.plan ?? '0') || 0;
-                                        const usage = parseFloat(usageVal) || 0;
-                                        const disc = parseFloat(discVal) || 0;
-                                        const amtVal = ((plan + usage) - disc).toFixed(2);
-                                        const planVal = (!utilId || utilId <= 0) ? (accountInfo?.plan ?? '-') : (detail.plan || '-');
-                                        return (
-                                            <tr key={editKey}>
-                                                <td className="border px-2 text-center">{idx + 1}</td>
-                                                <td className="border px-2">{detail.subs?.sub_no || detail.sub_no || '-'}</td>
-                                                <td className="border px-2">{detail.costcenter?.name || '-'}</td>
-                                                <td className="border px-2 text-right">{planVal}</td>
-                                                <td className="border px-2 text-right">
-                                                    <Input
-                                                        type="text"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={usageVal}
-                                                        onChange={e => {
-                                                            const val = e.target.value;
-                                                            setDetailsEdits(prev => ({
-                                                                ...prev,
-                                                                [editKey]: {
-                                                                    ...prev[editKey],
-                                                                    usage: val
-                                                                }
-                                                            }));
-                                                        }}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100"
-                                                    />
-                                                </td>
-                                                <td className="border px-2 text-right">
-                                                    <Input
-                                                        type="text"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={discVal}
-                                                        onChange={e => {
-                                                            const val = e.target.value;
-                                                            setDetailsEdits(prev => ({
-                                                                ...prev,
-                                                                [editKey]: {
-                                                                    ...prev[editKey],
-                                                                    disc: val
-                                                                }
-                                                            }));
-                                                        }}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100"
-                                                    />
-                                                </td>
-                                                <td className="border px-2 text-right">
-                                                    <Input
-                                                        type="text"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={amtVal}
-                                                        readOnly
-                                                        tabIndex={-1}
-                                                        className="w-full text-right border-0 rounded-none bg-gray-100"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
+                        <table className="min-w-full border text-sm">
+                            <thead className="bg-gray-200 sticky -top-1 z-10">
+                                <tr>
+                                    <th className="border px-2 py-1.5">#</th>
+                                    <th className="border px-2 py-1.5">Sub Number</th>
+                                    <th className="border px-2 py-1.5">Costcenter</th>
+                                    <th className="border px-2 py-1.5">Plan</th>
+                                    <th className="border px-2 py-1.5">Usage</th>
+                                    <th className="border px-2 py-1.5">Discount/Adj.</th>
+                                    <th className="border px-2 py-1.5">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(
+                                    (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || [])
+                                        .filter((detail: any) => {
+                                            const subNo = detail.subs?.sub_no || detail.sub_no || '';
+                                            return subNo.toLowerCase().includes(costCenterFilter.toLowerCase());
+                                        })
+                                ).map((detail: any, idx: number) => {
+                                    const editKey = String(detail.util2_id || detail.id);
+                                    const usageVal = detailsEdits[editKey]?.usage ?? (detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00');
+                                    const discVal = detailsEdits[editKey]?.disc ?? (detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00');
+                                    // Calculate amount for each row
+                                    let plan = (!utilId || utilId <= 0) ? parseFloat(accountInfo?.plan ?? '0') || 0 : parseFloat(detail.plan ?? '0') || 0;
+                                    const usage = parseFloat(usageVal) || 0;
+                                    const disc = parseFloat(discVal) || 0;
+                                    const amtVal = ((plan + usage) - disc).toFixed(2);
+                                    const planVal = (!utilId || utilId <= 0) ? (accountInfo?.plan ?? '-') : (detail.plan || '-');
+                                    return (
+                                        <tr key={editKey}>
+                                            <td className="border px-2 text-center">{idx + 1}</td>
+                                            <td className="border px-2">{detail.subs?.sub_no || detail.sub_no || '-'}</td>
+                                            <td className="border px-2">{detail.costcenter?.name || '-'}</td>
+                                            <td className="border px-2 text-right">{planVal}</td>
+                                            <td className="border px-2 text-right">
+                                        <Input
+                                            type="text"
+                                            step="0.01"
+                                            min="0"
+                                            value={usageVal}
+                                            onFocus={e => e.currentTarget.select()}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setDetailsEdits(prev => ({
+                                                    ...prev,
+                                                    [editKey]: {
+                                                        ...prev[editKey],
+                                                        usage: val
+                                                    }
+                                                }));
+                                            }}
+                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                        />
+                                            </td>
+                                            <td className="border px-2 text-right">
+                                        <Input
+                                            type="text"
+                                            step="0.01"
+                                            min="0"
+                                            value={discVal}
+                                            onFocus={e => e.currentTarget.select()}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setDetailsEdits(prev => ({
+                                                    ...prev,
+                                                    [editKey]: {
+                                                        ...prev[editKey],
+                                                        disc: val
+                                                    }
+                                                }));
+                                            }}
+                                            className="w-full text-right border-0 rounded-none bg-gray-100"
+                                        />
+                                            </td>
+                                            <td className="border px-2 text-right">
+                                                <Input
+                                                    type="text"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={amtVal}
+                                                    readOnly
+                                                    tabIndex={-1}
+                                                    className="w-full text-right border-0 rounded-none bg-gray-100"
+                                                />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div className="w-full lg:max-w-sm space-y-6">
-                    <div className="w-full md:w-72 lg:w-80 xl:w-96 border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
+            </div>
+            <div className="w-full lg:max-w-sm space-y-6">
+                <Card className="w-full md:w-72 lg:w-80 xl:w-96 h-fit shadow-none bg-stone-50 dark:bg-stone-800">
+                    <CardHeader className="pb-2">
+                        <CardTitle>Amount by Cost Center</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                         {selectedAccountId && accountInfo && (
-                            <div>
+                            <div className="mb-4">
                                 <h4 className="font-semibold mb-1">Account Info</h4>
                                 <div className="flex flex-col space-x-4 mb-2 text-sm text-gray-700">
                                     <div><span className="font-medium">Account Master:</span> {accountInfo.account_master}</div>
@@ -608,7 +701,6 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                 </div>
                             </div>
                         )}
-                        <h3 className="text-lg font-semibold my-4">Amount by Cost Center</h3>
                         <table className="min-w-full border text-xs">
                             <thead className="bg-gray-200">
                                 <tr>
@@ -625,10 +717,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
-        </>
+        </div>
     );
 };
 

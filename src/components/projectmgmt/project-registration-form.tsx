@@ -13,7 +13,8 @@ import { SingleSelect, MultiSelect, type ComboboxOption } from '@/components/ui/
 import { Plus, Trash2, MoreVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import ExcelJS from 'exceljs';
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
+import { Switch } from '@/components/ui/switch';
 import Flatpickr from 'react-flatpickr';
 import 'flatpickr/dist/flatpickr.css';
 import { authenticatedApi } from '@/config/api';
@@ -192,6 +193,12 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     // Force-remount draft inputs (esp. Flatpickr) after save to ensure UI clears
     const [scopeFormKey, setScopeFormKey] = useState(0);
     const [savingProgressId, setSavingProgressId] = useState<string | null>(null);
+    // Burnup planned mode: 'scope' (recommended) or 'linear'
+    const [plannedMode, setPlannedMode] = useState<'scope' | 'linear'>('scope');
+    const [showPlanned, setShowPlanned] = useState(true);
+    const [showActual, setShowActual] = useState(true);
+    const [showValues, setShowValues] = useState(true);
+    const [completionMode, setCompletionMode] = useState<'actual' | 'planned'>('actual');
 
     // If actual dates are blank, mirror planned dates when planned changes
     useEffect(() => {
@@ -358,13 +365,10 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         return { startDate: sortedByStart[0].startDate, endDate: sortedByEnd[sortedByEnd.length - 1].endDate };
     }, [watchDeliverables]);
 
+    // Duration in mandays (Mon–Fri), across the overall project window
     const durationDays = useMemo(() => {
         if (!timeline.startDate || !timeline.endDate) return 0;
-        const start = parseISO(timeline.startDate);
-        const end = parseISO(timeline.endDate);
-        if (!isDateValid(start) || !isDateValid(end)) return 0;
-        const diff = differenceInCalendarDays(end, start) + 1;
-        return diff > 0 ? diff : 0;
+        return calcMandays(timeline.startDate, timeline.endDate);
     }, [timeline]);
 
     // Total planned effort (mandays) across all scopes
@@ -794,6 +798,46 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         return `${y}-${m}-${day}`;
     }
 
+    // Small numeric label renderer for burnup points
+    const BurnupValueLabel = (props: any) => {
+        const { x, y, value, color } = props;
+        if (value == null || Number.isNaN(Number(value))) return null;
+        const yy = typeof y === 'number' ? y - 6 : 0;
+        return (
+            <text x={x} y={yy} textAnchor="middle" fontSize={10} fill={color || '#334155'}>
+                {Number(value).toFixed(0)}
+            </text>
+        );
+    };
+
+    // Custom clickable legend to toggle series visibility
+    const BurnupLegend = ({ payload }: any) => {
+        return (
+            <div className="flex items-center justify-center gap-6 pb-2 text-xs">
+                <button
+                    type="button"
+                    onClick={() => setShowPlanned(v => !v)}
+                    className={`flex items-center gap-1 ${showPlanned ? '' : 'line-through text-muted-foreground'}`}
+                    aria-pressed={showPlanned}
+                    title="Toggle Planned"
+                >
+                    <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
+                    Planned
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setShowActual(v => !v)}
+                    className={`flex items-center gap-1 ${showActual ? '' : 'line-through text-muted-foreground'}`}
+                    aria-pressed={showActual}
+                    title="Toggle Actual"
+                >
+                    <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }} />
+                    Actual
+                </button>
+            </div>
+        );
+    };
+
     function formatDMY(startDate: string): string | number | readonly string[] | undefined {
         if (!startDate) return '';
         try {
@@ -811,9 +855,9 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         <div className="space-y-6">
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
                 {/* Main + Aside layout (align aside with very top, incl. tags) */}
-                <div className="grid gap-6 md:grid-cols-[1fr_360px]">
+                <div className="grid gap-6 md:grid-cols-[1fr_360px] items-stretch">
                     {/* Left column: Register Project */}
-                    <Card className="self-start shadow-none bg-stone-50">
+                    <Card className="self-stretch h-full flex flex-col shadow-none bg-stone-50">
                         <CardHeader>
                             <CardTitle className="text-base">{editProjectId ? 'Edit Project' : 'Register Project'}</CardTitle>
                             <CardDescription>{editProjectId ? 'Update details, add scopes, and save changes.' : 'Capture core delivery details and planned scopes.'}</CardDescription>
@@ -906,9 +950,11 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                     <Label>Project due (auto)</Label>
                                     <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Duration (days)</Label>
-                                    <Input value={durationDays ? `${durationDays} days` : ''} readOnly placeholder="Auto calculated" />
+                                <div className="space-y-1">
+                                    <Label>Duration (mandays, Mon–Fri)</Label>
+                                    <Input value={durationDays ? `${durationDays}` : ''} readOnly placeholder="Auto calculated" />
+                                    <p className="text-xs text-muted-foreground">Sum of working days between Project start and due.</p>
+                                    <p className="text-xs text-muted-foreground">Scopes total: {totalPlannedEffort} md</p>
                                 </div>
                             </div>
                             <div className="flex justify-end gap-2">
@@ -939,7 +985,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                     </Card>
 
                     {/* Aside: Manage Project Scopes */}
-                    <Card className="md:sticky md:top-4 self-start shadow-none bg-stone-50">
+                    <Card className="self-stretch h-full flex flex-col shadow-none bg-stone-50">
                         <CardHeader>
                             <CardTitle className="text-base">Manage Project Scopes</CardTitle>
                             <CardDescription>Add and edit scope items for this project.</CardDescription>
@@ -990,10 +1036,26 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             )}
                         </div>
                         <div className="space-y-2">
-                            <Label>Planned dates</Label>
+                            <div className="flex items-center justify-between">
+                                <Label>Planned dates</Label>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                        setDraftValue('startDate', '', { shouldDirty: true });
+                                        setDraftValue('endDate', '', { shouldDirty: true });
+                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                        setScopeFormKey(k => k + 1); // force Flatpickr remount to clear UI
+                                    }}
+                                >
+                                    Clear
+                                </Button>
+                            </div>
                             <Flatpickr
                                 key={`planned-${scopeFormKey}`}
-                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left' }}
+                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
                                 className="form-input"
                                 value={(() => {
                                     const s = watchDraft('startDate');
@@ -1004,6 +1066,13 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                 })()}
                                 onChange={(dates: any[]) => {
                                     const [s, e] = dates || [];
+                                    if (!dates || dates.length === 0) {
+                                        setDraftValue('startDate', '', { shouldDirty: true });
+                                        setDraftValue('endDate', '', { shouldDirty: true });
+                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                        return;
+                                    }
                                     if (s instanceof Date) {
                                         const d = toDateOnlyLocal(s);
                                         setDraftValue('startDate', d, { shouldDirty: true });
@@ -1037,10 +1106,24 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             )}
                         </div>
                         <div className="space-y-2">
-                            <Label>Actual dates</Label>
+                            <div className="flex items-center justify-between">
+                                <Label>Actual dates</Label>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    onClick={() => {
+                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                        setScopeFormKey(k => k + 1);
+                                    }}
+                                >
+                                    Clear
+                                </Button>
+                            </div>
                             <Flatpickr
                                 key={`actual-${scopeFormKey}`}
-                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left' }}
+                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
                                 className="form-input"
                                 value={(() => {
                                     const s = watchDraft('actualStartDate');
@@ -1051,6 +1134,11 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                 })()}
                                 onChange={(dates: any[]) => {
                                     const [s, e] = dates || [];
+                                    if (!dates || dates.length === 0) {
+                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                        return;
+                                    }
                                     if (s instanceof Date) setDraftValue('actualStartDate', toDateOnlyLocal(s), { shouldDirty: true });
                                     if (e instanceof Date) setDraftValue('actualEndDate', toDateOnlyLocal(e), { shouldDirty: true });
                                 }}
@@ -1297,8 +1385,29 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                     {/* Burnup Chart */}
                     {timeline.startDate && timeline.endDate && (
                         <div className="space-y-2">
-                            <h4 className="text-sm font-semibold">Burnup Chart</h4>
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold">Burnup Chart</h4>
+                                <div className="flex items-center gap-4 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-muted-foreground">Values</span>
+                                        <Switch checked={showValues} onCheckedChange={setShowValues} />
+                                    </div>
+                                    <span className="text-muted-foreground">Planned mode</span>
+                                    <Select value={plannedMode} onValueChange={(v) => setPlannedMode(v as 'scope' | 'linear')}>
+                                        <SelectTrigger className="h-7 w-[160px]">
+                                            <SelectValue placeholder="By scope" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="scope">By scope (recommended)</SelectItem>
+                                            <SelectItem value="linear">Linear by window</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
                             <div className="h-[500px] max-w-5xl mx-auto border rounded-xl p-4" ref={burnupRef}>
+                                <div className="text-sm font-semibold mb-2 truncate">
+                                    {watch('name') || 'Untitled Project'}
+                                </div>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={(() => {
                                         const s0 = parseISO(timeline.startDate!);
@@ -1310,11 +1419,29 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                         const today = new Date();
 
                                         // helper to compute planned/actual up to a date
-                                        const plannedAt = (date: Date) => {
-                                            const totalDays = Math.max(1, differenceInCalendarDays(e0, s0) + 1);
-                                            const elapsed = Math.min(totalDays, Math.max(0, differenceInCalendarDays(date, s0) + 1));
-                                            return totalPlanned * (elapsed / totalDays);
+                                        const plannedAtLinear = (date: Date) => {
+                                            const totalMd = Math.max(1, calcMandays(timeline.startDate!, timeline.endDate!));
+                                            const elapsedMd = Math.max(0, Math.min(totalMd, calcMandays(timeline.startDate!, date.toISOString().slice(0,10))));
+                                            return totalPlanned * (elapsedMd / totalMd);
                                         };
+                                        const plannedAtByScope = (date: Date) => {
+                                            const dateStr = date.toISOString().slice(0,10);
+                                            let sum = 0;
+                                            (watchDeliverables ?? []).forEach((d: any) => {
+                                                if (!d?.startDate || !d?.endDate) return;
+                                                const sd = parseISO(d.startDate);
+                                                const ed = parseISO(d.endDate);
+                                                if (!isDateValid(sd) || !isDateValid(ed)) return;
+                                                const md = typeof d?.mandays === 'number' ? d.mandays : calcMandays(d.startDate, d.endDate);
+                                                const denom = Math.max(1, calcMandays(d.startDate, d.endDate));
+                                                if (date < sd) return; // no contribution yet
+                                                if (date >= ed) { sum += md; return; }
+                                                const elapsed = Math.max(0, Math.min(denom, calcMandays(d.startDate, dateStr)));
+                                                sum += md * (elapsed / denom);
+                                            });
+                                            return sum;
+                                        };
+                                        const plannedAt = (date: Date) => plannedMode === 'scope' ? plannedAtByScope(date) : plannedAtLinear(date);
                                         const actualAt = (date: Date) => {
                                             let actual = 0;
                                             (watchDeliverables ?? []).forEach((d: any) => {
@@ -1382,14 +1509,107 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                                 </div>
                                             );
                                         }} />
-                                        <Legend verticalAlign="top" align="center" wrapperStyle={{ width: '100%', textAlign: 'center', paddingBottom: 8 }} />
-                                        <Line type="monotone" dataKey="Planned" stroke="#2563eb" strokeWidth={2} dot={false} />
-                                        <Line type="monotone" dataKey="Actual" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                                        <Legend verticalAlign="top" align="center" content={<BurnupLegend />} />
+                                        {showPlanned && (
+                                            <Line type="monotone" dataKey="Planned" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }}>
+                                                {showValues && (
+                                                    <LabelList dataKey="Planned" content={(p: any) => <BurnupValueLabel {...p} color="#2563eb" />} />
+                                                )}
+                                            </Line>
+                                        )}
+                                        {showActual && (
+                                            <Line type="monotone" dataKey="Actual" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }}>
+                                                {showValues && (
+                                                    <LabelList dataKey="Actual" content={(p: any) => <BurnupValueLabel {...p} color="#f59e0b" />} />
+                                                )}
+                                            </Line>
+                                        )}
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
                     )}
+
+                    {/* Scope Completion Trend */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold">Scope Completion Trend</h4>
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground">Completion by</span>
+                                <Select value={completionMode} onValueChange={(v) => setCompletionMode(v as 'actual' | 'planned')}>
+                                    <SelectTrigger className="h-7 w-[160px]">
+                                        <SelectValue placeholder="Actual end" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="actual">Actual end</SelectItem>
+                                        <SelectItem value="planned">Planned end</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div className="h-[340px] max-w-5xl mx-auto border rounded-xl p-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={(() => {
+                                    const ends: { date: Date; name: string }[] = [];
+                                    (watchDeliverables ?? []).forEach((d: any, i: number) => {
+                                        const endStr = completionMode === 'actual' ? (d?.actualEndDate || '') : (d?.endDate || '');
+                                        if (!endStr) return;
+                                        const ed = parseISO(endStr);
+                                        if (!isDateValid(ed)) return;
+                                        ends.push({ date: ed, name: d?.name || `Scope ${i + 1}` });
+                                    });
+                                    if (!ends.length) return [] as any[];
+                                    ends.sort((a, b) => a.date.getTime() - b.date.getTime());
+                                    const minD = ends[0].date;
+                                    const maxD = ends[ends.length - 1].date;
+                                    const s = startOfWeek(minD, { weekStartsOn: 1 });
+                                    const rows: any[] = [];
+                                    let wStart = s;
+                                    while (wStart <= maxD) {
+                                        const wEnd = addDays(wStart, 6) > maxD ? maxD : addDays(wStart, 6);
+                                        const completed = ends.filter(e => e.date <= wEnd).length;
+                                        const thisWeekTitles = ends.filter(e => e.date >= wStart && e.date <= wEnd).map(e => e.name);
+                                        rows.push({
+                                            date: `${formatDate(wStart, 'dd/MM')}–${formatDate(wEnd, 'dd/MM')}`,
+                                            Completed: completed,
+                                            weekTitles: thisWeekTitles,
+                                        });
+                                        wStart = addWeeks(wStart, 1);
+                                    }
+                                    return rows;
+                                })()}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={70} interval={0} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 10 }} label={{ value: '# Completed', angle: -90, position: 'insideLeft', offset: 10 }} />
+                                    <Tooltip content={({ active, payload, label }) => {
+                                        if (!active || !payload?.length) return null as any;
+                                        const cnt = payload.find((p: any) => p.dataKey === 'Completed')?.value;
+                                        const newScopes = (payload?.[0]?.payload?.weekTitles as string[] | undefined) ?? [];
+                                        return (
+                                            <div className="rounded border bg-background p-2 text-xs">
+                                                <div className="font-medium mb-1">{label}</div>
+                                                <div className="text-emerald-600">Completed: {cnt}</div>
+                                                {newScopes.length ? (
+                                                    <div className="mt-1">
+                                                        <div className="text-foreground font-medium">This week:</div>
+                                                        <div className="max-w-[280px] whitespace-normal leading-snug">{newScopes.join(', ')}</div>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    }} />
+                                    {showValues && (
+                                        <Line type="monotone" dataKey="Completed" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }}>
+                                            <LabelList dataKey="Completed" content={(p: any) => <BurnupValueLabel {...p} color="#10b981" />} />
+                                        </Line>
+                                    )}
+                                    {!showValues && (
+                                        <Line type="monotone" dataKey="Completed" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} />
+                                    )}
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                 </div>
 
 
