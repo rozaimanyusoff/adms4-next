@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Users, AlertTriangle, FileText, Search, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Upload, Users, AlertTriangle, FileText, Search, Loader2 } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -172,10 +172,8 @@ export function TrainingForm() {
 			setCourseLoading(true);
 			setCourseError(null);
 			try {
-				const res = await authenticatedApi.get('/api/training/courses', {
-					params: { search: trainingTitleValue.trim() },
-					signal: controller.signal,
-				});
+				const config = { params: { search: trainingTitleValue.trim() }, signal: controller.signal } as any;
+				const res = await authenticatedApi.get('/api/training/courses', config);
 				const data = (res as any)?.data;
 				const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 				if (cancelled) return;
@@ -549,11 +547,7 @@ export function TrainingForm() {
 										onChange={(event) => setParticipantSearch(event.target.value)}
 									/>
 								</div>
-								<div
-									className={`relative max-h-[420px] space-y-2 overflow-y-auto rounded-2xl border border-dashed bg-white/70 p-3 transition-all duration-300 ${
-										selectedPanelOpen ? 'blur-[2px] opacity-50' : 'opacity-100'
-									}`}
-								>
+								<div className="max-h-[420px] space-y-2 overflow-y-auto rounded-2xl border border-dashed bg-white/70 p-3">
 									{participantLoading ? (
 										<div className="flex items-center gap-2 text-sm text-muted-foreground">
 											<Loader2 className="size-4 animate-spin" />
@@ -601,33 +595,18 @@ export function TrainingForm() {
 							</div>
 							{selectedParticipantDetails.length > 0 && (
 								<div className="space-y-3">
-									<div className="relative">
-										<button
-											type="button"
-											className="flex w-full items-center justify-center gap-2 rounded-full border border-dashed bg-white/80 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/5"
-											onClick={() => setSelectedPanelOpen((prev) => !prev)}
-										>
-											{selectedPanelOpen ? (
-												<>
-													<ChevronDown className="size-4" />
-													Hide selected ({selectedParticipantDetails.length})
-												</>
-											) : (
-												<>
-													<ChevronUp className="size-4" />
-													Show selected ({selectedParticipantDetails.length})
-												</>
-											)}
-										</button>
-										{selectedPanelOpen && (
-											<div className="absolute bottom-[calc(100%+0.75rem)] left-0 right-0 z-20 rounded-3xl border bg-white p-5 shadow-2xl">
-												<div className="mb-3 flex items-center justify-between">
-													<p className="text-sm font-semibold">Selected participants</p>
-													<span className="text-xs text-muted-foreground">{selectedParticipantDetails.length} total</span>
-												</div>
-												<ol className="space-y-2">
+									<div className="rounded-2xl border bg-white">
+										<div className="p-4">
+											<div className="flex items-center justify-between">
+												<p className="text-sm font-semibold">Selected participants</p>
+												<span className="text-xs text-muted-foreground">{selectedParticipantDetails.length} total</span>
+											</div>
+											<div
+												className={`overflow-hidden transition-[max-height] duration-300 ${selectedPanelOpen ? 'max-h-96' : 'max-h-0'}`}
+											>
+												<ol className="mt-3 space-y-2">
 													{selectedParticipantDetails.map((participant, index) => (
-														<li key={participant.id} className="flex items-center gap-3 rounded-2xl border bg-slate-50 px-3 py-2">
+														<li key={participant.id} className="flex items-center gap-3 rounded-xl border bg-slate-50 px-3 py-2">
 															<span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
 																{index + 1}
 															</span>
@@ -636,7 +615,14 @@ export function TrainingForm() {
 													))}
 												</ol>
 											</div>
-										)}
+										</div>
+										<button
+											type="button"
+											className="w-full rounded-b-2xl border-t bg-slate-100 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+											onClick={() => setSelectedPanelOpen((prev) => !prev)}
+										>
+											{selectedPanelOpen ? 'Hide selected' : 'Show selected'} ({selectedParticipantDetails.length})
+										</button>
 									</div>
 								</div>
 							)}
