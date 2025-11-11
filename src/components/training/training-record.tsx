@@ -1,28 +1,35 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCcw, FileDown, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { Plus, Loader2, FileDown, CornerUpLeft, FileSpreadsheet } from 'lucide-react';
+import ExcelJS from 'exceljs';
 import { authenticatedApi } from '@/config/api';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import TrainingForm from '@/components/training/training-form';
 import {
     TrainingRecord,
     normalizeTrainingRecord,
     formatDateTime,
-    formatCurrency,
 } from '@/components/training/utils';
 
 const TrainingRecordList = () => {
     const [records, setRecords] = useState<TrainingRecord[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [selectedDetail, setSelectedDetail] = useState<TrainingRecord | null>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
+    const [participantYear, setParticipantYear] = useState<string>('all');
+    const [participantReport, setParticipantReport] = useState<any[]>([]);
+    const [participantLoading, setParticipantLoading] = useState(false);
     const [showForm, setShowForm] = useState(false);
+    const [editingId, setEditingId] = useState<number | null>(null);
 
     const loadRecords = useCallback(async () => {
         setLoading(true);
@@ -45,21 +52,105 @@ const TrainingRecordList = () => {
         loadRecords();
     }, [loadRecords]);
 
-    const fetchTrainingDetail = useCallback(async (record: TrainingRecord) => {
-        setDetailLoading(true);
-        try {
-            const res = await authenticatedApi.get(`/api/training/${record.training_id}`);
-            const payload = (res as any)?.data;
-            const detail = normalizeTrainingRecord(payload?.data ?? payload ?? record);
-            setSelectedDetail(detail);
-            toast.info('Training detail loaded', { description: detail.course_title });
-        } catch (err: any) {
-            const message = err?.response?.data?.message || 'Unable to load training detail';
-            toast.error(message);
-        } finally {
-            setDetailLoading(false);
-        }
+    const handleRowDoubleClick = useCallback((record: TrainingRecord) => {
+        // Open form in edit mode and let the form fetch by id
+        setEditingId(record.training_id);
+        setShowForm(true);
     }, []);
+
+    const YEAR_OPTIONS = Array.from({ length: 5 }, (_, index) => String(new Date().getFullYear() - index));
+    useEffect(() => {
+        const loadParticipants = async () => {
+            setParticipantLoading(true);
+            try {
+                const params = participantYear === 'all' ? undefined : { year: participantYear };
+                const res = await authenticatedApi.get('/api/training/participants', { params } as any);
+                const data = (res as any)?.data;
+                const list = Array.isArray(data?.data)
+                    ? data.data
+                    : Array.isArray(data?.items)
+                        ? data.items
+                        : Array.isArray(data)
+                            ? data
+                            : [];
+                setParticipantReport(list);
+            } catch {
+                setParticipantReport([]);
+            } finally {
+                setParticipantLoading(false);
+            }
+        };
+        loadParticipants();
+    }, [participantYear]);
+
+    const exportParticipants = async () => {
+        if (!participantReport.length) return;
+        const headers = [
+            'No',
+            'Ramco ID',
+            'Name',
+            'Department',
+            'Location',
+            'Position',
+            'Training Title',
+            'Training Date',
+            'Hours',
+            'Days',
+            'Month',
+            'Year',
+        ];
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'ADMS';
+        workbook.created = new Date();
+        const sheet = workbook.addWorksheet('Training Participants');
+        sheet.columns = [
+            { header: 'No', width: 6 },
+            { header: 'Ramco ID', width: 16 },
+            { header: 'Name', width: 32 },
+            { header: 'Department', width: 20 },
+            { header: 'Location', width: 20 },
+            { header: 'Position', width: 20 },
+            { header: 'Training Title', width: 40 },
+            { header: 'Training Date', width: 20 },
+            { header: 'Hours', width: 8 },
+            { header: 'Days', width: 8 },
+            { header: 'Month', width: 10 },
+            { header: 'Year', width: 8 },
+        ];
+        participantReport.forEach((item: any, index: number) => {
+            const details = item.training_details ?? {};
+            const startDate = details.start_date ? new Date(details.start_date) : null;
+            const month = startDate ? startDate.toLocaleString(undefined, { month: 'short' }) : '';
+            const year = startDate ? startDate.getFullYear().toString() : '';
+            sheet.addRow([
+                index + 1,
+                item.participant?.ramco_id ?? '',
+                item.participant?.full_name ?? '',
+                item.participant?.department?.name ?? '',
+                item.participant?.location?.name ?? '',
+                item.participant?.position?.name ?? '',
+                details.course_title ?? '',
+                details.start_date ?? '',
+                details.hrs ?? '',
+                details.days ?? '',
+                month,
+                year,
+            ]);
+        });
+        sheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) {
+                row.font = { bold: true };
+            }
+        });
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `training-participants-${participantYear}.xlsx`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    };
 
     const columns = useMemo<ColumnDef<TrainingRecord>[]>(() => [
         {
@@ -144,128 +235,90 @@ const TrainingRecordList = () => {
     ], []);
 
     return (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                        <CardTitle>Training Records</CardTitle>
-                        <CardDescription>
-                            {showForm
-                                ? 'Use the form to register a new training session.'
-                                : 'Review scheduled trainings and double-click any row for full details.'}
-                        </CardDescription>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" onClick={loadRecords} disabled={loading || showForm}>
-                            {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-                            Refresh
-                        </Button>
-                        <Button type="button" onClick={() => setShowForm((prev) => !prev)}>
-                            <Plus className="size-4" />
-                            {showForm ? 'Back to Records' : 'Register Training'}
-                        </Button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {showForm ? (
-                        <TrainingForm />
-                    ) : (
-                        <>
-                            {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
-                            {loading && (
-                                <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Loader2 className="size-4 animate-spin" />
-                                    Loading training records...
-                                </div>
-                            )}
-                            <CustomDataGrid
-                                data={records}
-                                columns={columns}
-                                pagination={false}
-                                pageSize={10}
-                                inputFilter={false}
-                                onRowDoubleClick={fetchTrainingDetail}
-                                dataExport={false}
-                                rowColHighlight={false}
-                                columnsVisibleOption={false}
-                                gridSettings={false}
-                            />
-                        </>
-                    )}
-                </CardContent>
-            </Card>
-
-            {!showForm && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Training Detail</CardTitle>
-                        <CardDescription>
-                            {selectedDetail ? 'Loaded from the selected record.' : 'Double-click a row to load its full detail.'}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {detailLoading ? (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Loader2 className="size-4 animate-spin" /> Fetching training detail...
-                            </div>
-                        ) : selectedDetail ? (
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Course Title</p>
-                                    <p className="font-semibold">{selectedDetail.course_title}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Session / Series</p>
-                                    <p>{selectedDetail.session || 'n/a'} · {selectedDetail.series || 'No series'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Schedule</p>
-                                    <p>{formatDateTime(selectedDetail.sdate)} → {formatDateTime(selectedDetail.edate)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Venue</p>
-                                    <p>{selectedDetail.venue || '-'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Hours / Days</p>
-                                    <p>{selectedDetail.hrs_num} hrs · {selectedDetail.days_num} day(s)</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Seats & Attendance</p>
-                                    <p>{selectedDetail.training_count || 0} attended · {selectedDetail.seat ?? '-'} seats</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Cost Breakdown</p>
-                                    <ul className="text-sm">
-                                        <li>Venue: {formatCurrency(selectedDetail.cost_venue)}</li>
-                                        <li>Trainer: {formatCurrency(selectedDetail.cost_trainer)}</li>
-                                        <li>Lodging: {formatCurrency(selectedDetail.cost_lodging)}</li>
-                                        <li>Other: {formatCurrency(selectedDetail.cost_other)}</li>
-                                        <li className="font-semibold">Total: {formatCurrency(selectedDetail.cost_total ?? selectedDetail.event_cost)}</li>
-                                    </ul>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Documents</p>
-                                    {selectedDetail.attendance_upload ? (
-                                        <a
-                                            href={selectedDetail.attendance_upload}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="inline-flex items-center gap-1 text-primary hover:underline"
-                                        >
-                                            <FileDown className="size-4" />
-                                            Attendance File
-                                        </a>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">No attendance document uploaded.</p>
-                                    )}
-                                </div>
-                            </div>
+        <div className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 className="text-lg font-semibold">Training Records</h2>
+                    <p className="text-sm text-muted-foreground">
+                        {showForm
+                            ? editingId
+                                ? 'Editing selected training session.'
+                                : 'Use the form to register a new training session.'
+                            : 'Review scheduled trainings and double-click any row to edit in the form.'}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Select value={participantYear} onValueChange={(value) => setParticipantYear(value)}>
+                        <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder="Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All years</SelectItem>
+                            {YEAR_OPTIONS.map((year) => (
+                                <SelectItem key={year} value={year}>
+                                    {year}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button
+                        variant="outline"
+                        onClick={() => void exportParticipants()}
+                        disabled={!participantReport.length || participantLoading}
+                    >
+                        <FileSpreadsheet className="size-4 text-green-600" />
+                        Export Records
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={() => {
+                            // Toggle form; when manually opening form, clear edit state for a fresh form
+                            setEditingId(null);
+                            setShowForm((prev) => !prev);
+                        }}
+                    >
+                        {loading ? (
+                            <Loader2 className="size-4 animate-spin" />
+                        ) : showForm ? (
+                            <CornerUpLeft className="size-4" />
                         ) : (
-                            <p className="text-sm text-muted-foreground">Select a training via double-click to inspect its details.</p>
+                            <Plus className="size-4" />
                         )}
-                    </CardContent>
-                </Card>
+                        {showForm ? 'Back' : 'Register Training'}
+                    </Button>
+                </div>
+            </div>
+
+            {showForm ? (
+                        <TrainingForm
+                            trainingId={editingId ?? undefined}
+                            onSuccess={() => {
+                                setShowForm(false);
+                                setEditingId(null);
+                            }}
+                        />
+            ) : (
+                <>
+                    {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+                    {loading && (
+                        <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin" />
+                            Loading training records...
+                        </div>
+                    )}
+                    <CustomDataGrid
+                        data={records}
+                        columns={columns}
+                        pagination={false}
+                        pageSize={10}
+                        inputFilter={false}
+                        onRowDoubleClick={handleRowDoubleClick}
+                        dataExport={false}
+                        rowColHighlight={false}
+                        columnsVisibleOption={false}
+                        gridSettings={false}
+                    />
+                </>
             )}
         </div>
     );

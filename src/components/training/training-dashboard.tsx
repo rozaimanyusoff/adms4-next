@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
     TrendingUp,
     Users,
@@ -10,7 +9,6 @@ import {
     Loader2,
     AlertTriangle,
     Calendar,
-    RefreshCcw,
 } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -35,6 +33,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     TrainingRecord,
     normalizeTrainingRecord,
     formatDateTime,
@@ -43,7 +48,26 @@ import {
     parseNumber,
 } from '@/components/training/utils';
 
+type TrainingParticipant = {
+    participant_id: number;
+    participant: {
+        ramco_id?: string;
+        full_name?: string;
+        position?: { id?: number; name?: string };
+        department?: { id?: number; name?: string };
+        location?: { id?: number; name?: string };
+    };
+    training_details?: {
+        training_id?: number;
+        course_title?: string;
+        start_date?: string;
+        end_date?: string;
+    };
+};
+
 const sessionColors = ['#6366F1', '#F97316', '#0EA5E9', '#22C55E', '#A855F7', '#EC4899'];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: 5 }, (_, index) => String(CURRENT_YEAR - index));
 
 type StatCardProps = {
     title: string;
@@ -77,12 +101,17 @@ const TrainingDashboard = () => {
     const [records, setRecords] = useState<TrainingRecord[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+    const [participants, setParticipants] = useState<TrainingParticipant[]>([]);
+    const [participantLoading, setParticipantLoading] = useState(false);
+    const [participantError, setParticipantError] = useState<string | null>(null);
 
     const loadRecords = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const res = await authenticatedApi.get('/api/training');
+            const params = selectedYear === 'all' ? undefined : { year: selectedYear };
+            const res = await authenticatedApi.get('/api/training', { params } as any);
             const data = (res as any)?.data;
             const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
             setRecords(list.map(normalizeTrainingRecord));
@@ -92,11 +121,36 @@ const TrainingDashboard = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [selectedYear]);
 
     useEffect(() => {
         loadRecords();
     }, [loadRecords]);
+
+    useEffect(() => {
+        const loadParticipants = async () => {
+            setParticipantLoading(true);
+            setParticipantError(null);
+            try {
+                const res = await authenticatedApi.get('/api/training/participants');
+                const data = (res as any)?.data;
+                const list = Array.isArray(data?.data)
+                    ? data.data
+                    : Array.isArray(data?.items)
+                        ? data.items
+                        : Array.isArray(data)
+                            ? data
+                            : [];
+                setParticipants(list);
+            } catch (err: any) {
+                setParticipantError(err?.response?.data?.message || 'Unable to load participant insights.');
+                setParticipants([]);
+            } finally {
+                setParticipantLoading(false);
+            }
+        };
+        loadParticipants();
+    }, []);
 
     const stats = useMemo(() => {
         const totalHours = records.reduce((sum, record) => sum + (record.hrs_num || 0), 0);
@@ -176,6 +230,36 @@ const TrainingDashboard = () => {
             .slice(0, 5);
     }, [records]);
 
+    const participantSummary = useMemo(() => {
+        const byPosition = new Map<string, number>();
+        const byDepartment = new Map<string, number>();
+        const byLocation = new Map<string, number>();
+        const unique = new Set<string>();
+        participants.forEach((entry) => {
+            const ramco = (entry.participant?.ramco_id ?? entry.participant_id).toString();
+            unique.add(ramco);
+            const position = entry.participant?.position?.name || 'Other';
+            const department = entry.participant?.department?.name || 'Other';
+            const location = entry.participant?.location?.name || 'Other';
+            byPosition.set(position, (byPosition.get(position) || 0) + 1);
+            byDepartment.set(department, (byDepartment.get(department) || 0) + 1);
+            byLocation.set(location, (byLocation.get(location) || 0) + 1);
+        });
+
+        const buildTop = (map: Map<string, number>) =>
+            Array.from(map.entries())
+                .map(([name, value]) => ({ name, value }))
+                .sort((a, b) => b.value - a.value)
+                .slice(0, 4);
+
+        return {
+            totalUnique: unique.size,
+            positionBreakdown: buildTop(byPosition),
+            departmentBreakdown: buildTop(byDepartment),
+            locationBreakdown: buildTop(byLocation),
+        };
+    }, [participants]);
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -183,19 +267,71 @@ const TrainingDashboard = () => {
                     <h1 className="text-2xl font-semibold">Training Dashboard</h1>
                     <p className="text-sm text-muted-foreground">Insights compiled from /api/training.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={loadRecords} disabled={loading}>
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-                        Refresh
-                    </Button>
-                    <Button asChild variant="secondary">
-                        <Link href="/training/training-record">View Records</Link>
-                    </Button>
-                    <Button asChild>
-                        <Link href="/training/training-form">Register Training</Link>
-                    </Button>
+                <div className="flex items-center gap-2">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Year</p>
+                    <Select value={selectedYear} onValueChange={(value) => setSelectedYear(value)}>
+                        <SelectTrigger className="text-sm">
+                            <SelectValue placeholder="Select year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All years</SelectItem>
+                            {YEAR_OPTIONS.map((year) => (
+                                <SelectItem key={year} value={year}>
+                                    {year}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Participation snapshot</CardTitle>
+                    <CardDescription>Summarised from /api/training/participants.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {participantError && <p className="text-sm text-destructive">{participantError}</p>}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs uppercase tracking-wide text-muted-foreground">Tracked participants</p>
+                            <p className="text-3xl font-semibold">{participantLoading ? '...' : participantSummary.totalUnique}</p>
+                            <p className="text-sm text-muted-foreground">unique Ramco IDs attended training</p>
+                        </div>
+                        <div>
+                            {participantLoading ? (
+                                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                            ) : (
+                                <Badge variant="outline" className="text-xs uppercase tracking-wide">
+                                    {participants.length} records
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                        {[
+                            { label: 'Position', data: participantSummary.positionBreakdown },
+                            { label: 'Department', data: participantSummary.departmentBreakdown },
+                            { label: 'Location', data: participantSummary.locationBreakdown },
+                        ].map((group) => (
+                            <div key={group.label} className="space-y-2 rounded-2xl border bg-muted/30 p-3">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">{group.label}</p>
+                                {group.data.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">No data</p>
+                                ) : (
+                                    group.data.map((item) => (
+                                        <div key={item.name} className="flex items-center justify-between text-sm">
+                                            <span>{item.name}</span>
+                                            <span className="font-semibold">{item.value}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
 
             {error && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -354,23 +490,30 @@ const TrainingDashboard = () => {
                 <Card>
                     <CardHeader>
                         <CardTitle>Top Venues</CardTitle>
-                        <CardDescription>Most frequently used locations.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {topVenues.length ? (
-                            topVenues.map((venue) => (
-                                <div key={venue.venue} className="flex items-center justify-between rounded-lg border px-4 py-3">
-                                    <div>
-                                        <p className="font-medium">{venue.venue}</p>
-                                        <p className="text-xs text-muted-foreground">{venue.count} training(s)</p>
-                                    </div>
-                                    <div className="text-right text-sm">
-                                        <p className="font-semibold">{venue.attendees} attendees</p>
-                                        <p className="text-xs text-muted-foreground">Avg {venue.count ? Math.round(venue.attendees / venue.count) : 0} per session</p>
-                                    </div>
+                    <CardDescription>Top venues ranked by session count.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {topVenues.length ? (
+                        topVenues.map((venue) => (
+                            <div
+                                key={venue.venue}
+                                className="flex flex-col gap-1 rounded-xl border bg-white/70 px-4 py-3 shadow-sm transition hover:border-primary/50 hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                            >
+                                <div>
+                                    <p className="font-medium">{venue.venue}</p>
+                                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                        {venue.count} training{venue.count === 1 ? '' : 's'}
+                                    </p>
                                 </div>
-                            ))
-                        ) : (
+                                <div className="text-right">
+                                    <p className="text-lg font-semibold">{venue.attendees} attendees</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Avg {venue.count ? Math.round(venue.attendees / venue.count) : 0} per session
+                                    </p>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
                             <p className="text-sm text-muted-foreground">No venue data captured.</p>
                         )}
                     </CardContent>
