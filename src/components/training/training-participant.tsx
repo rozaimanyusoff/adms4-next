@@ -1,374 +1,210 @@
-'use client';
-import React, { useEffect, useMemo, useState, useContext } from 'react';
+"use client";
+
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
-import { Loader2, Table as TableIcon, List as ListIcon } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
+import { Loader2, FileDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type ApiParticipantItem = {
   participant_id: number;
-  training_id: number;
   participant: {
     ramco_id: string;
     full_name: string;
+    position?: { id: number; name: string } | null;
+    department?: { id: number; name: string } | null;
+    location?: { id: number; name: string } | null;
   };
+  total_training_hours?: string | null;
   training_details: {
     training_id: number;
-    date: string; // e.g. "9/12/2023 9:00 AM"
-    course_title: string;
-    hrs?: string | number | null; // e.g. "14.00"
+    start_date?: string | null;
+    end_date?: string | null;
+    course_title?: string | null;
+    hrs?: string | number | null;
     days?: string | number | null;
     venue?: string | null;
     attendance_upload?: string | null;
   };
-  attendance?: string | null;
 };
 
-interface TrainingParticipantProps {
-  username?: string; // Ramco ID; if omitted, derive from AuthContext
-  className?: string;
-}
+type Row = {
+  no?: number;
+  participant_id: number;
+  ramco_id: string;
+  full_name: string;
+  position: string;
+  department: string;
+  location: string;
+  total_training_hours: string;
+};
 
-function parseDMY(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  // Expected like "9/12/2023 9:00 AM" (DD/MM/YYYY)
-  const [dpart, tpart] = dateStr.split(' ');
-  if (!dpart) return null;
-  const bits = dpart.split('/')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (bits.length < 3) return null;
-  const dd = parseInt(bits[0], 10);
-  const mm = parseInt(bits[1], 10);
-  const yyyy = parseInt(bits[2], 10);
-  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yyyy)) return null;
-  let hh = 0, min = 0;
-  if (tpart) {
-    // Handle simple 12h like "9:00 AM"
-    const m = tpart.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-    if (m) {
-      hh = parseInt(m[1], 10);
-      min = parseInt(m[2], 10);
-      const ampm = (m[3] || '').toUpperCase();
-      if (ampm === 'PM' && hh < 12) hh += 12;
-      if (ampm === 'AM' && hh === 12) hh = 0;
-    }
-  }
-  // Month in JS is 0-based
-  const d = new Date(yyyy, mm - 1, dd, hh, min, 0, 0);
-  return isNaN(d.getTime()) ? null : d;
-}
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '-';
+  return value; // API already provides friendly string like "7/8/2025 9:00 AM"
+};
 
-const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function formatDMY(dateStr?: string | null): string {
-  if (!dateStr) return '-';
-  const d = parseDMY(dateStr);
-  if (!d) return '-';
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = d.getFullYear();
-  return `${dd}/${mm}/${yy}`;
-}
-
-const TrainingParticipant: React.FC<TrainingParticipantProps> = ({ username, className }) => {
+const TrainingParticipant: React.FC<{ username?: string; className?: string }> = ({ username, className }) => {
+  // username is no longer used for filtering; kept for compatibility
   const authCtx = useContext(AuthContext);
-  const effectiveUsername = username || authCtx?.authData?.user?.username || '';
 
+  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [items, setItems] = useState<ApiParticipantItem[]>([]);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
+  const [year, setYear] = useState<string>(String(new Date().getFullYear()));
+
+  const YEAR_OPTIONS = useMemo(() => Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)), []);
 
   useEffect(() => {
     const load = async () => {
-      if (!effectiveUsername) return;
       setLoading(true);
       setError(null);
       try {
-        const res = await authenticatedApi.get('/api/training/participants', {
-          params: { ramco: effectiveUsername },
-        });
-        const raw: any = res?.data;
-        const list: ApiParticipantItem[] = Array.isArray(raw)
-          ? raw
-          : Array.isArray(raw?.data)
-            ? raw.data
-            : Array.isArray(raw?.items)
-              ? raw.items
-              : raw && raw.participant_id
-                ? [raw]
-                : [];
-        setItems(list);
+        const params = year === 'all' ? undefined : { year };
+        const res = await authenticatedApi.get('/api/training/participants', { params } as any);
+        const data: any = (res as any)?.data;
+        const list: ApiParticipantItem[] = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data)
+              ? data
+              : [];
+        const normalized: Row[] = list.map((it) => ({
+          participant_id: Number(it.participant_id),
+          ramco_id: it.participant?.ramco_id || '',
+          full_name: it.participant?.full_name || '',
+          position: it.participant?.position?.name || '-',
+          department: it.participant?.department?.name || '-',
+          location: it.participant?.location?.name || '-',
+          total_training_hours: String(it.total_training_hours ?? it.training_details?.hrs ?? ''),
+        }));
+        setRows(normalized);
       } catch (e: any) {
-        setError(e?.response?.data?.message || 'Failed to load participant trainings');
-        setItems([]);
+        setError(e?.response?.data?.message || 'Unable to load training participants');
+        setRows([]);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [effectiveUsername]);
+  }, [year]);
 
-  const structure = useMemo(() => {
-    type MonthMap = { [monthIndex: number]: ApiParticipantItem[] };
-    const byYear: { [year: number]: MonthMap } = {};
-    let minYear: number | null = null;
-    let maxYear: number | null = null;
+  const columns = useMemo<ColumnDef<Row>[]>(() => [
+    { key: 'no', header: 'No', render: (_row, index) => <span>{index}</span> },
+    { key: 'ramco_id', header: 'Ramco ID', filterable: true, filter: 'input' },
+    { key: 'full_name', header: 'Name', filterable: true, filter: 'input' },
+    { key: 'position', header: 'Position', filterable: true, filter: 'singleSelect' },
+    { key: 'department', header: 'Department', filterable: true, filter: 'singleSelect' },
+    { key: 'location', header: 'Location', filterable: true, filter: 'input' },
+    { key: 'total_training_hours', header: 'Total Hours', sortable: true, render: (r) => (r.total_training_hours ? `${r.total_training_hours}` : '-') },
+  ], []);
 
-    for (const it of items) {
-      const dt = parseDMY(it?.training_details?.date || '') || null;
-      if (!dt) continue;
-      const y = dt.getFullYear();
-      const m = dt.getMonth();
-      if (!(y in byYear)) byYear[y] = {};
-      if (!(m in byYear[y])) byYear[y][m] = [];
-      byYear[y][m].push(it);
-      if (minYear === null || y < minYear) minYear = y;
-      if (maxYear === null || y > maxYear) maxYear = y;
-    }
+  const ExpandContent: React.FC<{ ramcoId: string }> = ({ ramcoId }) => {
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [errorDetails, setErrorDetails] = useState<string | null>(null);
+    const [details, setDetails] = useState<{ trainings_count?: number; training_details?: any[] } | null>(null);
 
-    if (minYear === null || maxYear === null) return { years: [], byYear };
-    // Build contiguous range (ascending), we'll render in descending order
-    const years: number[] = [];
-    for (let y = minYear; y <= maxYear; y++) years.push(y);
-    return { years, byYear };
-  }, [items]);
-
-  const totalsByYear = useMemo(() => {
-    const totals: Record<number, number> = {};
-    for (const y of structure.years) {
-      let sum = 0;
-      const months = structure.byYear[y] || {};
-      for (let m = 0; m < 12; m++) {
-        const arr = months[m] || [];
-        for (const it of arr) {
-          const v = it?.training_details?.hrs;
-          const num = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : 0;
-          if (Number.isFinite(num)) sum += num;
+    useEffect(() => {
+      let cancelled = false;
+      const fetchDetails = async () => {
+        setLoadingDetails(true);
+        setErrorDetails(null);
+        try {
+          const params: any = year === 'all' ? { ramco: ramcoId } : { ramco: ramcoId, year };
+          const res = await authenticatedApi.get('/api/training/participants', { params } as any);
+          const payload: any = (res as any)?.data;
+          if (cancelled) return;
+          let obj: any = payload;
+          if (Array.isArray(payload?.data)) obj = payload.data[0];
+          else if (payload?.data && !Array.isArray(payload?.data)) obj = payload.data;
+          else if (Array.isArray(payload)) obj = payload[0];
+          const list: any[] = Array.isArray(obj?.training_details) ? obj.training_details : [];
+          const count = Number(obj?.trainings_count ?? list.length);
+          setDetails({ trainings_count: count, training_details: list });
+        } catch (e: any) {
+          if (!cancelled) setErrorDetails(e?.response?.data?.message || 'Failed to load details');
+        } finally {
+          if (!cancelled) setLoadingDetails(false);
         }
-      }
-      totals[y] = sum;
-    }
-    return totals;
-  }, [structure]);
+      };
+      fetchDetails();
+      return () => { cancelled = true; };
+    }, [ramcoId, year]);
+
+    if (loadingDetails) return (
+      <div className="p-3 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading details...</div>
+    );
+    if (errorDetails) return (
+      <div className="p-3 text-sm text-destructive">{errorDetails}</div>
+    );
+    const list: any[] = Array.isArray(details?.training_details) ? details!.training_details! : [];
+    return (
+      <div className="p-3 space-y-2">
+        <div className="text-sm text-muted-foreground">Trainings ({details?.trainings_count ?? list.length})</div>
+        {list.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No trainings found for the selected year.</div>
+        ) : (
+          <ul className="space-y-2">
+            {list.map((d: any) => (
+              <li key={d.training_id} className="rounded border p-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">{d.course_title || 'Untitled Course'}</div>
+                  {d.hrs && <Badge variant="outline">{d.hrs} h</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDateTime(d.start_date)} → {formatDateTime(d.end_date)} · Days: {d.days || '-'} · Venue: {d.venue || '-'}
+                </div>
+                {d.attendance_upload ? (
+                  <div className="pt-1">
+                    <a href={d.attendance_upload} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                      <FileDown className="h-3 w-3" /> Attendance
+                    </a>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className={className}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold">Employee Training Records</h3>
-          {effectiveUsername ? (
-            <p className="text-sm text-gray-600">Ramco ID: {effectiveUsername}</p>
-          ) : (
-            <p className="text-sm text-red-600">No username provided.</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={viewMode === 'table' ? 'default' : 'outline'}
-            onClick={() => setViewMode('table')}
-            title="Table view"
-          >
-            <TableIcon className="w-4 h-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant={viewMode === 'list' ? 'default' : 'outline'}
-            onClick={() => setViewMode('list')}
-            title="List view"
-          >
-            <ListIcon className="w-4 h-4" />
-          </Button>
-        </div>
+      <div className="mb-3 flex items-center gap-2">
+        <Select value={year} onValueChange={(v) => setYear(v)}>
+          <SelectTrigger className="h-9 w-40">
+            <SelectValue placeholder="Year" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All years</SelectItem>
+            {YEAR_OPTIONS.map((y) => (
+              <SelectItem key={y} value={y}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Loader2 className="animate-spin w-4 h-4" /> Loading...
-        </div>
-      ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
-      ) : structure.years.length === 0 ? (
-        <div className="text-sm text-gray-500">No training records found.</div>
-      ) : viewMode === 'table' ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-200 text-xs">
-            <thead>
-              <tr className="bg-gray-50 text-xs">
-                <th className="border px-2 py-1 text-left">Year</th>
-                {monthShort.map((m) => (
-                  <th
-                    key={m}
-                    className="border px-2 py-1 text-center w-44 min-w-[11rem] max-w-[11rem]"
-                  >
-                    {m}
-                  </th>
-                ))}
-                <th className="border px-2 py-1 text-right">Total (hrs)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...structure.years].sort((a,b) => b - a).map((y) => {
-                const months = structure.byYear[y] || {};
-                return (
-                  <tr key={y}>
-                    <td className="border px-2 py-1 font-medium">{y}</td>
-                    {Array.from({ length: 12 }, (_, mi) => {
-                      const records = months[mi] || [];
-                      return (
-                        <td
-                          key={`${y}-${mi}`}
-                          className="border align-top px-2 py-1 w-44 min-w-[11rem] max-w-[11rem]"
-                        >
-                          {records.length === 0 ? (
-                            <span className="text-gray-300">—</span>
-                          ) : (
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {records.map((it, idx) => {
-                                const hrs = it?.training_details?.hrs;
-                                const hrsText = typeof hrs === 'number' ? hrs.toFixed(2) : (hrs || '').toString();
-                                const link = it?.training_details?.attendance_upload || '';
-                                const dText = formatDMY(it?.training_details?.date);
-                                return (
-                                  <li key={`${it.participant_id}-${idx}`} className="leading-snug">
-                                    <div className="leading-tight">
-                                      {link ? (
-                                        <button
-                                          type="button"
-                                          className="text-blue-600 text-start hover:underline"
-                                          onClick={() => {
-                                            setPendingUrl(link);
-                                            setPendingTitle(it.training_details.course_title);
-                                            setConfirmOpen(true);
-                                          }}
-                                        >
-                                          {it.training_details.course_title}
-                                        </button>
-                                      ) : (
-                                        <span className="text-gray-800">{it.training_details.course_title}</span>
-                                      )}
-                                      <div className="text-[10px] text-gray-500">{dText} ({hrsText})</div>
-                                    </div>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="border px-2 py-1 text-right font-semibold">
-                      {totalsByYear[y].toFixed(2)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {[...structure.years].sort((a,b) => b - a).map((y) => {
-            const months = structure.byYear[y] || {};
-            return (
-              <div key={`list-${y}`} className="border rounded-md overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 text-xs font-semibold flex items-center justify-between">
-                  <span>Year {y}</span>
-                  <span className="text-gray-600">Total: {totalsByYear[y].toFixed(2)} hrs</span>
-                </div>
-                <div className="p-3">
-                  {Array.from({ length: 12 }, (_, mi) => {
-                    const records = months[mi] || [];
-                    if (records.length === 0) return null;
-                    return (
-                      <div key={`list-${y}-${mi}`} className="mb-3 last:mb-0">
-                        <div className="text-xs font-semibold text-gray-700 mb-1">{monthShort[mi]}</div>
-                        <ul className="list-disc list-inside space-y-1">
-                          {records.map((it, idx) => {
-                            const hrs = it?.training_details?.hrs;
-                            const hrsText = typeof hrs === 'number' ? hrs.toFixed(2) : (hrs || '').toString();
-                            const link = it?.training_details?.attendance_upload || '';
-                            const dText = formatDMY(it?.training_details?.date);
-                            return (
-                              <li key={`ll-${it.participant_id}-${idx}`} className="leading-snug">
-                                <div className="leading-tight">
-                                  {link ? (
-                                    <button
-                                      type="button"
-                                      className="text-blue-600 text-start hover:underline"
-                                      onClick={() => {
-                                        setPendingUrl(link);
-                                        setPendingTitle(it.training_details.course_title);
-                                        setConfirmOpen(true);
-                                      }}
-                                    >
-                                      {it.training_details.course_title}
-                                    </button>
-                                  ) : (
-                                    <span className="text-gray-800">{it.training_details.course_title}</span>
-                                  )}
-                                  <div className="text-[10px] text-gray-500">{dText} ({hrsText})</div>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+      {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+      {loading && (
+        <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading participants...
         </div>
       )}
-
-      {/* Download confirmation dialog */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Download attendance file?</DialogTitle>
-            <DialogDescription>
-              {pendingTitle ? `Training: ${pendingTitle}` : 'Proceed to download the attendance file.'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!pendingUrl) { setConfirmOpen(false); return; }
-                try {
-                  // Try to trigger a direct download; fallback to opening in a new tab
-                  const a = document.createElement('a');
-                  a.href = pendingUrl;
-                  a.download = '';
-                  a.rel = 'noopener noreferrer';
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                } catch (_) {
-                  window.open(pendingUrl, '_blank');
-                } finally {
-                  setConfirmOpen(false);
-                }
-              }}
-            >
-              Download
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CustomDataGrid
+        data={rows}
+        columns={columns}
+        pagination={false}
+        pageSize={10}
+        inputFilter={false}
+        dataExport={false}
+        columnsVisibleOption={false}
+        rowColHighlight={false}
+        gridSettings={false}
+        rowExpandable={{ enabled: true, render: (row: Row) => <ExpandContent ramcoId={row.ramco_id} /> }}
+      />
     </div>
   );
 };

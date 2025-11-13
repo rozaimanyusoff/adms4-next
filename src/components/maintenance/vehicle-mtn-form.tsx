@@ -66,6 +66,7 @@ interface AssessmentDetail {
   qset_desc?: string;
   qset_type?: string;
   adt_ncr?: number;
+  adt_image?: string | null;
 }
 
 function pad2(value: number) {
@@ -167,6 +168,27 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [assessmentError, setAssessmentError] = React.useState<string | null>(null);
   const currentYear = React.useMemo(() => new Date().getFullYear(), []);
   const isReadOnly = Boolean(id);
+  const [ncrDialogOpen, setNcrDialogOpen] = React.useState(false);
+  const [ncrAgreedForAsset, setNcrAgreedForAsset] = React.useState<string | null>(null);
+  const [ncrPromptedAsset, setNcrPromptedAsset] = React.useState<string | null>(null);
+  const hasActiveNcr = Boolean(assetId && assessmentDetails.length > 0);
+  const isNcrLocked = hasActiveNcr && ncrAgreedForAsset === assetId;
+  const ncrIssuesList = React.useMemo(
+    () => assessmentDetails.map((detail) => detail.qset_desc || 'NCR Issue'),
+    [assessmentDetails],
+  );
+  const ncrRemarksText = React.useMemo(() => {
+    if (!ncrIssuesList.length) return '';
+    const lines = ncrIssuesList.map((issue) => `• ${issue}`);
+    return `Vehicle Assessment NCR Findings (${currentYear}):\n${lines.join('\n')}`;
+  }, [currentYear, ncrIssuesList]);
+  const handleSvcTypeChange = React.useCallback(
+    (value: string) => {
+      if (isNcrLocked) return;
+      setSvcType(value);
+    },
+    [isNcrLocked],
+  );
   // Cancellation state (edit mode)
   const [cancelChecked, setCancelChecked] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState('');
@@ -225,6 +247,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     const parsedOdoEndLocal = (odoEnd.trim() === '' ? NaN : Number(odoEnd));
     if (!assetId) newErrors.asset = true;
     if (!svcType && selectedServiceTypeIds.length === 0) newErrors.svcType = true;
+    if (hasActiveNcr && !isNcrLocked) newErrors.svcType = true;
     if (selectedServiceTypeIds.length === 0) newErrors.serviceOptions = true;
     if (isServiceRequest) {
       if (odoStart.trim() === '' || Number.isNaN(parsedOdoStartLocal)) newErrors.odoStart = true;
@@ -240,7 +263,13 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     setErrors(newErrors);
     const messages: string[] = [];
     if (newErrors.asset) messages.push('Please select a vehicle');
-    if (newErrors.svcType) messages.push('Please select type or a service option');
+    if (newErrors.svcType) {
+      if (hasActiveNcr && !isNcrLocked) {
+        messages.push('Resolve the outstanding NCR findings before submitting.');
+      } else {
+        messages.push('Please select type or a service option');
+      }
+    }
     if (newErrors.serviceOptions) messages.push('Select at least one service option');
     if (newErrors.odoStart) messages.push('Enter Current ODO (Service)');
     if (newErrors.odoEnd) messages.push('Enter Service Mileage (Service)');
@@ -300,7 +329,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     } catch (e) {
       toast.error('Failed to submit application');
     }
-  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted, formUpload, formUploadDate]);
+  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted, formUpload, formUploadDate, hasActiveNcr, isNcrLocked]);
 
   // Load existing record (edit mode)
   React.useEffect(() => {
@@ -538,41 +567,26 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       setAssessmentSummaries([]);
       setAssessmentDetails([]);
       try {
-        const res: any = await authenticatedApi.get(`/api/compliance/assessments?asset=${numericAssetId}&year=${currentYear}`);
+        const res: any = await authenticatedApi.get(`/api/compliance/assessments/details/ncr?asset=${numericAssetId}&year=${currentYear}`);
         if (cancelled) return;
         const payload = res?.data?.data ?? res?.data ?? [];
         if (Array.isArray(payload)) {
           setAssessmentSummaries(payload as AssessmentSummary[]);
-          const ncrAssessments = payload.filter((item: any) => Number(item?.a_ncr) > 0);
-          if (ncrAssessments.length > 0) {
-            const detailResults: AssessmentDetail[] = [];
-            for (const assess of ncrAssessments) {
-              if (cancelled) return;
-              const assessId = assess?.assess_id;
-              if (!assessId) continue;
-              try {
-                const detailRes: any = await authenticatedApi.get(`/api/compliance/assessments/${assessId}`);
-                if (cancelled) return;
-                const detailPayload = detailRes?.data?.details ?? detailRes?.data?.data ?? [];
-                if (Array.isArray(detailPayload)) {
-                  detailPayload.forEach((detail: any) => {
-                    if (!detail || typeof detail !== 'object') return;
-                    const type = (detail as any).qset_type;
-                    const ncrValue = Number((detail as any).adt_ncr);
-                    if ((type === 'NCR' || type === 'ncr') && ncrValue > 0) {
-                      detailResults.push(detail as AssessmentDetail);
-                    }
-                  });
-                }
-              } catch {
-                // ignore detail fetch failure for individual assessment
+          const detailResults: AssessmentDetail[] = [];
+          for (const assessment of payload) {
+            if (cancelled) return;
+            const details = Array.isArray(assessment?.details) ? assessment.details : [];
+            details.forEach((detail: any) => {
+              if (!detail || typeof detail !== 'object') return;
+              const type = (detail as any).qset_type;
+              const ncrValue = Number((detail as any).adt_ncr);
+              if ((type === 'NCR' || type === 'ncr') && ncrValue > 0) {
+                detailResults.push(detail as AssessmentDetail);
               }
-            }
-            if (!cancelled) {
-              setAssessmentDetails(detailResults);
-            }
-          } else if (!cancelled) {
-            setAssessmentDetails([]);
+            });
+          }
+          if (!cancelled) {
+            setAssessmentDetails(detailResults);
           }
         } else if (!cancelled) {
           setAssessmentSummaries([]);
@@ -594,6 +608,22 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
     return () => { cancelled = true; };
   }, [assetId, currentYear]);
+
+  React.useEffect(() => {
+    if (!assetId || assessmentDetails.length === 0) {
+      setNcrDialogOpen(false);
+      setNcrPromptedAsset(null);
+      return;
+    }
+    if (ncrAgreedForAsset === assetId) {
+      setNcrDialogOpen(false);
+      return;
+    }
+    if (ncrPromptedAsset !== assetId) {
+      setNcrDialogOpen(true);
+      setNcrPromptedAsset(assetId);
+    }
+  }, [assetId, assessmentDetails.length, ncrAgreedForAsset, ncrPromptedAsset]);
 
   const groupedServiceOptions = React.useMemo(() => {
     if (!serviceOptions.length) return [];
@@ -644,6 +674,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [serviceOptions]);
 
   const handleServiceOptionToggle = React.useCallback((svcTypeId: number, checked: boolean, groupKey?: number) => {
+    if (isNcrLocked) return;
     setSelectedServiceTypeIds((prev) => {
       if (checked) {
         if (prev.includes(svcTypeId)) return prev;
@@ -660,7 +691,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       }
       return prev.filter((idVal) => idVal !== svcTypeId);
     });
-  }, [svcType, carWashGroupKeys]);
+  }, [svcType, carWashGroupKeys, isNcrLocked]);
 
   const handleAttachmentChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];
@@ -752,6 +783,21 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     const visible = serviceOptions.filter((o) => (o.appearance ?? 'user') !== 'admin');
     return visible.filter((o) => o.svcOpt === 32 || /ncr/i.test(o.group_desc || '')).map((o) => o.svcTypeId);
   }, [serviceOptions]);
+
+  const handleNcrDialogAgree = React.useCallback(() => {
+    if (!assetId) return;
+    setSvcType('3');
+    setSelectedServiceTypeIds(ncrIds);
+    if (ncrRemarksText) {
+      setRemarks((prev) => {
+        if (prev?.includes(ncrRemarksText)) return prev;
+        if (!prev) return ncrRemarksText;
+        return `${ncrRemarksText}\n\n${prev}`;
+      });
+    }
+    setNcrAgreedForAsset(assetId);
+    setNcrDialogOpen(false);
+  }, [assetId, ncrIds, ncrRemarksText]);
 
   // Auto-select logic based on Type of Request
   const prevSvcType = React.useRef<string>('');
@@ -1039,23 +1085,23 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   <RadioGroup
                     ref={svcTypeRef as any}
                     value={svcType}
-                    onValueChange={setSvcType}
+                    onValueChange={handleSvcTypeChange}
                     className={[
                       'mt-2 grid grid-cols-3 gap-2',
                       showErrors && errors.svcType ? 'ring-1 ring-red-500 rounded-md p-1' : '',
-                      isReadOnly ? 'pointer-events-none opacity-70' : '',
+                      isReadOnly || isNcrLocked ? 'pointer-events-none opacity-70' : '',
                     ].join(' ')}
                   >
                     <div className="flex items-center gap-2">
-                      <RadioGroupItem id="svc1" value="1" />
+                      <RadioGroupItem id="svc1" value="1" disabled={isReadOnly || isNcrLocked} />
                       <Label htmlFor="svc1">Car Wash</Label>
                     </div>
                     <div className="flex items-center gap-2">
-                      <RadioGroupItem id="svc2" value="2" />
+                      <RadioGroupItem id="svc2" value="2" disabled={isReadOnly || isNcrLocked} />
                       <Label htmlFor="svc2">Service</Label>
                     </div>
                     <div className="flex items-center gap-2">
-                      <RadioGroupItem id="svc3" value="3" />
+                      <RadioGroupItem id="svc3" value="3" disabled={isReadOnly || isNcrLocked} />
                       <Label htmlFor="svc3">NCR Compliance</Label>
                     </div>
                   </RadioGroup>
@@ -1134,7 +1180,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   {groupedServiceOptions.map(({ key, label, items }) => {
                     const anyChecked = items.some((opt) => selectedServiceTypeIds.includes(opt.svcTypeId));
                     const disabledCard =
-                      (isReadOnly || !assetId || !svcType)
+                      (isReadOnly || isNcrLocked || !assetId || !svcType)
                         ? true // guide user: select vehicle and type first
                         : svcType === '1'
                           ? !carWashGroupKeys.has(key)
@@ -1312,14 +1358,30 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 </label>
                 <div className="flex justify-end gap-2" onClick={(e) => {
                   const isServiceRequest = svcType === '2';
-                  const disabledByState = !assetId || (!svcType && selectedServiceTypeIds.length === 0) || !agree || (selectedServiceTypeIds.length === 0) || (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0)));
+                  const disabledByState =
+                    !assetId ||
+                    (!svcType && selectedServiceTypeIds.length === 0) ||
+                    !agree ||
+                    (selectedServiceTypeIds.length === 0) ||
+                    (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0))) ||
+                    (hasActiveNcr && !isNcrLocked);
                   if (disabledByState) {
                     e.stopPropagation();
                     attemptSubmit();
                   }
                 }}>
                   <Button variant="outline" onClick={onClose}>Back</Button>
-                  <Button onClick={attemptSubmit} disabled={!assetId || (!svcType && selectedServiceTypeIds.length === 0) || !agree || (selectedServiceTypeIds.length === 0) || (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0)))}>
+                  <Button
+                    onClick={attemptSubmit}
+                    disabled={
+                      !assetId ||
+                      (!svcType && selectedServiceTypeIds.length === 0) ||
+                      !agree ||
+                      (selectedServiceTypeIds.length === 0) ||
+                      (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0))) ||
+                      (hasActiveNcr && !isNcrLocked)
+                    }
+                  >
                     Done
                   </Button>
                 </div>
@@ -1485,7 +1547,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
             <Separator />
 
             <div className="space-y-2">
-              <div className="text-sm font-semibold text-foreground">NCR Findings ({currentYear})</div>
+              <div className="text-sm font-semibold text-foreground">Vehicle Assessment NCR Findings ({currentYear})</div>
               {!assetId ? (
                 <p className="text-sm text-muted-foreground">Select a vehicle to check NCR compliance.</p>
               ) : assessmentLoading ? (
@@ -1493,10 +1555,21 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
               ) : assessmentError ? (
                 <p className="text-sm text-red-600">{assessmentError}</p>
               ) : assessmentDetails.length > 0 ? (
-                <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                <ul className="list-disc list-inside space-y-3 text-sm text-muted-foreground">
                   {assessmentDetails.map((detail, index) => (
                     <li key={`ncr-detail-${detail.adt_id ?? index}`}>
-                      {detail.qset_desc || 'NCR Issue'}
+                      <div className="space-y-1">
+                        <span>{detail.qset_desc || 'NCR Issue'}</span>
+                        {detail.adt_image && (
+                          <a href={detail.adt_image} target="_blank" rel="noreferrer">
+                            <img
+                              src={detail.adt_image}
+                              alt={detail.qset_desc || 'NCR attachment'}
+                              className="max-h-32 max-w-[220px] rounded border border-border object-cover"
+                            />
+                          </a>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1544,9 +1617,34 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleTermsDecline}>Tidak Setuju</AlertDialogCancel>
             <AlertDialogAction onClick={handleTermsAgree}>Setuju</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+        </AlertDialogFooter>
+      </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={ncrDialogOpen} onOpenChange={(open) => setNcrDialogOpen(open)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Outstanding NCR Findings</DialogTitle>
+            <DialogDescription>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Company policy requires all non-compliance findings to be resolved before a new maintenance request can proceed.
+                  Please confirm that you will address the following NCR findings before submitting the request.
+                </p>
+                <ul className="list-disc list-inside space-y-1">
+                  {ncrIssuesList.map((issue, index) => (
+                    <li key={`ncr-dialog-${index}`}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setNcrDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleNcrDialogAgree}>Agree</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
         <DialogContent>

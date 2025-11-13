@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TrainingDashboard from '@/components/training/training-dashboard';
 import TrainingRecordList from '@/components/training/training-record';
+import TrainingParticipant from './training-participant';
+import TrainingCourses from '@/components/training/training-courses';
 import Link from 'next/link';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
@@ -11,7 +13,7 @@ const TrainingTabs = () => {
     const router = useRouter();
     const pathname = usePathname();
 
-    const allowed = ['dashboard', 'records'] as const;
+    const allowed = ['dashboard', 'records', 'participants', 'courses'] as const;
     const [activeTab, setActiveTab] = useState<string>(() => {
         const tab = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : searchParams?.get('tab')) ?? '';
         return (allowed as readonly string[]).includes(tab) ? tab : 'dashboard';
@@ -20,6 +22,8 @@ const TrainingTabs = () => {
     const tabTitles = [
         { value: 'dashboard', label: 'Dashboard' },
         { value: 'records', label: 'Records' },
+        { value: 'participants', label: 'Participants' },
+        { value: 'courses', label: 'Courses' },
     ];
 
     // Keep state in sync if URL ?tab changes
@@ -50,6 +54,8 @@ const TrainingTabs = () => {
                 <TabsList className="w-full justify-start gap-2">
                     <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                     <TabsTrigger value="records">Records</TabsTrigger>
+                    <TabsTrigger value="participants">Participants</TabsTrigger>
+                    <TabsTrigger value="courses">Courses</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="dashboard">
@@ -58,6 +64,14 @@ const TrainingTabs = () => {
 
                 <TabsContent value="records">
                     <TrainingRecordList />
+                </TabsContent>
+
+                <TabsContent value="participants">
+                    <TrainingParticipant />
+                </TabsContent>
+
+                <TabsContent value="courses">
+                    <TrainingCourses />
                 </TabsContent>
             </Tabs>
         </>
