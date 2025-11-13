@@ -17,6 +17,8 @@ type Course = {
   course_cat?: string | null;
   course_opt?: string | null;
   trainer?: { id?: number; name?: string } | null;
+  // placeholder field for action column rendering in DataGrid
+  actions?: string | null;
 };
 
 const normalizeCourse = (raw: any): Course => ({
