@@ -22,6 +22,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import GanttChart, { type GanttTask } from './GanttChart';
 
 type ProjectRegistrationFormProps = {
     onSubmit: (values: ProjectFormValues) => void;
@@ -52,6 +53,18 @@ const TASK_GROUP_OPTIONS: ComboboxOption[] = [
 ];
 
 // Project tags now a simple string input (API: projectTags)
+
+// Task color palette for Gantt chart
+const TASK_COLORS = [
+    '#3b82f6', // blue
+    '#ef4444', // red  
+    '#10b981', // emerald
+    '#f59e0b', // amber
+    '#8b5cf6', // violet
+    '#06b6d4', // cyan
+    '#f97316', // orange
+    '#84cc16', // lime
+];
 
 const generateId = (prefix: string) => {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -442,6 +455,33 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     const [successOpen, setSuccessOpen] = useState(false);
     const [successInfo, setSuccessInfo] = useState<{ code: string; name: string } | null>(null);
     const [deletingScopeId, setDeletingScopeId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'table' | 'gantt'>('gantt'); // Default to Gantt view
+
+    // Convert deliverables to GanttTask format
+    const ganttTasks: GanttTask[] = useMemo(() => {
+        return (watchDeliverables ?? []).map((deliverable: any, index) => {
+            const assigneeText = (() => {
+                const v = deliverable.assignee;
+                const opt = (assigneeChoices as ComboboxOption[]).find(o => o.value === v);
+                return opt?.label || v || '';
+            })();
+
+            return {
+                id: deliverable.id || `task-${index}`,
+                name: deliverable.name || `Scope ${index + 1}`,
+                startDate: deliverable.startDate || '',
+                endDate: deliverable.endDate || '',
+                progress: deliverable.progress || 0,
+                status: deliverable.status || 'not_started',
+                assignee: assigneeText,
+                mandays: deliverable.mandays || calcMandays(deliverable.startDate, deliverable.endDate),
+                actualStartDate: deliverable.actualStartDate || '',
+                actualEndDate: deliverable.actualEndDate || '',
+                taskGroups: deliverable.taskGroups || [],
+                color: TASK_COLORS[index % TASK_COLORS.length],
+            } as GanttTask;
+        });
+    }, [watchDeliverables, assigneeChoices]);
 
     // Build DataGrid rows for scopes
     type ScopeRow = {
@@ -1243,14 +1283,35 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                     </Card>
                 </div>
 
-                {/* Scopes list using CustomDataGrid */}
+                {/* Scopes list using CustomDataGrid or Gantt Chart */}
                 <div className="space-y-3">
                     <div className='flex items-center justify-between'>
                         <div>
                             <h3 className="text-base font-semibold">Scopes</h3>
                             <p className="text-sm text-muted-foreground">Scopes you add will appear below.</p>
                         </div>
-                    {/* Toolbar above grid */}
+                        {/* View Mode Toggle */}
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                type="button" 
+                                variant={viewMode === 'table' ? 'default' : 'outline'} 
+                                size="sm"
+                                onClick={() => setViewMode('table')}
+                            >
+                                Table View
+                            </Button>
+                            <Button 
+                                type="button" 
+                                variant={viewMode === 'gantt' ? 'default' : 'outline'} 
+                                size="sm"
+                                onClick={() => setViewMode('gantt')}
+                            >
+                                Gantt Chart
+                            </Button>
+                        </div>
+                    </div>
+                    
+                    {/* Toolbar above view */}
                     <div className="flex items-center justify-end gap-2">
                         <Button type="button" variant="secondary" onClick={async () => {
                                 try {
@@ -1369,11 +1430,11 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                         }}>Export Gantt (Excel)</Button>
                         <Button type="button" variant="secondary" onClick={downloadBurnupPNG}>Download Burnup (PNG)</Button>
                     </div>
-                    </div>
-
+                    
+                    {/* Content based on view mode */}
                     {scopeRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No scopes yet. Use the sidebar to add.</p>
-                    ) : (
+                    ) : viewMode === 'table' ? (
                         <CustomDataGrid
                             data={scopeRows}
                             columns={scopeColumns}
@@ -1381,7 +1442,44 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             inputFilter={false}
                             dataExport={false}
                         />
+                    ) : (
+                        <GanttChart
+                            tasks={ganttTasks}
+                            projectStart={timeline.startDate}
+                            projectEnd={timeline.endDate}
+                            onTasksReorder={(reorderedTasks) => {
+                                // Convert reordered tasks back to indices and call handleReorder
+                                reorderedTasks.forEach((task, newIndex) => {
+                                    const oldIndex = ganttTasks.findIndex(t => t.id === task.id);
+                                    if (oldIndex !== -1 && oldIndex !== newIndex) {
+                                        handleReorder(oldIndex, newIndex);
+                                    }
+                                });
+                            }}
+                            onTaskClick={(task) => {
+                                console.log('Task clicked:', task);
+                                // Could open edit dialog here
+                            }}
+                            onTaskEdit={(taskId) => {
+                                const index = ganttTasks.findIndex(t => t.id === taskId);
+                                if (index !== -1) {
+                                    const current: any = (watchDeliverables ?? [])[index] || {};
+                                    setEditingScopeIndex(index);
+                                    setDraftValue('name', current.name || '');
+                                    setDraftValue('description', current.description || '');
+                                    setDraftValue('taskGroups', current.taskGroups || []);
+                                    setDraftValue('assignee', current.assignee || '');
+                                    setDraftValue('startDate', current.startDate || '');
+                                    setDraftValue('endDate', current.endDate || '');
+                                    setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
+                                    setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
+                                    setDraftValue('progress', current.progress ?? 0);
+                                }
+                            }}
+                            className="min-h-[400px]"
+                        />
                     )}
+                </div>
                     {/* Burnup Chart */}
                     {timeline.startDate && timeline.endDate && (
                         <div className="space-y-2">
@@ -1610,7 +1708,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             </ResponsiveContainer>
                         </div>
                     </div>
-                </div>
 
 
             </form>
