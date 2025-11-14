@@ -118,60 +118,47 @@ const SortableTaskRow: React.FC<SortableTaskRowProps> = ({
     : 0;
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style}
-      className="grid grid-cols-[450px_1fr] border-b border-slate-200 hover:bg-blue-50/30 group transition-colors duration-200"
-    >
-      {/* Task Info Column - Sticky */}
-      <div className="p-2 border-r border-slate-200 bg-white flex items-center min-h-[50px] sticky left-0 z-20 shadow-[2px_0_8px_rgba(0,0,0,0.08)]">
+    <React.Fragment>
+      {/* Task Info Cell */}
+      <div 
+        ref={setNodeRef} 
+        style={style}
+        className="p-2 border-b border-r border-slate-200 bg-white flex items-center h-[40px] hover:bg-blue-50/30 transition-colors"
+      >
         {/* Drag Handle */}
         <div 
           {...attributes}
           {...listeners}
-          className="mr-2 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600"
+          className="mr-2 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 flex-shrink-0"
         >
           <GripVertical className="h-4 w-4" />
         </div>
         
-        <div className="grid grid-cols-[200px_1fr] gap-2 flex-1">
+        <div className="grid grid-cols-[180px_1fr] gap-3 flex-1 min-w-0">
           {/* Left: Task Name & Assignee */}
-          <div className="space-y-0.5">
+          <div className="space-y-1 min-w-0">
             <div className="font-semibold text-slate-800 truncate text-sm" title={task.name}>
               {task.name}
             </div>
-            <div className="text-xs text-slate-600">
+            <div className="text-xs text-slate-600 truncate">
               {task.assignee && <span>{task.assignee}</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                task.status === 'completed' ? 'bg-green-100 text-green-700' :
-                task.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                'bg-slate-100 text-slate-600'
-              }`}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full" 
-                      style={{ 
-                        backgroundColor: task.progress <= 25 ? '#dc2626' : 
-                                        task.progress <= 80 ? '#f59e0b' : 
-                                        '#10b981'
-                      }} />
-                {task.progress}%
-              </span>
             </div>
           </div>
 
           {/* Right: Dates & Duration */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-2 gap-2 text-xs min-w-0">
             {/* Planned Column */}
             <div className="space-y-0.5">
               <div className="font-medium text-slate-700">
                 {task.startDate ? format(parseISO(task.startDate), 'dd/MM/yy') : '-'}
               </div>
-              <div className="text-slate-600">
-                {task.endDate ? format(parseISO(task.endDate), 'dd/MM/yy') : '-'}
-              </div>
-              <div className="text-blue-600 font-medium">
-                {task.mandays || 0} <span className="text-slate-500">mandays</span>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-600">
+                  {task.endDate ? format(parseISO(task.endDate), 'dd/MM/yy') : '-'}
+                </span>
+                <span className="text-blue-600 font-medium">
+                  ({task.mandays || 0}md)
+                </span>
               </div>
             </div>
 
@@ -180,109 +167,90 @@ const SortableTaskRow: React.FC<SortableTaskRowProps> = ({
               <div className={`font-medium ${task.actualStartDate ? 'text-slate-700' : 'text-slate-400'}`}>
                 {task.actualStartDate ? format(parseISO(task.actualStartDate), 'dd/MM/yy') : '-'}
               </div>
-              <div className={`${task.actualEndDate ? 'text-slate-600' : 'text-slate-400'}`}>
-                {task.actualEndDate ? format(parseISO(task.actualEndDate), 'dd/MM/yy') : '-'}
-              </div>
-              <div className={`font-medium ${actualDuration > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                {actualDuration > 0 ? actualDuration : '-'} {actualDuration > 0 && <span className="text-slate-500">mandays</span>}
+              <div className="flex items-center gap-1">
+                <span className={`${task.actualEndDate ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {task.actualEndDate ? format(parseISO(task.actualEndDate), 'dd/MM/yy') : '-'}
+                </span>
+                <span className={`font-medium ${actualDuration > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                  ({actualDuration > 0 ? actualDuration : '-'}md)
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Timeline Column */}
-      <div className="relative h-[50px] flex items-center px-2 border-l border-slate-200 bg-white">
-        {/* Grid lines for each time column */}
-        <div className="absolute inset-0 grid z-0" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
-          {timeColumns.map((_, idx) => (
-            <div key={idx} className="border-r border-slate-100 h-full" />
-          ))}
-        </div>
-        
-        {/* Planned Task Bar */}
-        <div
-          className="absolute h-6 rounded-lg cursor-pointer shadow-md border border-white/20 transition-all duration-200 hover:shadow-lg hover:scale-105 z-10"
-          style={{
-            left: `${Math.max(0.5, taskBar.leftPercent)}%`,
-            width: `${Math.min(99 - Math.max(0.5, taskBar.leftPercent), taskBar.widthPercent)}%`,
-            background: `linear-gradient(135deg, ${taskBar.color}F0, ${taskBar.color})`,
-            opacity: showActual ? 0.8 : 1,
-          }}
-          onClick={() => onTaskClick?.(task)}
-          title={`${task.name}\n${format(parseISO(task.startDate), 'MMM dd, yyyy')} - ${format(parseISO(task.endDate), 'MMM dd, yyyy')}\nProgress: ${task.progress}%\nDuration: ${task.mandays || 0} mandays`}
-        >
-          {/* Progress Bar */}
-          {task.progress > 0 && (
-            <div
-              className="h-full rounded-lg backdrop-blur-sm"
-              style={{ 
-                width: `${Math.min(100, task.progress)}%`,
-                background: task.progress <= 25 
-                  ? 'linear-gradient(90deg, rgba(220,38,38,0.5), rgba(220,38,38,0.3))'
-                  : task.progress <= 80
-                    ? 'linear-gradient(90deg, rgba(245,158,11,0.5), rgba(245,158,11,0.3))'
-                    : 'linear-gradient(90deg, rgba(16,185,129,0.5), rgba(16,185,129,0.3))'
-              }}
-            />
-          )}
-          
-          {/* Task Label */}
-          <div className="absolute inset-0 flex items-center px-2 text-white text-xs font-medium truncate">
-            {task.name}
+      {/* Timeline Cell */}
+      <div className="relative h-[40px] flex items-center px-2 border-b border-slate-200 bg-white overflow-x-auto">
+        <div className="min-w-[800px] w-full relative h-full">
+          {/* Grid lines for each time column */}
+          <div className="absolute inset-0 grid z-0" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
+            {timeColumns.map((_, idx) => (
+              <div key={idx} className="border-r border-slate-100 h-full" />
+            ))}
           </div>
           
-          {/* Progress percentage on hover */}
-          <div className="absolute top-0 right-1 -mt-7 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 text-white text-xs px-2 py-1 rounded z-30 whitespace-nowrap">
-            <div className="font-semibold">{task.name}</div>
-            <div className={`font-bold ${
-              task.progress <= 25 ? 'text-red-400' :
-              task.progress <= 80 ? 'text-amber-400' :
-              'text-green-400'
-            }`}>
-              {task.progress}%
-            </div>
-          </div>
-        </div>
-
-        {/* Actual Task Bar (if showing actual and data available) */}
-        {showActual && taskBar.actualBar && (
+          {/* Planned Task Bar - Dashed Border */}
           <div
-            className="absolute h-4 rounded-md border-2 border-dashed z-20"
+            className="absolute h-6 rounded-lg cursor-pointer border-1 border-dashed transition-all duration-200 hover:shadow-md z-10"
             style={{
-              left: `${Math.max(0.5, taskBar.actualBar.leftPercent)}%`,
-              width: `${Math.min(99 - Math.max(0.5, taskBar.actualBar.leftPercent), taskBar.actualBar.widthPercent)}%`,
-              backgroundColor: 'rgba(255,255,255,0.9)',
+              left: `${Math.max(0.5, taskBar.leftPercent)}%`,
+              width: `${Math.min(99 - Math.max(0.5, taskBar.leftPercent), taskBar.widthPercent)}%`,
               borderColor: taskBar.color,
+              backgroundColor: `${taskBar.color}15`,
               top: '50%',
               transform: 'translateY(-50%)',
             }}
-            title={`Actual: ${task.name}\n${task.actualStartDate ? format(parseISO(task.actualStartDate), 'MMM dd, yyyy') : '-'} - ${task.actualEndDate ? format(parseISO(task.actualEndDate), 'MMM dd, yyyy') : '-'}`}
-          />
-        )}
-
-        {/* Today Line */}
-        {(() => {
-          const today = new Date();
-          const todayOffset = differenceInDays(today, timelineStart);
-          const totalDays = differenceInDays(timelineEnd, timelineStart);
-          const todayPercent = (todayOffset / totalDays) * 100;
-          
-          if (todayPercent >= 0 && todayPercent <= 100) {
-            return (
+            onClick={() => onTaskClick?.(task)}
+            title={`Planned: ${task.name}\n${format(parseISO(task.startDate), 'MMM dd, yyyy')} - ${format(parseISO(task.endDate), 'MMM dd, yyyy')}\nDuration: ${task.mandays || 0} mandays`}
+          >
+            {/* Actual Progress Bar - Overlays on Planned */}
+            {showActual && taskBar.actualBar && (
               <div
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 shadow-md"
-                style={{ left: `${todayPercent}%` }}
-                title={`Today: ${format(today, 'MMM dd, yyyy')}`}
+                className="absolute h-full rounded-lg shadow-md border border-white/20 transition-all duration-200"
+                style={{
+                  left: `${Math.max(0, ((taskBar.actualBar.leftPercent - taskBar.leftPercent) / taskBar.widthPercent) * 100)}%`,
+                  width: `${Math.min(100, ((taskBar.actualBar.widthPercent / taskBar.widthPercent) * 100) * (task.progress / 100))}%`,
+                  background: task.progress <= 25 
+                    ? 'linear-gradient(135deg, #dc2626F0, #dc2626)'
+                    : task.progress <= 80
+                      ? 'linear-gradient(135deg, #f59e0bF0, #f59e0b)'
+                      : 'linear-gradient(135deg, #10b981F0, #10b981)',
+                  top: 0,
+                }}
+                title={`Actual: ${task.actualStartDate ? format(parseISO(task.actualStartDate), 'MMM dd, yyyy') : '-'} - ${task.actualEndDate ? format(parseISO(task.actualEndDate), 'MMM dd, yyyy') : '-'}\nProgress: ${task.progress}%`}
               >
-                <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-b-4 border-l-transparent border-r-transparent border-b-red-500" />
+                {/* Progress Percentage Label */}
+                <div className="absolute inset-0 flex items-center justify-center px-2 text-white text-xs font-bold truncate">
+                  {task.progress}%
+                </div>
               </div>
-            );
-          }
-          return null;
-        })()}
+            )}
+          </div>
+
+          {/* Today Line */}
+          {(() => {
+            const today = new Date();
+            const todayOffset = differenceInDays(today, timelineStart);
+            const totalDays = differenceInDays(timelineEnd, timelineStart);
+            const todayPercent = (todayOffset / totalDays) * 100;
+            
+            if (todayPercent >= 0 && todayPercent <= 100) {
+              return (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 shadow-md"
+                  style={{ left: `${todayPercent}%` }}
+                  title={`Today: ${format(today, 'MMM dd, yyyy')}`}
+                >
+                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-md" />
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
       </div>
-    </div>
+    </React.Fragment>
   );
 };
 
@@ -296,7 +264,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
   className = '',
 }) => {
   const [viewMode, setViewMode] = useState<'weeks' | 'months'>('weeks');
-  const [showActual, setShowActual] = useState(false);
+  const [showActual, setShowActual] = useState(true);
   const [localTasks, setLocalTasks] = useState(tasks);
 
   // Update local tasks when props change
@@ -384,10 +352,41 @@ const GanttChart: React.FC<GanttChartProps> = ({
     return { timelineStart, timelineEnd, timeColumns };
   }, [localTasks, projectStart, projectEnd, viewMode, showActual]);
 
+  // Group weeks by month for header display
+  const monthGroups = useMemo(() => {
+    const groups: Array<{ month: string; year: string; count: number; weeks: typeof timeColumns }> = [];
+    
+    timeColumns.forEach((column) => {
+      const monthYear = format(column.date, 'MMM yyyy');
+      const lastGroup = groups[groups.length - 1];
+      
+      if (lastGroup && format(lastGroup.weeks[0].date, 'MMM yyyy') === monthYear) {
+        lastGroup.count++;
+        lastGroup.weeks.push(column);
+      } else {
+        groups.push({
+          month: format(column.date, 'MMM'),
+          year: format(column.date, 'yyyy'),
+          count: 1,
+          weeks: [column]
+        });
+      }
+    });
+    
+    return groups;
+  }, [timeColumns]);
+
   // Calculate task positioning
   const taskBars = useMemo(() => {
     return localTasks.map((task, index) => {
-      const color = task.color || TASK_COLORS[index % TASK_COLORS.length];
+      // Bar color based on progress percentage
+      const progress = task.progress ?? 0;
+      const color =
+        progress <= 45
+          ? '#dc2626' // red
+          : progress <= 80
+            ? '#f59e0b' // yellow
+            : '#10b981'; // green
       
       const startDate = task.startDate ? parseISO(task.startDate) : null;
       const endDate = task.endDate ? parseISO(task.endDate) : null;
@@ -470,69 +469,48 @@ const GanttChart: React.FC<GanttChartProps> = ({
 
   return (
     <Card className={`p-0 shadow-lg border-slate-200 ${className}`}>
-      {/* Header Controls */}
-      <div className="border-b border-slate-200 p-6 bg-gradient-to-r from-white to-slate-50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <h3 className="font-bold text-xl text-slate-800 flex items-center gap-3">
-              <Calendar className="h-6 w-6 text-blue-600" />
-              Gantt Chart
-            </h3>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-slate-600">View:</label>
-                <Select value={viewMode} onValueChange={(v) => setViewMode(v as 'weeks' | 'months')}>
-                  <SelectTrigger className="w-32 h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weeks">Weekly</SelectItem>
-                    <SelectItem value="months">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                variant={showActual ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowActual(!showActual)}
-                className="h-9"
-              >
-                {showActual ? "Hide Actual" : "Show Actual"}
-              </Button>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={exportGanttPNG} className="h-9">
-            <Download className="h-4 w-4 mr-2" />
-            Export PNG
-          </Button>
-        </div>
+      {/* Header */}
+      <div className="border-b border-slate-200 p-4 bg-gradient-to-r from-white to-slate-50">
+        <h3 className="font-bold text-xl text-slate-800 flex items-center gap-3">
+          <Calendar className="h-6 w-6 text-blue-600" />
+          Gantt Chart
+        </h3>
       </div>
 
       {/* Gantt Content - Proper Grid Layout */}
       <div className="grid grid-cols-[450px_1fr]">
         {/* Headers */}
         <div className="p-2 font-semibold text-slate-700 bg-white border-b border-r bg-gradient-to-r from-slate-50 to-slate-100 sticky top-0 z-30">
-          <div className="grid grid-cols-[180px_1fr] gap-3 items-center">
-            <div>Task Name</div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-normal text-slate-600">
-              <div>Planned</div>
-              <div>Actual</div>
+          <div className="flex items-center">
+            {/* Drag handle space */}
+            <div className="w-6 mr-2"></div>
+            <div className="grid grid-cols-[180px_1fr] gap-3 flex-1">
+              <div>Task Name</div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-normal text-slate-600">
+                <div>Planned</div>
+                <div>Actual</div>
+              </div>
             </div>
           </div>
         </div>
         
         <div className="border-b bg-gradient-to-r from-slate-50 to-slate-100 sticky top-0 z-20 overflow-x-auto">
-          <div className="grid min-w-[800px]" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
-            {timeColumns.map((column, index) => (
-              <div key={index} className="p-2 text-center border-r border-slate-200 text-xs font-semibold text-slate-600 bg-gradient-to-b from-slate-50 to-white">
-                <div className="whitespace-nowrap">
-                  {format(column.date, 'MMM')}
+          <div className="min-w-[800px]">
+            {/* Month Headers Row */}
+            <div className="grid border-b border-slate-300" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
+              {monthGroups.map((group, groupIndex) => (
+                <div 
+                  key={groupIndex} 
+                  className="font-bold text-sm text-slate-700 bg-slate-100 py-2 text-center"
+                  style={{ 
+                    gridColumn: `span ${group.count}`,
+                    borderRight: groupIndex < monthGroups.length - 1 ? '2px solid #cbd5e1' : 'none'
+                  }}
+                >
+                  {group.month}
                 </div>
-                <div className="text-xs font-normal text-slate-500">
-                  {format(column.date, 'dd')}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
@@ -563,183 +541,18 @@ const GanttChart: React.FC<GanttChartProps> = ({
                 const taskBar = taskBars[index];
                 if (!taskBar) return null;
 
-                // Calculate actual duration
-                const actualDuration = task.actualStartDate && task.actualEndDate 
-                  ? (() => {
-                      const start = parseISO(task.actualStartDate);
-                      const end = parseISO(task.actualEndDate);
-                      if (!isDateValid(start) || !isDateValid(end)) return 0;
-                      let count = 0;
-                      let current = new Date(start);
-                      while (current <= end) {
-                        const day = current.getDay();
-                        if (day !== 0 && day !== 6) count++;
-                        current = addDays(current, 1);
-                      }
-                      return count;
-                    })()
-                  : 0;
-
-                const {
-                  attributes,
-                  listeners,
-                  setNodeRef,
-                  transform,
-                  transition,
-                  isDragging,
-                } = useSortable({ id: task.id });
-
-                const style = {
-                  transform: CSS.Transform.toString(transform),
-                  transition,
-                  opacity: isDragging ? 0.5 : 1,
-                };
-
                 return (
-                  <React.Fragment key={task.id}>
-                    {/* Task Info Cell */}
-                    <div 
-                      ref={setNodeRef} 
-                      style={style}
-                      className="p-2 border-b border-r border-slate-200 bg-white flex items-center h-[40px] hover:bg-blue-50/30 transition-colors"
-                    >
-                      {/* Drag Handle */}
-                      <div 
-                        {...attributes}
-                        {...listeners}
-                        className="mr-2 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 flex-shrink-0"
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </div>
-                      
-                      <div className="grid grid-cols-[180px_1fr] gap-3 flex-1 min-w-0">
-                        {/* Left: Task Name & Assignee */}
-                        <div className="space-y-1 min-w-0">
-                          <div className="font-semibold text-slate-800 truncate text-sm" title={task.name}>
-                            {task.name}
-                          </div>
-                          <div className="text-xs text-slate-600 truncate">
-                            {task.assignee && <span>{task.assignee}</span>}
-                          </div>
-                        </div>
-
-                        {/* Right: Dates & Duration */}
-                        <div className="grid grid-cols-2 gap-2 text-xs min-w-0">
-                          {/* Planned Column */}
-                          <div className="space-y-0.5">
-                            <div className="font-medium text-slate-700">
-                              {task.startDate ? format(parseISO(task.startDate), 'dd/MM/yy') : '-'}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-slate-600">
-                                {task.endDate ? format(parseISO(task.endDate), 'dd/MM/yy') : '-'}
-                              </span>
-                              <span className="text-blue-600 font-medium">
-                                ({task.mandays || 0}md)
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Actual Column */}
-                          <div className="space-y-0.5">
-                            <div className={`font-medium ${task.actualStartDate ? 'text-slate-700' : 'text-slate-400'}`}>
-                              {task.actualStartDate ? format(parseISO(task.actualStartDate), 'dd/MM/yy') : '-'}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className={`${task.actualEndDate ? 'text-slate-600' : 'text-slate-400'}`}>
-                                {task.actualEndDate ? format(parseISO(task.actualEndDate), 'dd/MM/yy') : '-'}
-                              </span>
-                              <span className={`font-medium ${actualDuration > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                ({actualDuration > 0 ? actualDuration : '-'}md)
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Timeline Cell */}
-                    <div className="relative h-[40px] flex items-center px-2 border-b border-slate-200 bg-white overflow-x-auto">
-                      <div className="min-w-[800px] w-full relative h-full">
-                        {/* Grid lines for each time column */}
-                        <div className="absolute inset-0 grid z-0" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
-                          {timeColumns.map((_, idx) => (
-                            <div key={idx} className="border-r border-slate-100 h-full" />
-                          ))}
-                        </div>
-                        
-                        {/* Planned Task Bar */}
-                        <div
-                          className="absolute h-6 rounded-lg cursor-pointer shadow-md border border-white/20 transition-all duration-200 hover:shadow-lg hover:scale-105 z-10"
-                          style={{
-                            left: `${Math.max(0.5, taskBar.leftPercent)}%`,
-                            width: `${Math.min(99 - Math.max(0.5, taskBar.leftPercent), taskBar.widthPercent)}%`,
-                            background: `linear-gradient(135deg, ${taskBar.color}F0, ${taskBar.color})`,
-                            opacity: showActual ? 0.8 : 1,
-                          }}
-                          onClick={() => onTaskClick?.(task)}
-                          title={`${task.name}\n${format(parseISO(task.startDate), 'MMM dd, yyyy')} - ${format(parseISO(task.endDate), 'MMM dd, yyyy')}\nProgress: ${task.progress}%\nDuration: ${task.mandays || 0} mandays`}
-                        >
-                          {/* Progress Bar */}
-                          {task.progress > 0 && (
-                            <div
-                              className="h-full rounded-lg backdrop-blur-sm"
-                              style={{ 
-                                width: `${Math.min(100, task.progress)}%`,
-                                background: task.progress <= 25 
-                                  ? 'linear-gradient(90deg, rgba(220,38,38,0.5), rgba(220,38,38,0.3))'
-                                  : task.progress <= 80
-                                    ? 'linear-gradient(90deg, rgba(245,158,11,0.5), rgba(245,158,11,0.3))'
-                                    : 'linear-gradient(90deg, rgba(16,185,129,0.5), rgba(16,185,129,0.3))'
-                              }}
-                            />
-                          )}
-                          
-                          {/* Task Label */}
-                          <div className="absolute inset-0 flex items-center px-2 text-white text-xs font-medium truncate">
-                            {task.name}
-                          </div>
-                        </div>
-
-                        {/* Actual Task Bar (if showing actual and data available) */}
-                        {showActual && taskBar.actualBar && (
-                          <div
-                            className="absolute h-4 rounded-md border-2 border-dashed z-20"
-                            style={{
-                              left: `${Math.max(0.5, taskBar.actualBar.leftPercent)}%`,
-                              width: `${Math.min(99 - Math.max(0.5, taskBar.actualBar.leftPercent), taskBar.actualBar.widthPercent)}%`,
-                              backgroundColor: 'rgba(255,255,255,0.9)',
-                              borderColor: taskBar.color,
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                            }}
-                            title={`Actual: ${task.name}\n${task.actualStartDate ? format(parseISO(task.actualStartDate), 'MMM dd, yyyy') : '-'} - ${task.actualEndDate ? format(parseISO(task.actualEndDate), 'MMM dd, yyyy') : '-'}`}
-                          />
-                        )}
-
-                        {/* Today Line */}
-                        {(() => {
-                          const today = new Date();
-                          const todayOffset = differenceInDays(today, timelineStart);
-                          const totalDays = differenceInDays(timelineEnd, timelineStart);
-                          const todayPercent = (todayOffset / totalDays) * 100;
-                          
-                          if (todayPercent >= 0 && todayPercent <= 100) {
-                            return (
-                              <div
-                                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-30 shadow-md"
-                                style={{ left: `${todayPercent}%` }}
-                                title={`Today: ${format(today, 'MMM dd, yyyy')}`}
-                              >
-                                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-md" />
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    </div>
-                  </React.Fragment>
+                  <SortableTaskRow
+                    key={task.id}
+                    task={task}
+                    taskBar={taskBar}
+                    index={index}
+                    timeColumns={timeColumns}
+                    timelineStart={timelineStart}
+                    timelineEnd={timelineEnd}
+                    showActual={showActual}
+                    onTaskClick={onTaskClick}
+                  />
                 );
               })}
             </SortableContext>
