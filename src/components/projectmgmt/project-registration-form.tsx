@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
-import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, addWeeks, startOfWeek, format as formatDate } from 'date-fns';
+import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, addWeeks, startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import type { DeliverableType, ProjectDeliverableAttachment, ProjectFormValues, ProjectTag } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SingleSelect, MultiSelect, type ComboboxOption } from '@/components/ui/combobox';
-import { Plus, Trash2, MoreVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, MoreVertical, ArrowUp, ArrowDown, Pencil } from 'lucide-react';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import ExcelJS from 'exceljs';
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
@@ -21,8 +21,10 @@ import { authenticatedApi } from '@/config/api';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import GanttChart, { type GanttTask } from './GanttChart';
+import ScopesTableView, { type ScopeRow } from './ScopesTableView';
+import BurnupChartView from './BurnupChartView';
 
 type ProjectRegistrationFormProps = {
     onSubmit: (values: ProjectFormValues) => void;
@@ -212,6 +214,8 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     const [showActual, setShowActual] = useState(true);
     const [showValues, setShowValues] = useState(true);
     const [completionMode, setCompletionMode] = useState<'actual' | 'planned'>('actual');
+    const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
+    const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
 
     // If actual dates are blank, mirror planned dates when planned changes
     useEffect(() => {
@@ -225,6 +229,115 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draftStart, draftEnd]);
+
+    // Shared Excel export function
+    const exportGanttExcel = async () => {
+        try {
+            const workbook = new ExcelJS.Workbook();
+            const ws = workbook.addWorksheet('Scopes');
+            ws.columns = [
+                { header: '#', key: 'num', width: 6 },
+                { header: 'Title', key: 'title', width: 36 },
+                { header: 'Groups', key: 'groups', width: 40 },
+                { header: 'Assignee', key: 'assignee', width: 24 },
+                { header: 'Planned Start', key: 'pstart', width: 16 },
+                { header: 'Planned End', key: 'pend', width: 16 },
+                { header: 'Mandays', key: 'mandays', width: 10 },
+                { header: 'Progress', key: 'progress', width: 10 },
+                { header: 'Status', key: 'status', width: 14 },
+            ];
+            scopeRows.forEach((r, i) => {
+                const d = (watchDeliverables ?? [])[r.index] as any;
+                ws.addRow({
+                    num: i + 1,
+                    title: r.title,
+                    groups: r.groupsText,
+                    assignee: r.assigneeText,
+                    pstart: d?.startDate || '',
+                    pend: d?.endDate || '',
+                    mandays: r.mandays,
+                    progress: `${r.progress}%`,
+                    status: r.status,
+                });
+            });
+            ws.getRow(1).font = { bold: true };
+            const wsG = workbook.addWorksheet('Gantt Chart');
+            if (ganttTasks.length > 0 && timeline.startDate && timeline.endDate) {
+                const start = parseISO(timeline.startDate);
+                const end = parseISO(timeline.endDate);
+                if (isDateValid(start) && isDateValid(end)) {
+                    const weeks: Date[] = [];
+                    let c = startOfWeek(start, { weekStartsOn: 1 });
+                    const finalWeek = endOfWeek(end, { weekStartsOn: 1 });
+                    while (c <= finalWeek) {
+                        weeks.push(c);
+                        c = addDays(c, 7);
+                    }
+                    const metaCols = ['Title', 'Planned Start', 'Planned End', 'Mandays', 'Progress (%)'];
+                    const header = [...metaCols, ...weeks.map(w => formatDate(w, 'MMM dd'))];
+                    wsG.addRow(header);
+                    wsG.getRow(1).font = { bold: true };
+                    const palette = ['FFE0F7FA', 'FFFFF9C4', 'FFC5E1A5', 'FFFFCCBC', 'FFD1C4E9'];
+                    ganttTasks.forEach((task, i) => {
+                        const d = (watchDeliverables ?? [])[task.index] as any;
+                        const r = wsG.addRow([
+                            task.name,
+                            task.startDate ? formatDate(parseISO(task.startDate), 'yyyy-MM-dd') : '',
+                            task.endDate ? formatDate(parseISO(task.endDate), 'yyyy-MM-dd') : '',
+                            task.mandays,
+                            task.progress,
+                        ]);
+                        const added = r as any;
+                        const baseColor = palette[i % palette.length];
+                        if (d?.startDate && d?.endDate) {
+                            const s = parseISO(d.startDate);
+                            const e = parseISO(d.endDate);
+                            if (isDateValid(s) && isDateValid(e)) {
+                                const indices: number[] = [];
+                                weeks.forEach((wk, idx) => {
+                                    const wkStart = wk;
+                                    const wkEnd = addDays(wk, 6);
+                                    if (wkEnd < s || wkStart > e) return;
+                                    indices.push(idx);
+                                });
+                                const totalCells = indices.length;
+                                const progressCells = Math.round(((task.progress ?? 0) / 100) * totalCells);
+                                indices.forEach((wIdx, order) => {
+                                    const firstWeekCol = metaCols.length + 1;
+                                    const c = wIdx + firstWeekCol;
+                                    const cell = added.getCell(c);
+                                    cell.value = '';
+                                    const fillColor = order < progressCells ? 'FFF59E0B' : baseColor;
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } } as any;
+                                    cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } as any;
+                                });
+                            }
+                        }
+                    });
+                    wsG.getColumn(1).width = 36;
+                    wsG.getColumn(2).width = 14;
+                    wsG.getColumn(3).width = 14;
+                    wsG.getColumn(4).width = 10;
+                    wsG.getColumn(5).width = 12;
+                    for (let c = metaCols.length + 1; c <= header.length; c++) wsG.getColumn(c).width = 4;
+                    wsG.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
+                }
+            }
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `project-scopes-${Date.now()}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Excel exported');
+        } catch (err: any) {
+            toast.error(err?.message || 'Failed to export Excel');
+        }
+    };
 
     // Inline progress change handler (save immediately when in edit mode)
     const handleInlineProgressChange = async (index: number, val: number) => {
@@ -276,6 +389,41 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 // revert
                 move(to, from);
             }
+        }
+    };
+
+    // Handler for editing a scope from table view
+    const handleTableEdit = (index: number) => {
+        const current: any = (watchDeliverables ?? [])[index] || {};
+        setEditingScopeIndex(index);
+        setDraftValue('name', current.name || '');
+        setDraftValue('description', current.description || '');
+        setDraftValue('taskGroups', current.taskGroups || []);
+        setDraftValue('assignee', current.assignee || '');
+        setDraftValue('startDate', current.startDate || '');
+        setDraftValue('endDate', current.endDate || '');
+        setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
+        setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
+        setDraftValue('progress', current.progress ?? 0);
+        setScopeDialogOpen(true);
+    };
+
+    // Handler for deleting a scope from table view
+    const handleTableDelete = async (index: number, serverId?: string) => {
+        if (editProjectId && serverId) {
+            try {
+                setDeletingScopeId(String(serverId));
+                await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
+                remove(index);
+                toast.success('Scope removed');
+            } catch (err: any) {
+                const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
+                toast.error(msg);
+            } finally {
+                setDeletingScopeId(null);
+            }
+        } else {
+            remove(index);
         }
     };
 
@@ -455,7 +603,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     const [successOpen, setSuccessOpen] = useState(false);
     const [successInfo, setSuccessInfo] = useState<{ code: string; name: string } | null>(null);
     const [deletingScopeId, setDeletingScopeId] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<'table' | 'gantt'>('gantt'); // Default to Gantt view
+    const [viewMode, setViewMode] = useState<'table' | 'gantt' | 'burnup'>('gantt'); // Default to Gantt view
 
     // Convert deliverables to GanttTask format
     const ganttTasks: GanttTask[] = useMemo(() => {
@@ -468,6 +616,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
 
             return {
                 id: deliverable.id || `task-${index}`,
+                index,
                 name: deliverable.name || `Scope ${index + 1}`,
                 startDate: deliverable.startDate || '',
                 endDate: deliverable.endDate || '',
@@ -484,20 +633,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     }, [watchDeliverables, assigneeChoices]);
 
     // Build DataGrid rows for scopes
-    type ScopeRow = {
-        id: string;
-        index: number;
-        serverId?: string;
-        title: string;
-        groupsText: string;
-        assigneeText: string;
-        plannedText: string;
-        actualText: string;
-        mandays: number;
-        progress: number;
-        status: string;
-    };
-
     const scopeRows: ScopeRow[] = useMemo(() => {
         const delivs = watchDeliverables ?? [];
         return (deliverableFields || []).map((field, index) => {
@@ -513,6 +648,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
             const plannedText = `${formatDMY(d.startDate) || '-'} → ${formatDMY(d.endDate) || '-'}`;
             const actualText = `${formatDMY(d.actualStartDate || '') || '-'} → ${formatDMY(d.actualEndDate || '') || '-'}`;
             const mandays = typeof d.mandays === 'number' ? d.mandays : calcMandays(d.startDate, d.endDate);
+            const actualMandays = typeof d.actualMandays === 'number' ? d.actualMandays : calcMandays(d.actualStartDate, d.actualEndDate);
             const status = d.status || ((d.progress ?? 0) <= 0 ? 'not_started' : (d.progress ?? 0) >= 100 ? 'completed' : 'in_progress');
             return {
                 id: field.id,
@@ -524,117 +660,12 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 plannedText,
                 actualText,
                 mandays,
+                actualMandays,
                 progress: d.progress ?? 0,
                 status,
             } as ScopeRow;
         });
     }, [deliverableFields, watchDeliverables, assigneeChoices]);
-
-    const scopeColumns: ColumnDef<ScopeRow>[] = [
-        {
-            key: 'index',
-            header: '#',
-            render: (row) => row.index + 1,
-            colClass: 'w-10 text-right text-muted-foreground',
-        },
-        { key: 'title', header: 'Title', columnVisible: true },
-        { key: 'groupsText', header: 'Groups' },
-        { key: 'assigneeText', header: 'Assignee' },
-        {
-            key: 'plannedText',
-            header: 'Dates',
-            render: (row) => (
-                <div className="flex flex-col">
-                    <span className="text-xs">Planned: {row.plannedText}</span>
-                    <span className="text-xs text-muted-foreground">Actual: {row.actualText}</span>
-                </div>
-            ),
-        },
-        { key: 'mandays', header: 'Mandays' },
-        {
-            key: 'progress',
-            header: 'Progress/Status',
-            render: (row) => (
-                <div className="flex flex-col gap-1">
-                    <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={row.progress ?? 0}
-                        disabled={Boolean(savingProgressId) && String(row.serverId || '') === savingProgressId}
-                        onChange={e => handleInlineProgressChange(row.index, Number(e.target.value))}
-                        className="accent-emerald-600"
-                    />
-                    <span className="text-[10px] text-muted-foreground">{row.status}</span>
-                </div>
-            ),
-        },
-        {
-            key: 'id',
-            header: 'Actions',
-            render: (row) => (
-                <div className="flex items-center gap-1 justify-end">
-                    <Button type="button" variant="ghost" size="icon" aria-label="Move up" onClick={() => handleReorder(row.index, row.index - 1)}>
-                        <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button type="button" variant="ghost" size="icon" aria-label="Move down" onClick={() => handleReorder(row.index, row.index + 1)}>
-                        <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" aria-label="Scope actions">
-                                <MoreVertical className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                                const current: any = (watchDeliverables ?? [])[row.index] || {};
-                                setEditingScopeIndex(row.index);
-                                setDraftValue('name', current.name || '');
-                                setDraftValue('description', current.description || '');
-                                setDraftValue('taskGroups', current.taskGroups || []);
-                                setDraftValue('assignee', current.assignee || '');
-                                setDraftValue('startDate', current.startDate || '');
-                                setDraftValue('endDate', current.endDate || '');
-                                setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
-                                setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
-                                setDraftValue('progress', current.progress ?? 0);
-                            }}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {
-                                const current: any = (watchDeliverables ?? [])[row.index] || {};
-                                toast.info(`Add issues for: ${current.name || 'scope'}`);
-                            }}>Add Issues</DropdownMenuItem>
-                            <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={async () => {
-                                    const current = (watchDeliverables ?? [])[row.index] as any;
-                                    const serverId = current?.serverId;
-                                    if (editProjectId && serverId) {
-                                        try {
-                                            setDeletingScopeId(String(serverId));
-                                            await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
-                                            remove(row.index);
-                                            toast.success('Scope removed');
-                                        } catch (err: any) {
-                                            const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
-                                            toast.error(msg);
-                                        } finally {
-                                            setDeletingScopeId(null);
-                                        }
-                                    } else {
-                                        remove(row.index);
-                                    }
-                                }}
-                            >
-                                Delete
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
-            ),
-        },
-    ];
 
     const submitHandler = async (values: ProjectFormValues) => {
         const deliverables = (values.deliverables ?? []).map(d => ({
@@ -716,6 +747,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 toast.success('Project updated');
                 setSuccessInfo({ code: (values.code || '').trim(), name: values.name });
                 setSuccessOpen(true);
+                setProjectDetailsOpen(false);
             } else {
                 await authenticatedApi.post('/api/projects', formData);
                 toast.success('Project created');
@@ -746,10 +778,14 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     };
 
     const onAddDeliverable = handleDraftSubmit(async values => {
+        if (!editProjectId) {
+            toast.error('Please save the project before adding scopes.');
+            return;
+        }
         const prog = typeof values.progress === 'number' ? values.progress : 0;
         const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
 
-        // If editing an existing project, POST scope immediately to API
+        // When editing an existing project, POST scope immediately to API
         if (editProjectId) {
             const formData = new FormData();
             formData.append('title', values.name || '');
@@ -807,26 +843,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
             }
         }
 
-        // Otherwise (create mode), just add locally
-        append({
-            id: generateId('deliverable'),
-            name: values.name,
-            type: 'development',
-            description: values.description,
-            startDate: values.startDate,
-            endDate: values.endDate,
-            attachments: [],
-            progress: prog,
-            mandays: calcMandays(values.startDate, values.endDate),
-            taskGroups: values.taskGroups ?? [],
-            assignee: values.assignee ?? '',
-            status,
-            actualStartDate: values.actualStartDate ?? '',
-            actualEndDate: values.actualEndDate ?? '',
-            actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
-            fileBlobs: values.files ?? [],
-        });
-        resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
+        // Local create mode is no longer supported (scopes require a saved project)
     });
 
     // Format a JS Date as local date-only (YYYY-MM-DD), avoiding timezone shifts
@@ -894,136 +911,9 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     return (
         <div className="space-y-6">
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
-                {/* Main + Aside layout (align aside with very top, incl. tags) */}
-                <div className="grid gap-6 md:grid-cols-[1fr_360px] items-stretch">
-                    {/* Left column: Register Project */}
-                    <Card className="self-stretch h-full flex flex-col shadow-none bg-stone-50">
-                        <CardHeader>
-                            <CardTitle className="text-base">{editProjectId ? 'Edit Project' : 'Register Project'}</CardTitle>
-                            <CardDescription>{editProjectId ? 'Update details, add scopes, and save changes.' : 'Capture core delivery details and planned scopes.'}</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                        {/* Project tags and priority (API-aligned) */}
-                        <div className="grid gap-4 md:grid-cols-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="projectTags">Project tags</Label>
-                                <Input id="projectTags" placeholder="e.g. adms4" value={(watch('projectTags' as any) as any) || ''} onChange={e => setValue('projectTags' as any, e.target.value)} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Priority</Label>
-                                <Controller
-                                    control={control}
-                                    name={'priority' as any}
-                                    render={({ field }) => (
-                                        <Select value={field.value || 'medium'} onValueChange={field.onChange}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select priority" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="low">Low</SelectItem>
-                                                <SelectItem value="medium">Medium</SelectItem>
-                                                <SelectItem value="high">High</SelectItem>
-                                                <SelectItem value="critical">Critical</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    )}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Main project details */}
-                        <div className="space-y-6">
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="code">Project code (optional)</Label>
-                                    <Input id="code" className='uppercase' placeholder="e.g. OPS-2024-08" {...register('code')} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Project name</Label>
-                                    <Input id="name" className='capitalize' placeholder="e.g. Employee Onboarding Portal" {...register('name', { required: 'Project name is required' })} />
-                                    {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Assignment type</Label>
-                                    <Controller
-                                        control={control}
-                                        name="assignmentType"
-                                        rules={{ required: 'Assignment type is required' }}
-                                        render={({ field }) => (
-                                            <Select value={field.value} onValueChange={field.onChange}>
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="Select type" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="project">Project</SelectItem>
-                                                    <SelectItem value="support">Support</SelectItem>
-                                                    <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        )}
-                                    />
-                                    {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <Textarea id="description" placeholder="Optional context that helps assignees understand the project" rows={3} {...register('description')} />
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="overallProgress">Overall progress (%)</Label>
-                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                        <Input id="overallProgress" type="range" min={0} max={100} step={5} value={overallProgress} disabled readOnly className="accent-emerald-600" />
-                                        <span className="w-12 text-right text-sm font-semibold text-emerald-600">{overallProgress}%</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-3">
-                                <div className="space-y-2">
-                                    <Label>Project start (auto)</Label>
-                                    <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Project due (auto)</Label>
-                                    <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label>Duration (mandays, Mon–Fri)</Label>
-                                    <Input value={durationDays ? `${durationDays}` : ''} readOnly placeholder="Auto calculated" />
-                                    <p className="text-xs text-muted-foreground">Sum of working days between Project start and due.</p>
-                                    <p className="text-xs text-muted-foreground">Scopes total: {totalPlannedEffort} md</p>
-                                </div>
-                            </div>
-                            <div className="flex justify-end gap-2">
-                                {editProjectId && (
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        onClick={async () => {
-                                            const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
-                                            if (!ok) return;
-                                            try {
-                                                await authenticatedApi.delete(`/api/projects/${editProjectId}`);
-                                                toast.success('Project deleted');
-                                            } catch (err: any) {
-                                                toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
-                                            }
-                                        }}
-                                    >
-                                        Delete project
-                                    </Button>
-                                )}
-                                <Button type="submit" disabled={!isValid || isSubmitting} aria-disabled={!isValid || isSubmitting}>
-                                    {editProjectId ? 'Update project' : 'Save project'}
-                                </Button>
-                            </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
+                {/* Main + Aside layout (align aside with very top, incl. tags) – now hidden in favor of dialog-based scopes */}
+                {false && (
+                <div className="order-2 grid gap-6 md:grid-cols-[1fr_360px] items-stretch">
                     {/* Aside: Manage Project Scopes */}
                     <Card className="self-stretch h-full flex flex-col shadow-none bg-stone-50">
                         <CardHeader>
@@ -1031,684 +921,1203 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                             <CardDescription>Add and edit scope items for this project.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="dl-name">Title</Label>
-                            <Input id="dl-name" className='capitalize' placeholder="e.g. API contract design" {...registerDraft('name', { required: 'Title is required' })} />
-                            {draftErrors.name && <p className="text-sm text-destructive">{draftErrors.name.message}</p>}
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Task groups</Label>
-                            <Controller
-                                control={draftControl}
-                                name="taskGroups"
-                                render={({ field }) => (
-                                    <MultiSelect
-                                        options={TASK_GROUP_OPTIONS}
-                                        value={field.value || []}
-                                        onValueChange={field.onChange}
-                                        placeholder="Select groups"
-                                        clearable
-                                    />
+                            <div className="space-y-2">
+                                <Label htmlFor="dl-name">Title</Label>
+                                <Input id="dl-name" className='capitalize' placeholder="e.g. API contract design" {...registerDraft('name', { required: 'Title is required' })} />
+                                {draftErrors.name && <p className="text-sm text-destructive">{draftErrors.name?.message}</p>}
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Task groups</Label>
+                                <Controller
+                                    control={draftControl}
+                                    name="taskGroups"
+                                    render={({ field }) => (
+                                        <MultiSelect
+                                            options={TASK_GROUP_OPTIONS}
+                                            value={field.value || []}
+                                            onValueChange={field.onChange}
+                                            placeholder="Select groups"
+                                            clearable
+                                        />
+                                    )}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="dl-desc">Description</Label>
+                                <Textarea id="dl-desc" rows={3} placeholder="Notes, scope, success criteria..." {...registerDraft('description')} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Assignee</Label>
+                                <Controller
+                                    control={draftControl}
+                                    name="assignee"
+                                    render={({ field }) => (
+                                        <SingleSelect
+                                            options={assigneeChoices as ComboboxOption[]}
+                                            value={field.value}
+                                            onValueChange={field.onChange}
+                                            placeholder={assigneeLoading ? 'Loading...' : 'Select assignee'}
+                                            clearable
+                                        />
+                                    )}
+                                />
+                                {assigneeError && (
+                                    <p className="text-xs text-muted-foreground">{assigneeError}. Using fallback list if available.</p>
                                 )}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="dl-desc">Description</Label>
-                            <Textarea id="dl-desc" rows={3} placeholder="Notes, scope, success criteria..." {...registerDraft('description')} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Assignee</Label>
-                            <Controller
-                                control={draftControl}
-                                name="assignee"
-                                render={({ field }) => (
-                                    <SingleSelect
-                                        options={assigneeChoices as ComboboxOption[]}
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        placeholder={assigneeLoading ? 'Loading...' : 'Select assignee'}
-                                        clearable
-                                    />
-                                )}
-                            />
-                            {assigneeError && (
-                                <p className="text-xs text-muted-foreground">{assigneeError}. Using fallback list if available.</p>
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label>Planned dates</Label>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                    onClick={() => {
-                                        setDraftValue('startDate', '', { shouldDirty: true });
-                                        setDraftValue('endDate', '', { shouldDirty: true });
-                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                        setScopeFormKey(k => k + 1); // force Flatpickr remount to clear UI
-                                    }}
-                                >
-                                    Clear
-                                </Button>
                             </div>
-                            <Flatpickr
-                                key={`planned-${scopeFormKey}`}
-                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
-                                className="form-input"
-                                value={(() => {
-                                    const s = watchDraft('startDate');
-                                    const e = watchDraft('endDate');
-                                    const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
-                                    const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
-                                    return [ss, ee].filter(Boolean) as unknown as Date[];
-                                })()}
-                                onChange={(dates: any[]) => {
-                                    const [s, e] = dates || [];
-                                    if (!dates || dates.length === 0) {
-                                        setDraftValue('startDate', '', { shouldDirty: true });
-                                        setDraftValue('endDate', '', { shouldDirty: true });
-                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    if (s instanceof Date) {
-                                        const d = toDateOnlyLocal(s);
-                                        setDraftValue('startDate', d, { shouldDirty: true });
-                                        // Keep actuals in sync with planned when planned changes
-                                        setDraftValue('actualStartDate', d, { shouldDirty: true });
-                                    }
-                                    if (e instanceof Date) {
-                                        const d = toDateOnlyLocal(e);
-                                        setDraftValue('endDate', d, { shouldDirty: true });
-                                        // Keep actuals in sync with planned when planned changes
-                                        setDraftValue('actualEndDate', d, { shouldDirty: true });
-                                    }
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
-                            <input type="hidden" {...registerDraft('startDate', { required: 'Start date is required' })} />
-                            <input
-                                type="hidden"
-                                {...registerDraft('endDate', {
-                                    required: 'End date is required',
-                                    validate: endDate => {
-                                        const startDate = watchDraft('startDate') ?? '';
-                                        if (!startDate || !endDate) return true;
-                                        if (!isDateValid(parseISO(startDate)) || !isDateValid(parseISO(endDate))) return true;
-                                        return endDate >= startDate || 'End must be on/after start';
-                                    },
-                                })}
-                            />
-                            {(draftErrors.startDate || draftErrors.endDate) && (
-                                <p className="text-sm text-destructive">{draftErrors.startDate?.message || draftErrors.endDate?.message}</p>
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label>Actual dates</Label>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                    onClick={() => {
-                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                        setScopeFormKey(k => k + 1);
-                                    }}
-                                >
-                                    Clear
-                                </Button>
-                            </div>
-                            <Flatpickr
-                                key={`actual-${scopeFormKey}`}
-                                options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
-                                className="form-input"
-                                value={(() => {
-                                    const s = watchDraft('actualStartDate');
-                                    const e = watchDraft('actualEndDate');
-                                    const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
-                                    const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
-                                    return [ss, ee].filter(Boolean) as unknown as Date[];
-                                })()}
-                                onChange={(dates: any[]) => {
-                                    const [s, e] = dates || [];
-                                    if (!dates || dates.length === 0) {
-                                        setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                        setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    if (s instanceof Date) setDraftValue('actualStartDate', toDateOnlyLocal(s), { shouldDirty: true });
-                                    if (e instanceof Date) setDraftValue('actualEndDate', toDateOnlyLocal(e), { shouldDirty: true });
-                                }}
-                            />
-                            <p className="text-xs text-muted-foreground">Actual mandays (Mon–Fri): {draftActualMandays || 0}</p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="dl-progress">Progress (%)</Label>
-                            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                <Input id="dl-progress" type="range" min={0} max={100} step={5} {...registerDraft('progress', { valueAsNumber: true })} />
-                                <span className="w-12 text-right text-sm text-muted-foreground">{watchDraft('progress') ?? 0}%</span>
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Attachments</Label>
-                            <div className="flex flex-wrap gap-2">
-                                {draftFiles.map((file: File, idx: number) => (
-                                    <span key={`${file.name}-${idx}`} className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-1 text-xs">
-                                        <span className="font-medium truncate max-w-[160px]">{file.name}</span>
-                                        <button type="button" className="text-muted-foreground transition hover:text-destructive" onClick={() => handleDraftAttachmentRemove(idx)}>
-                                            remove
-                                        </button>
-                                    </span>
-                                ))}
-                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/60 hover:text-primary">
-                                    <input
-                                        type="file"
-                                        multiple
-                                        className="hidden"
-                                        onChange={event => {
-                                            void handleDraftAttachmentUpload(event.target.files);
-                                            if (event.target) event.target.value = '';
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label>Planned dates</Label>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => {
+                                            setDraftValue('startDate', '', { shouldDirty: true });
+                                            setDraftValue('endDate', '', { shouldDirty: true });
+                                            setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                            setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                            setScopeFormKey(k => k + 1); // force Flatpickr remount to clear UI
                                         }}
-                                    />
-                                    <Plus className="h-3.5 w-3.5" />
-                                    Add files
-                                </label>
+                                    >
+                                        Clear
+                                    </Button>
+                                </div>
+                                <Flatpickr
+                                    key={`planned-${scopeFormKey}`}
+                                    options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
+                                    className="form-input"
+                                    value={(() => {
+                                        const s = watchDraft('startDate');
+                                        const e = watchDraft('endDate');
+                                        const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
+                                        const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
+                                        return [ss, ee].filter(Boolean) as unknown as Date[];
+                                    })()}
+                                    onChange={(dates: any[]) => {
+                                        const [s, e] = dates || [];
+                                        if (!dates || dates.length === 0) {
+                                            setDraftValue('startDate', '', { shouldDirty: true });
+                                            setDraftValue('endDate', '', { shouldDirty: true });
+                                            setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                            setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                            return;
+                                        }
+                                        if (s instanceof Date) {
+                                            const d = toDateOnlyLocal(s);
+                                            setDraftValue('startDate', d, { shouldDirty: true });
+                                            // Keep actuals in sync with planned when planned changes
+                                            setDraftValue('actualStartDate', d, { shouldDirty: true });
+                                        }
+                                        if (e instanceof Date) {
+                                            const d = toDateOnlyLocal(e);
+                                            setDraftValue('endDate', d, { shouldDirty: true });
+                                            // Keep actuals in sync with planned when planned changes
+                                            setDraftValue('actualEndDate', d, { shouldDirty: true });
+                                        }
+                                    }}
+                                />
+                                <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
+                                <input type="hidden" {...registerDraft('startDate', { required: 'Start date is required' })} />
+                                <input
+                                    type="hidden"
+                                    {...registerDraft('endDate', {
+                                        required: 'End date is required',
+                                        validate: endDate => {
+                                            const startDate = watchDraft('startDate') ?? '';
+                                            if (!startDate || !endDate) return true;
+                                            if (!isDateValid(parseISO(startDate)) || !isDateValid(parseISO(endDate))) return true;
+                                            return endDate >= startDate || 'End must be on/after start';
+                                        },
+                                    })}
+                                />
+                                {(draftErrors.startDate || draftErrors.endDate) && (
+                                    <p className="text-sm text-destructive">{draftErrors.startDate?.message || draftErrors.endDate?.message}</p>
+                                )}
                             </div>
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                            {editingScopeIndex !== null && (
-                                <Button type="button" variant="ghost" onClick={() => { setEditingScopeIndex(null); resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] }); }}>Cancel</Button>
-                            )}
-                            <Button type="button" variant="secondary" onClick={editingScopeIndex !== null ? handleDraftSubmit(async (values) => {
-                                const prog = typeof values.progress === 'number' ? values.progress : 0;
-                                const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
-                                const idx = editingScopeIndex!;
-                                const current: any = watchDeliverables?.[idx] || {};
-                                const payload: any = {
-                                    id: current.id,
-                                    serverId: current.serverId,
-                                    name: values.name,
-                                    type: 'development',
-                                    description: values.description,
-                                    startDate: values.startDate,
-                                    endDate: values.endDate,
-                                    attachments: [],
-                                    progress: prog,
-                                    mandays: calcMandays(values.startDate, values.endDate),
-                                    taskGroups: values.taskGroups ?? [],
-                                    assignee: values.assignee ?? '',
-                                    status,
-                                    actualStartDate: values.actualStartDate ?? '',
-                                    actualEndDate: values.actualEndDate ?? '',
-                                    actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
-                                    fileBlobs: [],
-                                };
-                                if (editProjectId && current.serverId) {
-                                    const formData = new FormData();
-                                    formData.append('title', values.name || '');
-                                    formData.append('task_groups', (values.taskGroups || []).join(','));
-                                    formData.append('description', values.description || '');
-                                    formData.append('assignee', values.assignee || '');
-                                    if (values.startDate) formData.append('planned_start_date', values.startDate);
-                                    if (values.endDate) formData.append('planned_end_date', values.endDate);
-                                    formData.append('planned_mandays', String(calcMandays(values.startDate, values.endDate)));
-                                    formData.append('progress', String(prog));
-                                    formData.append('status', status);
-                                    if (values.actualStartDate) formData.append('actual_start_date', values.actualStartDate);
-                                    if (values.actualEndDate) formData.append('actual_end_date', values.actualEndDate);
-                                    formData.append('actual_mandays', String(calcMandays(values.actualStartDate, values.actualEndDate)));
-                                    try {
-                                        await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${current.serverId}`, formData);
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label>Actual dates</Label>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                        onClick={() => {
+                                            setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                            setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                            setScopeFormKey(k => k + 1);
+                                        }}
+                                    >
+                                        Clear
+                                    </Button>
+                                </div>
+                                <Flatpickr
+                                    key={`actual-${scopeFormKey}`}
+                                    options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
+                                    className="form-input"
+                                    value={(() => {
+                                        const s = watchDraft('actualStartDate');
+                                        const e = watchDraft('actualEndDate');
+                                        const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
+                                        const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
+                                        return [ss, ee].filter(Boolean) as unknown as Date[];
+                                    })()}
+                                    onChange={(dates: any[]) => {
+                                        const [s, e] = dates || [];
+                                        if (!dates || dates.length === 0) {
+                                            setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                            setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                            return;
+                                        }
+                                        if (s instanceof Date) setDraftValue('actualStartDate', toDateOnlyLocal(s), { shouldDirty: true });
+                                        if (e instanceof Date) setDraftValue('actualEndDate', toDateOnlyLocal(e), { shouldDirty: true });
+                                    }}
+                                />
+                                <p className="text-xs text-muted-foreground">Actual mandays (Mon–Fri): {draftActualMandays || 0}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="dl-progress">Progress (%)</Label>
+                                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                    <Input id="dl-progress" type="range" min={0} max={100} step={5} {...registerDraft('progress', { valueAsNumber: true })} />
+                                    <span className="w-12 text-right text-sm text-muted-foreground">{watchDraft('progress') ?? 0}%</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Attachments</Label>
+                                <div className="flex flex-wrap gap-2">
+                                    {draftFiles.map((file: File, idx: number) => (
+                                        <span key={`${file.name}-${idx}`} className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-1 text-xs">
+                                            <span className="font-medium truncate max-w-[160px]">{file.name}</span>
+                                            <button type="button" className="text-muted-foreground transition hover:text-destructive" onClick={() => handleDraftAttachmentRemove(idx)}>
+                                                remove
+                                            </button>
+                                        </span>
+                                    ))}
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/60 hover:text-primary">
+                                        <input
+                                            type="file"
+                                            multiple
+                                            className="hidden"
+                                            onChange={event => {
+                                                void handleDraftAttachmentUpload(event.target.files);
+                                                if (event.target) event.target.value = '';
+                                            }}
+                                        />
+                                        <Plus className="h-3.5 w-3.5" />
+                                        Add files
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                                {editingScopeIndex !== null && (
+                                    <Button type="button" variant="ghost" onClick={() => { setEditingScopeIndex(null); resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] }); }}>Cancel</Button>
+                                )}
+                                <Button type="button" variant="secondary" onClick={editingScopeIndex !== null ? handleDraftSubmit(async (values) => {
+                                    const prog = typeof values.progress === 'number' ? values.progress : 0;
+                                    const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
+                                    const idx = editingScopeIndex!;
+                                    const current: any = watchDeliverables?.[idx] || {};
+                                    const payload: any = {
+                                        id: current.id,
+                                        serverId: current.serverId,
+                                        name: values.name,
+                                        type: 'development',
+                                        description: values.description,
+                                        startDate: values.startDate,
+                                        endDate: values.endDate,
+                                        attachments: [],
+                                        progress: prog,
+                                        mandays: calcMandays(values.startDate, values.endDate),
+                                        taskGroups: values.taskGroups ?? [],
+                                        assignee: values.assignee ?? '',
+                                        status,
+                                        actualStartDate: values.actualStartDate ?? '',
+                                        actualEndDate: values.actualEndDate ?? '',
+                                        actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
+                                        fileBlobs: [],
+                                    };
+                                    if (editProjectId && current.serverId) {
+                                        const formData = new FormData();
+                                        formData.append('title', values.name || '');
+                                        formData.append('task_groups', (values.taskGroups || []).join(','));
+                                        formData.append('description', values.description || '');
+                                        formData.append('assignee', values.assignee || '');
+                                        if (values.startDate) formData.append('planned_start_date', values.startDate);
+                                        if (values.endDate) formData.append('planned_end_date', values.endDate);
+                                        formData.append('planned_mandays', String(calcMandays(values.startDate, values.endDate)));
+                                        formData.append('progress', String(prog));
+                                        formData.append('status', status);
+                                        if (values.actualStartDate) formData.append('actual_start_date', values.actualStartDate);
+                                        if (values.actualEndDate) formData.append('actual_end_date', values.actualEndDate);
+                                        formData.append('actual_mandays', String(calcMandays(values.actualStartDate, values.actualEndDate)));
+                                        try {
+                                            await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${current.serverId}`, formData);
+                                            update(idx, payload);
+                                            toast.success('Scope updated');
+                                        } catch (err: any) {
+                                            toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope');
+                                            return;
+                                        }
+                                    } else {
                                         update(idx, payload);
-                                        toast.success('Scope updated');
-                                    } catch (err: any) {
-                                        toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope');
-                                        return;
                                     }
-                                } else {
-                                    update(idx, payload);
-                                }
-                                setEditingScopeIndex(null);
-                                resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
-                                setScopeFormKey(k => k + 1);
-                            }) : onAddDeliverable}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
-                            </Button>
-                        </div>
+                                    setEditingScopeIndex(null);
+                                    resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
+                                    setScopeFormKey(k => k + 1);
+                                }) : onAddDeliverable}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
+                )}
 
-                {/* Scopes list using CustomDataGrid or Gantt Chart */}
-                <div className="space-y-3">
-                    <div className='flex items-center justify-between'>
-                        <div>
-                            <h3 className="text-base font-semibold">Scopes</h3>
-                            <p className="text-sm text-muted-foreground">Scopes you add will appear below.</p>
-                        </div>
-                        {/* View Mode Toggle */}
-                        <div className="flex items-center gap-2">
-                            <Button 
-                                type="button" 
-                                variant={viewMode === 'table' ? 'default' : 'outline'} 
-                                size="sm"
-                                onClick={() => setViewMode('table')}
-                            >
-                                Table View
-                            </Button>
-                            <Button 
-                                type="button" 
-                                variant={viewMode === 'gantt' ? 'default' : 'outline'} 
-                                size="sm"
-                                onClick={() => setViewMode('gantt')}
-                            >
-                                Gantt Chart
-                            </Button>
-                        </div>
-                    </div>
-                    
-                    {/* Toolbar above view */}
-                    <div className="flex items-center justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={async () => {
-                                try {
-                                    const workbook = new ExcelJS.Workbook();
-                                    const ws = workbook.addWorksheet('Scopes');
-                                    ws.columns = [
-                                        { header: '#', key: 'num', width: 6 },
-                                        { header: 'Title', key: 'title', width: 36 },
-                                        { header: 'Groups', key: 'groups', width: 40 },
-                                        { header: 'Assignee', key: 'assignee', width: 24 },
-                                        { header: 'Planned Start', key: 'pstart', width: 16 },
-                                        { header: 'Planned End', key: 'pend', width: 16 },
-                                        { header: 'Mandays', key: 'mandays', width: 10 },
-                                        { header: 'Progress', key: 'progress', width: 10 },
-                                        { header: 'Status', key: 'status', width: 14 },
-                                    ];
-                                    scopeRows.forEach((r, i) => {
-                                        const d = (watchDeliverables ?? [])[r.index] as any;
-                                        ws.addRow({
-                                            num: i + 1,
-                                            title: r.title,
-                                            groups: r.groupsText,
-                                            assignee: r.assigneeText,
-                                            pstart: d?.startDate || '',
-                                            pend: d?.endDate || '',
-                                            mandays: r.mandays,
-                                            progress: r.progress,
-                                            status: r.status,
-                                        });
-                                    });
-
-                                    // Gantt (weekly) with colored bars, plus meta columns
-                                    const wsG = workbook.addWorksheet('Gantt');
-                                    const rangeStart = timeline.startDate ? parseISO(timeline.startDate) : null;
-                                    const rangeEnd = timeline.endDate ? parseISO(timeline.endDate) : null;
-                                    if (rangeStart && rangeEnd && isDateValid(rangeStart) && isDateValid(rangeEnd)) {
-                                        const weekStart = startOfWeek(rangeStart, { weekStartsOn: 1 });
-                                        const metaCols = ['Title', 'Planned Start', 'Planned End', 'Mandays', 'Progress (%)'];
-                                        const header = [...metaCols];
-                                        const weeks: Date[] = [];
-                                        let w = new Date(weekStart);
-                                        while (w <= rangeEnd) {
-                                            header.push(`${formatDate(w, "'Wk' ww")} ${formatDate(w, 'dd/MM')}`);
-                                            weeks.push(new Date(w));
-                                            w = addWeeks(w, 1);
-                                        }
-                                        const headerRow = wsG.addRow(header);
-                                        headerRow.font = { bold: true } as any;
-                                        for (let c = 1; c <= header.length; c++) {
-                                            const cell = headerRow.getCell(c);
-                                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } } as any;
-                                            cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } as any;
-                                        }
-
-                                        const palette = ['FF93C5FD','FFF9A8D4','FF86EFAC','FFFDBA74','FFA5B4FC','FF67E8F9','FFFDA4AF','FFBFDBFE'];
-
-                                        scopeRows.forEach((r, i) => {
-                                            const d = (watchDeliverables ?? [])[r.index] as any;
-                                            const row = new Array(header.length).fill('');
-                                            row[0] = r.title;
-                                            row[1] = d?.startDate || '';
-                                            row[2] = d?.endDate || '';
-                                            row[3] = r.mandays;
-                                            row[4] = r.progress;
-                                            const added = wsG.addRow(row);
-                                            const baseColor = palette[i % palette.length];
-                                            if (d?.startDate && d?.endDate) {
-                                                const s = parseISO(d.startDate);
-                                                const e = parseISO(d.endDate);
-                                                if (isDateValid(s) && isDateValid(e)) {
-                                                    const indices: number[] = [];
-                                                    weeks.forEach((wk, idx) => {
-                                                        const wkStart = wk;
-                                                        const wkEnd = addDays(wk, 6);
-                                                        if (wkEnd < s || wkStart > e) return;
-                                                        indices.push(idx);
-                                                    });
-                                                    const totalCells = indices.length;
-                                                    const progressCells = Math.round(((r.progress ?? 0) / 100) * totalCells);
-                                                    indices.forEach((wIdx, order) => {
-                                                        const firstWeekCol = metaCols.length + 1; // 1-based index of first week column
-                                                        const c = wIdx + firstWeekCol; // convert to 1-based
-                                                        const cell = added.getCell(c);
-                                                        cell.value = '';
-                                                        const fillColor = order < progressCells ? 'FFF59E0B' : baseColor; // amber for completed
-                                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } } as any;
-                                                        cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } as any;
-                                                    });
-                                                }
-                                            }
-                                        });
-                                        // Column widths for meta + week columns
-                                        wsG.getColumn(1).width = 36; // Title
-                                        wsG.getColumn(2).width = 14; // Planned Start
-                                        wsG.getColumn(3).width = 14; // Planned End
-                                        wsG.getColumn(4).width = 10; // Mandays
-                                        wsG.getColumn(5).width = 12; // Progress (%)
-                                        for (let c = metaCols.length + 1; c <= header.length; c++) wsG.getColumn(c).width = 4;
-                                        wsG.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
-                                    }
-
-                                    const buffer = await workbook.xlsx.writeBuffer();
-                                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    a.download = `project-scopes-${Date.now()}.xlsx`;
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                    URL.revokeObjectURL(url);
-                                    toast.success('Excel exported');
-                                } catch (err: any) {
-                                    toast.error(err?.message || 'Failed to export Excel');
-                                }
-                        }}>Export Gantt (Excel)</Button>
-                        <Button type="button" variant="secondary" onClick={downloadBurnupPNG}>Download Burnup (PNG)</Button>
-                    </div>
-                    
-                    {/* Content based on view mode */}
-                    {scopeRows.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No scopes yet. Use the sidebar to add.</p>
-                    ) : viewMode === 'table' ? (
-                        <CustomDataGrid
-                            data={scopeRows}
-                            columns={scopeColumns}
-                            pagination={false}
-                            inputFilter={false}
-                            dataExport={false}
-                        />
-                    ) : (
-                        <GanttChart
-                            tasks={ganttTasks}
-                            projectStart={timeline.startDate}
-                            projectEnd={timeline.endDate}
-                            onTasksReorder={(reorderedTasks) => {
-                                // Convert reordered tasks back to indices and call handleReorder
-                                reorderedTasks.forEach((task, newIndex) => {
-                                    const oldIndex = ganttTasks.findIndex(t => t.id === task.id);
-                                    if (oldIndex !== -1 && oldIndex !== newIndex) {
-                                        handleReorder(oldIndex, newIndex);
-                                    }
-                                });
-                            }}
-                            onTaskClick={(task) => {
-                                console.log('Task clicked:', task);
-                                // Could open edit dialog here
-                            }}
-                            onTaskEdit={(taskId) => {
-                                const index = ganttTasks.findIndex(t => t.id === taskId);
-                                if (index !== -1) {
-                                    const current: any = (watchDeliverables ?? [])[index] || {};
-                                    setEditingScopeIndex(index);
-                                    setDraftValue('name', current.name || '');
-                                    setDraftValue('description', current.description || '');
-                                    setDraftValue('taskGroups', current.taskGroups || []);
-                                    setDraftValue('assignee', current.assignee || '');
-                                    setDraftValue('startDate', current.startDate || '');
-                                    setDraftValue('endDate', current.endDate || '');
-                                    setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
-                                    setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
-                                    setDraftValue('progress', current.progress ?? 0);
-                                }
-                            }}
-                            className="min-h-[400px]"
-                        />
-                    )}
-                </div>
-                    {/* Burnup Chart */}
-                    {timeline.startDate && timeline.endDate && (
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold">Burnup Chart</h4>
-                                <div className="flex items-center gap-4 text-xs">
+                {/* Scopes View Card */}
+                <Card className="order-1">
+                    <CardHeader>
+                        <div className="flex items-start justify-between gap-4">
+                            {/* Project Info */}
+                            <div className="flex items-start gap-3">
+                                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                    </svg>
+                                </div>
+                                <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-muted-foreground">Values</span>
-                                        <Switch checked={showValues} onCheckedChange={setShowValues} />
+                                        <div>
+                                            <h3 className="font-bold text-lg text-slate-800">
+                                                {watch('name') || 'Untitled Project'}
+                                            </h3>
+                                            {watch('code') && (
+                                                <p className="text-sm text-slate-500">{watch('code')}</p>
+                                            )}
+                                        </div>
+                                        {editProjectId && (
+                                            <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                                                onClick={() => setProjectDetailsOpen(true)}
+                                                aria-label="Edit project details"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
-                                    <span className="text-muted-foreground">Planned mode</span>
-                                    <Select value={plannedMode} onValueChange={(v) => setPlannedMode(v as 'scope' | 'linear')}>
-                                        <SelectTrigger className="h-7 w-[160px]">
-                                            <SelectValue placeholder="By scope" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="scope">By scope (recommended)</SelectItem>
-                                            <SelectItem value="linear">Linear by window</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                        {((watch('projectTags' as any) as any) || '').trim() && (
+                                            <span className="font-medium capitalize">
+                                                {(watch('projectTags' as any) as any) || ''}
+                                            </span>
+                                        )}
+                                        {watch('description') && (
+                                            <span className="max-w-2xl truncate">
+                                                {watch('description')}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {timeline.startDate && timeline.endDate && (
+                                        <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                                            <span>
+                                                Start:{' '}
+                                                {formatDate(parseISO(timeline.startDate), 'MMM dd, yyyy')}
+                                            </span>
+                                            <span>
+                                                End:{' '}
+                                                {formatDate(parseISO(timeline.endDate), 'MMM dd, yyyy')}
+                                            </span>
+                                            <span>
+                                                Duration: {durationDays || 0} md
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <div className="h-[500px] max-w-5xl mx-auto border rounded-xl p-4" ref={burnupRef}>
-                                <div className="text-sm font-semibold mb-2 truncate">
-                                    {watch('name') || 'Untitled Project'}
+
+                            {/* View Controls */}
+                                <div className="flex items-center gap-2">
+                                    {/* View Mode Toggle */}
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            type="button"
+                                            variant={viewMode === 'table' ? 'default' : 'outline'}
+                                            size="sm"
+                                            disabled={scopeRows.length === 0}
+                                            onClick={() => setViewMode('table')}
+                                        >
+                                            Table View
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant={viewMode === 'gantt' ? 'default' : 'outline'}
+                                            size="sm"
+                                            disabled={scopeRows.length === 0}
+                                            onClick={() => setViewMode('gantt')}
+                                        >
+                                            Gantt Chart
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant={viewMode === 'burnup' ? 'default' : 'outline'}
+                                            size="sm"
+                                            disabled={scopeRows.length === 0}
+                                            onClick={() => setViewMode('burnup')}
+                                        >
+                                            Burnup Chart
+                                        </Button>
                                 </div>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={(() => {
-                                        const s0 = parseISO(timeline.startDate!);
-                                        const e0 = parseISO(timeline.endDate!);
-                                        if (!isDateValid(s0) || !isDateValid(e0)) return [] as any[];
-                                        const s = startOfWeek(s0, { weekStartsOn: 1 });
-                                        const rows: any[] = [];
-                                        const totalPlanned = totalPlannedEffort;
-                                        const today = new Date();
 
-                                        // helper to compute planned/actual up to a date
-                                        const plannedAtLinear = (date: Date) => {
-                                            const totalMd = Math.max(1, calcMandays(timeline.startDate!, timeline.endDate!));
-                                            const elapsedMd = Math.max(0, Math.min(totalMd, calcMandays(timeline.startDate!, date.toISOString().slice(0,10))));
-                                            return totalPlanned * (elapsedMd / totalMd);
-                                        };
-                                        const plannedAtByScope = (date: Date) => {
-                                            const dateStr = date.toISOString().slice(0,10);
-                                            let sum = 0;
-                                            (watchDeliverables ?? []).forEach((d: any) => {
-                                                if (!d?.startDate || !d?.endDate) return;
-                                                const sd = parseISO(d.startDate);
-                                                const ed = parseISO(d.endDate);
-                                                if (!isDateValid(sd) || !isDateValid(ed)) return;
-                                                const md = typeof d?.mandays === 'number' ? d.mandays : calcMandays(d.startDate, d.endDate);
-                                                const denom = Math.max(1, calcMandays(d.startDate, d.endDate));
-                                                if (date < sd) return; // no contribution yet
-                                                if (date >= ed) { sum += md; return; }
-                                                const elapsed = Math.max(0, Math.min(denom, calcMandays(d.startDate, dateStr)));
-                                                sum += md * (elapsed / denom);
-                                            });
-                                            return sum;
-                                        };
-                                        const plannedAt = (date: Date) => plannedMode === 'scope' ? plannedAtByScope(date) : plannedAtLinear(date);
-                                        const actualAt = (date: Date) => {
-                                            let actual = 0;
-                                            (watchDeliverables ?? []).forEach((d: any) => {
-                                                const mandays = typeof d?.mandays === 'number' ? d.mandays : calcMandays(d?.startDate, d?.endDate);
-                                                const completed = (d?.progress ?? 0) / 100 * mandays;
-                                                if (!d?.startDate || !d?.endDate) return;
-                                                const sd = parseISO(d.startDate);
-                                                const ed = parseISO(d.endDate);
-                                                if (!isDateValid(sd) || !isDateValid(ed)) return;
-                                                const activeEnd = ed < today ? ed : today;
-                                                if (date < sd) return;
-                                                if (date >= sd && date <= activeEnd) {
-                                                    const denom = Math.max(1, differenceInCalendarDays(activeEnd, sd) + 1);
-                                                    const frac = Math.min(1, (differenceInCalendarDays(date, sd) + 1) / denom);
-                                                    actual += completed * frac;
-                                                } else if (date > activeEnd) {
-                                                    actual += completed;
-                                                }
-                                            });
-                                            return actual;
-                                        };
-
-                                        // iterate weeks
-                                        let wStart = s;
-                                        while (wStart <= e0) {
-                                            const wEnd = addDays(wStart, 6) > e0 ? e0 : addDays(wStart, 6);
-                                            const dLabel = `${formatDate(wStart, 'dd/MM')}–${formatDate(wEnd, 'dd/MM')}`;
-                                            const p = plannedAt(wEnd);
-                                            const a = actualAt(wEnd);
-                                            const titles: string[] = (watchDeliverables ?? []).map((d: any) => {
-                                                if (!d?.startDate || !d?.endDate) return '';
-                                                const sd = parseISO(d.startDate);
-                                                const ed = parseISO(d.endDate);
-                                                if (!isDateValid(sd) || !isDateValid(ed)) return '';
-                                                const overlap = !(addDays(wStart, 6) < sd || wStart > ed);
-                                                return overlap ? (d?.name || '') : '';
-                                            }).filter(Boolean);
-                                            rows.push({ date: dLabel, Planned: Number(p.toFixed(2)), Actual: Number(a.toFixed(2)), Scope: totalPlanned, scopeTitles: titles });
-                                            wStart = addWeeks(wStart, 1);
-                                        }
-                                        return rows;
-                                    })()}>
-                                        <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="date" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={70} interval={0} />
-                                        <YAxis tick={{ fontSize: 10 }} label={{ value: 'Mandays', angle: -90, position: 'insideLeft', offset: 10 }} />
-                                        <Tooltip content={({ active, payload, label }) => {
-                                            if (!active || !payload?.length) return null as any;
-                                            const planned = payload.find((p: any) => p.dataKey === 'Planned')?.value;
-                                            const actual = payload.find((p: any) => p.dataKey === 'Actual')?.value;
-                                            const scopes = (payload?.[0]?.payload?.scopeTitles as string[] | undefined) ?? [];
-                                            return (
-                                                <div className="rounded border bg-background p-2 text-xs">
-                                                    <div className="font-medium mb-1">{label}</div>
-                                                    <div className="text-blue-600">Planned: {planned}</div>
-                                                    <div className="text-amber-600">Actual: {actual}</div>
-                                                    <div className="text-muted-foreground">Scope: {totalPlannedEffort}</div>
-                                                    {scopes.length ? (
-                                                        <div className="mt-1">
-                                                            <div className="text-foreground font-medium">Scopes:</div>
-                                                            <div className="max-w-[280px] whitespace-normal leading-snug">
-                                                                {scopes.join(', ')}
-                                                            </div>
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            );
-                                        }} />
-                                        <Legend verticalAlign="top" align="center" content={<BurnupLegend />} />
-                                        {showPlanned && (
-                                            <Line type="monotone" dataKey="Planned" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }}>
-                                                {showValues && (
-                                                    <LabelList dataKey="Planned" content={(p: any) => <BurnupValueLabel {...p} color="#2563eb" />} />
-                                                )}
-                                            </Line>
-                                        )}
-                                        {showActual && (
-                                            <Line type="monotone" dataKey="Actual" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }}>
-                                                {showValues && (
-                                                    <LabelList dataKey="Actual" content={(p: any) => <BurnupValueLabel {...p} color="#f59e0b" />} />
-                                                )}
-                                            </Line>
-                                        )}
-                                    </LineChart>
-                                </ResponsiveContainer>
+                                <div className="flex items-center gap-2">
+                                    {/* Export Buttons */}
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={exportGanttExcel}
+                                    >
+                                        Export Gantt (Excel)
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={downloadBurnupPNG}
+                                    >
+                                        Download Burnup (PNG)
+                                    </Button>
+                                    {editProjectId && scopeRows.length > 0 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setEditingScopeIndex(null);
+                                                resetDraft({
+                                                    name: '',
+                                                    type: 'development',
+                                                    description: '',
+                                                    startDate: '',
+                                                    endDate: '',
+                                                    attachments: [],
+                                                    progress: 0,
+                                                    taskGroups: [],
+                                                    assignee: '',
+                                                    actualStartDate: '',
+                                                    actualEndDate: '',
+                                                    files: [],
+                                                });
+                                                setScopeFormKey(k => k + 1);
+                                                setScopeDialogOpen(true);
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Add scope
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    )}
+                    </CardHeader>
 
-                    {/* Scope Completion Trend */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold">Scope Completion Trend</h4>
-                            <div className="flex items-center gap-2 text-xs">
-                                <span className="text-muted-foreground">Completion by</span>
-                                <Select value={completionMode} onValueChange={(v) => setCompletionMode(v as 'actual' | 'planned')}>
-                                    <SelectTrigger className="h-7 w-[160px]">
-                                        <SelectValue placeholder="Actual end" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="actual">Actual end</SelectItem>
-                                        <SelectItem value="planned">Planned end</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        <div className="h-[340px] max-w-5xl mx-auto border rounded-xl p-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={(() => {
-                                    const ends: { date: Date; name: string }[] = [];
-                                    (watchDeliverables ?? []).forEach((d: any, i: number) => {
-                                        const endStr = completionMode === 'actual' ? (d?.actualEndDate || '') : (d?.endDate || '');
-                                        if (!endStr) return;
-                                        const ed = parseISO(endStr);
-                                        if (!isDateValid(ed)) return;
-                                        ends.push({ date: ed, name: d?.name || `Scope ${i + 1}` });
-                                    });
-                                    if (!ends.length) return [] as any[];
-                                    ends.sort((a, b) => a.date.getTime() - b.date.getTime());
-                                    const minD = ends[0].date;
-                                    const maxD = ends[ends.length - 1].date;
-                                    const s = startOfWeek(minD, { weekStartsOn: 1 });
-                                    const rows: any[] = [];
-                                    let wStart = s;
-                                    while (wStart <= maxD) {
-                                        const wEnd = addDays(wStart, 6) > maxD ? maxD : addDays(wStart, 6);
-                                        const completed = ends.filter(e => e.date <= wEnd).length;
-                                        const thisWeekTitles = ends.filter(e => e.date >= wStart && e.date <= wEnd).map(e => e.name);
-                                        rows.push({
-                                            date: `${formatDate(wStart, 'dd/MM')}–${formatDate(wEnd, 'dd/MM')}`,
-                                            Completed: completed,
-                                            weekTitles: thisWeekTitles,
-                                        });
-                                        wStart = addWeeks(wStart, 1);
-                                    }
-                                    return rows;
-                                })()}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="date" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={70} interval={0} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 10 }} label={{ value: '# Completed', angle: -90, position: 'insideLeft', offset: 10 }} />
-                                    <Tooltip content={({ active, payload, label }) => {
-                                        if (!active || !payload?.length) return null as any;
-                                        const cnt = payload.find((p: any) => p.dataKey === 'Completed')?.value;
-                                        const newScopes = (payload?.[0]?.payload?.weekTitles as string[] | undefined) ?? [];
-                                        return (
-                                            <div className="rounded border bg-background p-2 text-xs">
-                                                <div className="font-medium mb-1">{label}</div>
-                                                <div className="text-emerald-600">Completed: {cnt}</div>
-                                                {newScopes.length ? (
-                                                    <div className="mt-1">
-                                                        <div className="text-foreground font-medium">This week:</div>
-                                                        <div className="max-w-[280px] whitespace-normal leading-snug">{newScopes.join(', ')}</div>
-                                                    </div>
-                                                ) : null}
+                    <CardContent>
+                        {/* Create mode: inline project registration fields inside scopes card */}
+                        {!editProjectId && (
+                            <div className="mb-6 rounded-lg border border-border/60 bg-stone-50 p-4 space-y-6">
+                                <div>
+                                    <h3 className="text-sm font-medium">Register Project</h3>
+                                    <p className="text-xs text-muted-foreground">
+                                        Capture core delivery details and planned scopes before saving.
+                                    </p>
+                                </div>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="projectTags_inline">Project tags</Label>
+                                        <Input
+                                            id="projectTags_inline"
+                                            placeholder="e.g. adms4"
+                                            value={(watch('projectTags' as any) as any) || ''}
+                                            onChange={e => setValue('projectTags' as any, e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Priority</Label>
+                                        <Controller
+                                            control={control}
+                                            name={'priority' as any}
+                                            render={({ field }) => (
+                                                <Select value={field.value || 'medium'} onValueChange={field.onChange}>
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue placeholder="Select priority" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="low">Low</SelectItem>
+                                                        <SelectItem value="medium">Medium</SelectItem>
+                                                        <SelectItem value="high">High</SelectItem>
+                                                        <SelectItem value="critical">Critical</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="code_inline">Project code (optional)</Label>
+                                            <Input id="code_inline" className="uppercase" placeholder="e.g. OPS-2024-08" {...register('code')} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="name_inline">Project name</Label>
+                                            <Input
+                                                id="name_inline"
+                                                className="capitalize"
+                                                placeholder="e.g. Employee Onboarding Portal"
+                                                {...register('name', { required: 'Project name is required' })}
+                                            />
+                                            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Assignment type</Label>
+                                            <Controller
+                                                control={control}
+                                                name="assignmentType"
+                                                rules={{ required: 'Assignment type is required' }}
+                                                render={({ field }) => (
+                                                    <Select value={field.value} onValueChange={field.onChange}>
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="project">Project</SelectItem>
+                                                            <SelectItem value="support">Support</SelectItem>
+                                                            <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
+                                            {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description_inline">Description</Label>
+                                        <Textarea
+                                            id="description_inline"
+                                            placeholder="Optional context that helps assignees understand the project"
+                                            rows={3}
+                                            {...register('description')}
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="overallProgress_inline">Overall progress (%)</Label>
+                                            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                                <Input
+                                                    id="overallProgress_inline"
+                                                    type="range"
+                                                    min={0}
+                                                    max={100}
+                                                    step={5}
+                                                    value={overallProgress}
+                                                    disabled
+                                                    readOnly
+                                                    className="accent-emerald-600"
+                                                />
+                                                <span className="w-12 text-right text-sm font-semibold text-emerald-600">{overallProgress}%</span>
                                             </div>
-                                        );
-                                    }} />
-                                    {showValues && (
-                                        <Line type="monotone" dataKey="Completed" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }}>
-                                            <LabelList dataKey="Completed" content={(p: any) => <BurnupValueLabel {...p} color="#10b981" />} />
-                                        </Line>
-                                    )}
-                                    {!showValues && (
-                                        <Line type="monotone" dataKey="Completed" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} />
-                                    )}
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                                        </div>
+                                    </div>
 
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label>Project start (auto)</Label>
+                                            <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Project due (auto)</Label>
+                                            <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label>Duration (mandays, Mon–Fri)</Label>
+                                            <Input value={durationDays ? `${durationDays}` : ''} readOnly placeholder="Auto calculated" />
+                                            <p className="text-xs text-muted-foreground">Sum of working days between Project start and due.</p>
+                                            <p className="text-xs text-muted-foreground">Scopes total: {totalPlannedEffort} md</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end">
+                                        <Button type="submit" disabled={!isValid || isSubmitting} aria-disabled={!isValid || isSubmitting}>
+                                            Save project
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add / empty state helper */}
+                        {editProjectId && (
+                            <div className="mb-2 flex items-center justify-end gap-2">
+                                <p className="text-sm text-red-500">
+                                    {scopeRows.length === 0 ? 'No scopes yet.' : 'Add more scopes.'}
+                                </p>
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => {
+                                        setEditingScopeIndex(null);
+                                        resetDraft({
+                                            name: '',
+                                            type: 'development',
+                                            description: '',
+                                            startDate: '',
+                                            endDate: '',
+                                            attachments: [],
+                                            progress: 0,
+                                            taskGroups: [],
+                                            assignee: '',
+                                            actualStartDate: '',
+                                            actualEndDate: '',
+                                            files: [],
+                                        });
+                                        setScopeFormKey(k => k + 1);
+                                        setScopeDialogOpen(true);
+                                    }}
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        )}
+
+                        {/* Content based on view mode */}
+                        {scopeRows.length === 0 ? null : viewMode === 'table' ? (
+                            <ScopesTableView
+                                scopeRows={scopeRows}
+                                savingProgressId={savingProgressId}
+                                editProjectId={editProjectId}
+                                onProgressChange={handleInlineProgressChange}
+                                onReorder={handleReorder}
+                                onEdit={handleTableEdit}
+                                onDelete={handleTableDelete}
+                            />
+                        ) : viewMode === 'burnup' ? (
+                            timeline.startDate && timeline.endDate ? (
+                                <BurnupChartView
+                                    projectName={watch('name') || 'Untitled Project'}
+                                    timeline={timeline}
+                                    deliverables={watchDeliverables ?? []}
+                                    totalPlannedEffort={totalPlannedEffort}
+                                    calcMandays={calcMandays}
+                                    chartRef={burnupRef}
+                                />
+                            ) : (
+                                <p className="text-sm text-muted-foreground">Set project start and end dates to view burnup chart.</p>
+                            )
+                        ) : (
+                            <GanttChart
+                                tasks={ganttTasks}
+                                projectStart={timeline.startDate}
+                                projectEnd={timeline.endDate}
+                                projectName={watch('name') || 'Untitled Project'}
+                                projectCode={watch('code') || undefined}
+                                onTasksReorder={(reorderedTasks: GanttTask[]) => {
+                                    // Map reordered tasks back to deliverables and update form state
+                                    const reorderedDeliverables = reorderedTasks.map(task => {
+                                        const index = ganttTasks.findIndex(t => t.id === task.id);
+                                        return (watchDeliverables ?? [])[index];
+                                    }).filter(Boolean);
+
+                                    // Update the form state with reordered deliverables
+                                    setValue('deliverables', reorderedDeliverables);
+
+                                    // If editing, sync with backend
+                                    if (editProjectId) {
+                                        const payload = {
+                                            project_id: editProjectId,
+                                            scopes: reorderedDeliverables
+                                                .map((d: any, idx) => (d?.serverId ? { id: String(d.serverId), order_index: idx } : null))
+                                                .filter(Boolean),
+                                        } as any;
+                                        authenticatedApi.put(`/api/projects/${editProjectId}/scopes/reorder`, payload)
+                                            .then(() => toast.success('Scopes reordered'))
+                                            .catch((err: any) => {
+                                                toast.error(err?.response?.data?.message || err?.message || 'Failed to reorder scopes');
+                                            });
+                                    }
+                                }}
+                                onTaskClick={(task: GanttTask) => {
+                                    console.log('Task clicked:', task);
+                                    // Could open edit dialog here
+                                }}
+                                onTaskEdit={(taskId: string) => {
+                                    const index = ganttTasks.findIndex(t => t.id === taskId);
+                                    if (index !== -1) {
+                                        const current: any = (watchDeliverables ?? [])[index] || {};
+                                        setEditingScopeIndex(index);
+                                        setDraftValue('name', current.name || '');
+                                        setDraftValue('description', current.description || '');
+                                        setDraftValue('taskGroups', current.taskGroups || []);
+                                        setDraftValue('assignee', current.assignee || '');
+                                        setDraftValue('startDate', current.startDate || '');
+                                        setDraftValue('endDate', current.endDate || '');
+                                        setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
+                                        setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
+                                        setDraftValue('progress', current.progress ?? 0);
+                                    }
+                                }}
+                                onTaskDelete={async (taskId: string) => {
+                                    const index = ganttTasks.findIndex(t => t.id === taskId);
+                                    if (index === -1) return;
+
+                                    const current = (watchDeliverables ?? [])[index] as any;
+                                    const serverId = current?.serverId;
+
+                                    if (editProjectId && serverId) {
+                                        try {
+                                            setDeletingScopeId(String(serverId));
+                                            await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
+                                            remove(index);
+                                            toast.success('Scope removed');
+                                        } catch (err: any) {
+                                            const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
+                                            toast.error(msg);
+                                        } finally {
+                                            setDeletingScopeId(null);
+                                        }
+                                    } else {
+                                        remove(index);
+                                        toast.success('Scope removed');
+                                    }
+                                }}
+                                className="min-h-[400px]"
+                            />
+                        )}
+                    </CardContent>
+                    
+                    {/* Footer Stats - displayed on all views */}
+                    {scopeRows.length > 0 && timeline.startDate && timeline.endDate && (
+                        <CardFooter className="bg-gradient-to-r from-slate-50 to-gray-50 text-sm">
+                            <div className="flex justify-between items-center text-slate-600 w-full">
+                                <div className="flex items-center gap-6">
+                                    <span className="font-medium">{scopeRows.length} tasks total</span>
+                                    <span>{scopeRows.filter(s => s.status === 'completed').length} completed</span>
+                                    <span>{scopeRows.filter(s => s.status === 'in_progress').length} in progress</span>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <div className="text-right">
+                                        <div className="text-xs text-slate-500">Project Duration</div>
+                                        <div className="font-semibold text-slate-700">
+                                            {formatDate(parseISO(timeline.startDate), 'MMM dd, yyyy')} - {formatDate(parseISO(timeline.endDate), 'MMM dd, yyyy')}
+                                            <span className="ml-2 text-xs text-slate-500">
+                                                ({Math.ceil(differenceInCalendarDays(parseISO(timeline.endDate), parseISO(timeline.startDate)) / 7)} weeks)
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-xs text-slate-500">Overall Progress</div>
+                                        <div className="font-semibold text-emerald-600 text-lg">
+                                            {scopeRows.length > 0 ? Math.round(scopeRows.reduce((sum, s) => sum + (s.progress || 0), 0) / scopeRows.length) : 0}%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardFooter>
+                    )}
+                </Card>
+
+                {/* Project details dialog for edit mode */}
+                {editProjectId && (
+                    <Dialog open={projectDetailsOpen} onOpenChange={setProjectDetailsOpen}>
+                        <DialogContent className="min-w-4xl">
+                            <DialogHeader>
+                                <DialogTitle>Edit project details</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-6">
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="projectTags_dialog">Project tags</Label>
+                                        <Input
+                                            id="projectTags_dialog"
+                                            placeholder="e.g. adms4"
+                                            value={(watch('projectTags' as any) as any) || ''}
+                                            onChange={e => setValue('projectTags' as any, e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Priority</Label>
+                                        <Controller
+                                            control={control}
+                                            name={'priority' as any}
+                                            render={({ field }) => (
+                                                <Select value={field.value || 'medium'} onValueChange={field.onChange}>
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue placeholder="Select priority" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="low">Low</SelectItem>
+                                                        <SelectItem value="medium">Medium</SelectItem>
+                                                        <SelectItem value="high">High</SelectItem>
+                                                        <SelectItem value="critical">Critical</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="code_dialog">Project code (optional)</Label>
+                                            <Input id="code_dialog" className="uppercase" placeholder="e.g. OPS-2024-08" {...register('code')} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="name_dialog">Project name</Label>
+                                            <Input
+                                                id="name_dialog"
+                                                className="capitalize"
+                                                placeholder="e.g. Employee Onboarding Portal"
+                                                {...register('name', { required: 'Project name is required' })}
+                                            />
+                                            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Assignment type</Label>
+                                            <Controller
+                                                control={control}
+                                                name="assignmentType"
+                                                rules={{ required: 'Assignment type is required' }}
+                                                render={({ field }) => (
+                                                    <Select value={field.value} onValueChange={field.onChange}>
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="project">Project</SelectItem>
+                                                            <SelectItem value="support">Support</SelectItem>
+                                                            <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
+                                            {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="description_dialog">Description</Label>
+                                        <Textarea
+                                            id="description_dialog"
+                                            placeholder="Optional context that helps assignees understand the project"
+                                            rows={3}
+                                            {...register('description')}
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-3">
+                                        <div className="space-y-2">
+                                            <Label>Project start (auto)</Label>
+                                            <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Project due (auto)</Label>
+                                            <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label>Duration (mandays, Mon–Fri)</Label>
+                                            <Input value={durationDays ? `${durationDays}` : ''} readOnly placeholder="Auto calculated" />
+                                            <p className="text-xs text-muted-foreground">Sum of working days between Project start and due.</p>
+                                            <p className="text-xs text-muted-foreground">Scopes total: {totalPlannedEffort} md</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="destructive"
+                                            onClick={async () => {
+                                                if (!editProjectId) return;
+                                                const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
+                                                if (!ok) return;
+                                                try {
+                                                    await authenticatedApi.delete(`/api/projects/${editProjectId}`);
+                                                    toast.success('Project deleted');
+                                                    setProjectDetailsOpen(false);
+                                                } catch (err: any) {
+                                                    toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
+                                                }
+                                            }}
+                                        >
+                                            Delete project
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            disabled={isSubmitting}
+                                            aria-disabled={isSubmitting}
+                                            onClick={handleSubmit(submitHandler)}
+                                        >
+                                            Update project
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                )}
+
+                {/* Scope editor dialog (add / edit) – only after project is registered */}
+                {editProjectId && (
+                    <Dialog open={scopeDialogOpen} onOpenChange={setScopeDialogOpen}>
+                        <DialogContent className="max-w-3xl">
+                            <DialogHeader>
+                                <DialogTitle>{editingScopeIndex !== null ? 'Edit scope' : 'Add scope'}</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="dl-name-dialog">Title</Label>
+                                    <Input
+                                        id="dl-name-dialog"
+                                        className="capitalize"
+                                        placeholder="e.g. API contract design"
+                                        {...registerDraft('name', { required: 'Title is required' })}
+                                    />
+                                    {draftErrors.name && <p className="text-sm text-destructive">{draftErrors.name.message}</p>}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Task groups</Label>
+                                    <Controller
+                                        control={draftControl}
+                                        name="taskGroups"
+                                        render={({ field }) => (
+                                            <MultiSelect
+                                                options={TASK_GROUP_OPTIONS}
+                                                value={field.value || []}
+                                                onValueChange={field.onChange}
+                                                placeholder="Select groups"
+                                                clearable
+                                            />
+                                        )}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="dl-desc-dialog">Description</Label>
+                                    <Textarea
+                                        id="dl-desc-dialog"
+                                        rows={3}
+                                        placeholder="Notes, scope, success criteria..."
+                                        {...registerDraft('description')}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Assignee</Label>
+                                    <Controller
+                                        control={draftControl}
+                                        name="assignee"
+                                        render={({ field }) => (
+                                            <SingleSelect
+                                                options={assigneeChoices as ComboboxOption[]}
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                                placeholder={assigneeLoading ? 'Loading...' : 'Select assignee'}
+                                                clearable
+                                            />
+                                        )}
+                                    />
+                                    {assigneeError && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {assigneeError}. Using fallback list if available.
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Planned dates</Label>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={() => {
+                                                setDraftValue('startDate', '', { shouldDirty: true });
+                                                setDraftValue('endDate', '', { shouldDirty: true });
+                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                                setScopeFormKey(k => k + 1);
+                                            }}
+                                        >
+                                            Clear
+                                        </Button>
+                                    </div>
+                                    <Flatpickr
+                                        key={`planned-${scopeFormKey}`}
+                                        options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
+                                        className="form-input"
+                                        value={(() => {
+                                            const s = watchDraft('startDate');
+                                            const e = watchDraft('endDate');
+                                            const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
+                                            const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
+                                            return [ss, ee].filter(Boolean) as unknown as Date[];
+                                        })()}
+                                        onChange={(dates: any[]) => {
+                                            const [s, e] = dates || [];
+                                            if (!dates || dates.length === 0) {
+                                                setDraftValue('startDate', '', { shouldDirty: true });
+                                                setDraftValue('endDate', '', { shouldDirty: true });
+                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                                return;
+                                            }
+                                            if (s instanceof Date) {
+                                                const d = toDateOnlyLocal(s);
+                                                setDraftValue('startDate', d, { shouldDirty: true });
+                                                setDraftValue('actualStartDate', d, { shouldDirty: true });
+                                            }
+                                            if (e instanceof Date) {
+                                                const d = toDateOnlyLocal(e);
+                                                setDraftValue('endDate', d, { shouldDirty: true });
+                                                setDraftValue('actualEndDate', d, { shouldDirty: true });
+                                            }
+                                        }}
+                                    />
+                                    <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
+                                    <input type="hidden" {...registerDraft('startDate', { required: 'Start date is required' })} />
+                                    <input
+                                        type="hidden"
+                                        {...registerDraft('endDate', {
+                                            required: 'End date is required',
+                                            validate: endDate => {
+                                                const startDate = watchDraft('startDate') ?? '';
+                                                if (!startDate || !endDate) return true;
+                                                if (!isDateValid(parseISO(startDate)) || !isDateValid(parseISO(endDate))) return true;
+                                                return endDate >= startDate || 'End must be on/after start';
+                                            },
+                                        })}
+                                    />
+                                    {(draftErrors.startDate || draftErrors.endDate) && (
+                                        <p className="text-sm text-destructive">
+                                            {draftErrors.startDate?.message || draftErrors.endDate?.message}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Actual dates</Label>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={() => {
+                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                                setScopeFormKey(k => k + 1);
+                                            }}
+                                        >
+                                            Clear
+                                        </Button>
+                                    </div>
+                                    <Flatpickr
+                                        key={`actual-${scopeFormKey}`}
+                                        options={{ mode: 'range', dateFormat: 'd/m/Y', position: 'auto left', allowInput: true }}
+                                        className="form-input"
+                                        value={(() => {
+                                            const s = watchDraft('actualStartDate');
+                                            const e = watchDraft('actualEndDate');
+                                            const ss = s && isDateValid(parseISO(s)) ? parseISO(s) : null;
+                                            const ee = e && isDateValid(parseISO(e)) ? parseISO(e) : null;
+                                            return [ss, ee].filter(Boolean) as unknown as Date[];
+                                        })()}
+                                        onChange={(dates: any[]) => {
+                                            const [s, e] = dates || [];
+                                            if (!dates || dates.length === 0) {
+                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
+                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
+                                                return;
+                                            }
+                                            if (s instanceof Date) setDraftValue('actualStartDate', toDateOnlyLocal(s), { shouldDirty: true });
+                                            if (e instanceof Date) setDraftValue('actualEndDate', toDateOnlyLocal(e), { shouldDirty: true });
+                                        }}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Actual mandays (Mon–Fri): {draftActualMandays || 0}
+                                    </p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="dl-progress-dialog">Progress (%)</Label>
+                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                                        <Input
+                                            id="dl-progress-dialog"
+                                            type="range"
+                                            min={0}
+                                            max={100}
+                                            step={5}
+                                            {...registerDraft('progress', { valueAsNumber: true })}
+                                        />
+                                        <span className="w-12 text-right text-sm text-muted-foreground">
+                                            {watchDraft('progress') ?? 0}%
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Attachments</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {draftFiles.map((file: File, idx: number) => (
+                                            <span
+                                                key={`${file.name}-${idx}`}
+                                                className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-1 text-xs"
+                                            >
+                                                <span className="font-medium truncate max-w-[160px]">{file.name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="text-muted-foreground transition hover:text-destructive"
+                                                    onClick={() => handleDraftAttachmentRemove(idx)}
+                                                >
+                                                    remove
+                                                </button>
+                                            </span>
+                                        ))}
+                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/60 hover:text-primary">
+                                            <input
+                                                type="file"
+                                                multiple
+                                                className="hidden"
+                                                onChange={event => {
+                                                    void handleDraftAttachmentUpload(event.target.files);
+                                                    if (event.target) event.target.value = '';
+                                                }}
+                                            />
+                                            <Plus className="h-3.5 w-3.5" />
+                                            Add files
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <DialogFooter className="flex items-center justify-between">
+                                <div className="text-xs text-muted-foreground">
+                                    {scopeRows.length} scopes · {scopeRows.filter(s => s.status === 'completed').length} completed ·{' '}
+                                    {scopeRows.filter(s => s.status === 'in_progress').length} in progress
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {editingScopeIndex !== null && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            onClick={() => {
+                                                setEditingScopeIndex(null);
+                                                resetDraft({
+                                                    name: '',
+                                                    type: 'development',
+                                                    description: '',
+                                                    startDate: '',
+                                                    endDate: '',
+                                                    attachments: [],
+                                                    progress: 0,
+                                                    taskGroups: [],
+                                                    assignee: '',
+                                                    actualStartDate: '',
+                                                    actualEndDate: '',
+                                                    files: [],
+                                                });
+                                                setScopeFormKey(k => k + 1);
+                                                setScopeDialogOpen(false);
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    )}
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={
+                                            editingScopeIndex !== null
+                                                ? handleDraftSubmit(async values => {
+                                                      const prog = typeof values.progress === 'number' ? values.progress : 0;
+                                                      const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
+                                                      const idx = editingScopeIndex!;
+                                                      const current: any = watchDeliverables?.[idx] || {};
+                                                      const payload: any = {
+                                                          id: current.id,
+                                                          serverId: current.serverId,
+                                                          name: values.name,
+                                                          type: 'development',
+                                                          description: values.description,
+                                                          startDate: values.startDate,
+                                                          endDate: values.endDate,
+                                                          attachments: [],
+                                                          progress: prog,
+                                                          mandays: calcMandays(values.startDate, values.endDate),
+                                                          taskGroups: values.taskGroups ?? [],
+                                                          assignee: values.assignee ?? '',
+                                                          status,
+                                                          actualStartDate: values.actualStartDate ?? '',
+                                                          actualEndDate: values.actualEndDate ?? '',
+                                                          actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
+                                                          fileBlobs: [],
+                                                      };
+                                                      if (editProjectId && current.serverId) {
+                                                          const formData = new FormData();
+                                                          formData.append('title', values.name || '');
+                                                          formData.append('task_groups', (values.taskGroups || []).join(','));
+                                                          formData.append('description', values.description || '');
+                                                          formData.append('assignee', values.assignee || '');
+                                                          if (values.startDate) formData.append('planned_start_date', values.startDate);
+                                                          if (values.endDate) formData.append('planned_end_date', values.endDate);
+                                                          formData.append('planned_mandays', String(calcMandays(values.startDate, values.endDate)));
+                                                          formData.append('progress', String(prog));
+                                                          formData.append('status', status);
+                                                          if (values.actualStartDate) formData.append('actual_start_date', values.actualStartDate);
+                                                          if (values.actualEndDate) formData.append('actual_end_date', values.actualEndDate);
+                                                          formData.append('actual_mandays', String(calcMandays(values.actualStartDate, values.actualEndDate)));
+                                                          try {
+                                                              await authenticatedApi.put(
+                                                                  `/api/projects/${editProjectId}/scopes/${current.serverId}`,
+                                                                  formData,
+                                                              );
+                                                              update(idx, payload);
+                                                              toast.success('Scope updated');
+                                                          } catch (err: any) {
+                                                              toast.error(
+                                                                  err?.response?.data?.message || err?.message || 'Failed to update scope',
+                                                              );
+                                                              return;
+                                                          }
+                                                      } else {
+                                                          update(idx, payload);
+                                                      }
+                                                      setEditingScopeIndex(null);
+                                                      resetDraft({
+                                                          name: '',
+                                                          type: 'development',
+                                                          description: '',
+                                                          startDate: '',
+                                                          endDate: '',
+                                                          attachments: [],
+                                                          progress: 0,
+                                                          taskGroups: [],
+                                                          assignee: '',
+                                                          actualStartDate: '',
+                                                          actualEndDate: '',
+                                                          files: [],
+                                                      });
+                                                      setScopeFormKey(k => k + 1);
+                                                      setScopeDialogOpen(false);
+                                                  })
+                                                : onAddDeliverable
+                                        }
+                                    >
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
+                                    </Button>
+                                </div>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
 
             </form>
             <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
