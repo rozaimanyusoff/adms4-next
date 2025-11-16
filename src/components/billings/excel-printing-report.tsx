@@ -26,7 +26,7 @@ interface AccountDetail {
 interface YearBlock {
     year: number;
     total_annual: string;
-    details: { account: AccountDetail }[];
+    details: AccountDetail[];
 }
 
 interface ApiResponse {
@@ -117,12 +117,9 @@ const PrintingExcelReport: React.FC = () => {
                 const monthTotals: number[] = new Array(12).fill(0);
 
                 let accountSeq = 1;
-                yearBlock.details.forEach((detailObj) => {
-                    // support two possible shapes returned by API:
-                    // 1) details: [{ account: AccountDetail }, ...]
-                    // 2) details: [AccountDetail, ...]
-                    const acc: any = (detailObj && (detailObj as any).account) ? (detailObj as any).account : detailObj;
-                    if (!acc) return; // defensive
+                yearBlock.details.forEach((acc) => {
+                    // acc is now directly AccountDetail
+                    if (!acc || !acc.account) return; // defensive - ensure account field exists
 
                     // capture starting row for merging account cell vertically
                     const firstRowNumber = worksheet.lastRow ? worksheet.lastRow.number + 1 : header2Index + 1;
@@ -201,13 +198,30 @@ const PrintingExcelReport: React.FC = () => {
                     cell.numFmt = '#,##0.00';
                 }
 
-                // Auto-fit columns
-                worksheet.columns.forEach((column) => {
-                    if (column.values) {
-                        const maxLength = Math.max(...column.values.map((v: any) => v ? v.toString().length : 0));
-                        column.width = Math.min(maxLength + 2, 40);
+                // Set column widths - ensure all columns are properly configured
+                const totalColumns = 3 + monthOrder.length + 1; // No, Account, Details, 12 months, Total
+                for (let colIndex = 1; colIndex <= totalColumns; colIndex++) {
+                    const column = worksheet.getColumn(colIndex);
+                    column.hidden = false;
+                    
+                    // Calculate width based on content
+                    let maxLength = 10;
+                    column.eachCell({ includeEmpty: false }, (cell) => {
+                        const cellValue = cell.value?.toString() || '';
+                        maxLength = Math.max(maxLength, cellValue.length);
+                    });
+                    
+                    // Set appropriate width
+                    if (colIndex === 1) {
+                        column.width = 5; // No
+                    } else if (colIndex === 2) {
+                        column.width = Math.max(maxLength + 2, 12); // Account
+                    } else if (colIndex === 3) {
+                        column.width = 10; // Details
+                    } else {
+                        column.width = Math.min(Math.max(maxLength + 2, 10), 15); // Months and Total
                     }
-                });
+                }
                 // no indent prefix columns used
 
                 // Debug info for this sheet: header lengths and sample row cell counts
@@ -312,8 +326,8 @@ const PrintingExcelReport: React.FC = () => {
                                 year: 2025,
                                 total_annual: '4057.55',
                                 details: [
-                                    { account: { bill_id: 275, account: '45105231', monthly_expenses: [ { month: 'January', ubill_rent: '650.00', ubill_color: '485.15', ubill_bw: '50.46' }, { month: 'February', ubill_rent: '650.00', ubill_color: '284.16', ubill_bw: '26.71' } ] } },
-                                    { account: { bill_id: 260, account: '2506127Y', monthly_expenses: [ { month: 'January', ubill_rent: '650.00', ubill_color: '196.23', ubill_bw: '53.75' }, { month: 'February', ubill_rent: '650.00', ubill_color: '306.91', ubill_bw: '54.18' } ] } }
+                                    { bill_id: 275, account: '45105231', total_monthly: '1835.61', monthly_expenses: [ { month: 'January', util_id: 1, ubill_date: '2025-01-01', ubill_rent: '650.00', ubill_color: '485.15', ubill_bw: '50.46', ubill_gtotal: '1185.61' }, { month: 'February', util_id: 2, ubill_date: '2025-02-01', ubill_rent: '650.00', ubill_color: '284.16', ubill_bw: '26.71', ubill_gtotal: '960.87' } ] },
+                                    { bill_id: 260, account: '2506127Y', total_monthly: '2221.94', monthly_expenses: [ { month: 'January', util_id: 3, ubill_date: '2025-01-01', ubill_rent: '650.00', ubill_color: '196.23', ubill_bw: '53.75', ubill_gtotal: '899.98' }, { month: 'February', util_id: 4, ubill_date: '2025-02-01', ubill_rent: '650.00', ubill_color: '306.91', ubill_bw: '54.18', ubill_gtotal: '1011.09' } ] }
                                 ]
                             }
                         ]
