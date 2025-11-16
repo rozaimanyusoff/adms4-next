@@ -8,7 +8,6 @@ import ScrollToTop from '@/components/layouts/scroll-to-top';
 import Setting from '@/components/layouts/setting';
 import CustomSidebar from '@components/layouts/SettingSidebar';
 import Sidebar from '@/components/layouts/sidebar';
-import Portals from '@/components/portals';
 import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { DetectUserInactivity } from '@/config/detectUserInactivity';
@@ -139,7 +138,6 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
                         {/* BEGIN FOOTER */}
                         <Footer />
                         {/* END FOOTER */}
-                        <Portals />
                     </div>
                     {/* </SidebarProvider> */}
                 </MainContainer>

@@ -33,6 +33,31 @@
     background-color: #1b2e4b;
 }
 
+.flatpickr-calendar {
+    font-size: 11px;
+}
+
+.flatpickr-calendar .flatpickr-day {
+    max-width: 28px;
+    height: 24px;
+    line-height: 24px;
+    font-size: 11px;
+}
+
+.flatpickr-calendar .flatpickr-weekdays {
+    height: 18px;
+}
+
+.flatpickr-calendar .flatpickr-weekday {
+    line-height: 18px;
+    white-space: nowrap;
+    font-size: 10px;
+}
+
+.flatpickr-calendar .flatpickr-current-month {
+    font-size: 13px;
+}
+
 .dark .flatpickr-calendar .flatpickr-months input.cur-year {
     color: #bfc9d4;
     height: 31px;

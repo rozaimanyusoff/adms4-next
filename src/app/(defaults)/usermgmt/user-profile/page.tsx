@@ -1,5 +1,5 @@
 import UserProfile from '@/components/usermgmt/user-profile';
-import ComponentsUsersProfilePaymentHistory from '@/components/users/profile/components-users-profile-payment-history';
+
 import { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -21,7 +21,7 @@ const UserManagementProfilePage = () => {
                 </li>
             </ul>
             <UserProfile>
-                <ComponentsUsersProfilePaymentHistory />
+                <UserProfile />
             </UserProfile>
         </div>
     );

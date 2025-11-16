@@ -4,7 +4,15 @@ import { useDispatch, useSelector } from 'react-redux';
 import Link from 'next/link';
 import { IRootState } from '@/store';
 import { toggleTheme, toggleSidebar, toggleRTL } from '@/store/themeConfigSlice';
-import Dropdown from '@/components/dropdown';
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import IconMenu from '@/components/icon/icon-menu';
 import IconCalendar from '@/components/icon/icon-calendar';
 import IconEdit from '@/components/icon/icon-edit';
@@ -267,14 +275,14 @@ const Header = () => {
             if (item.type === 'section') {
                 return (
                     <li key={item.navId} className="menu nav-item relative">
-                        <button type="button" className="nav-link">
+                        <Button type="button" variant="ghost" className="nav-link">
                             <div className="flex items-center">
                                 <span className="px-1">{item.title}</span>
                             </div>
                             <div className="right_arrow">
                                 <IconCaretDown />
                             </div>
-                        </button>
+                        </Button>
                         {item.children && item.children.length > 0 && (
                             <ul className="sub-menu">
                                 {renderMenuItems(item.children)}
@@ -332,13 +340,15 @@ const Header = () => {
                             <img className="inline w-8 ltr:-ml-1 rtl:-mr-1" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
                             <span className={`hidden ${textSizeClasses.heading} text-shadow-2xs font-extrabold  transition-all duration-300 ltr:ml-1.5 rtl:mr-1.5 dark:text-white-light md:inline`}>{process.env.NEXT_PUBLIC_APP_NAME}</span>
                         </Link>
-                        <button
+                        <Button
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             className="collapse-icon flex flex-none hover:bg-white-light/90 hover:text-primary ltr:ml-2 rtl:mr-2 dark:bg-dark/40 dark:text-[#d0d2d6] dark:hover:bg-dark/60 dark:hover:text-primary lg:hidden"
                             onClick={() => dispatch(toggleSidebar())}
                         >
                             <IconMenu className="h-7 w-7 text-orange-600" />
-                        </button>
+                        </Button>
                     </div>
 
                     <div className="flex items-center justify-end space-x-1.5 ltr:ml-auto rtl:mr-auto rtl:space-x-reverse dark:text-[#d0d2d6] sm:flex-1 sm:ltr:ml-0 sm:rtl:mr-0 lg:space-x-2">
@@ -371,8 +381,10 @@ const Header = () => {
                         </div> */}
                         <div className="flex items-center shrink-0">
                             <div className="flex items-center bg-white-light/40 dark:bg-dark/40 rounded-full p-1">
-                                <button
+                                <Button
                                     type="button"
+                                    variant="outline"
+                                    size="icon"
                                     className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-white-light/90 dark:hover:bg-dark/60 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     onClick={() => {
                                         const sizes: Array<'xs' | 'sm' | 'md' | 'lg' | 'xl'> = ['xs', 'sm', 'md', 'lg', 'xl'];
@@ -384,12 +396,14 @@ const Header = () => {
                                     disabled={textSize === 'xs'}
                                 >
                                     <span className="text-lg font-bold">-</span>
-                                </button>
+                                </Button>
                                 <div className="flex items-center px-2 min-w-[40px] justify-center">
                                     <span className="text-sm font-semibold">T</span>
                                 </div>
-                                <button
+                                <Button
                                     type="button"
+                                    variant="outline"
+                                    size="icon"
                                     className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-white-light/90 dark:hover:bg-dark/60 hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     onClick={() => {
                                         const sizes: Array<'xs' | 'sm' | 'md' | 'lg' | 'xl'> = ['xs', 'sm', 'md', 'lg', 'xl'];
@@ -401,61 +415,79 @@ const Header = () => {
                                     disabled={textSize === 'xl'}
                                 >
                                     <span className="text-lg font-bold">+</span>
-                                </button>
+                                </Button>
                             </div>
                         </div>
                         <div>
                             {themeConfig.theme === 'light' ? (
-                                <button
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
                                     className={`${themeConfig.theme === 'light' &&
                                         'flex items-center rounded-full bg-white-light/40 p-2 hover:bg-white-light/90 hover:text-primary dark:bg-dark/40 dark:hover:bg-dark/60'
                                         }`}
                                     onClick={() => dispatch(toggleTheme('dark'))}
                                 >
                                     <IconSun />
-                                </button>
+                                </Button>
                             ) : (
                                 ''
                             )}
                             {themeConfig.theme === 'dark' && (
-                                <button
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
                                     className={`${themeConfig.theme === 'dark' &&
                                         'flex items-center rounded-full bg-white-light/40 p-2 hover:bg-white-light/90 hover:text-primary dark:bg-dark/40 dark:hover:bg-dark/60'
                                         }`}
                                     onClick={() => dispatch(toggleTheme('system'))}
                                 >
                                     <IconMoon />
-                                </button>
+                                </Button>
                             )}
                             {themeConfig.theme === 'system' && (
-                                <button
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
                                     className={`${themeConfig.theme === 'system' &&
                                         'flex items-center rounded-full bg-white-light/40 p-2 hover:bg-white-light/90 hover:text-primary dark:bg-dark/40 dark:hover:bg-dark/60'
                                         }`}
                                     onClick={() => dispatch(toggleTheme('light'))}
                                 >
                                     <IconLaptop />
-                                </button>
+                                </Button>
                             )}
                         </div>
                         <div className="dropdown shrink-0">
-                            <Dropdown
-                                offset={[0, 8]}
-                                placement={`${isRtl ? 'bottom-start' : 'bottom-end'}`}
-                                btnClassName="relative block p-2 rounded-full bg-white-light/40 dark:bg-dark/40 hover:text-primary hover:bg-white-light/90 dark:hover:bg-dark/60"
-                                button={
-                                    <span>
-                                        <IconBellBing />
-                                        {unreadCount > 0 && (
-                                            <span className="absolute top-0 flex h-3 w-3 ltr:right-0 rtl:left-0">
-                                                <span className="absolute -top-[3px] inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-[3px] rtl:-right-[3px]"></span>
-                                                <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-success"></span>
-                                            </span>
-                                        )}
-                                    </span>
-                                }
-                            >
-                                <ul className="w-[300px] divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-[350px]">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="relative block p-2 rounded-full bg-white-light/40 dark:bg-dark/40 hover:text-primary hover:bg-white-light/90 dark:hover:bg-dark/60"
+                                    >
+                                        <span>
+                                            <IconBellBing />
+                                            {unreadCount > 0 && (
+                                                <span className="absolute top-0 flex h-3 w-3 ltr:right-0 rtl:left-0">
+                                                    <span className="absolute -top-[3px] inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-[3px] rtl:-right-[3px]"></span>
+                                                    <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-success"></span>
+                                                </span>
+                                            )}
+                                        </span>
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                    align={isRtl ? 'start' : 'end'}
+                                    side="bottom"
+                                    sideOffset={8}
+                                    className="p-0"
+                                >
+                                    <ul className="w-[300px] divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-[350px]">
                                     <li onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-between px-4 py-2 font-semibold">
                                             <h4 className={textSizeClasses.heading}>Notifications</h4>
@@ -478,15 +510,17 @@ const Header = () => {
                                                     }
                                                 }}
                                             >
-                                                <input
+                                                <Input
                                                     ref={targetUserInputRef}
                                                     type="number"
                                                     min={1}
                                                     placeholder="User ID"
                                                     className="form-input h-7 w-28 px-2 py-1 text-xs"
                                                 />
-                                                <button
+                                                <Button
                                                     type="submit"
+                                                    variant="secondary"
+                                                    size="sm"
                                                     className="btn btn-secondary btn-xs h-7 px-3"
                                                     onClick={(e)=>{
                                                         // Redundant safety to ensure click triggers same logic
@@ -499,34 +533,43 @@ const Header = () => {
                                                             // allow form onSubmit to handle; no duplicate call needed
                                                         }
                                                     }}
-                                                >Load</button>
+                                                >
+                                                    Load
+                                                </Button>
                                                 {viewingUserId && (
-                                                    <button
+                                                    <Button
                                                         type="button"
+                                                        variant="outline"
+                                                        size="sm"
                                                         className="btn btn-outline-primary btn-xs h-7 px-3"
                                                         onClick={()=>{ loadNotifications(); if (targetUserInputRef.current) targetUserInputRef.current.value=''; }}
-                                                    >Mine</button>
+                                                    >
+                                                        Mine
+                                                    </Button>
                                                 )}
                                             </form>
                                             {viewingUserId && (
                                                 <div className="text-[10px] italic text-amber-600 flex items-center justify-between">
                                                     Viewing user ID {viewingUserId}{metaTargetUserId && metaTargetUserId !== viewingUserId ? ` (meta: ${metaTargetUserId})` : ''}
-                                                    <button
+                                                    <Button
+                                                        type="button"
+                                                        variant="link"
                                                         className="underline"
                                                         onClick={()=>{ loadNotifications(); if (targetUserInputRef.current) targetUserInputRef.current.value=''; }}
-                                                    >return</button>
+                                                    >
+                                                        return
+                                                    </Button>
                                                 </div>
                                             )}
                                             <div className="flex items-center gap-2 text-[10px]">
-                                                <label className="flex items-center gap-1 cursor-pointer select-none">
-                                                    <input
-                                                        type="checkbox"
+                                                <Label className="flex items-center gap-1 cursor-pointer select-none">
+                                                    <Checkbox
                                                         checked={realtimeEnabled}
-                                                        onChange={(e)=> setRealtimeEnabled(e.target.checked)}
+                                                        onCheckedChange={(checked)=> setRealtimeEnabled(Boolean(checked))}
                                                         className="form-checkbox h-3 w-3"
                                                     />
                                                     <span>Live feed</span>
-                                                </label>
+                                                </Label>
                                                 <span className="text-gray-400">({notifications.length}/{MAX_NOTIFICATIONS})</span>
                                             </div>
                                         </li>
@@ -560,32 +603,40 @@ const Header = () => {
                                                                 <h6 className={`font-${notification.read ? 'normal' : 'semibold'}`}>{notification.message}</h6>
                                                                 <span className={`block ${textSizeClasses.small} font-normal dark:text-gray-500`}>{notification.time === 'Just now' ? 'Just now' : new Date(notification.time).toLocaleString()}</span>
                                                             </div>
-                                                            <button
+                                                            <Button
                                                                 type="button"
+                                                                variant="ghost"
+                                                                size="icon"
                                                                 className="text-neutral-300 opacity-0 hover:text-danger group-hover:opacity-100 ltr:ml-auto rtl:mr-auto"
                                                                 onClick={() => removeNotification(notification.id)}
                                                             >
                                                                 <IconXCircle />
-                                                            </button>
+                                                            </Button>
                                                         </div>
                                                     </div>
                                                 </li>
                                             ))}
                                             <li>
                                                 <div className="p-4 flex gap-2">
-                                                    <button
+                                                    <Button
+                                                        type="button"
+                                                        variant="default"
+                                                        size="sm"
                                                         className="btn btn-primary btn-small flex-1"
                                                         onClick={(e) => { e.stopPropagation(); markAllRead(); }}
                                                         disabled={unreadCount === 0 || (viewingUserId !== null && viewingUserId !== selfUserId)}
                                                     >
                                                         {(viewingUserId !== null && viewingUserId !== selfUserId) ? 'Mark All (Disabled)' : 'Mark All Read'}
-                                                    </button>
-                                                    <button
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        size="sm"
                                                         className="btn btn-secondary btn-small flex-1"
                                                         onClick={(e) => { e.stopPropagation(); loadNotifications(viewingUserId || undefined); if (!viewingUserId) loadUnreadCount(); }}
                                                     >
                                                         Refresh
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             </li>
                                             {notifications.length >= MAX_NOTIFICATIONS && (
@@ -595,67 +646,77 @@ const Header = () => {
                                     ) : (
                                         !loadingNotifications && (
                                             <li onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" className="!grid min-h-[160px] place-content-center text-sm hover:bg-transparent! w-full">
+                                                <Button type="button" variant="ghost" className="!grid min-h-[160px] place-content-center text-sm hover:bg-transparent! w-full">
                                                     <div className="mx-auto mb-3 rounded-full ring-4 ring-primary/20 p-2 w-fit">
                                                         <IconInfoCircle fill={true} className="h-8 w-8 text-primary" />
                                                     </div>
                                                     {notifError ? 'Failed to load notifications' : 'No notifications'}
-                                                </button>
+                                                </Button>
                                             </li>
                                         )
                                     )}
-                                </ul>
-                            </Dropdown>
+                                    </ul>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                         <div className="dropdown flex shrink-0">
-                            <Dropdown
-                                offset={[0, 8]}
-                                placement={`${isRtl ? 'bottom-start' : 'bottom-end'}`}
-                                btnClassName="relative group block"
-                                button={<img className="h-9 w-9 rounded-full object-cover saturate-50 group-hover:saturate-100" src={userAvatar} alt={userDisplayName} />}
-                            >
-                                <ul className="w-[230px] py-0! font-semibold text-dark dark:text-white-light/90">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button type="button" variant="ghost" size="icon" className="relative group block">
+                                        <img className="h-9 w-9 rounded-full object-cover saturate-50 group-hover:saturate-100" src={userAvatar} alt={userDisplayName} />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                    align={isRtl ? 'start' : 'end'}
+                                    side="bottom"
+                                    sideOffset={8}
+                                    className="p-0"
+                                >
+                                    <ul className="w-[230px] py-0! font-semibold text-dark dark:text-white-light/90 bg-white dark:bg-[#0e1726] rounded-md shadow-lg border border-gray-200 dark:border-gray-700">
                                     <li>
-                                        <div className="flex items-center px-4 py-4">
+                                        <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white-light/10">
                                             <img className="h-10 w-10 rounded-md object-cover" src={userAvatar} alt={userDisplayName} />
                                             <div className="truncate ltr:pl-4 rtl:pr-4">
-                                                <h4 className={textSizeClasses.base}>
+                                                <h4 className={`${textSizeClasses.base} font-semibold`}>
                                                     {userDisplayName}
                                                 </h4>
                                                 {userEmail && (
-                                                    <button type="button" className="text-black/60 hover:text-primary dark:text-dark-light/60 dark:hover:text-white">
+                                                    <p className="text-xs text-black/60 dark:text-dark-light/60 truncate">
                                                         {userEmail}
-                                                    </button>
+                                                    </p>
                                                 )}
                                             </div>
                                         </div>
                                     </li>
                                     <li>
-                                        <Link href="/users/profile" className="dark:hover:text-white">
-                                            <IconUser className="h-4.5 w-4.5 shrink-0 ltr:mr-2 rtl:ml-2" />
+                                        <Link href="/users/profile" className="flex items-center px-3 py-2 hover:bg-gray-50 dark:hover:bg-white-light/5 dark:hover:text-white transition-colors text-xs gap-2">
+                                            <IconUser className="h-4.5 w-4.5" />
                                             Profile
                                         </Link>
                                     </li>
                                     <li>
-                                        <button
+                                        <Button
                                             onClick={() => setCustomSidebarOpen(true)}
-                                            className="dark:hover:text-white w-full text-left"
+                                            variant="ghost"
+                                            className="dark:hover:text-white w-full justify-start px-2 py-2 hover:bg-gray-50 dark:hover:bg-white-light/5 text-xs rounded-none h-auto font-semibold gap-2"
                                         >
-                                            <IconSettings className="w-4.5 h-4.5 ltr:mr-2 rtl:ml-2 shrink-0" />
+                                            <IconSettings className="w-4.5 h-4.5" />
                                             Settings
-                                        </button>
+                                        </Button>
                                     </li>
-                                    <li className="border-t border-white-light dark:border-white-light/10">
-                                        <button
+                                    <li className="border-t border-gray-200 dark:border-white-light/10">
+                                        <Button
                                             onClick={handleLogout}
-                                            className="py-3! text-danger flex items-center"
+                                            variant="ghost"
+                                            className="text-danger hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center w-full justify-start px-4 py-3 rounded-none h-auto font-semibold"
                                         >
                                             <IconLogout className="h-4.5 w-4.5 shrink-0 rotate-90 ltr:mr-2 rtl:ml-2" />
                                             Sign Out
-                                        </button>
+                                        </Button>
                                     </li>
                                 </ul>
-                            </Dropdown>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </div>
                 </div>
@@ -666,7 +727,7 @@ const Header = () => {
                         ?.sort((a: any, b: any) => a.position - b.position)
                         .map((section: any) => (
                             <li key={section.navId} className="menu nav-item relative">
-                                <button type="button" className="nav-link uppercase font-semibold">
+                                <Button type="button" variant="ghost" className="nav-link uppercase font-semibold">
                                     <div className="flex items-center">
                                         <span className="px-1">{section.title}</span>
                                     </div>
@@ -675,7 +736,7 @@ const Header = () => {
                                             <IconCaretDown />
                                         </div>
                                     )}
-                                </button>
+                                </Button>
                                 {section.children && section.children.length > 0 && (
                                     <ul className="sub-menu">
                                         {section.children

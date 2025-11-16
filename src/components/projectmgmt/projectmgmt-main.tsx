@@ -18,6 +18,8 @@ import type {
     ProjectSupportShift,
     ProjectTagLink,
     ProjectDeliverable,
+    DeliverableType,
+    MilestoneStatus,
 } from './types';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
@@ -506,25 +508,57 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
     const startDate = (item?.start_date || '').slice(0, 10);
     const dueDate = (item?.due_date || '').slice(0, 10);
     const percentComplete = Number(item?.overall_progress ?? 0) || 0;
+    const durationDays = Number(item?.duration_days ?? 0) || 0;
+    
+    // Determine status - override API status if conditions indicate "not_started"
     const allowed: ProjectStatus[] = ['not_started', 'in_progress', 'completed', 'at_risk'];
     const incoming = String(item?.status || '').toLowerCase();
-    const status = (allowed.includes(incoming as ProjectStatus)
-        ? (incoming as ProjectStatus)
-        : percentComplete >= 100
-            ? 'completed'
-            : percentComplete <= 0
-                ? 'not_started'
-                : 'in_progress');
+    let status: ProjectStatus;
+    
+    // Override status logic: If 0% progress, always set to not_started regardless of dates
+    if (percentComplete === 0) {
+        status = 'not_started';
+    } else if (percentComplete >= 100) {
+        status = 'completed';
+    } else if (allowed.includes(incoming as ProjectStatus)) {
+        // Use API status if valid and doesn't conflict with above rules
+        status = incoming as ProjectStatus;
+    } else {
+        status = 'in_progress';
+    }
+    
+    // Map scopes/deliverables from API
+    const deliverables: ProjectDeliverable[] = Array.isArray(item?.scopes) 
+        ? item.scopes.map((scope: any) => ({
+            id: String(scope?.id || generateId('deliverable')),
+            serverId: scope?.id,
+            name: scope?.name || '',
+            type: (scope?.type || 'development') as DeliverableType,
+            description: scope?.description || '',
+            startDate: (scope?.start_date || '').slice(0, 10),
+            endDate: (scope?.end_date || '').slice(0, 10),
+            attachments: [],
+            progress: Number(scope?.progress ?? 0) || 0,
+            mandays: Number(scope?.mandays ?? 0) || 0,
+            assignee: scope?.assignee || '',
+            status: scope?.status as MilestoneStatus || 'not_started',
+            actualStartDate: scope?.actual_start_date ? scope.actual_start_date.slice(0, 10) : '',
+            actualEndDate: scope?.actual_end_date ? scope.actual_end_date.slice(0, 10) : '',
+            actualMandays: Number(scope?.actual_mandays ?? 0) || 0,
+        }))
+        : [];
+    
     return {
         id,
         code: item?.code || '',
         name: item?.name || '',
         description: item?.description || '',
         assignmentType: (item?.assignment_type || 'project') as AssignmentType,
+        priority: item?.priority || 'medium',
         status,
         startDate,
         dueDate,
-        durationDays: Number(item?.duration_days ?? 0) || 0,
+        durationDays,
         percentComplete,
         createdAt: item?.created_at || new Date().toISOString(),
         updatedAt: item?.updated_at || item?.created_at || new Date().toISOString(),
@@ -533,7 +567,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
         progressLogs: [],
         supportShifts: [],
         tags: [],
-        deliverables: [],
+        deliverables,
     };
 }
 
@@ -594,7 +628,7 @@ const ProjectMgmtMain: React.FC = () => {
                 <p className="mt-1 text-sm text-muted-foreground">Register initiatives, manage owners, and surface delivery insights.</p>
             </div>
             <Tabs defaultValue="manage" className="space-y-6">
-                <TabsList className="grid w-full gap-2 sm:w-[360px] sm:grid-cols-2">
+                <TabsList>
                     <TabsTrigger value="manage">Registry</TabsTrigger>
                     <TabsTrigger value="reports">Support Reports</TabsTrigger>
                 </TabsList>

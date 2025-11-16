@@ -103,6 +103,7 @@ export interface ProjectRecord {
     name: string;
     description?: string;
     assignmentType: AssignmentType;
+    priority?: string;
     status: ProjectStatus;
     startDate: string;
     dueDate: string;

@@ -3,10 +3,70 @@
 import React from 'react';
 import type { ProjectRecord, AssignmentType, ProjectStatus } from './types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, eachDayOfInterval, isWeekend } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import { HolidayAPI } from 'holidayapi';
+
+// Store public holidays in memory
+let cachedHolidays: string[] = [];
+let holidaysLoaded = false;
+
+// Fetch Malaysian public holidays for current year
+const fetchPublicHolidays = async () => {
+    if (holidaysLoaded) return cachedHolidays;
+    
+    try {
+        const key = '1b8cdf82-ff7a-432a-9455-da9f50bcad22';
+        const holidayApi = new HolidayAPI({ key });
+        const currentYear = new Date().getFullYear();
+        
+        const response = await holidayApi.holidays({
+            country: 'MY-01',
+            year: currentYear,
+        });
+        
+        // Extract dates from response
+        if (response && response.holidays) {
+            cachedHolidays = response.holidays.map((holiday: any) => holiday.date);
+            holidaysLoaded = true;
+        }
+    } catch (error) {
+        console.error('Failed to fetch holidays:', error);
+        cachedHolidays = [];
+    }
+    
+    return cachedHolidays;
+};
+
+// Calculate business days excluding weekends and public holidays
+const calculateBusinessDays = (startDate: string, endDate: string): number => {
+    if (!startDate || !endDate) return 0;
+    
+    try {
+        const start = parseISO(startDate);
+        const end = parseISO(endDate);
+        
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+        if (end < start) return 0;
+        
+        const days = eachDayOfInterval({ start, end });
+        
+        return days.filter(day => {
+            // Exclude weekends
+            if (isWeekend(day)) return false;
+            
+            // Exclude public holidays
+            const dateStr = format(day, 'yyyy-MM-dd');
+            if (cachedHolidays.includes(dateStr)) return false;
+            
+            return true;
+        }).length;
+    } catch {
+        return 0;
+    }
+};
 
 type ProjectOverviewTableProps = {
     projects: ProjectRecord[];
@@ -29,10 +89,10 @@ const ROLE_LABEL: Record<'developer' | 'collaborator' | 'supervisor', string> = 
 };
 
 const STATUS_META: Record<ProjectStatus, { label: string; className: string }> = {
-    not_started: { label: 'Not Started', className: 'bg-muted text-muted-foreground' },
-    in_progress: { label: 'In Progress', className: 'bg-primary/10 text-primary' },
-    completed: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' },
-    at_risk: { label: 'At Risk', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' },
+    not_started: { label: 'Not Started', className: 'bg-red-500 text-white text-xs truncate' },
+    in_progress: { label: 'In Progress', className: 'bg-amber-400/70 text-primary text-xs truncate' },
+    completed: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs truncate' },
+    at_risk: { label: 'At Risk', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 text-xs truncate' },
 };
 
 const formatDisplayDate = (value: string) => {
@@ -51,6 +111,11 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
     onCreateProject,
     onOpenProject,
 }) => {
+    // Fetch holidays on component mount
+    React.useEffect(() => {
+        fetchPublicHolidays().catch(console.error);
+    }, []);
+
     const filtered = React.useMemo(() => {
         if (assignmentTypeFilter === 'all') {
             return projects;
@@ -97,26 +162,36 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                 <table className="w-full border-collapse">
                     <thead>
                         <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                            <th className="px-4 py-3 w-12">#</th>
                             <th className="px-4 py-3">Project</th>
                             <th className="px-4 py-3">Assignment</th>
-                            <th className="px-4 py-3">Assignor</th>
-                            <th className="px-4 py-3">Assignee</th>
+                            <th className="px-4 py-3">Priority</th>
+                            <th className="px-4 py-3">Collaborators</th>
                             <th className="px-4 py-3">Duration</th>
-                            <th className="px-4 py-3">Due</th>
                             <th className="px-4 py-3">Progress</th>
                             <th className="px-4 py-3 text-right">Status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {sorted.map(project => {
+                        {sorted.map((project, index) => {
                             const primaryAssignment = project.assignments[0];
                             const statusMeta = STATUS_META[project.status];
+                            // Count unique collaborators from scope assignees
+                            const uniqueAssignees = new Set(
+                                project.deliverables
+                                    .map(d => d.assignee)
+                                    .filter((assignee): assignee is string => Boolean(assignee))
+                            );
+                            const collaboratorsCount = uniqueAssignees.size;
                             return (
                                 <tr
                                     key={project.id}
                                     className="border-b border-border/40 text-sm transition hover:bg-muted/40 cursor-pointer"
                                     onDoubleClick={() => onOpenProject && onOpenProject(String(project.id))}
                                 >
+                                    <td className="px-4 py-3 text-muted-foreground font-medium">
+                                        {index + 1}
+                                    </td>
                                     <td className="px-4 py-3">
                                         <div className="font-medium">{project.name}</div>
                                         <div className="text-xs uppercase tracking-wide text-muted-foreground">{project.code}</div>
@@ -146,10 +221,43 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                                             )}
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3">{primaryAssignment?.assignor ?? '—'}</td>
-                                    <td className="px-4 py-3">{primaryAssignment?.assignee ?? '—'}</td>
-                                    <td className="px-4 py-3">{project.durationDays} days</td>
-                                    <td className="px-4 py-3">{formatDisplayDate(project.dueDate)}</td>
+                                    <td className="px-4 py-3">
+                                        <Badge 
+                                            variant="outline"
+                                            className={
+                                                (project as any).priority === 'high' 
+                                                    ? 'border-red-500 text-red-700 dark:text-red-400' 
+                                                    : (project as any).priority === 'low' 
+                                                    ? 'border-slate-400 text-slate-600 dark:text-slate-400'
+                                                    : 'border-amber-500 text-amber-700 dark:text-amber-400'
+                                            }
+                                        >
+                                            {((project as any).priority || 'medium').charAt(0).toUpperCase() + ((project as any).priority || 'medium').slice(1)}
+                                        </Badge>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex items-center gap-1">
+                                            <span className="font-medium">{collaboratorsCount}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                                {collaboratorsCount === 1 ? 'member' : 'members'}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex flex-col">
+                                            <div className="text-xs text-muted-foreground">
+                                                {project.startDate ? formatDisplayDate(project.startDate) : '—'} → {project.dueDate ? formatDisplayDate(project.dueDate) : '—'}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium">
+                                                    {calculateBusinessDays(project.startDate, project.dueDate)} days
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    (business days)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
                                             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">

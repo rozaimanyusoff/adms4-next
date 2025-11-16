@@ -69,17 +69,17 @@ function TabsList({
       data-slot="tabs-list"
       className={cn(
         // Container should not grow wider than viewport
-        "bg-gray-100 dark:bg-gray-800/50 text-muted-foreground flex w-full max-w-full min-w-0 items-center justify-start rounded-lg",
+        "dark:bg-gray-800/50 text-muted-foreground flex w-full max-w-full min-w-0 items-center justify-start",
         // Add lighter border
-        "border border-gray-200/60 dark:border-gray-700/40",
+        "border-none border-gray-200/60 dark:border-gray-700/40",
         // Responsive height and padding based on screen size
-        "h-9 sm:h-10 md:h-11 px-1 sm:px-0.5",
+        "h-9 sm:h-10 md:h-9 px-1 sm:px-0.5",
         // Enable horizontal scroll without growing layout width
         "overflow-x-auto overflow-y-hidden scrollbar-hide flex-nowrap",
         // Smooth scrolling behavior
         "scroll-smooth overscroll-x-contain",
-        // Add small gap between tabs
-        "gap-0.5",
+        // Add small gap between tabs - default gap-0.5
+        "gap-none",
         // Hide scrollbars but maintain functionality
         "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]",
         className
@@ -104,15 +104,15 @@ function TabsTrigger({
 
         // Layout and spacing - responsive padding
         "inline-flex items-center justify-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 md:px-5 md:py-3",
-        "h-[calc(100%-4px)] flex-shrink-0 rounded-md border border-transparent",
+        "h-[calc(100%-4px)] flex-shrink-0 rounded-full border border-transparent",
         "min-w-fit relative",
 
         // Default state
-        "text-muted-foreground bg-transparent hover:bg-white/80 hover:text-foreground dark:hover:bg-gray-700/60",
+        "text-muted-foreground bg-transparent hover:border-blue-600 hover:bg-white/80 hover:text-blue-600 dark:hover:bg-gray-700/60 border-gray-200/60 dark:border-gray-700/40",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
 
         // Active state with enhanced styling and prominent background
-        "data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md",
+        "data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg",
         "data-[state=active]:font-semibold dark:data-[state=active]:bg-blue-600 dark:data-[state=active]:text-white",
         "data-[state=active]:border-blue-600 data-[state=active]:hover:bg-blue-700",
 
