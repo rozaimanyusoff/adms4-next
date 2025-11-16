@@ -269,7 +269,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 });
             });
             ws.getRow(1).font = { bold: true };
-            const wsG = workbook.addWorksheet('Gantt Chart');
+            const wsG = workbook.addWorksheet('Timeline Chart');
             if (ganttTasks.length > 0 && timeline.startDate && timeline.endDate) {
                 const start = parseISO(timeline.startDate);
                 const end = parseISO(timeline.endDate);
@@ -363,10 +363,11 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 const formData = new FormData();
                 formData.append('progress', String(val));
                 formData.append('status', status);
-                 // Ensure project-level overall_progress stays in sync with scope changes
+                // Ensure project-level overall_progress stays in sync with scope changes
                 formData.append('overall_progress', String(newOverall));
                 await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${serverId}`, formData);
                 toast.success('Scope progress updated');
+                void syncProjectMetaFromScopes();
             } catch (err: any) {
                 toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope progress');
             } finally {
@@ -429,6 +430,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 await authenticatedApi.delete(`/api/projects/${editProjectId}/scopes/${serverId}`);
                 remove(index);
                 toast.success('Scope removed');
+                void syncProjectMetaFromScopes();
             } catch (err: any) {
                 const msg = err?.response?.data?.message || err?.message || 'Failed to remove scope';
                 toast.error(msg);
@@ -437,6 +439,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
             }
         } else {
             remove(index);
+            void syncProjectMetaFromScopes();
         }
     };
 
@@ -531,13 +534,18 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         };
     }, [editProjectId, reset, setValue]);
 
-    const timeline = useMemo(() => {
-        const valid = (watchDeliverables ?? []).filter(d => d?.startDate && d?.endDate);
+    const computeTimelineFromDeliverables = (items: Array<{ startDate?: string; endDate?: string }> | undefined | null) => {
+        const valid = (items ?? []).filter(d => d?.startDate && d?.endDate) as Array<{ startDate: string; endDate: string }>;
         if (!valid.length) return { startDate: '', endDate: '' };
         const sortedByStart = [...valid].sort((a, b) => a.startDate.localeCompare(b.startDate));
         const sortedByEnd = [...valid].sort((a, b) => a.endDate.localeCompare(b.endDate));
         return { startDate: sortedByStart[0].startDate, endDate: sortedByEnd[sortedByEnd.length - 1].endDate };
-    }, [watchDeliverables]);
+    };
+
+    const timeline = useMemo(
+        () => computeTimelineFromDeliverables(watchDeliverables as any[] | undefined),
+        [watchDeliverables],
+    );
 
     // Duration in mandays (Mon–Fri), across the overall project window
     const durationDays = useMemo(() => {
@@ -779,6 +787,38 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         }
     };
 
+    const syncProjectMetaFromScopes = async () => {
+        if (!editProjectId) return;
+        const formValues = getValues();
+        const allDeliverables = ((formValues as any).deliverables || []) as any[];
+        const tl = computeTimelineFromDeliverables(allDeliverables);
+        const overall = computeOverallProgress(allDeliverables);
+        setValue('percentComplete', overall, { shouldDirty: true });
+
+        const startDate = tl.startDate || formValues.startDate || '';
+        const dueDate = tl.endDate || formValues.dueDate || '';
+
+        const formData = new FormData();
+        if (formValues.code && formValues.code.trim()) {
+            formData.append('code', formValues.code.trim());
+        }
+        formData.append('name', formValues.name || '');
+        if (formValues.description) formData.append('description', formValues.description);
+        formData.append('assignment_type', formValues.assignmentType || 'project');
+        if (startDate) formData.append('start_date', startDate);
+        if (dueDate) formData.append('due_date', dueDate);
+        formData.append('priority', (watch as any)('priority') ?? 'medium');
+        formData.append('overall_progress', String(overall));
+        const projectTags = (watch as any)('projectTags') ?? '';
+        if (projectTags) formData.append('project_tags', projectTags);
+
+        try {
+            await authenticatedApi.put(`/api/projects/${editProjectId}`, formData);
+        } catch {
+            // Best-effort background sync; errors are non-blocking for scope ops
+        }
+    };
+
     const handleDraftAttachmentUpload = async (files: FileList | null) => {
         if (!files?.length) return;
         const list = Array.from(files);
@@ -848,6 +888,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                 toast.success('Scope added');
                 resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
                 setScopeFormKey(k => k + 1);
+                void syncProjectMetaFromScopes();
                 return;
             } catch (err: any) {
                 const msg = err?.response?.data?.message || err?.message || 'Failed to add scope';
@@ -1272,7 +1313,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                         disabled={scopeRows.length === 0}
                                         onClick={() => setViewMode('gantt')}
                                     >
-                                        Gantt Chart
+                                        Timeline Chart
                                     </Button>
                                     <Button
                                         type="button"
@@ -1293,7 +1334,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                         size="sm"
                                         onClick={exportGanttExcel}
                                     >
-                                        Export Gantt (Excel)
+                                        Export Timeline (Excel)
                                     </Button>
                                     <Button
                                         type="button"
@@ -2129,6 +2170,7 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                                                 );
                                                                 update(idx, payload);
                                                                 toast.success('Scope updated');
+                                                                void syncProjectMetaFromScopes();
                                                             } catch (err: any) {
                                                                 toast.error(
                                                                     err?.response?.data?.message ||

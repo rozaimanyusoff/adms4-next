@@ -422,7 +422,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
       // Simple text rendering
       ctx.fillStyle = '#000000';
       ctx.font = '14px Arial';
-      ctx.fillText('Gantt Chart Export', 20, 30);
+      ctx.fillText('Timeline Chart Export', 20, 30);
 
       tasks.forEach((task, index) => {
         const y = 60 + (index * 30);
@@ -434,7 +434,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
       const pngUrl = canvas.toDataURL('image/png');
       const a = document.createElement('a');
       a.href = pngUrl;
-      a.download = `gantt-chart-${Date.now()}.png`;
+      a.download = `timeline-chart-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -470,7 +470,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
               </div>
               <h4 className="text-lg font-semibold text-slate-600 mb-2">No tasks to display</h4>
               <p className="text-slate-500 max-w-md mx-auto">
-                Add some project scopes to see them visualized in the Gantt chart timeline.
+                Add some project scopes to see them visualized in the timeline chart.
               </p>
             </div>
           ) : (

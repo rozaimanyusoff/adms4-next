@@ -629,8 +629,8 @@ const ProjectMgmtMain: React.FC = () => {
             </div>
             <Tabs defaultValue="manage" className="space-y-6">
                 <TabsList>
-                    <TabsTrigger value="manage">Registry</TabsTrigger>
-                    <TabsTrigger value="reports">Support Reports</TabsTrigger>
+                    <TabsTrigger value="manage">Project Registry</TabsTrigger>
+                    <TabsTrigger value="reports">Dashboard</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="manage" className="space-y-6">
