@@ -284,6 +284,7 @@ const hydrateRecord = (values: ProjectFormValues, tagLookup: Record<string, Proj
         code,
         name: values.name,
         description: values.description,
+        projectType: 'dev',
         assignmentType: values.assignmentType,
         status,
         startDate,
@@ -509,6 +510,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
     const dueDate = (item?.due_date || '').slice(0, 10);
     const percentComplete = Number(item?.overall_progress ?? 0) || 0;
     const durationDays = Number(item?.duration_days ?? 0) || 0;
+    const projectType = (item?.project_type === 'it' || item?.project_type === 'dev') ? item.project_type : 'dev';
     
     // Determine status - override API status if conditions indicate "not_started"
     const allowed: ProjectStatus[] = ['not_started', 'in_progress', 'completed', 'at_risk'];
@@ -548,11 +550,24 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
         }))
         : [];
     
+    const assignments: ProjectAssignment[] = Array.isArray(item?.assignments)
+        ? item.assignments.map((assignment: any, index: number) => ({
+            id: assignment?.id ? String(assignment.id) : generateId(`assign_${index}`),
+            projectId: id,
+            assignor: assignment?.assignor || '',
+            assignee: assignment?.assignee?.full_name || assignment?.assignee || '',
+            role: (assignment?.role as AssignmentRole) || 'developer',
+            active: assignment?.active ?? true,
+            createdAt: assignment?.created_at || item?.created_at || new Date().toISOString(),
+        }))
+        : [];
+
     return {
         id,
         code: item?.code || '',
         name: item?.name || '',
         description: item?.description || '',
+        projectType,
         assignmentType: (item?.assignment_type || 'project') as AssignmentType,
         priority: item?.priority || 'medium',
         status,
@@ -562,7 +577,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
         percentComplete,
         createdAt: item?.created_at || new Date().toISOString(),
         updatedAt: item?.updated_at || item?.created_at || new Date().toISOString(),
-        assignments: [],
+        assignments,
         milestones: [],
         progressLogs: [],
         supportShifts: [],
@@ -574,6 +589,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
 const ProjectMgmtMain: React.FC = () => {
     const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
     const [assignmentFilter, setAssignmentFilter] = React.useState<AssignmentType | 'all'>('all');
+    const [projectTypeFilter, setProjectTypeFilter] = React.useState<'all' | 'dev' | 'it'>('dev');
     const [isCreating, setIsCreating] = React.useState(false);
     const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
 
@@ -649,7 +665,9 @@ const ProjectMgmtMain: React.FC = () => {
                                 <ProjectOverviewTable
                                     projects={projects}
                                     assignmentTypeFilter={assignmentFilter}
+                                    projectTypeFilter={projectTypeFilter}
                                     onAssignmentTypeFilterChange={setAssignmentFilter}
+                                    onProjectTypeFilterChange={setProjectTypeFilter}
                                     onCreateProject={() => { setEditingProjectId(null); setIsCreating(true); }}
                                     onOpenProject={(id) => { setEditingProjectId(id); setIsCreating(true); }}
                                 />

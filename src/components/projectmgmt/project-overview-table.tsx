@@ -6,7 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { format, parseISO, eachDayOfInterval, isWeekend } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
+import { LayoutGrid, Plus, Table } from 'lucide-react';
 import { HolidayAPI } from 'holidayapi';
 
 // Store public holidays in memory
@@ -71,7 +74,9 @@ const calculateBusinessDays = (startDate: string, endDate: string): number => {
 type ProjectOverviewTableProps = {
     projects: ProjectRecord[];
     assignmentTypeFilter: AssignmentType | 'all';
+    projectTypeFilter: 'all' | 'dev' | 'it';
     onAssignmentTypeFilterChange: (value: AssignmentType | 'all') => void;
+    onProjectTypeFilterChange: (value: 'all' | 'dev' | 'it') => void;
     onCreateProject?: () => void;
     onOpenProject?: (projectId: string) => void;
 };
@@ -95,6 +100,13 @@ const STATUS_META: Record<ProjectStatus, { label: string; className: string }> =
     at_risk: { label: 'At Risk', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 text-xs truncate' },
 };
 
+const STATUS_PROGRESS_COLORS: Record<ProjectStatus, { indicator: string; track: string }> = {
+    not_started: { indicator: 'bg-muted-foreground/30', track: 'bg-muted' },
+    in_progress: { indicator: 'bg-amber-500', track: 'bg-amber-100' },
+    completed: { indicator: 'bg-emerald-500', track: 'bg-emerald-100' },
+    at_risk: { indicator: 'bg-amber-600', track: 'bg-amber-100' },
+};
+
 const formatDisplayDate = (value: string) => {
     try {
         const parsed = parseISO(value);
@@ -104,10 +116,27 @@ const formatDisplayDate = (value: string) => {
     }
 };
 
+const getPriorityMeta = (priority?: string) => {
+    const normalized = (priority || 'medium').toLowerCase();
+    const label = normalized.charAt(0).toUpperCase() + normalized.slice(1);
+
+    if (normalized === 'high') {
+        return { label, className: 'border-red-500 text-red-700 dark:text-red-400' };
+    }
+
+    if (normalized === 'low') {
+        return { label, className: 'border-slate-400 text-slate-600 dark:text-slate-400' };
+    }
+
+    return { label, className: 'border-amber-500 text-amber-700 dark:text-amber-400' };
+};
+
 const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
     projects,
     assignmentTypeFilter,
+    projectTypeFilter,
     onAssignmentTypeFilterChange,
+    onProjectTypeFilterChange,
     onCreateProject,
     onOpenProject,
 }) => {
@@ -117,15 +146,18 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
     }, []);
 
     const filtered = React.useMemo(() => {
-        if (assignmentTypeFilter === 'all') {
-            return projects;
-        }
-        return projects.filter(project => project.assignmentType === assignmentTypeFilter);
-    }, [projects, assignmentTypeFilter]);
+        return projects.filter(project => {
+            const matchesAssignment = assignmentTypeFilter === 'all' ? true : project.assignmentType === assignmentTypeFilter;
+            const matchesProjectType = projectTypeFilter === 'all' ? true : (project.projectType || 'dev') === projectTypeFilter;
+            return matchesAssignment && matchesProjectType;
+        });
+    }, [projects, assignmentTypeFilter, projectTypeFilter]);
 
     const sorted = React.useMemo(() => {
         return [...filtered].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     }, [filtered]);
+
+    const [viewMode, setViewMode] = React.useState<'card' | 'table'>('card');
 
     return (
         <div className="panel space-y-4 p-5">
@@ -149,6 +181,49 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                             </SelectContent>
                         </Select>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Project type</span>
+                        <Select value={projectTypeFilter} onValueChange={value => onProjectTypeFilterChange(value as 'all' | 'dev' | 'it')}>
+                            <SelectTrigger className="w-[160px] sm:w-[180px]">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="dev">Dev</SelectItem>
+                                <SelectItem value="it">IT</SelectItem>
+                                <SelectItem value="all">All</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/50 p-1">
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className={cn(
+                                'h-9 rounded-md px-3 text-sm',
+                                viewMode === 'card' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'
+                            )}
+                            aria-pressed={viewMode === 'card'}
+                            onClick={() => setViewMode('card')}
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                            <span className="hidden sm:inline">Card</span>
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className={cn(
+                                'h-9 rounded-md px-3 text-sm',
+                                viewMode === 'table' ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'
+                            )}
+                            aria-pressed={viewMode === 'table'}
+                            onClick={() => setViewMode('table')}
+                        >
+                            <Table className="h-4 w-4" />
+                            <span className="hidden sm:inline">Table</span>
+                        </Button>
+                    </div>
                     {onCreateProject && (
                         <Button onClick={onCreateProject} className="self-end sm:self-auto">
                             <Plus className="mr-2 h-4 w-4" />
@@ -158,46 +233,59 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                 </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                    <thead>
-                        <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                            <th className="px-4 py-3 w-12">#</th>
-                            <th className="px-4 py-3">Project</th>
-                            <th className="px-4 py-3">Assignment</th>
-                            <th className="px-4 py-3">Priority</th>
-                            <th className="px-4 py-3">Collaborators</th>
-                            <th className="px-4 py-3">Duration</th>
-                            <th className="px-4 py-3">Progress</th>
-                            <th className="px-4 py-3 text-right">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sorted.map((project, index) => {
+            {viewMode === 'card' ? (
+                sorted.length ? (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {sorted.map(project => {
                             const primaryAssignment = project.assignments[0];
                             const statusMeta = STATUS_META[project.status];
-                            // Count unique collaborators from scope assignees
-                            const uniqueAssignees = new Set(
+                            const progressColors = STATUS_PROGRESS_COLORS[project.status];
+                            const priorityMeta = getPriorityMeta((project as any).priority as string | undefined);
+                            const businessDays = calculateBusinessDays(project.startDate, project.dueDate);
+                            const collaboratorsCountFromScopes = new Set(
                                 project.deliverables
                                     .map(d => d.assignee)
                                     .filter((assignee): assignee is string => Boolean(assignee))
-                            );
-                            const collaboratorsCount = uniqueAssignees.size;
+                            ).size;
+                            const teamCount = project.assignments.length || collaboratorsCountFromScopes;
+
                             return (
-                                <tr
+                                <Card
                                     key={project.id}
-                                    className="border-b border-border/40 text-sm transition hover:bg-muted/40 cursor-pointer"
-                                    onDoubleClick={() => onOpenProject && onOpenProject(String(project.id))}
+                                    className="border-border/70 h-full shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5 hover:shadow-sm bg-slate-50/60"
+                                    onClick={() => onOpenProject && onOpenProject(String(project.id))}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyUp={event => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            onOpenProject && onOpenProject(String(project.id));
+                                        }
+                                    }}
                                 >
-                                    <td className="px-4 py-3 text-muted-foreground font-medium">
-                                        {index + 1}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="font-medium">{project.name}</div>
-                                        <div className="text-xs uppercase tracking-wide text-muted-foreground">{project.code}</div>
-                                        {project.description && <p className="text-xs text-muted-foreground">{project.description}</p>}
+                                    <CardHeader className="flex flex-col gap-2">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1 space-y-1">
+                                                <CardTitle className="flex items-center gap-2 text-base">
+                                                    <span className="line-clamp-1 leading-tight">{project.name}</span>
+                                                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusMeta.className}`}>
+                                                        {statusMeta.label}
+                                                    </span>
+                                                </CardTitle>
+                                                <CardDescription className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide">
+                                                    <span className="font-semibold text-foreground">{project.code}</span>
+                                                </CardDescription>
+                                            </div>
+                                            <CardAction className="flex items-start justify-end">
+                                                <Badge variant="outline" className={priorityMeta.className}>
+                                                    {priorityMeta.label}
+                                                </Badge>
+                                            </CardAction>
+                                        </div>
+                                        {project.description && (
+                                            <p className="text-sm text-muted-foreground line-clamp-2">{project.description}</p>
+                                        )}
                                         {!!project.tags.length && (
-                                            <div className="mt-2 flex flex-wrap gap-1">
+                                            <div className="flex flex-wrap gap-1 pt-1">
                                                 {project.tags.map(link => (
                                                     <Badge
                                                         key={link.id}
@@ -210,83 +298,167 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
                                                 ))}
                                             </div>
                                         )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex flex-wrap items-center gap-1">
-                                            <Badge variant="secondary">{TYPE_LABEL[project.assignmentType]}</Badge>
-                                            {primaryAssignment && (
-                                                <Badge variant="outline" className="text-[11px] uppercase">
-                                                    {ROLE_LABEL[primaryAssignment.role]}
-                                                </Badge>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <Badge 
-                                            variant="outline"
-                                            className={
-                                                (project as any).priority === 'high' 
-                                                    ? 'border-red-500 text-red-700 dark:text-red-400' 
-                                                    : (project as any).priority === 'low' 
-                                                    ? 'border-slate-400 text-slate-600 dark:text-slate-400'
-                                                    : 'border-amber-500 text-amber-700 dark:text-amber-400'
-                                            }
-                                        >
-                                            {((project as any).priority || 'medium').charAt(0).toUpperCase() + ((project as any).priority || 'medium').slice(1)}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-1">
-                                            <span className="font-medium">{collaboratorsCount}</span>
-                                            <span className="text-xs text-muted-foreground">
-                                                {collaboratorsCount === 1 ? 'member' : 'members'}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex flex-col">
-                                            <div className="text-xs text-muted-foreground">
-                                                {project.startDate ? formatDisplayDate(project.startDate) : '—'} → {project.dueDate ? formatDisplayDate(project.dueDate) : '—'}
+                                    </CardHeader>
+                                    <CardContent className="flex-1 space-y-4">
+                                        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Timeline</p>
+                                                <p className="text-sm">
+                                                    {project.startDate ? formatDisplayDate(project.startDate) : '—'} → {project.dueDate ? formatDisplayDate(project.dueDate) : '—'}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">{businessDays} business days</p>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-medium">
-                                                    {calculateBusinessDays(project.startDate, project.dueDate)} days
-                                                </span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    (business days)
-                                                </span>
+                                            <div className="space-y-1">
+                                                <p className="text-xs uppercase tracking-wide text-muted-foreground">Team</p>
+                                                <p className="text-sm font-medium">{teamCount} {teamCount === 1 ? 'member' : 'members'}</p>
+                                                <p className="text-xs text-muted-foreground">Primary: {primaryAssignment?.assignee || 'Unassigned'}</p>
                                             </div>
                                         </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                                                <div
-                                                    className="h-full rounded-full bg-primary"
-                                                    style={{ width: `${Math.min(project.percentComplete, 100)}%` }}
-                                                />
-                                            </div>
-                                            <span className="w-12 text-right font-medium tabular-nums">{project.percentComplete}%</span>
+                                    </CardContent>
+                                    <CardFooter className="mt-auto flex-col items-stretch gap-2 px-4 pb-2 pt-3">
+                                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span>Progress</span>
+                                            <span className="font-semibold text-foreground">{Math.min(project.percentComplete, 100)}%</span>
                                         </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
-                                            {statusMeta.label}
-                                        </span>
-                                    </td>
-                                </tr>
+                                        <Progress
+                                            value={Math.min(project.percentComplete, 100)}
+                                            indicatorClassName={progressColors.indicator}
+                                            trackClassName={progressColors.track}
+                                        />
+                                    </CardFooter>
+                                </Card>
                             );
                         })}
-                        {!sorted.length && (
-                            <tr>
-                                <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                                    No projects captured yet. Create your first record to begin tracking delivery.
-                                </td>
+                    </div>
+                ) : (
+                    <div className="rounded-lg border border-dashed border-border/70 bg-muted/40 px-4 py-10 text-center text-sm text-muted-foreground">
+                        No projects captured yet. Create your first record to begin tracking delivery.
+                    </div>
+                )
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="border-b border-border/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                                <th className="px-4 py-3 w-12">#</th>
+                                <th className="px-4 py-3">Project</th>
+                                <th className="px-4 py-3">Assignment</th>
+                                <th className="px-4 py-3">Priority</th>
+                                <th className="px-4 py-3">Collaborators</th>
+                                <th className="px-4 py-3">Duration</th>
+                                <th className="px-4 py-3">Progress</th>
+                                <th className="px-4 py-3 text-right">Status</th>
                             </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            {sorted.map((project, index) => {
+                                const primaryAssignment = project.assignments[0];
+                                const statusMeta = STATUS_META[project.status];
+                                const progressColors = STATUS_PROGRESS_COLORS[project.status];
+                                const priorityMeta = getPriorityMeta((project as any).priority as string | undefined);
+                                const collaboratorsCountFromScopes = new Set(
+                                    project.deliverables
+                                        .map(d => d.assignee)
+                                        .filter((assignee): assignee is string => Boolean(assignee))
+                                ).size;
+                                const teamCount = project.assignments.length || collaboratorsCountFromScopes;
+
+                                return (
+                                    <tr
+                                        key={project.id}
+                                        className="border-b border-border/40 text-sm transition hover:bg-muted/40 cursor-pointer"
+                                        onDoubleClick={() => onOpenProject && onOpenProject(String(project.id))}
+                                    >
+                                        <td className="px-4 py-3 text-muted-foreground font-medium">
+                                            {index + 1}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="font-medium">{project.name}</div>
+                                            <div className="text-xs uppercase tracking-wide text-muted-foreground">{project.code}</div>
+                                            {project.description && <p className="text-xs text-muted-foreground">{project.description}</p>}
+                                            {!!project.tags.length && (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                    {project.tags.map(link => (
+                                                        <Badge
+                                                            key={link.id}
+                                                            variant="outline"
+                                                            className="border px-2 py-0 text-[10px] font-semibold uppercase tracking-wide"
+                                                            style={{ borderColor: link.tag.colorHex, color: link.tag.colorHex }}
+                                                        >
+                                                            {link.tag.name}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-wrap items-center gap-1">
+                                                <Badge variant="secondary">{TYPE_LABEL[project.assignmentType]}</Badge>
+                                                {primaryAssignment && (
+                                                    <Badge variant="outline" className="text-[11px] uppercase">
+                                                        {ROLE_LABEL[primaryAssignment.role]}
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <Badge variant="outline" className={priorityMeta.className}>
+                                                {priorityMeta.label}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-1">
+                                                <span className="font-medium">{teamCount}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {teamCount === 1 ? 'member' : 'members'}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-col">
+                                                <div className="text-xs text-muted-foreground">
+                                                    {project.startDate ? formatDisplayDate(project.startDate) : '—'} → {project.dueDate ? formatDisplayDate(project.dueDate) : '—'}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium">
+                                                        {calculateBusinessDays(project.startDate, project.dueDate)} days
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        (business days)
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`h-2 w-full overflow-hidden rounded-full ${progressColors.track}`}>
+                                                    <div
+                                                        className={`h-full rounded-full ${progressColors.indicator}`}
+                                                        style={{ width: `${Math.min(project.percentComplete, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="w-12 text-right font-medium tabular-nums">{project.percentComplete}%</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
+                                                {statusMeta.label}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {!sorted.length && (
+                                <tr>
+                                    <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                                        No projects captured yet. Create your first record to begin tracking delivery.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 };

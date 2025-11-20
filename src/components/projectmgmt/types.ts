@@ -102,6 +102,7 @@ export interface ProjectRecord {
     code: string;
     name: string;
     description?: string;
+    projectType?: 'dev' | 'it';
     assignmentType: AssignmentType;
     priority?: string;
     status: ProjectStatus;
