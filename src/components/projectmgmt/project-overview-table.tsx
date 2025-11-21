@@ -97,7 +97,7 @@ const STATUS_META: Record<ProjectStatus, { label: string; className: string }> =
     not_started: { label: 'Not Started', className: 'bg-red-500 text-white text-xs truncate' },
     in_progress: { label: 'In Progress', className: 'bg-amber-400/70 text-primary text-xs truncate' },
     completed: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs truncate' },
-    at_risk: { label: 'At Risk', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 text-xs truncate' },
+    at_risk: { label: 'To Review', className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 text-xs truncate' },
 };
 
 const STATUS_PROGRESS_COLORS: Record<ProjectStatus, { indicator: string; track: string }> = {

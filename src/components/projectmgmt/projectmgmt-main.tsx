@@ -5,6 +5,7 @@ import { differenceInCalendarDays, isBefore, isValid, parseISO } from 'date-fns'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ProjectRegistrationForm from './project-registration-form';
 import ProjectOverviewTable from './project-overview-table';
+import ProjectKanban from './project-kanban';
 import ProjectReports from './project-reports';
 import type {
     ProjectFormValues,
@@ -556,7 +557,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
             projectId: id,
             assignor: assignment?.assignor || '',
             assignee: assignment?.assignee?.full_name || assignment?.assignee || '',
-            role: (assignment?.role as AssignmentRole) || 'developer',
+            role: (assignment?.role as AssignmentType) || 'developer',
             active: assignment?.active ?? true,
             createdAt: assignment?.created_at || item?.created_at || new Date().toISOString(),
         }))
@@ -646,6 +647,7 @@ const ProjectMgmtMain: React.FC = () => {
             <Tabs defaultValue="manage" className="space-y-6">
                 <TabsList>
                     <TabsTrigger value="manage">Project Registry</TabsTrigger>
+                    <TabsTrigger value="kanban">Kanban</TabsTrigger>
                     <TabsTrigger value="reports">Dashboard</TabsTrigger>
                 </TabsList>
 
@@ -693,6 +695,13 @@ const ProjectMgmtMain: React.FC = () => {
                             </div>
                         )}
                     </div>
+                </TabsContent>
+
+                <TabsContent value="kanban">
+                    <ProjectKanban
+                        projects={projects}
+                        onCreateProject={() => { setEditingProjectId(null); setIsCreating(true); }}
+                    />
                 </TabsContent>
 
                 <TabsContent value="reports">
