@@ -16,7 +16,11 @@ function formatDate(dateInput: string | Date | undefined): string {
     return `${day}/${month}/${year}`;
 }
 
-export async function exportUtilityBillSummary(beneficiaryId: string | number | null, utilIds: number[]) {
+export async function exportUtilityBillSummary(
+    beneficiaryId: string | number | null,
+    utilIds: number[],
+    options?: { preparedByName?: string; preparedByTitle?: string }
+) {
     if (!utilIds || utilIds.length === 0) return;
     try {
         // Fetch all bills in one request, optionally scoped by beneficiary
@@ -98,46 +102,24 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
             doc.text(`Kindly please make a payment to the following beneficiaries as follows:`, 15, 70);
         }
         let y = 75;
-        const tableHeaderRow = [
-            'No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)'
-        ];
+        const tableHead = [['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)']];
         let rowNum = 1;
-        const tableBody = [
-            tableHeaderRow,
-            ...bills.map((bill: any) => {
-                return [
-                    String(rowNum++),
-                    bill.account?.account_no || '',
-                    bill.ubill_date ? formatDate(bill.ubill_date) : '',
-                    bill.ubill_no || '',
-                    // Prefer per-account beneficiary name; fall back to response-level beneficiary
-                    bill.account?.beneficiary?.name || responseBeneficiary?.name || '',
-                    bill.account?.costcenter?.name || '-',
-                    Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                ];
-            })
-        ];
+        const tableBody = bills.map((bill: any) => {
+            return [
+                String(rowNum++),
+                bill.account?.account_no || '',
+                bill.ubill_date ? formatDate(bill.ubill_date) : '',
+                bill.ubill_no || '',
+                bill.account?.beneficiary?.name || responseBeneficiary?.name || '',
+                bill.account?.costcenter?.name || '-',
+                Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ];
+        });
         autoTable(doc, {
             startY: y,
-            head: [],
+            head: tableHead,
             body: tableBody,
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
-            didParseCell: function (data: any) {
-                if (data.row.index === 0) {
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [255, 255, 255];
-                    data.cell.styles.textColor = [0, 0, 0];
-                }
-            },
-            didDrawCell: function (data: any) {
-                if (data.row.index === 0) {
-                    const { cell } = data;
-                    const doc = data.doc;
-                    doc.setDrawColor(200);
-                    doc.setLineWidth(0.1);
-                    doc.rect(cell.x, cell.y, cell.width, cell.height);
-                }
-            },
             columnStyles: {
                 0: { cellWidth: 10, halign: 'center' },
                 1: { cellWidth: 35, halign: 'center' },
@@ -150,6 +132,22 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
             theme: 'grid',
+            headStyles: {
+                fillColor: [41, 128, 185],
+                textColor: 255,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'center',
+            },
+            footStyles: {
+                fillColor: [240, 240, 240],
+                textColor: 0,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'right',
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200],
+            },
         });
         y = (doc as any).lastAutoTable.finalY + 4;
         // Calculate totals for all selected bills
@@ -226,8 +224,8 @@ export async function exportUtilityBillSummary(beneficiaryId: string | number | 
         doc.setFontSize(9);
         const signatures = [
             {
-                name: responseBeneficiary?.entry_by?.full_name || 'NOR AFFISHA NAJEEHA BT AFFIDIN',
-                title: responseBeneficiary?.entry_position || 'Admin Assistant',
+                name: options?.preparedByName || responseBeneficiary?.entry_by?.full_name || 'Prepared By',
+                title: options?.preparedByTitle || responseBeneficiary?.entry_position || 'Administrator',
                 x: 15
             },
             { name: 'MUHAMMAD ARIF BIN ABDUL JALIL', title: 'Senior Executive Administration', x: pageWidth / 2 - 28 },

@@ -19,17 +19,17 @@ let holidaysLoaded = false;
 // Fetch Malaysian public holidays for current year
 const fetchPublicHolidays = async () => {
     if (holidaysLoaded) return cachedHolidays;
-    
+
     try {
         const key = '1b8cdf82-ff7a-432a-9455-da9f50bcad22';
         const holidayApi = new HolidayAPI({ key });
         const currentYear = new Date().getFullYear();
-        
+
         const response = await holidayApi.holidays({
             country: 'MY-01',
             year: currentYear,
         });
-        
+
         // Extract dates from response
         if (response && response.holidays) {
             cachedHolidays = response.holidays.map((holiday: any) => holiday.date);
@@ -39,31 +39,31 @@ const fetchPublicHolidays = async () => {
         console.error('Failed to fetch holidays:', error);
         cachedHolidays = [];
     }
-    
+
     return cachedHolidays;
 };
 
 // Calculate business days excluding weekends and public holidays
 const calculateBusinessDays = (startDate: string, endDate: string): number => {
     if (!startDate || !endDate) return 0;
-    
+
     try {
         const start = parseISO(startDate);
         const end = parseISO(endDate);
-        
+
         if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
         if (end < start) return 0;
-        
+
         const days = eachDayOfInterval({ start, end });
-        
+
         return days.filter(day => {
             // Exclude weekends
             if (isWeekend(day)) return false;
-            
+
             // Exclude public holidays
             const dateStr = format(day, 'yyyy-MM-dd');
             if (cachedHolidays.includes(dateStr)) return false;
-            
+
             return true;
         }).length;
     } catch {
@@ -71,7 +71,7 @@ const calculateBusinessDays = (startDate: string, endDate: string): number => {
     }
 };
 
-type ProjectOverviewTableProps = {
+type ProjectRecordsProps = {
     projects: ProjectRecord[];
     assignmentTypeFilter: AssignmentType | 'all';
     projectTypeFilter: 'all' | 'dev' | 'it';
@@ -131,7 +131,7 @@ const getPriorityMeta = (priority?: string) => {
     return { label, className: 'border-amber-500 text-amber-700 dark:text-amber-400' };
 };
 
-const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
+const ProjectRecords: React.FC<ProjectRecordsProps> = ({
     projects,
     assignmentTypeFilter,
     projectTypeFilter,
@@ -463,4 +463,4 @@ const ProjectOverviewTable: React.FC<ProjectOverviewTableProps> = ({
     );
 };
 
-export default ProjectOverviewTable;
+export default ProjectRecords;

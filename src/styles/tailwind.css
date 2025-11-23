@@ -1784,3 +1784,13 @@ img.dark-img {
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .list-styled {
+    @apply list-none p-0 m-0;
+  }
+
+  .list-styled-item {
+    @apply flex h-full items-start gap-3 rounded-xl border border-border/50 bg-card px-3 py-3 text-sm shadow-sm transition-all hover:border-primary/60 hover:shadow-md;
+  }
+}

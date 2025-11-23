@@ -50,6 +50,7 @@ type TrainingFormValues = {
 
 type ParticipantRecord = {
 	id: string;
+	ramco_id?: string;
 	name: string;
 	department: string;
 	role: string;
@@ -85,9 +86,10 @@ const SESSION_TYPES = [
 type TrainingFormProps = {
 	trainingId?: number;
 	onSuccess?: () => void;
+	onCancel?: () => void;
 };
 
-export function TrainingForm({ trainingId, onSuccess }: TrainingFormProps) {
+export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormProps) {
 	const [participantSearch, setParticipantSearch] = useState('');
 	const [supportingDocument, setSupportingDocument] = useState<File | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -250,7 +252,8 @@ export function TrainingForm({ trainingId, onSuccess }: TrainingFormProps) {
 				const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 				if (ignore) return;
 				const mapped: ParticipantRecord[] = list.map((item: any, index: number) => {
-					const id = String(item?.ramco_id ?? item?.employee_id ?? item?.id ?? `emp-${index}`);
+					const ramcoId = item?.ramco_id ?? item?.employee_id ?? item?.id ?? null;
+					const id = String(ramcoId ?? `emp-${index}`);
 					const name = item?.full_name ?? item?.name ?? `Employee ${index + 1}`;
 					const department = item?.department?.code ?? item?.department_code ?? 'N/A';
 					const role = item?.position?.name ?? item?.job_title ?? 'Staff';
@@ -261,7 +264,7 @@ export function TrainingForm({ trainingId, onSuccess }: TrainingFormProps) {
 						.includes('remote')
 						? 'virtual'
 						: 'onsite';
-					return { id, name, department, role, location, seatType };
+					return { id, ramco_id: ramcoId ? String(ramcoId) : undefined, name, department, role, location, seatType };
 				});
 				setParticipantDirectory(mapped);
 			} catch (err: any) {
@@ -511,6 +514,11 @@ export function TrainingForm({ trainingId, onSuccess }: TrainingFormProps) {
 							{!isEditing && (
 								<Button type="button" variant="outline" onClick={handleReset} disabled={!isDirty && !supportingDocument}>
 									Reset
+								</Button>
+							)}
+							{isEditing && (
+								<Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+									Cancel
 								</Button>
 							)}
 							<Button type="submit" disabled={isSubmitting}>
@@ -829,7 +837,10 @@ export function TrainingForm({ trainingId, onSuccess }: TrainingFormProps) {
 																	</div>
 																	<div className="flex flex-1 flex-col gap-0.5 text-sm leading-tight">
 																		<div className="flex flex-wrap items-center gap-2">
-																			<p className="font-semibold">{participant.name}</p>
+																			<p className="font-semibold">
+																				{participant.name}
+																				{participant.ramco_id ? ` (${participant.ramco_id})` : ''}
+																			</p>
 																		</div>
 																		<p className="text-xs text-muted-foreground">{participant.role}</p>
 																		<p className="text-xs text-muted-foreground uppercase tracking-wide">

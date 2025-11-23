@@ -2,58 +2,32 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
-import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, addWeeks, startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
+import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import type { DeliverableType, ProjectDeliverableAttachment, ProjectFormValues, ProjectTag } from './types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SingleSelect, MultiSelect, type ComboboxOption } from '@/components/ui/combobox';
-import { Plus, Trash2, MoreVertical, ArrowUp, ArrowDown, Pencil } from 'lucide-react';
-import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
+import { type ComboboxOption } from '@/components/ui/combobox';
+import { Plus, Pencil } from 'lucide-react';
 import ExcelJS from 'exceljs';
-import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, LabelList } from 'recharts';
-import { Switch } from '@/components/ui/switch';
-import { Calendar } from '@/components/ui/calendar';
 import { authenticatedApi } from '@/config/api';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import GanttChart, { type GanttTask } from './ScopeGanttChartView';
 import ScopesTableView, { type ScopeRow } from './ScopesTableView';
 import BurnupChartView from './ScopeBurnupChartView';
-import Flatpickr from 'react-flatpickr';
-import ActionSidebar from '@/components/ui/action-aside';
+import { TASK_GROUP_OPTIONS } from './scope-form';
 
-type ProjectRegistrationFormProps = {
+type ProjectDetailsProps = {
     onSubmit: (values: ProjectFormValues) => void;
     assignorOptions: string[];
     assigneeOptions: string[];
     availableTags: ProjectTag[];
     editProjectId?: string;
 };
-
-const deliverableTypeOptions: Array<{ value: DeliverableType; label: string }> = [
-    { value: 'discovery', label: 'Discovery' },
-    { value: 'design', label: 'Design' },
-    { value: 'development', label: 'Development' },
-    { value: 'testing', label: 'Testing' },
-    { value: 'deployment', label: 'Deployment' },
-    { value: 'documentation', label: 'Documentation' },
-    { value: 'training', label: 'Training' },
-];
-
-// Scope task group options (multi-select) using numeric codes 1..6
-const TASK_GROUP_OPTIONS: ComboboxOption[] = [
-    { value: '1', label: 'Planning & Analysis' },
-    { value: '2', label: 'Design & Architecture' },
-    { value: '3', label: 'Development & Implementation' },
-    { value: '4', label: 'Testing & Quality Assurance' },
-    { value: '5', label: 'Deployment & Operations' },
-    { value: '6', label: 'Maintenance & Support' },
-];
 
 // Project tags now a simple string input (API: projectTags)
 
@@ -93,10 +67,6 @@ const createEmptyDeliverable = () => ({
     actualMandays: 0,
 });
 
-// attachments removed from UI; keep helper unused intentionally minimal
-const readFileAsDataUrl = (file: File) =>
-    new Promise<string>((resolve) => resolve(''));
-
 const BASE_FORM_VALUES = {
     code: '',
     name: '',
@@ -111,7 +81,7 @@ const BASE_FORM_VALUES = {
     tagSlugs: [] as string[],
 };
 
-const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSubmit, assignorOptions, assigneeOptions, availableTags, editProjectId }) => {
+const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptions, assigneeOptions, availableTags, editProjectId }) => {
     const [assigneeChoices, setAssigneeChoices] = useState<Array<{ value: string; label: string }>>([]);
     const [assigneeLoading, setAssigneeLoading] = useState(false);
     const [assigneeError, setAssigneeError] = useState<string | null>(null);
@@ -142,52 +112,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     // Subscribe to deliverables to reflect nested changes (e.g., progress sliders)
     const watchDeliverables = useWatch({ control, name: 'deliverables' });
 
-    // Draft deliverable form (aside)
-    const {
-        control: draftControl,
-        register: registerDraft,
-        reset: resetDraft,
-        handleSubmit: handleDraftSubmit,
-        setValue: setDraftValue,
-        watch: watchDraft,
-        formState: { errors: draftErrors },
-    } = useForm<{
-        name: string;
-        type: DeliverableType;
-        description: string;
-        startDate: string;
-        endDate: string;
-        attachments: ProjectDeliverableAttachment[];
-        progress: number;
-        taskGroups: string[];
-        assignee: string;
-        actualStartDate: string;
-        actualEndDate: string;
-        files: File[];
-    }>({
-        defaultValues: {
-            name: '',
-            type: 'development',
-            description: '',
-            startDate: '',
-            endDate: '',
-            attachments: [],
-            progress: 0,
-            taskGroups: [],
-            assignee: '',
-            actualStartDate: '',
-            actualEndDate: '',
-            files: [],
-        },
-    });
-
-    const draftAttachments = watchDraft('attachments') ?? [];
-    const draftFiles = watchDraft('files') ?? [];
-    const draftStart = watchDraft('startDate');
-    const draftEnd = watchDraft('endDate');
-    const draftActualStart = watchDraft('actualStartDate');
-    const draftActualEnd = watchDraft('actualEndDate');
-
     const calcMandays = (startISO?: string, endISO?: string) => {
         if (!startISO || !endISO) return 0;
         const s = parseISO(startISO);
@@ -203,11 +127,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         return count;
     };
 
-    const draftMandays = useMemo(() => calcMandays(draftStart, draftEnd), [draftStart, draftEnd]);
-    const draftActualMandays = useMemo(() => calcMandays(draftActualStart, draftActualEnd), [draftActualStart, draftActualEnd]);
-    const [editingScopeIndex, setEditingScopeIndex] = useState<number | null>(null);
-    // Force-remount draft inputs (esp. Flatpickr) after save to ensure UI clears
-    const [scopeFormKey, setScopeFormKey] = useState(0);
     const [savingProgressId, setSavingProgressId] = useState<string | null>(null);
 
     const computeOverallProgress = (items: any[] | undefined | null): number => {
@@ -223,20 +142,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     const [showValues, setShowValues] = useState(true);
     const [completionMode, setCompletionMode] = useState<'actual' | 'planned'>('actual');
     const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
-    const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
-
-    // If actual dates are blank, mirror planned dates when planned changes
-    useEffect(() => {
-        const actualStart = watchDraft('actualStartDate');
-        const actualEnd = watchDraft('actualEndDate');
-        if (draftStart && !actualStart) {
-            setDraftValue('actualStartDate', draftStart, { shouldDirty: true });
-        }
-        if (draftEnd && !actualEnd) {
-            setDraftValue('actualEndDate', draftEnd, { shouldDirty: true });
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [draftStart, draftEnd]);
 
     // Shared Excel export function
     const exportGanttExcel = async () => {
@@ -408,18 +313,13 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
 
     // Handler for editing a scope from table view
     const handleTableEdit = (index: number) => {
+        if (!editProjectId) return;
         const current: any = (watchDeliverables ?? [])[index] || {};
-        setEditingScopeIndex(index);
-        setDraftValue('name', current.name || '');
-        setDraftValue('description', current.description || '');
-        setDraftValue('taskGroups', current.taskGroups || []);
-        setDraftValue('assignee', current.assignee || '');
-        setDraftValue('startDate', current.startDate || '');
-        setDraftValue('endDate', current.endDate || '');
-        setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
-        setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
-        setDraftValue('progress', current.progress ?? 0);
-        setScopeDialogOpen(true);
+        if (!current?.serverId) {
+            toast.error('Scope must be saved before editing in a new tab.');
+            return;
+        }
+        openScopeEditor(editProjectId, String(current.serverId));
     };
 
     // Handler for deleting a scope from table view
@@ -560,8 +460,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
 
     // Ref to capture chart SVG for PNG export
     const burnupRef = useRef<HTMLDivElement | null>(null);
-    // Ref for scope dialog root (for Flatpickr appendTo)
-    const scopeDialogRootRef = useRef<HTMLDivElement | null>(null);
 
     const downloadBurnupPNG = async () => {
         try {
@@ -687,6 +585,24 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
             } as ScopeRow;
         });
     }, [deliverableFields, watchDeliverables, assigneeChoices]);
+
+    const scopeStats = useMemo(
+        () => ({
+            total: scopeRows.length,
+            completed: scopeRows.filter(s => s.status === 'completed').length,
+            inProgress: scopeRows.filter(s => s.status === 'in_progress').length,
+        }),
+        [scopeRows],
+    );
+
+    const openScopeEditor = (projectId: string, scopeId?: string) => {
+        const url = scopeId
+            ? `/projectmgmt/scope-editor?projectId=${encodeURIComponent(projectId)}&scopeId=${encodeURIComponent(scopeId)}`
+            : `/projectmgmt/scope-editor?projectId=${encodeURIComponent(projectId)}`;
+        if (typeof window !== 'undefined') {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    };
 
     const submitHandler = async (values: ProjectFormValues) => {
         const deliverables = (values.deliverables ?? []).map(d => ({
@@ -819,96 +735,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
         }
     };
 
-    const handleDraftAttachmentUpload = async (files: FileList | null) => {
-        if (!files?.length) return;
-        const list = Array.from(files);
-        setDraftValue('files', [...draftFiles, ...list], { shouldDirty: true });
-    };
-    const handleDraftAttachmentRemove = (index: number) => {
-        const next = [...draftFiles];
-        next.splice(index, 1);
-        setDraftValue('files', next, { shouldDirty: true });
-    };
-
-    const onAddDeliverable = handleDraftSubmit(async values => {
-        if (!editProjectId) {
-            toast.error('Please save the project before adding scopes.');
-            return;
-        }
-        const prog = typeof values.progress === 'number' ? values.progress : 0;
-        const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
-
-        // When editing an existing project, POST scope immediately to API
-        if (editProjectId) {
-            const formData = new FormData();
-            formData.append('title', values.name || '');
-            formData.append('task_groups', (values.taskGroups || []).join(','));
-            formData.append('description', values.description || '');
-            formData.append('assignee', values.assignee || '');
-            if (values.startDate) formData.append('planned_start_date', values.startDate);
-            if (values.endDate) formData.append('planned_end_date', values.endDate);
-            formData.append('planned_mandays', String(calcMandays(values.startDate, values.endDate)));
-            formData.append('progress', String(prog));
-            formData.append('status', status);
-            if (values.actualStartDate) formData.append('actual_start_date', values.actualStartDate);
-            if (values.actualEndDate) formData.append('actual_end_date', values.actualEndDate);
-            formData.append('actual_mandays', String(calcMandays(values.actualStartDate, values.actualEndDate)));
-            const files = values.files || [];
-            if (Array.isArray(files)) {
-                files.forEach(file => formData.append('attachment', file));
-            }
-
-            try {
-                const res: any = await authenticatedApi.post(`/api/projects/${editProjectId}/scopes`, formData);
-                const scope = res?.data?.data ?? res?.data ?? null;
-                const serverId = scope?.id != null ? String(scope.id) : undefined;
-                const plannedStart = scope?.planned_start_date ? String(scope.planned_start_date).slice(0, 10) : values.startDate;
-                const plannedEnd = scope?.planned_end_date ? String(scope.planned_end_date).slice(0, 10) : values.endDate;
-
-                append({
-                    id: generateId('deliverable'),
-                    serverId,
-                    name: values.name,
-                    type: 'development',
-                    description: values.description,
-                    startDate: plannedStart,
-                    endDate: plannedEnd,
-                    attachments: [],
-                    progress: prog,
-                    mandays: calcMandays(plannedStart, plannedEnd),
-                    taskGroups: values.taskGroups ?? [],
-                    assignee: values.assignee ?? '',
-                    status,
-                    actualStartDate: values.actualStartDate ?? '',
-                    actualEndDate: values.actualEndDate ?? '',
-                    actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
-                    fileBlobs: [],
-                });
-
-                toast.success('Scope added');
-                resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
-                setScopeFormKey(k => k + 1);
-                void syncProjectMetaFromScopes();
-                return;
-            } catch (err: any) {
-                const msg = err?.response?.data?.message || err?.message || 'Failed to add scope';
-                toast.error(msg);
-                return;
-            }
-        }
-
-        // Local create mode is no longer supported (scopes require a saved project)
-    });
-
-    // Format a JS Date as local date-only (YYYY-MM-DD), avoiding timezone shifts
-    function toDateOnlyLocal(d?: Date | null): string {
-        if (!d || !(d instanceof Date)) return '';
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-    }
-
     // Small numeric label renderer for burnup points
     const BurnupValueLabel = (props: any) => {
         const { x, y, value, color } = props;
@@ -965,267 +791,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
     return (
         <div className="space-y-6">
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
-                {/* Main + Aside layout (align aside with very top, incl. tags) – now hidden in favor of dialog-based scopes */}
-                {false && (
-                    <div className="order-2 grid gap-6 md:grid-cols-[1fr_360px] items-stretch">
-                        {/* Aside: Manage Project Scopes */}
-                        <Card className="self-stretch h-full flex flex-col shadow-none bg-stone-50">
-                            <CardHeader>
-                                <CardTitle className="text-base">Manage Project Scopes</CardTitle>
-                                <CardDescription>Add and edit scope items for this project.</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-name">Title</Label>
-                                    <Input id="dl-name" className='capitalize' placeholder="e.g. API contract design" {...registerDraft('name', { required: 'Title is required' })} />
-                                    {draftErrors.name && <p className="text-sm text-destructive">{draftErrors.name?.message}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Task groups</Label>
-                                    <Controller
-                                        control={draftControl}
-                                        name="taskGroups"
-                                        render={({ field }) => (
-                                            <MultiSelect
-                                                options={TASK_GROUP_OPTIONS}
-                                                value={field.value || []}
-                                                onValueChange={field.onChange}
-                                                placeholder="Select groups"
-                                                clearable
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-desc">Description</Label>
-                                    <Textarea id="dl-desc" rows={3} placeholder="Notes, scope, success criteria..." {...registerDraft('description')} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Assignee</Label>
-                                    <Controller
-                                        control={draftControl}
-                                        name="assignee"
-                                        render={({ field }) => (
-                                            <SingleSelect
-                                                options={assigneeChoices as ComboboxOption[]}
-                                                value={field.value}
-                                                onValueChange={field.onChange}
-                                                placeholder={assigneeLoading ? 'Loading...' : 'Select assignee'}
-                                                clearable
-                                            />
-                                        )}
-                                    />
-                                    {assigneeError && (
-                                        <p className="text-xs text-muted-foreground">{assigneeError}. Using fallback list if available.</p>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Planned dates</Label>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                            onClick={() => {
-                                                setDraftValue('startDate', '', { shouldDirty: true });
-                                                setDraftValue('endDate', '', { shouldDirty: true });
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                setScopeFormKey(k => k + 1);
-                                            }}
-                                        >
-                                            Clear
-                                        </Button>
-                                    </div>
-                                    <Calendar
-                                        mode="range"
-                                        numberOfMonths={2}
-                                        selected={(() => {
-                                            const s = watchDraft('startDate');
-                                            const e = watchDraft('endDate');
-                                            return {
-                                                from: s && isDateValid(parseISO(s)) ? parseISO(s) : undefined,
-                                                to: e && isDateValid(parseISO(e)) ? parseISO(e) : undefined,
-                                            };
-                                        })()}
-                                        onSelect={value => {
-                                            if (!value?.from) {
-                                                setDraftValue('startDate', '', { shouldDirty: true });
-                                                setDraftValue('endDate', '', { shouldDirty: true });
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            const from = value.from;
-                                            const to = value.to ?? value.from;
-                                            const startStr = toDateOnlyLocal(from);
-                                            const endStr = toDateOnlyLocal(to);
-                                            setDraftValue('startDate', startStr, { shouldDirty: true });
-                                            setDraftValue('endDate', endStr, { shouldDirty: true });
-                                            setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                            setDraftValue('actualEndDate', endStr, { shouldDirty: true });
-                                        }}
-                                    />
-                                    <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
-                                    <input type="hidden" {...registerDraft('startDate', { required: 'Start date is required' })} />
-                                    <input
-                                        type="hidden"
-                                        {...registerDraft('endDate', {
-                                            required: 'End date is required',
-                                            validate: endDate => {
-                                                const startDate = watchDraft('startDate') ?? '';
-                                                if (!startDate || !endDate) return true;
-                                                if (!isDateValid(parseISO(startDate)) || !isDateValid(parseISO(endDate))) return true;
-                                                return endDate >= startDate || 'End must be on/after start';
-                                            },
-                                        })}
-                                    />
-                                    {(draftErrors.startDate || draftErrors.endDate) && (
-                                        <p className="text-sm text-destructive">{draftErrors.startDate?.message || draftErrors.endDate?.message}</p>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Actual dates</Label>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                            onClick={() => {
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                setScopeFormKey(k => k + 1);
-                                            }}
-                                        >
-                                            Clear
-                                        </Button>
-                                    </div>
-                                    <Calendar
-                                        mode="range"
-                                        numberOfMonths={2}
-                                        selected={(() => {
-                                            const s = watchDraft('actualStartDate') || watchDraft('startDate');
-                                            const e = watchDraft('actualEndDate') || watchDraft('endDate');
-                                            return {
-                                                from: s && isDateValid(parseISO(s)) ? parseISO(s) : undefined,
-                                                to: e && isDateValid(parseISO(e)) ? parseISO(e) : undefined,
-                                            };
-                                        })()}
-                                        onSelect={value => {
-                                            if (!value?.from) {
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            const from = value.from;
-                                            const to = value.to ?? value.from;
-                                            const startStr = toDateOnlyLocal(from);
-                                            const endStr = toDateOnlyLocal(to);
-                                            setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                            setDraftValue('actualEndDate', endStr, { shouldDirty: true });
-                                        }}
-                                    />
-                                    <p className="text-xs text-muted-foreground">Actual mandays (Mon–Fri): {draftActualMandays || 0}</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-progress">Progress (%)</Label>
-                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                        <Input id="dl-progress" type="range" min={0} max={100} step={5} {...registerDraft('progress', { valueAsNumber: true })} />
-                                        <span className="w-12 text-right text-sm text-muted-foreground">{watchDraft('progress') ?? 0}%</span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Attachments</Label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {draftFiles.map((file: File, idx: number) => (
-                                            <span key={`${file.name}-${idx}`} className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-1 text-xs">
-                                                <span className="font-medium truncate max-w-[160px]">{file.name}</span>
-                                                <button type="button" className="text-muted-foreground transition hover:text-destructive" onClick={() => handleDraftAttachmentRemove(idx)}>
-                                                    remove
-                                                </button>
-                                            </span>
-                                        ))}
-                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/60 hover:text-primary">
-                                            <input
-                                                type="file"
-                                                multiple
-                                                className="hidden"
-                                                onChange={event => {
-                                                    void handleDraftAttachmentUpload(event.target.files);
-                                                    if (event.target) event.target.value = '';
-                                                }}
-                                            />
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Add files
-                                        </label>
-                                    </div>
-                                </div>
-                                <div className="flex items-center justify-end gap-2">
-                                    {editingScopeIndex !== null && (
-                                        <Button type="button" variant="ghost" onClick={() => { setEditingScopeIndex(null); resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] }); }}>Cancel</Button>
-                                    )}
-                                    <Button type="button" variant="secondary" onClick={editingScopeIndex !== null ? handleDraftSubmit(async (values) => {
-                                        const prog = typeof values.progress === 'number' ? values.progress : 0;
-                                        const status = prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
-                                        const idx = editingScopeIndex!;
-                                        const current: any = watchDeliverables?.[idx] || {};
-                                        const payload: any = {
-                                            id: current.id,
-                                            serverId: current.serverId,
-                                            name: values.name,
-                                            type: 'development',
-                                            description: values.description,
-                                            startDate: values.startDate,
-                                            endDate: values.endDate,
-                                            attachments: [],
-                                            progress: prog,
-                                            mandays: calcMandays(values.startDate, values.endDate),
-                                            taskGroups: values.taskGroups ?? [],
-                                            assignee: values.assignee ?? '',
-                                            status,
-                                            actualStartDate: values.actualStartDate ?? '',
-                                            actualEndDate: values.actualEndDate ?? '',
-                                            actualMandays: calcMandays(values.actualStartDate, values.actualEndDate),
-                                            fileBlobs: [],
-                                        };
-                                        if (editProjectId && current.serverId) {
-                                            const formData = new FormData();
-                                            formData.append('title', values.name || '');
-                                            formData.append('task_groups', (values.taskGroups || []).join(','));
-                                            formData.append('description', values.description || '');
-                                            formData.append('assignee', values.assignee || '');
-                                            if (values.startDate) formData.append('planned_start_date', values.startDate);
-                                            if (values.endDate) formData.append('planned_end_date', values.endDate);
-                                            formData.append('planned_mandays', String(calcMandays(values.startDate, values.endDate)));
-                                            formData.append('progress', String(prog));
-                                            formData.append('status', status);
-                                            if (values.actualStartDate) formData.append('actual_start_date', values.actualStartDate);
-                                            if (values.actualEndDate) formData.append('actual_end_date', values.actualEndDate);
-                                            formData.append('actual_mandays', String(calcMandays(values.actualStartDate, values.actualEndDate)));
-                                            try {
-                                                await authenticatedApi.put(`/api/projects/${editProjectId}/scopes/${current.serverId}`, formData);
-                                                update(idx, payload);
-                                                toast.success('Scope updated');
-                                            } catch (err: any) {
-                                                toast.error(err?.response?.data?.message || err?.message || 'Failed to update scope');
-                                                return;
-                                            }
-                                        } else {
-                                            update(idx, payload);
-                                        }
-                                        setEditingScopeIndex(null);
-                                        resetDraft({ name: '', type: 'development', description: '', startDate: '', endDate: '', attachments: [], progress: 0, taskGroups: [], assignee: '', actualStartDate: '', actualEndDate: '', files: [] });
-                                        setScopeFormKey(k => k + 1);
-                                    }) : onAddDeliverable}>
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-                )}
-
                 {/* Scopes View Card */}
                 <Card className="order-1">
                     <CardHeader>
@@ -1497,23 +1062,8 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                     variant="default"
                                     size="sm"
                                     onClick={() => {
-                                        setEditingScopeIndex(null);
-                                        resetDraft({
-                                            name: '',
-                                            type: 'development',
-                                            description: '',
-                                            startDate: '',
-                                            endDate: '',
-                                            attachments: [],
-                                            progress: 0,
-                                            taskGroups: [],
-                                            assignee: '',
-                                            actualStartDate: '',
-                                            actualEndDate: '',
-                                            files: [],
-                                        });
-                                        setScopeFormKey(k => k + 1);
-                                        setScopeDialogOpen(true);
+                                        if (!editProjectId) return;
+                                        openScopeEditor(editProjectId);
                                     }}
                                 >
                                     <Plus className="h-4 w-4" />
@@ -1584,18 +1134,13 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                                 onTaskEdit={(taskId: string) => {
                                     const index = ganttTasks.findIndex(t => t.id === taskId);
                                     if (index !== -1) {
+                                        if (!editProjectId) return;
                                         const current: any = (watchDeliverables ?? [])[index] || {};
-                                        setEditingScopeIndex(index);
-                                        setDraftValue('name', current.name || '');
-                                        setDraftValue('description', current.description || '');
-                                        setDraftValue('taskGroups', current.taskGroups || []);
-                                        setDraftValue('assignee', current.assignee || '');
-                                        setDraftValue('startDate', current.startDate || '');
-                                        setDraftValue('endDate', current.endDate || '');
-                                        setDraftValue('actualStartDate', current.actualStartDate || current.startDate || '');
-                                        setDraftValue('actualEndDate', current.actualEndDate || current.endDate || '');
-                                        setDraftValue('progress', current.progress ?? 0);
-                                        setScopeDialogOpen(true);
+                                        if (!current?.serverId) {
+                                            toast.error('Scope must be saved before editing in a new tab.');
+                                            return;
+                                        }
+                                        openScopeEditor(editProjectId, String(current.serverId));
                                     }
                                 }}
                                 onTaskDelete={async (taskId: string) => {
@@ -1798,421 +1343,6 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
                     </Dialog>
                 )}
 
-                {/* Scope editor sidebar (add / edit) – only after project is registered */}
-                {editProjectId && (
-                    <ActionSidebar
-                        isOpen={scopeDialogOpen}
-                        onClose={() => setScopeDialogOpen(false)}
-                        size="lg"
-                        title={editingScopeIndex !== null ? 'Edit scope' : 'Add scope'}
-                        content={
-                            <div ref={scopeDialogRootRef} className="space-y-3">
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-name-dialog">Title</Label>
-                                    <Input
-                                        id="dl-name-dialog"
-                                        className="capitalize"
-                                        placeholder="e.g. API contract design"
-                                        {...registerDraft('name', { required: 'Title is required' })}
-                                    />
-                                    {draftErrors.name && <p className="text-sm text-destructive">{draftErrors.name.message}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Task groups</Label>
-                                    <Controller
-                                        control={draftControl}
-                                        name="taskGroups"
-                                        render={({ field }) => (
-                                            <MultiSelect
-                                                options={TASK_GROUP_OPTIONS}
-                                                value={field.value || []}
-                                                onValueChange={field.onChange}
-                                                placeholder="Select groups"
-                                                clearable
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-desc-dialog">Description</Label>
-                                    <Textarea
-                                        id="dl-desc-dialog"
-                                        rows={3}
-                                        placeholder="Notes, scope, success criteria..."
-                                        {...registerDraft('description')}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Assignee</Label>
-                                    <Controller
-                                        control={draftControl}
-                                        name="assignee"
-                                        render={({ field }) => (
-                                            <SingleSelect
-                                                options={assigneeChoices as ComboboxOption[]}
-                                                value={field.value}
-                                                onValueChange={field.onChange}
-                                                placeholder={assigneeLoading ? 'Loading...' : 'Select assignee'}
-                                                clearable
-                                            />
-                                        )}
-                                    />
-                                    {assigneeError && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {assigneeError}. Using fallback list if available.
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Planned dates</Label>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                            onClick={() => {
-                                                setDraftValue('startDate', '', { shouldDirty: true });
-                                                setDraftValue('endDate', '', { shouldDirty: true });
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                setScopeFormKey(k => k + 1);
-                                            }}
-                                        >
-                                            Clear
-                                        </Button>
-                                    </div>
-                                    <Flatpickr
-                                        key={`planned-${scopeFormKey}`}
-                                        options={{
-                                            mode: 'range',
-                                            dateFormat: 'Y-m-d',
-                                            showMonths: 2,
-                                            inline: true,
-                                            disableMobile: true,
-                                            locale: { firstDayOfWeek: 1 },
-                                        }}
-                                        value={(() => {
-                                            const s = watchDraft('startDate');
-                                            const e = watchDraft('endDate');
-                                            const dates: Date[] = [];
-                                            if (s && isDateValid(parseISO(s))) dates.push(parseISO(s));
-                                            if (e && isDateValid(parseISO(e))) dates.push(parseISO(e));
-                                            return dates;
-                                        })()}
-                                        onChange={(selectedDates: Date[]) => {
-                                            if (!selectedDates || selectedDates.length === 0) {
-                                                setDraftValue('startDate', '', { shouldDirty: true });
-                                                setDraftValue('endDate', '', { shouldDirty: true });
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            if (selectedDates.length === 1) {
-                                                const fromDate = selectedDates[0];
-                                                const startStr = toDateOnlyLocal(fromDate);
-                                                setDraftValue('startDate', startStr, { shouldDirty: true });
-                                                setDraftValue('endDate', '', { shouldDirty: true });
-                                                setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            const [from, toRaw] = selectedDates;
-                                            const fromDate = from;
-                                            const toDate = toRaw || fromDate;
-                                            const startStr = toDateOnlyLocal(fromDate);
-                                            const endStr = toDateOnlyLocal(toDate);
-                                            setDraftValue('startDate', startStr, { shouldDirty: true });
-                                            setDraftValue('endDate', endStr, { shouldDirty: true });
-                                            setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                            setDraftValue('actualEndDate', endStr, { shouldDirty: true });
-                                        }}
-                                        className="w-64 rounded-md border border-input bg-background px-2 py-2 text-xs"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
-                                    <input type="hidden" {...registerDraft('startDate', { required: 'Start date is required' })} />
-                                    <input
-                                        type="hidden"
-                                        {...registerDraft('endDate', {
-                                            required: 'End date is required',
-                                            validate: endDate => {
-                                                const startDate = watchDraft('startDate') ?? '';
-                                                if (!startDate || !endDate) return true;
-                                                if (!isDateValid(parseISO(startDate)) || !isDateValid(parseISO(endDate))) return true;
-                                                return endDate >= startDate || 'End must be on/after start';
-                                            },
-                                        })}
-                                    />
-                                    {(draftErrors.startDate || draftErrors.endDate) && (
-                                        <p className="text-sm text-destructive">
-                                            {draftErrors.startDate?.message || draftErrors.endDate?.message}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label>Actual dates</Label>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                            onClick={() => {
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                setScopeFormKey(k => k + 1);
-                                            }}
-                                        >
-                                            Clear
-                                        </Button>
-                                    </div>
-                                    <Flatpickr
-                                        key={`actual-${scopeFormKey}`}
-                                        options={{
-                                            mode: 'range',
-                                            dateFormat: 'Y-m-d',
-                                            showMonths: 2,
-                                            inline: true,
-                                            disableMobile: true,
-                                            locale: { firstDayOfWeek: 1 },
-                                        }}
-                                        value={(() => {
-                                            const s = watchDraft('actualStartDate');
-                                            const e = watchDraft('actualEndDate');
-                                            const dates: Date[] = [];
-                                            if (s && isDateValid(parseISO(s))) dates.push(parseISO(s));
-                                            if (e && isDateValid(parseISO(e))) dates.push(parseISO(e));
-                                            return dates;
-                                        })()}
-                                        onChange={(selectedDates: Date[]) => {
-                                            if (!selectedDates || selectedDates.length === 0) {
-                                                setDraftValue('actualStartDate', '', { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            if (selectedDates.length === 1) {
-                                                const fromDate = selectedDates[0];
-                                                const startStr = toDateOnlyLocal(fromDate);
-                                                setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                                setDraftValue('actualEndDate', '', { shouldDirty: true });
-                                                return;
-                                            }
-                                            const [from, toRaw] = selectedDates;
-                                            const fromDate = from;
-                                            const toDate = toRaw || fromDate;
-                                            const startStr = toDateOnlyLocal(fromDate);
-                                            const endStr = toDateOnlyLocal(toDate);
-                                            setDraftValue('actualStartDate', startStr, { shouldDirty: true });
-                                            setDraftValue('actualEndDate', endStr, { shouldDirty: true });
-                                        }}
-                                        className="w-64 rounded-md border border-input bg-background px-2 py-2 text-xs"
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Actual mandays (Mon–Fri): {draftActualMandays || 0}
-                                    </p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="dl-progress-dialog">Progress (%)</Label>
-                                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                                        <Input
-                                            id="dl-progress-dialog"
-                                            type="range"
-                                            min={0}
-                                            max={100}
-                                            step={5}
-                                            {...registerDraft('progress', { valueAsNumber: true })}
-                                        />
-                                        <span className="w-12 text-right text-sm text-muted-foreground">
-                                            {watchDraft('progress') ?? 0}%
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Attachments</Label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {draftFiles.map((file: File, idx: number) => (
-                                            <span
-                                                key={`${file.name}-${idx}`}
-                                                className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-1 text-xs"
-                                            >
-                                                <span className="font-medium truncate max-w-[160px]">{file.name}</span>
-                                                <button
-                                                    type="button"
-                                                    className="text-muted-foreground transition hover:text-destructive"
-                                                    onClick={() => handleDraftAttachmentRemove(idx)}
-                                                >
-                                                    remove
-                                                </button>
-                                            </span>
-                                        ))}
-                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/60 hover:text-primary">
-                                            <input
-                                                type="file"
-                                                multiple
-                                                className="hidden"
-                                                onChange={event => {
-                                                    void handleDraftAttachmentUpload(event.target.files);
-                                                    if (event.target) event.target.value = '';
-                                                }}
-                                            />
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Add files
-                                        </label>
-                                    </div>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <div className="text-xs text-muted-foreground">
-                                        {scopeRows.length} scopes · {scopeRows.filter(s => s.status === 'completed').length} completed ·{' '}
-                                        {scopeRows.filter(s => s.status === 'in_progress').length} in progress
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {editingScopeIndex !== null && (
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                onClick={() => {
-                                                    setEditingScopeIndex(null);
-                                                    resetDraft({
-                                                        name: '',
-                                                        type: 'development',
-                                                        description: '',
-                                                        startDate: '',
-                                                        endDate: '',
-                                                        attachments: [],
-                                                        progress: 0,
-                                                        taskGroups: [],
-                                                        assignee: '',
-                                                        actualStartDate: '',
-                                                        actualEndDate: '',
-                                                        files: [],
-                                                    });
-                                                    setScopeFormKey(k => k + 1);
-                                                    setScopeDialogOpen(false);
-                                                }}
-                                            >
-                                                Cancel
-                                            </Button>
-                                        )}
-                                        <Button
-                                            type="button"
-                                            variant="secondary"
-                                            onClick={
-                                                editingScopeIndex !== null
-                                                    ? handleDraftSubmit(async values => {
-                                                        const prog = typeof values.progress === 'number' ? values.progress : 0;
-                                                        const status =
-                                                            prog <= 0 ? 'not_started' : prog >= 100 ? 'completed' : 'in_progress';
-                                                        const idx = editingScopeIndex!;
-                                                        const current: any = watchDeliverables?.[idx] || {};
-                                                        const payload: any = {
-                                                            id: current.id,
-                                                            serverId: current.serverId,
-                                                            name: values.name,
-                                                            type: 'development',
-                                                            description: values.description,
-                                                            startDate: values.startDate,
-                                                            endDate: values.endDate,
-                                                            attachments: [],
-                                                            progress: prog,
-                                                            mandays: calcMandays(values.startDate, values.endDate),
-                                                            taskGroups: values.taskGroups ?? [],
-                                                            assignee: values.assignee ?? '',
-                                                            status,
-                                                            actualStartDate: values.actualStartDate ?? '',
-                                                            actualEndDate: values.actualEndDate ?? '',
-                                                            actualMandays: calcMandays(
-                                                                values.actualStartDate,
-                                                                values.actualEndDate,
-                                                            ),
-                                                            fileBlobs: [],
-                                                        };
-                                                        if (editProjectId && current.serverId) {
-                                                            const formData = new FormData();
-                                                            formData.append('title', values.name || '');
-                                                            formData.append(
-                                                                'task_groups',
-                                                                (values.taskGroups || []).join(','),
-                                                            );
-                                                            formData.append('description', values.description || '');
-                                                            formData.append('assignee', values.assignee || '');
-                                                            if (values.startDate) {
-                                                                formData.append('planned_start_date', values.startDate);
-                                                            }
-                                                            if (values.endDate) {
-                                                                formData.append('planned_end_date', values.endDate);
-                                                            }
-                                                            formData.append(
-                                                                'planned_mandays',
-                                                                String(calcMandays(values.startDate, values.endDate)),
-                                                            );
-                                                            formData.append('progress', String(prog));
-                                                            formData.append('status', status);
-                                                            if (values.actualStartDate) {
-                                                                formData.append(
-                                                                    'actual_start_date',
-                                                                    values.actualStartDate,
-                                                                );
-                                                            }
-                                                            if (values.actualEndDate) {
-                                                                formData.append('actual_end_date', values.actualEndDate);
-                                                            }
-                                                            formData.append(
-                                                                'actual_mandays',
-                                                                String(
-                                                                    calcMandays(
-                                                                        values.actualStartDate,
-                                                                        values.actualEndDate,
-                                                                    ),
-                                                                ),
-                                                            );
-                                                            try {
-                                                                await authenticatedApi.put(
-                                                                    `/api/projects/${editProjectId}/scopes/${current.serverId}`,
-                                                                    formData,
-                                                                );
-                                                                update(idx, payload);
-                                                                toast.success('Scope updated');
-                                                                void syncProjectMetaFromScopes();
-                                                            } catch (err: any) {
-                                                                toast.error(
-                                                                    err?.response?.data?.message ||
-                                                                    err?.message ||
-                                                                    'Failed to update scope',
-                                                                );
-                                                                return;
-                                                            }
-                                                        } else {
-                                                            update(idx, payload);
-                                                        }
-                                                        setEditingScopeIndex(null);
-                                                        resetDraft({
-                                                            name: '',
-                                                            type: 'development',
-                                                            description: '',
-                                                            startDate: '',
-                                                            endDate: '',
-                                                            attachments: [],
-                                                            progress: 0,
-                                                            taskGroups: [],
-                                                            assignee: '',
-                                                            actualStartDate: '',
-                                                            actualEndDate: '',
-                                                            files: [],
-                                                        });
-                                                        setScopeFormKey(k => k + 1);
-                                                        setScopeDialogOpen(false);
-                                                    })
-                                                    : onAddDeliverable
-                                            }
-                                        >
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    />
-                )}
-
             </form>
             <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
                 <DialogContent>
@@ -2244,4 +1374,4 @@ const ProjectRegistrationForm: React.FC<ProjectRegistrationFormProps> = ({ onSub
 
 // Success dialog rendered at the end of component
 
-export default ProjectRegistrationForm;
+export default ProjectDetails;

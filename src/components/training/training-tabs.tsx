@@ -51,7 +51,7 @@ const TrainingTabs = () => {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="w-full justify-start gap-2">
+                <TabsList>
                     <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                     <TabsTrigger value="records">Records</TabsTrigger>
                     <TabsTrigger value="participants">Participants</TabsTrigger>

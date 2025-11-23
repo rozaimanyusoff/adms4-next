@@ -62,7 +62,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
       setLoading(true);
       setError(null);
       try {
-        const params = year === 'all' ? undefined : { year };
+        const params = year === 'all' ? { status: 'active' } : { year, status: 'active' };
         const res = await authenticatedApi.get('/api/training/participants', { params } as any);
         const data: any = (res as any)?.data;
         const list: ApiParticipantItem[] = Array.isArray(data?.data)
@@ -113,7 +113,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
         setLoadingDetails(true);
         setErrorDetails(null);
         try {
-          const params: any = year === 'all' ? { ramco: ramcoId } : { ramco: ramcoId, year };
+          const params: any = year === 'all' ? { ramco: ramcoId, status: 'active' } : { ramco: ramcoId, year, status: 'active' };
           const res = await authenticatedApi.get('/api/training/participants', { params } as any);
           const payload: any = (res as any)?.data;
           if (cancelled) return;

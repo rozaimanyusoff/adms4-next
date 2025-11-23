@@ -31,6 +31,8 @@ function formatMonthYearLabel(input?: string | null): string {
 type BatchExportOptions = {
   billMonthIso?: string;
   serviceLabel?: string;
+  preparedByName?: string;
+  preparedByTitle?: string;
 };
 
 // Accepts the actual selected grid rows so we can discover their beneficiary IDs and util IDs
@@ -144,42 +146,23 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
       //doc.text(String(service).toUpperCase(), 15, y);
       //y += 4;
 
-      const tableHead = ['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)'];
+      const tableHead = [['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)']];
       let rowNum = 1;
-      const tableBody = [
-        tableHead,
-        ...bills.map((bill: AnyRow) => [
-          String(rowNum++),
-          bill.account?.account || '',
-          bill.ubill_date ? formatDate(bill.ubill_date) : '',
-          bill.ubill_no || '',
-          bill.account?.beneficiary?.name || '',
-          bill.account?.costcenter?.name || '-',
-          Number(bill.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })
-        ])
-      ];
+      const tableBody = bills.map((bill: AnyRow) => [
+        String(rowNum++),
+        bill.account?.account || '',
+        bill.ubill_date ? formatDate(bill.ubill_date) : '',
+        bill.ubill_no || '',
+        bill.account?.beneficiary?.name || '',
+        bill.account?.costcenter?.name || '-',
+        Number(bill.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })
+      ]);
 
       autoTable(doc, {
         startY: y,
-        head: [],
+        head: tableHead,
         body: tableBody,
         styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
-        didParseCell: (data: any) => {
-          if (data.row.index === 0) {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [255, 255, 255];
-            data.cell.styles.textColor = [0, 0, 0];
-          }
-        },
-        didDrawCell: (data: any) => {
-          if (data.row.index === 0) {
-            const { cell } = data;
-            const doc = data.doc;
-            doc.setDrawColor(200);
-            doc.setLineWidth(0.1);
-            doc.rect(cell.x, cell.y, cell.width, cell.height);
-          }
-        },
         columnStyles: {
           0: { cellWidth: 10, halign: 'center' },
           1: { cellWidth: 35, halign: 'center' },
@@ -192,6 +175,22 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
         margin: { left: 14, right: 14 },
         tableWidth: 'auto',
         theme: 'grid',
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 9,
+          halign: 'center',
+        },
+        footStyles: {
+          fillColor: [240, 240, 240],
+          textColor: 0,
+          fontStyle: 'bold',
+          fontSize: 9,
+          halign: 'right',
+          lineWidth: 0.1,
+          lineColor: [200, 200, 200],
+        },
       });
       y = (doc as any).lastAutoTable.finalY + 4;
 
@@ -249,8 +248,8 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
     const firstMeta = sampleBill?.account?.beneficiary || {};
     const signatures = [
       {
-        name: firstMeta?.entry_by?.full_name || 'MUHAMMAD ARIF BIN ABDUL JALIL',
-        title: firstMeta?.entry_position || 'Senior Executive Administration',
+        name: options.preparedByName || firstMeta?.entry_by?.full_name || 'Prepared By',
+        title: options.preparedByTitle || firstMeta?.entry_position || 'Administrator',
         x: 15,
       },
       { name: 'MUHAMMAD ARIF BIN ABDUL JALIL', title: 'Senior Executive Administration', x: pageWidth / 2 - 28 },

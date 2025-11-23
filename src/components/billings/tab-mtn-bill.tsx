@@ -32,7 +32,7 @@ const TabMaintenanceBill: React.FC = () => {
             </div>
 
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                <TabsList>
                     <TabsTrigger value="dashboard" className="flex items-center gap-2">
                         <span>Dashboard</span>
                     </TabsTrigger>

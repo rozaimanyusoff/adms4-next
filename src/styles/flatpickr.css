@@ -34,28 +34,44 @@
 }
 
 .flatpickr-calendar {
-    font-size: 11px;
+    font-size: 9px;
+    width: auto;
+    min-width: 260px;
+    padding: 6px;
+    border-radius: 10px;
+}
+
+.flatpickr-calendar.inline,
+.flatpickr-calendar.open {
+    width: auto;
+    min-width: 260px;
+}
+
+.flatpickr-calendar .flatpickr-innerContainer,
+.flatpickr-calendar .flatpickr-rContainer,
+.flatpickr-calendar .flatpickr-days {
+    width: 100%;
 }
 
 .flatpickr-calendar .flatpickr-day {
-    max-width: 28px;
-    height: 24px;
-    line-height: 24px;
-    font-size: 11px;
+    max-width: 26px;
+    height: 22px;
+    line-height: 22px;
+    font-size: 9px;
 }
 
 .flatpickr-calendar .flatpickr-weekdays {
-    height: 18px;
+    height: 16px;
 }
 
 .flatpickr-calendar .flatpickr-weekday {
-    line-height: 18px;
+    line-height: 16px;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 8px;
 }
 
 .flatpickr-calendar .flatpickr-current-month {
-    font-size: 13px;
+    font-size: 11px;
 }
 
 .dark .flatpickr-calendar .flatpickr-months input.cur-year {

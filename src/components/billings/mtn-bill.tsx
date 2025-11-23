@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
@@ -13,7 +13,9 @@ import { toast } from 'sonner';
 import clsx from 'clsx';
 // Removed Recharts chart imports as chart is no longer displayed
 import { downloadMaintenanceReport } from './pdfreport-mtn';
+import { downloadMaintenanceReportBulk } from './pdfreport-mtn-bulk';
 import MtnBillSummary from './mtn-bill-summary';
+import { AuthContext } from '@/store/AuthContext';
 
 // Interface for the maintenance bill data based on the provided structure
 interface MaintenanceBill {
@@ -65,6 +67,9 @@ const MaintenanceBill: React.FC = () => {
 	const [rows, setRows] = useState<any[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [formLoading, setFormLoading] = useState(false);
+	const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string | number>>(new Set());
+	const auth = useContext(AuthContext);
+	const [showWorkshopAlert, setShowWorkshopAlert] = useState(false);
 
 	// Custom part inputs (for adding items not in catalog)
 
@@ -112,6 +117,7 @@ const MaintenanceBill: React.FC = () => {
 				// Add searchable vehicle field combining register_number and fuel_type
 				vehicle_search: `${item.asset?.register_number || ''} ${item.asset?.fuel_type || ''}`.trim(),
 			})));
+			setSelectedRowKeys(new Set());
 		} catch (err) {
 			console.error('Error fetching maintenance bills:', err);
 			toast.error('Failed to fetch maintenance bills');
@@ -150,7 +156,8 @@ const MaintenanceBill: React.FC = () => {
 									aria-label="Print Report"
 									onClick={async () => {
 										try {
-											await downloadMaintenanceReport(row.inv_id);
+											const preparedBy = await getPreparedBy();
+											await downloadMaintenanceReport(row.inv_id, preparedBy);
 											toast.success('PDF report downloaded successfully');
 										} catch (error) {
 											console.error('Error downloading PDF:', error);
@@ -240,6 +247,7 @@ const MaintenanceBill: React.FC = () => {
 	// ----- Inline Form State -----
 	const [selectedRow, setSelectedRow] = useState<(MaintenanceBill & { rowNumber?: number }) | null>(null);
 	const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+	const [bulkDownloading, setBulkDownloading] = useState(false);
 
 	// Basic form data for editing invoice
 	const [formData, setFormData] = useState({
@@ -383,64 +391,129 @@ const MaintenanceBill: React.FC = () => {
 		}
 	};
 
-    // Submit handler -> PUT /api/bills/mtn/{inv_id}
-    const handleFormSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedRow?.inv_id) {
-            toast.error('Missing invoice ID');
-            return;
-        }
+	// Submit handler -> PUT /api/bills/mtn/{inv_id}
+	const handleFormSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!selectedRow?.inv_id) {
+			toast.error('Missing invoice ID');
+			return;
+		}
 
-        try {
-            // Basic validation
-            if (!formData.inv_no || !formData.inv_date) {
-                toast.error('Please fill Invoice No and Invoice Date');
-                return;
-            }
+		try {
+			// Basic validation
+			if (!formData.inv_no || !formData.inv_date) {
+				toast.error('Please fill Invoice No and Invoice Date');
+				return;
+			}
 
-            // Build parts array in expected shape
-            const invIdNum = Number(selectedRow.inv_id);
-            const partsPayload = (selectedParts || []).map((p) => {
-                const qty = Number(p.qty || 0) || 0;
-                const unit = Number(parseFloat(String(p.part_uprice || '0'))) || 0;
-                const amount = qty * unit;
-                return {
-                    autopart_id: Number(p.autopart_id ?? p.id ?? 0),
-                    inv_id: invIdNum,
-                    part_qty: qty,
-                    part_uprice: Number(unit.toFixed(2)),
-                    part_final_amount: Number(amount.toFixed(2)),
-                };
-            });
+			// Build parts array in expected shape
+			const invIdNum = Number(selectedRow.inv_id);
+			const partsPayload = (selectedParts || []).map((p) => {
+				const qty = Number(p.qty || 0) || 0;
+				const unit = Number(parseFloat(String(p.part_uprice || '0'))) || 0;
+				const amount = qty * unit;
+				return {
+					autopart_id: Number(p.autopart_id ?? p.id ?? 0),
+					inv_id: invIdNum,
+					part_qty: qty,
+					part_uprice: Number(unit.toFixed(2)),
+					part_final_amount: Number(amount.toFixed(2)),
+				};
+			});
 
-            const invTotal = partsPayload.reduce((sum, p) => sum + (Number(p.part_final_amount) || 0), 0);
+			const invTotal = partsPayload.reduce((sum, p) => sum + (Number(p.part_final_amount) || 0), 0);
 
-            const fd = new FormData();
-            fd.append('inv_no', String(formData.inv_no).trim());
-            fd.append('inv_date', formData.inv_date || '');
-            fd.append('svc_date', formData.svc_date || '');
-            fd.append('svc_odo', String(Number(formData.svc_odo || 0)));
-            fd.append('inv_remarks', formData.inv_remarks || '');
-            fd.append('inv_total', String(Number(invTotal.toFixed(2))));
-            if (attachmentFile) fd.append('upload', attachmentFile);
-            fd.append('parts', JSON.stringify(partsPayload));
+			const fd = new FormData();
+			fd.append('inv_no', String(formData.inv_no).trim());
+			fd.append('inv_date', formData.inv_date || '');
+			fd.append('svc_date', formData.svc_date || '');
+			fd.append('svc_odo', String(Number(formData.svc_odo || 0)));
+			fd.append('inv_remarks', formData.inv_remarks || '');
+			fd.append('inv_total', String(Number(invTotal.toFixed(2))));
+			if (attachmentFile) fd.append('upload', attachmentFile);
+			fd.append('parts', JSON.stringify(partsPayload));
 
-            await authenticatedApi.put(`/api/bills/mtn/${invIdNum}`, fd, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
+			await authenticatedApi.put(`/api/bills/mtn/${invIdNum}`, fd, {
+				headers: { 'Content-Type': 'multipart/form-data' },
+			});
 
-            toast.success('Maintenance invoice saved.');
-            closeForm();
-            await fetchMaintenanceBills();
-        } catch (err) {
-            console.error('Failed to save maintenance invoice', err);
-            toast.error('Failed to save maintenance invoice');
-        }
-    };
+			toast.success('Maintenance invoice saved.');
+			closeForm();
+			await fetchMaintenanceBills();
+		} catch (err) {
+			console.error('Failed to save maintenance invoice', err);
+			toast.error('Failed to save maintenance invoice');
+		}
+	};
 
 	// Row double-click -> open inline form; detail will be fetched by the form
 	const handleRowDoubleClick = async (row: MaintenanceBill & { rowNumber: number }) => {
 		setSelectedRow(row);
+	};
+
+	const getPreparedBy = async () => {
+		const fallbackName = auth?.authData?.user?.name || undefined;
+		const fallbackTitle = auth?.authData?.user?.profile?.job || auth?.authData?.user?.role?.name || undefined;
+		const username = auth?.authData?.user?.username || '';
+		if (!username) return { preparedByName: fallbackName, preparedByTitle: fallbackTitle };
+
+		try {
+			const res = await authenticatedApi.get('/api/assets/employees', {
+				params: { ramco: username },
+			});
+			const data = (res as any)?.data?.data;
+			if (Array.isArray(data) && data.length > 0) {
+				const first = data[0];
+				const preparedByName = first?.full_name || fallbackName;
+				const preparedByTitle = first?.position?.name || fallbackTitle;
+				return { preparedByName, preparedByTitle };
+			}
+		} catch (e) {
+			// fallback to auth context values on failure
+		}
+		return { preparedByName: fallbackName, preparedByTitle: fallbackTitle };
+	};
+
+	const handleExportSelected = async () => {
+		const ids = rows
+			.filter(r => selectedRowKeys.has(r.inv_id))
+			.map(r => r.inv_id)
+			.filter(Boolean);
+		const selectedRows = rows.filter(r => selectedRowKeys.has(r.inv_id));
+
+		if (ids.length === 0) {
+			toast.error('Select at least one invoice to download.');
+			return;
+		}
+
+		// Enforce single-workshop rule for bulk memo
+		if (ids.length > 1) {
+			const workshops = new Set(
+				selectedRows
+					.map(r => r.workshop?.id || r.workshop?.name || '')
+					.filter(Boolean)
+			);
+			if (workshops.size > 1) {
+				setShowWorkshopAlert(true);
+				return;
+			}
+		}
+
+		setBulkDownloading(true);
+		try {
+			const preparedBy = await getPreparedBy();
+			if (ids.length === 1) {
+				await downloadMaintenanceReport(ids[0], preparedBy);
+			} else {
+				await downloadMaintenanceReportBulk(ids, preparedBy);
+			}
+			toast.success(`Downloaded ${ids.length} invoice${ids.length > 1 ? 's' : ''}.`);
+		} catch (e) {
+			console.error('Maintenance report download failed', e);
+			toast.error('Failed to download selected invoices.');
+		} finally {
+			setBulkDownloading(false);
+		}
 	};
 
 	const closeForm = () => {
@@ -464,6 +537,44 @@ const MaintenanceBill: React.FC = () => {
 			{/* Data Grid */}
 			{!selectedRow && (
 				<div className="border rounded-md">
+					<div className="flex items-center justify-between px-3 py-2 border-b bg-muted/60">
+						<h2 className="text-sm font-semibold">Maintenance Invoices</h2>
+						<div className="flex items-center gap-2">
+							{selectedRowKeys.size > 1 && (() => {
+								const selected = rows.filter(r => selectedRowKeys.has(r.inv_id));
+								const workshopSet = new Set(selected.map(r => r.workshop?.id || r.workshop?.name || '').filter(Boolean));
+								if (workshopSet.size > 1) {
+									return (
+										<span className="text-xs text-red-600">
+											Select invoices from the same workshop to export in bulk.
+										</span>
+									);
+								}
+								return null;
+							})()}
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={bulkDownloading || selectedRowKeys.size === 0 || (selectedRowKeys.size > 1 && (() => {
+									const selected = rows.filter(r => selectedRowKeys.has(r.inv_id));
+									const workshopSet = new Set(selected.map(r => r.workshop?.id || r.workshop?.name || '').filter(Boolean));
+									return workshopSet.size > 1;
+								})())}
+								onClick={handleExportSelected}
+							>
+								{bulkDownloading ? (
+									<>
+										<Loader2 className="h-4 w-4 animate-spin mr-2" /> Downloading...
+									</>
+								) : (
+									<>
+										<Download size={16} className="mr-2" />
+										Download Selected ({selectedRowKeys.size})
+									</>
+								)}
+							</Button>
+						</div>
+					</div>
 					{loading ? (
 						<div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
 							<Loader2 className="h-4 w-4 animate-spin" /> Loading maintenance invoices...
@@ -475,8 +586,15 @@ const MaintenanceBill: React.FC = () => {
 							pagination={false}
 							inputFilter={false}
 							theme="sm"
-							dataExport={true}
+							dataExport={false}
 							onRowDoubleClick={handleRowDoubleClick as any}
+							rowSelection={{
+								enabled: true,
+								getRowId: (row: MaintenanceBill) => row.inv_id,
+								onSelect: (keys) => setSelectedRowKeys(new Set(keys)),
+							}}
+							selectedRowKeys={selectedRowKeys}
+							setSelectedRowKeys={setSelectedRowKeys}
 						/>
 					)}
 				</div>

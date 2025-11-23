@@ -19,6 +19,7 @@ import {
     TrainingRecord,
     normalizeTrainingRecord,
     formatDateTime,
+    parseDateTime,
 } from '@/components/training/utils';
 
 const TrainingRecordList = () => {
@@ -63,7 +64,9 @@ const TrainingRecordList = () => {
         const loadParticipants = async () => {
             setParticipantLoading(true);
             try {
-                const params = participantYear === 'all' ? undefined : { year: participantYear };
+                const params = participantYear === 'all'
+                    ? { status: 'active' }
+                    : { year: participantYear, status: 'active' };
                 const res = await authenticatedApi.get('/api/training/participants', { params } as any);
                 const data = (res as any)?.data;
                 const list = Array.isArray(data?.data)
@@ -85,20 +88,6 @@ const TrainingRecordList = () => {
 
     const exportParticipants = async () => {
         if (!participantReport.length) return;
-        const headers = [
-            'No',
-            'Ramco ID',
-            'Name',
-            'Department',
-            'Location',
-            'Position',
-            'Training Title',
-            'Training Date',
-            'Hours',
-            'Days',
-            'Month',
-            'Year',
-        ];
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'ADMS';
         workbook.created = new Date();
@@ -118,10 +107,27 @@ const TrainingRecordList = () => {
             { header: 'Year', width: 8 },
         ];
         participantReport.forEach((item: any, index: number) => {
-            const details = item.training_details ?? {};
-            const startDate = details.start_date ? new Date(details.start_date) : null;
+            // training_details may arrive as an object or an array; pick the most recent entry if multiple are present
+            const detailSource = item.training_details ?? item.training ?? {};
+            const detailList = Array.isArray(detailSource) ? detailSource : [detailSource];
+            const details = detailList.length > 1
+                ? detailList.reduce((latest, curr) => {
+                    const latestDate = parseDateTime(latest?.start_date ?? latest?.sdate ?? latest?.startDate ?? null);
+                    const currDate = parseDateTime(curr?.start_date ?? curr?.sdate ?? curr?.startDate ?? null);
+                    if (!latestDate) return curr;
+                    if (!currDate) return latest;
+                    return currDate > latestDate ? curr : latest;
+                }, detailList[0])
+                : detailList[0];
+
+            const startRaw = details?.start_date ?? details?.sdate ?? item.sdate ?? null;
+            const startDate = parseDateTime(startRaw) ?? (startRaw ? new Date(startRaw) : null);
             const month = startDate ? startDate.toLocaleString(undefined, { month: 'short' }) : '';
             const year = startDate ? startDate.getFullYear().toString() : '';
+            const trainingTitle = details?.course_title ?? details?.title ?? item.course_title ?? '';
+            const trainingDate = startDate
+                ? `${startDate.getDate()}/${startDate.getMonth() + 1}/${startDate.getFullYear()}`
+                : startRaw || '';
             sheet.addRow([
                 index + 1,
                 item.participant?.ramco_id ?? '',
@@ -129,10 +135,10 @@ const TrainingRecordList = () => {
                 item.participant?.department?.name ?? '',
                 item.participant?.location?.name ?? '',
                 item.participant?.position?.name ?? '',
-                details.course_title ?? '',
-                details.start_date ?? '',
-                details.hrs ?? '',
-                details.days ?? '',
+                trainingTitle,
+                trainingDate,
+                details?.hrs ?? details?.hours ?? '',
+                details?.days ?? details?.day ?? '',
                 month,
                 year,
             ]);
@@ -147,7 +153,8 @@ const TrainingRecordList = () => {
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = `training-participants-${participantYear}.xlsx`;
+        const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12); // YYYYMMDDHHMM
+        anchor.download = `training-participants-${participantYear}-${timestamp}.xlsx`;
         anchor.click();
         URL.revokeObjectURL(url);
     };
@@ -236,67 +243,73 @@ const TrainingRecordList = () => {
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <h2 className="text-lg font-semibold">Training Records</h2>
-                    <p className="text-sm text-muted-foreground">
-                        {showForm
-                            ? editingId
-                                ? 'Editing selected training session.'
-                                : 'Use the form to register a new training session.'
-                            : 'Review scheduled trainings and double-click any row to edit in the form.'}
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Select value={participantYear} onValueChange={(value) => setParticipantYear(value)}>
-                        <SelectTrigger className="h-10 text-sm">
-                            <SelectValue placeholder="Year" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All years</SelectItem>
-                            {YEAR_OPTIONS.map((year) => (
-                                <SelectItem key={year} value={year}>
-                                    {year}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button
-                        variant="outline"
-                        onClick={() => void exportParticipants()}
-                        disabled={!participantReport.length || participantLoading}
-                    >
-                        <FileSpreadsheet className="size-4 text-green-600" />
-                        Export Records
-                    </Button>
-                    <Button
-                        type="button"
-                        onClick={() => {
-                            // Toggle form; when manually opening form, clear edit state for a fresh form
-                            setEditingId(null);
-                            setShowForm((prev) => !prev);
-                        }}
-                    >
-                        {loading ? (
-                            <Loader2 className="size-4 animate-spin" />
-                        ) : showForm ? (
-                            <CornerUpLeft className="size-4" />
-                        ) : (
-                            <Plus className="size-4" />
-                        )}
-                        {showForm ? 'Back' : 'Register Training'}
-                    </Button>
-                </div>
+            <div className={`flex flex-col gap-2 sm:flex-row sm:items-center ${showForm ? 'sm:justify-end' : 'sm:justify-between'}`}>
+                {!showForm && (
+                    <div>
+                        <h2 className="text-lg font-semibold">Training Records</h2>
+                        <p className="text-sm text-muted-foreground">
+                            Review scheduled trainings and double-click any row to edit in the form.
+                        </p>
+                    </div>
+                )}
+                {!showForm && (
+                    <div className="flex items-center gap-2 sm:justify-end">
+                        <Select value={participantYear} onValueChange={(value) => setParticipantYear(value)}>
+                            <SelectTrigger className="h-10 text-sm">
+                                <SelectValue placeholder="Year" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All years</SelectItem>
+                                {YEAR_OPTIONS.map((year) => (
+                                    <SelectItem key={year} value={year}>
+                                        {year}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Button
+                            variant="outline"
+                            onClick={() => void exportParticipants()}
+                            disabled={!participantReport.length || participantLoading}
+                        >
+                            <FileSpreadsheet className="size-4 text-green-600" />
+                            Export Records
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                // Toggle form; when manually opening form, clear edit state for a fresh form
+                                setEditingId(null);
+                                setShowForm((prev) => !prev);
+                            }}
+                        >
+                            {loading ? (
+                                <Loader2 className="size-4 animate-spin" />
+                            ) : showForm ? (
+                                <CornerUpLeft className="size-4" />
+                            ) : (
+                                <Plus className="size-4" />
+                            )}
+                            {showForm ? 'Back' : 'Register Training'}
+                        </Button>
+                    </div>
+                )}
             </div>
 
             {showForm ? (
-                        <TrainingForm
-                            trainingId={editingId ?? undefined}
-                            onSuccess={() => {
-                                setShowForm(false);
-                                setEditingId(null);
-                            }}
-                        />
+                <div className="space-y-4">
+                    <TrainingForm
+                        trainingId={editingId ?? undefined}
+                        onSuccess={() => {
+                            setShowForm(false);
+                            setEditingId(null);
+                        }}
+                        onCancel={() => {
+                            setShowForm(false);
+                            setEditingId(null);
+                        }}
+                    />
+                </div>
             ) : (
                 <>
                     {error && <p className="mb-2 text-sm text-destructive">{error}</p>}

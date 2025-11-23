@@ -190,6 +190,25 @@ const UtilityBill = () => {
       return '';
     }
   })();
+  const getPreparedBy = async () => {
+    const fallbackName = user?.authData?.user?.name || undefined;
+    const fallbackTitle = user?.authData?.user?.profile?.job || user?.authData?.user?.role?.name || undefined;
+    if (!username) return { preparedByName: fallbackName, preparedByTitle: fallbackTitle };
+    try {
+      const res = await authenticatedApi.get('/api/assets/employees', { params: { ramco: username } });
+      const data = (res as any)?.data?.data;
+      if (Array.isArray(data) && data.length > 0) {
+        const first = data[0];
+        return {
+          preparedByName: first?.full_name || fallbackName,
+          preparedByTitle: first?.position?.name || fallbackTitle,
+        };
+      }
+    } catch (e) {
+      // ignore and fall back
+    }
+    return { preparedByName: fallbackName, preparedByTitle: fallbackTitle };
+  };
 
   // Dialog state for delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -256,9 +275,11 @@ const UtilityBill = () => {
     try {
       setBatchServiceGenerating(true);
       const { exportUtilityBillBatchByService } = await import('./pdfreport-utility-batch-service');
+      const preparedBy = await getPreparedBy();
       await exportUtilityBillBatchByService(selectedGridRows, {
         billMonthIso: batchServiceMonth,
         serviceLabel: selectedServiceLabel,
+        ...preparedBy,
       });
       setBatchServiceDialogOpen(false);
     } catch (err) {
@@ -935,7 +956,8 @@ const UtilityBill = () => {
                       await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
                     } else {
                       const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
-                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport);
+                      const preparedBy = await getPreparedBy();
+                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport, preparedBy);
                     }
                   } catch (err) {
                     console.error('Failed to export utility PDF batch', err);

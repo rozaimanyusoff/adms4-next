@@ -60,7 +60,15 @@ export interface MaintenanceReportData {
    }>;
 }
 
-export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) {
+export async function generateMaintenanceReport({
+   inv_id,
+   preparedByName,
+   preparedByTitle,
+}: {
+   inv_id: number;
+   preparedByName?: string;
+   preparedByTitle?: string;
+}) {
    const res = await authenticatedApi.get(`/api/bills/mtn/${inv_id}`);
    const data = (res.data as { data: MaintenanceReportData }).data;
 
@@ -187,9 +195,10 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
       });
    }
 
+   const grandTotal = parseFloat(data.inv_total || '0');
    // Add table
    y += 3;
-   const tableResult = autoTable(doc, {
+   autoTable(doc, {
       startY: y,
       head: [['No', 'Item', 'U/Price (RM)', 'Qty', 'SST', 'Discount', 'Sub-total (RM)']],
       body: tableData.map(row => [
@@ -201,6 +210,7 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
          '0.00', // Discount placeholder
          formatCurrency(row.subTotal)
       ]),
+      foot: [[{ content: '', colSpan: 5 }, 'Grand Total', '']], // value set below via footStyles.halign right
       theme: 'grid',
       headStyles: {
          fillColor: [41, 128, 185],
@@ -213,6 +223,15 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
          fontSize: 8,
          cellPadding: 1
       },
+      footStyles: {
+         fillColor: [240, 240, 240],
+         textColor: 0,
+         fontStyle: 'bold',
+         fontSize: 9,
+         halign: 'right',
+         lineWidth: 0.1,
+         lineColor: [200, 200, 200]
+      },
       columnStyles: {
          0: { cellWidth: 8, halign: 'center' }, // No.
          1: { cellWidth: 0, halign: 'left' },   // Item
@@ -222,17 +241,18 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
          5: { cellWidth: 20, halign: 'right' },  // Discount
          6: { cellWidth: 30, halign: 'right' }   // Sub-total
       },
-      margin: { left: 14, right: 14 }
+      margin: { left: 14, right: 14 },
+      didParseCell: (data: any) => {
+         // inject grand total value into last foot column
+         if (data.section === 'foot' && data.column.index === 6) {
+            data.cell.text = [formatCurrency(grandTotal)];
+         }
+      }
    });
 
-   // Grand Total - get finalY from autoTable
-   const tableEndY = (doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || y + 50;
+   // Position after table
+   const tableEndY = (doc as any).lastAutoTable?.finalY || y + 50;
    const finalY = tableEndY + 4;
-   const grandTotal = parseFloat(data.inv_total || '0');
-
-   doc.setFont('helvetica', 'bold');
-   doc.setFontSize(9);
-   doc.text(`Grand-Total (RM): ${formatCurrency(grandTotal)}`, pageWidth - 15, finalY, { align: 'right' });
    y = finalY + 15;
 
    // Signatures area (reuse helper)
@@ -257,8 +277,8 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
    doc.setFontSize(9);
    const signatures = [
       {
-         name: 'NOR AFFISHA NAJEEHA BT AFFIDIN',
-         title: 'Admin Assistant',
+         name: preparedByName || 'Prepared By',
+         title: preparedByTitle || 'Administrator',
          x: 15
       },
       { name: 'MUHAMMAD ARIF BIN ABDUL JALIL', title: 'Senior Executive Administration', x: pageWidth / 2 - 28 },
@@ -290,8 +310,11 @@ export async function generateMaintenanceReport({ inv_id }: { inv_id: number }) 
    return doc;
 }
 
-export function downloadMaintenanceReport(inv_id: number) {
-   generateMaintenanceReport({ inv_id })
+export function downloadMaintenanceReport(
+   inv_id: number,
+   options?: { preparedByName?: string; preparedByTitle?: string }
+) {
+   generateMaintenanceReport({ inv_id, ...options })
       .then(doc => {
          const now = new Date();
          const datetime = now.getFullYear().toString() +

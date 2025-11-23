@@ -1,4 +1,4 @@
-import { ProjectMgmtMain } from '@/components/projectmgmt';
+import { ProjectMain } from '@/components/projectmgmt';
 import { Metadata } from 'next';
 import React from 'react';
 
@@ -8,8 +8,7 @@ export const metadata: Metadata = {
 };
 
 const ProjectManagementPage = () => {
-    return <ProjectMgmtMain />;
+    return <ProjectMain />;
 };
 
 export default ProjectManagementPage;
-

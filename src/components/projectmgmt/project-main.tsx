@@ -3,8 +3,8 @@
 import React from 'react';
 import { differenceInCalendarDays, isBefore, isValid, parseISO } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import ProjectRegistrationForm from './project-registration-form';
-import ProjectOverviewTable from './project-overview-table';
+import ProjectDetails from './project-details';
+import ProjectRecords from './project-records';
 import ProjectKanban from './project-kanban';
 import ProjectReports from './project-reports';
 import type {
@@ -587,7 +587,7 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
     };
 }
 
-const ProjectMgmtMain: React.FC = () => {
+const ProjectMain: React.FC = () => {
     const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
     const [assignmentFilter, setAssignmentFilter] = React.useState<AssignmentType | 'all'>('all');
     const [projectTypeFilter, setProjectTypeFilter] = React.useState<'all' | 'dev' | 'it'>('dev');
@@ -664,7 +664,7 @@ const ProjectMgmtMain: React.FC = () => {
                                     ))}
                                 </div>
 
-                                <ProjectOverviewTable
+                                <ProjectRecords
                                     projects={projects}
                                     assignmentTypeFilter={assignmentFilter}
                                     projectTypeFilter={projectTypeFilter}
@@ -685,7 +685,7 @@ const ProjectMgmtMain: React.FC = () => {
                                 >
                                     ← Back to projects
                                 </button>
-                                <ProjectRegistrationForm
+                                <ProjectDetails
                                     onSubmit={() => { /* form posts internally */ }}
                                     editProjectId={editingProjectId || undefined}
                                     assignorOptions={assignorDirectory}
@@ -712,4 +712,4 @@ const ProjectMgmtMain: React.FC = () => {
     );
 };
 
-export default ProjectMgmtMain;
+export default ProjectMain;
