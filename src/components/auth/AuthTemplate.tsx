@@ -1,11 +1,26 @@
 import React, { useState } from "react";
-import { Facebook, Twitter, Instagram, Youtube, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
 interface AuthTemplateProps {
     children: React.ReactNode;
     title: string;
     description?: string;
+}
+
+interface InfoItem {
+    date?: string;
+    title: string;
+    description?: string;
+    link?: {
+        href: string;
+        label: string;
+    };
 }
 
 const getDescriptionClass = (description?: string) => {
@@ -15,6 +30,67 @@ const getDescriptionClass = (description?: string) => {
     if (desc.includes("success")) return "text-emerald-300";
     return "text-white/75";
 };
+
+const infoItems: InfoItem[] = [
+    {
+        date: "21/11/2025",
+        title: "Vehicle Maintenance Request",
+        description: "Follow the steps to log and track your vehicle maintenance.",
+        link: {
+            href: "/assets/docs/vehicle-mtn-guide.pdf",
+            label: "Panduan pengguna (PDF)",
+        },
+    },
+    {
+        date: "21/11/2025",
+        title: "Poolcar Request",
+        description: "Submit transport requests and monitor approval status.",
+        link: {
+            href: "/assets/docs/vehicle-mtn-guide2.pdf",
+            label: "Panduan pengguna (PDF)",
+        },
+    },
+    {
+        date: "21/11/2025",
+        title: "Start a workflow",
+        description: "Create your first record or request to kick things off.",
+    },
+];
+
+const InfoTimeline = ({ className }: { className?: string }) => (
+    <Card className={cn("mt-4 border-none bg-transparent text-white", className)}>
+        <CardHeader>
+            <Badge className="w-fit border-orange-200/40 bg-orange-500/20 text-orange-100">Info</Badge>
+
+        </CardHeader>
+        <CardContent className="px-2 pb-6">
+            <div className="relative space-y-4 before:absolute before:left-6 before:top-4 before:h-[calc(100%-1.5rem)] before:w-px before:bg-white/15">
+                {infoItems.map((item, index) => (
+                    <div key={item.title} className="relative pl-16">
+                        <div className="absolute left-2 top-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-orange-500 text-sm font-bold text-white shadow-lg ring-4 ring-orange-500/25">
+                            {index + 1}
+                        </div>
+                        <div className="space-y-1">
+                            {item.date && <p className="text-xs font-semibold uppercase tracking-wide text-orange-200/90">{item.date}</p>}
+                            <p className="font-semibold text-white">{item.title}</p>
+                            {item.description && <p className="text-sm text-white/80">{item.description}</p>}
+                            {item.link && (
+                                <Link
+                                    href={item.link.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-2 inline-flex items-center text-sm font-semibold text-orange-200 underline hover:text-orange-100"
+                                >
+                                    {item.link.label}
+                                </Link>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </CardContent>
+    </Card>
+);
 
 const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
     const logoSrc = process.env.NEXT_PUBLIC_BRAND_LOGO_DARK;
@@ -27,37 +103,14 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
                 <div className="absolute inset-0 bg-black/40" />
             </div>
             {/* Left Side: Welcome Section */}
-            <div className="relative z-10 hidden flex-col justify-center px-12 py-16 text-white lg:flex lg:w-1/2">
+            <div className="relative z-10 hidden flex-col justify-center px-12 py-16 text-white lg:flex lg:w-1/3">
                 <h1 className="text-5xl font-extrabold mb-4 drop-shadow-lg">Welcome<br />Back</h1>
                 <p className="mb-4 text-2xl font-bold tracking-wide text-orange-200">ADMS</p>
-                <p className="mb-8 text-lg max-w-md text-white/90">
+                <p className="mb-4 text-lg max-w-md text-white/90">
                     Administrative Management System (ADMS) helps organizations manage internal business and administration processes across multiple fields of operations.
                 </p>
-                <div className="mt-6 w-96 rounded-2xl border-none border-white/15 py-5 shadow-2xl">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-200/90 mb-3">Info</p>
-                    <ol className="space-y-3 text-sm text-white/85">
-                        <li className="flex items-start gap-3">
-                            <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">1</span>
-                            <div>
-                                <span className="font-semibold text-white">Vehicle Maintenance Request</span><br />
-                                <Link href="/assets/docs/vehicle-mtn-guide.pdf" target="_blank" rel="noreferrer" className="text-orange-200 hover:text-orange-100 underline">
-                                    Panduan pengguna (PDF)
-                                </Link>
-                            </div>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">2</span>
-                            <div><span className="font-semibold text-white">Poolcar Request</span><br /><Link href="/assets/docs/vehicle-mtn-guide.pdf" target="_blank" rel="noreferrer" className="text-orange-200 hover:text-orange-100 underline">
-                                Panduan pengguna (PDF)
-                            </Link>
-                            </div>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">3</span>
-                            <div><span className="font-semibold text-white">Start a workflow</span><br />Create your first record or request.</div>
-                        </li>
-                    </ol>
-                </div>
+                <Separator className="border-gray-500/50" />
+                <InfoTimeline />
             </div>
             {/* Right Side: Auth Form */}
             <div className="relative z-10 flex flex-1 justify-end max-lg:justify-center">
@@ -69,23 +122,27 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
                         {showInfo ? (
                             <>
                                 <span className="text-xs font-semibold uppercase tracking-wide text-white/80">Info</span>
-                                <button
+                                <Button
                                     type="button"
                                     onClick={() => setShowInfo(false)}
-                                    className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="gap-1 rounded-full border border-white/20 bg-black/40 text-white shadow hover:bg-black/60"
                                 >
                                     <ArrowLeft size={14} />
                                     Back
-                                </button>
+                                </Button>
                             </>
                         ) : (
-                            <button
+                            <Button
                                 type="button"
                                 onClick={() => setShowInfo(true)}
-                                className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow"
+                                size="sm"
+                                variant="secondary"
+                                className="gap-1 rounded-full border border-white/20 bg-black/40 text-white shadow hover:bg-black/60"
                             >
                                 Info
-                            </button>
+                            </Button>
                         )}
                     </div>
                     {logoSrc ? (
@@ -102,34 +159,15 @@ const AuthTemplate = ({ children, title, description }: AuthTemplateProps) => {
                         </div>
                     </div>
                     <div className={showInfo ? "relative z-10 mt-8 flex flex-col gap-4 text-white lg:hidden" : "hidden"}>
-                        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-orange-200/90">Info</p>
-                        <ol className="space-y-3 text-sm text-white/85">
-                            <li className="flex items-start gap-3">
-                                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">1</span>
-                                <div>
-                                    <span className="font-semibold text-white">Vehicle Maintenance Request</span><br />
-                                    <Link href="/assets/docs/vehicle-mtn-guide.pdf" target="_blank" rel="noreferrer" className="text-orange-200 underline hover:text-orange-100">
-                                        Panduan pengguna (PDF)
-                                    </Link>
-                                </div>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">2</span>
-                                <div><span className="font-semibold text-white">Set up your team</span><br />Invite members and assign roles.</div>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white">3</span>
-                                <div><span className="font-semibold text-white">Start a workflow</span><br />Create your first record or request.</div>
-                            </li>
-                        </ol>
-                        <Link
-                            href="/assets/docs/vehicle-mtn-guide.pdf"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-2 inline-flex items-center justify-center rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-orange-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300"
+                        <InfoTimeline className="mt-0 w-full" />
+                        <Button
+                            asChild
+                            className="w-full bg-orange-500 text-white shadow-lg hover:bg-orange-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-300"
                         >
-                            Open Guide
-                        </Link>
+                            <Link href="/assets/docs/vehicle-mtn-guide.pdf" target="_blank" rel="noreferrer">
+                                Open Guide
+                            </Link>
+                        </Button>
                     </div>
                 </div>
             </div>
