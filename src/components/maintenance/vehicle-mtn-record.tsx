@@ -226,7 +226,7 @@ const VehicleMtnRecord: React.FC = () => {
         </AccordionItem>
       </Accordion>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-lg font-semibold">My Vehicle Maintenance Requests <span className='font-bold text-red-500'>(Testing mode - To be confirmed by HRA)</span></div>
+        <div className="text-lg font-semibold">My Vehicle Maintenance Requests</div>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => { setEditId(undefined); setShowForm(true); }}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
