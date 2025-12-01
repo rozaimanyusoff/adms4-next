@@ -90,7 +90,13 @@ const VehicleMtnRecord: React.FC = () => {
 
         const vehicleReg = d?.asset?.register_number || d?.vehicle?.register_number || 'N/A';
         const services = Array.isArray(d?.svc_type) ? d.svc_type.map((s: any) => s?.name).filter(Boolean).join(', ') : 'N/A';
-        const invoiced = !!d?.invoice;
+        const invoice = d?.invoice;
+        const invoiceFilled = !!(invoice && (
+          invoice.inv_no ||
+          invoice.inv_date ||
+          invoice.inv_stat === '1' ||
+          (invoice.inv_total && Number(invoice.inv_total) > 0)
+        ));
         const statusLc = String(d?.status || '').toLowerCase();
         // Date logic per request:
         // - approved      -> approval_date
@@ -99,8 +105,8 @@ const VehicleMtnRecord: React.FC = () => {
         // - form uploaded -> form_upload_date
         // - invoiced      -> invoice.inv_date
         let dateStr = '-';
-        if (invoiced || statusLc.includes('invoiced') || statusLc.includes('invoice')) {
-          dateStr = d?.invoice?.inv_date ? formatDMY(d.invoice.inv_date) : '-';
+        if (invoiceFilled || statusLc.includes('invoiced') || statusLc.includes('invoice')) {
+          dateStr = invoice?.inv_date ? formatDMY(invoice.inv_date) : '-';
         } else if (statusLc.includes('approved')) {
           dateStr = d?.approval_date ? formatDMY(d.approval_date) : '-';
         } else if (statusLc.includes('cancel')) {
@@ -119,7 +125,7 @@ const VehicleMtnRecord: React.FC = () => {
           requester: d?.requester?.name || 'N/A',
           costcenter: d?.costcenter?.name || 'N/A',
           workshop: workshopName,
-          status: invoiced ? 'Invoiced' : (d?.status || 'pending'),
+          status: invoiceFilled ? 'Invoiced' : (d?.status || 'pending'),
           date: dateStr,
           __raw: d,
         } as MtnRecordRow;
@@ -137,10 +143,15 @@ const VehicleMtnRecord: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username]);
 
+  const canDownloadPdf = (status?: string) => {
+    const normalized = String(status || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    const isPendingFlow = ['pending verification', 'pending recommendation', 'pending approval'].includes(normalized);
+    return !isPendingFlow;
+  };
+
   const handleDownload = async (row: MtnRecordRow) => {
-    const status = String(row.status || '').toLowerCase();
-    if (!(['approved','invoiced'].includes(status))) {
-      toast.info('PDF available after approval or invoicing');
+    if (!canDownloadPdf(row.status)) {
+      toast.info('PDF available after approval');
       return;
     }
     try {
@@ -176,8 +187,8 @@ const VehicleMtnRecord: React.FC = () => {
           size="sm"
           variant="outline"
           onClick={() => handleDownload(row)}
-          disabled={!(['approved','invoiced'].includes(String(row.status || '').toLowerCase()))}
-          title={!(['approved','invoiced'].includes(String(row.status || '').toLowerCase())) ? 'Available after approval' : 'Download PDF'}
+          disabled={!canDownloadPdf(row.status)}
+          title={!canDownloadPdf(row.status) ? 'Available after approval' : 'Download PDF'}
         >
           <Download size={16} className="mr-1" /> PDF
         </Button>

@@ -46,8 +46,10 @@ interface MaintenanceBill {
 	inv_stat: string | null;
 	inv_remarks?: string | null;
 	upload_url?: string | null;
+	form_upload_date?: string | null;
 	running_no: number;
 	// Additional fields for grid convenience
+	status_display?: string;
 	rowNumber?: number;
 	formatted_inv_date?: string;
 	formatted_svc_date?: string;
@@ -109,6 +111,12 @@ const MaintenanceBill: React.FC = () => {
 			const data = (res.data as { data?: MaintenanceBill[] })?.data || [];
 			setRows(data.map((item, idx) => ({
 				...item,
+				status_display: (() => {
+					const stat = String(item.inv_stat ?? '').trim();
+					if (stat === '1') return 'Invoiced';
+					if (item.form_upload_date) return 'Form Uploaded';
+					return 'Draft';
+				})(),
 				rowNumber: idx + 1,
 				formatted_inv_date: item.inv_date ? formatDate(item.inv_date) : 'N/A',
 				formatted_svc_date: item.svc_date ? formatDate(item.svc_date) : 'N/A',
@@ -147,7 +155,11 @@ const MaintenanceBill: React.FC = () => {
 			header: 'No',
 			render: (row) => (
 				<div className="flex items-center justify-between gap-2 min-w-[60px]">
-					<span>{row.rowNumber}</span>
+					<div className='flex flex-col'>
+						<p>{row.rowNumber}</p>
+					<span className="text-xs text-gray-500">({row.inv_id})</span>
+					</div>
+
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
@@ -177,13 +189,28 @@ const MaintenanceBill: React.FC = () => {
 			),
 		},
 		{
+			key: 'status_display' as keyof (MaintenanceBill & { rowNumber: number }),
+			header: 'Status',
+			filter: 'singleSelect',
+			colClass: 'text-center',
+			render: (row) => (
+				<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${row.status_display === 'Invoiced'
+						? 'bg-green-100 text-green-800'
+						: row.status_display === 'Form Uploaded'
+							? 'bg-sky-100 text-sky-800 truncate'
+							: 'bg-yellow-100 text-yellow-800'
+					}`}>
+					{row.status_display || 'Draft'}
+				</span>
+			)
+		},
+		{
 			key: 'inv_no',
 			header: 'Invoice No',
 			filter: 'input',
 			render: (row) => (
 				<div className="flex flex-col">
 					<span className="font-medium">{row.inv_no || 'N/A'}</span>
-					<span className="text-xs text-gray-500">ID: {row.inv_id}</span>
 				</div>
 			)
 		},
@@ -227,21 +254,7 @@ const MaintenanceBill: React.FC = () => {
 			render: (row) => row.asset?.location?.name || 'N/A'
 		},
 		{ key: 'formatted_inv_total', header: 'Amount', colClass: 'text-right font-medium text-green-600' },
-		{
-			key: 'inv_stat',
-			header: 'Status',
-			filter: 'singleSelect',
-			render: (row) => (
-				<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${row.inv_stat === '1'
-					? 'bg-green-100 text-green-800'
-					: row.inv_stat === '0'
-						? 'bg-yellow-100 text-yellow-800'
-						: 'bg-gray-100 text-gray-800'
-					}`}>
-					{row.inv_stat === '1' ? 'Invoiced' : row.inv_stat === '0' ? 'Draft' : 'Unknown'}
-				</span>
-			)
-		},
+		
 	];
 
 	// ----- Inline Form State -----
@@ -537,8 +550,11 @@ const MaintenanceBill: React.FC = () => {
 			{/* Data Grid */}
 			{!selectedRow && (
 				<div className="border rounded-md">
-					<div className="flex items-center justify-between px-3 py-2 border-b bg-muted/60">
-						<h2 className="text-sm font-semibold">Maintenance Invoices</h2>
+					<div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between px-3 py-2 border-b bg-muted/60">
+						<div className="flex flex-col">
+							<h2 className="text-sm font-semibold tracking-tight">Maintenance Invoices</h2>
+							<span className="text-xs text-blue-600">Double-click a row to update maintenance invoice</span>
+						</div>
 						<div className="flex items-center gap-2">
 							{selectedRowKeys.size > 1 && (() => {
 								const selected = rows.filter(r => selectedRowKeys.has(r.inv_id));

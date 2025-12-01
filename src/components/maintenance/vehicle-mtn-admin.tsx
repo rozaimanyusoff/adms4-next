@@ -209,13 +209,26 @@ const VehicleMaintenanceAdmin = () => {
 
   const getDisplayStatus = (row: MaintenanceRequest): { label: string; color: string } => {
     // Map raw status to display categories the UI requires
-    const s = (row.status || '').toLowerCase();
-    if (s === 'cancelled') return { label: 'CANCELLED', color: 'bg-red-100 text-red-800' };
-    if (s === 'rejected') return { label: 'REJECTED', color: 'bg-rose-100 text-rose-800' };
-    if (s === 'pending') return { label: 'PENDING VERIFICATION', color: 'bg-yellow-100 text-yellow-800' };
-    if (s === 'verified') return { label: 'PENDING RECOMMENDATION', color: 'bg-blue-100 text-blue-800' };
-    if (s === 'recommended' || s === 'approved') return { label: 'PENDING APPROVAL', color: 'bg-purple-100 text-purple-800' };
-    return { label: s.toUpperCase(), color: 'bg-gray-100 text-gray-800 text-center' };
+    const s = (row.status || '').toLowerCase().trim();
+    const normalized = s.replace(/\s+/g, ' ');
+    const hasApprovalDate = !!row.approval_date;
+
+    if (normalized.includes('cancel')) return { label: 'CANCELLED', color: 'bg-red-100 text-red-800' };
+    if (normalized.includes('reject')) return { label: 'REJECTED', color: 'bg-rose-100 text-rose-800' };
+    // If an approval date exists or status is approved, treat as approved
+    if (normalized.includes('approved') || (hasApprovalDate && !normalized.includes('pending'))) {
+      return { label: 'APPROVED', color: 'bg-green-100 text-green-800' };
+    }
+    if (normalized === 'pending verification' || normalized === 'pending') {
+      return { label: 'PENDING VERIFICATION', color: 'bg-yellow-100 text-yellow-800 truncate' };
+    }
+    if (normalized === 'pending recommendation' || normalized === 'verified') {
+      return { label: 'PENDING RECOMMENDATION', color: 'bg-blue-100 text-blue-800 truncate' };
+    }
+    if (normalized === 'pending approval' || normalized === 'recommended') {
+      return { label: 'PENDING APPROVAL', color: 'bg-purple-100 text-purple-800 truncate' };
+    }
+    return { label: normalized.toUpperCase(), color: 'bg-gray-100 text-gray-800 text-center' };
   };
 
   const getStatusCount = (key: SummaryCardKey) => counts[key] || 0;
@@ -356,6 +369,7 @@ const VehicleMaintenanceAdmin = () => {
       key: 'status',
       header: 'Status',
       filter: 'singleSelect',
+      colClass: 'text-center',
       render: (row) => {
         const ds = getDisplayStatus(row);
         return (
@@ -391,7 +405,7 @@ const VehicleMaintenanceAdmin = () => {
       <div className="mb-4">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-lg font-bold truncate">Vehicle Maintenance Requests</h2>
+            <h2 className="text-lg font-bold truncate">Maintenance Request Management</h2>
             {selectedRowIds.length > 0 && (
               <Button
                 variant="secondary"

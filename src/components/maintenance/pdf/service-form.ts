@@ -84,6 +84,18 @@ export async function downloadServiceFormPdf(reqId: string | number) {
   const odoStart = (data?.odo_start != null) ? String(data.odo_start) : '-';
   const odoEnd = (data?.odo_end != null) ? String(data.odo_end) : '-';
   const verificationComment = data?.verification_comment || '-';
+  const invoice = (data as any)?.invoice;
+  const hasIssuedInvoice = !!(
+    invoice &&
+    (
+      invoice.inv_no ||
+      invoice.inv_date ||
+      invoice.inv_stat === '1' ||
+      (invoice.inv_total && Number(invoice.inv_total) > 0)
+    )
+  );
+  const invoiceNo = invoice?.inv_no || '-';
+  const invoiceDate = invoice?.inv_date ? formatDMY(invoice.inv_date) : '-';
 
   // ===============================
   // Page Setup
@@ -354,20 +366,20 @@ export async function downloadServiceFormPdf(reqId: string | number) {
     yR += wrapped.length * lineH;
   });
 
-  // Watermark: mark as VOID when invoice exists (form no longer valid for use)
+  // Watermark: mark as VOID (with invoice info) only when invoice is actually issued
   try {
-    const hasInvoice = !!(data as any)?.invoice;
-    if (hasInvoice) {
+    if (hasIssuedInvoice) {
       const pageCount = (doc as any).getNumberOfPages ? (doc as any).getNumberOfPages() : 1;
       for (let p = 1; p <= pageCount; p++) {
         if ((doc as any).setPage) (doc as any).setPage(p);
         const pW = doc.internal.pageSize.getWidth();
         const pH = doc.internal.pageSize.getHeight();
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(72);
-        // Light red watermark to avoid overpowering content
+        doc.setFontSize(70);
         doc.setTextColor(210, 40, 40);
-        doc.text('VOID', pW / 2, pH / 2, { align: 'center', angle: 30 });
+        doc.text('VOID', pW / 2, pH / 2 - 6, { align: 'center', angle: 30 });
+        doc.setFontSize(16);
+        doc.text(`Invoice: ${invoiceNo} / ${invoiceDate}`, pW / 2, pH / 2 + 12, { align: 'center', angle: 30 });
         doc.setTextColor(0);
       }
     }
@@ -388,6 +400,7 @@ export async function downloadServiceFormPdf(reqId: string | number) {
     doc.setTextColor(0);
   } catch (_) { /* ignore signature issues */ }
 
-  const filename = `service-form-${reqId}-${reg}.pdf`;
+  const timestamp = Math.floor(Date.now() / 1000); // Unix timestamp (seconds)
+  const filename = `service-form-${reqId}-${reg}-${timestamp}.pdf`;
   doc.save(filename);
 }

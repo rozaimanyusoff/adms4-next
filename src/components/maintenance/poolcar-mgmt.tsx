@@ -59,6 +59,8 @@ type AssignmentFormState = {
   smarttagSerial: string;
   cancelChecked: boolean;
   cancelReason: string;
+  returnDate: string;
+  returnOdo: string;
 };
 
 type SelectOption = ComboboxOption;
@@ -76,6 +78,8 @@ function createEmptyAssignmentFormState(): AssignmentFormState {
     smarttagSerial: '',
     cancelChecked: false,
     cancelReason: '',
+    returnDate: '',
+    returnOdo: '',
   };
 }
 
@@ -254,6 +258,13 @@ function formatDMYHM(value?: string) {
   const hh = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
   return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+}
+function formatToDatetimeLocal(value?: string) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatStatus(value: any) {
@@ -485,6 +496,7 @@ const PoolcarMgmt: React.FC = () => {
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const confirmActionRef = React.useRef<(() => void) | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const [returnSaving, setReturnSaving] = React.useState(false);
   const [successOpen, setSuccessOpen] = React.useState(false);
   const [assetAssignments, setAssetAssignments] = React.useState<any[]>([]);
   const [assetAssignmentsLoading, setAssetAssignmentsLoading] = React.useState(false);
@@ -495,9 +507,22 @@ const PoolcarMgmt: React.FC = () => {
     const isFlagTrue = flag === 1 || flag === '1' || flag === true || (typeof flag === 'string' && flag.toLowerCase() === 'true');
     return st === 'cancelled' || isFlagTrue;
   }, [detail]);
+  const isAdminRejected = React.useMemo(() => {
+    const st = typeof detail?.status === 'string' ? detail.status.toLowerCase().trim() : '';
+    const stat = Number(detail?.approval_stat ?? detail?.approvalStat);
+    return st === 'rejected' || st === 'reject' || stat === 2;
+  }, [detail]);
+  const isApprovedStatus = React.useMemo(() => {
+    const st = typeof detail?.status === 'string' ? detail.status.toLowerCase().trim() : '';
+    const stat = Number(detail?.approval_stat ?? detail?.approvalStat);
+    return st === 'approved' || st === 'approve' || stat === 1;
+  }, [detail]);
+  const isFormLocked = isRequestorCancelled || isAdminRejected;
+  const showReturnFields = isApprovedStatus && !!detail?.assigned_poolcar;
   const showFleetcardRow = optionTokens.has('fleetcard');
   const showTouchngoRow = optionTokens.has('touchngo');
   const showSmarttagRow = optionTokens.has('smarttag');
+  const isApprovedLockedView = isApprovedStatus && !isAdminRejected && !isRequestorCancelled;
   const isFormDirty = React.useMemo(() => {
     return JSON.stringify(formState) !== JSON.stringify(initialFormRef.current);
   }, [formState]);
@@ -529,7 +554,7 @@ const PoolcarMgmt: React.FC = () => {
         duration: `${d.pcar_day ?? 0}d ${d.pcar_hour ?? 0}h`,
         returnAt: formatReturnDateTime(d.pcar_retdate, d.pcar_rettime),
         destination: d.pcar_dest ?? '-',
-        vehicle: d.asset?.register_number || String(d.vehicle_id ?? '-') ,
+        vehicle: d.assigned_poolcar?.register_number || d.asset?.register_number || String(d.vehicle_id ?? '-'),
         approvalStat: d.approval_stat,
         approvalDate: d.approval_date,
         status: d.status ?? null,
@@ -717,7 +742,11 @@ const PoolcarMgmt: React.FC = () => {
     if (!detail) return;
     const tokens = extractPoolcarOptions(detail?.pcar_opt);
     const nextState = createEmptyAssignmentFormState();
-    const assignedAssetId = Number(detail?.asset?.id ?? detail?.vehicle_id);
+    const assignedAssetId = Number(
+      detail?.assigned_poolcar?.id ??
+      detail?.asset?.id ??
+      detail?.vehicle_id
+    );
     if (!Number.isNaN(assignedAssetId)) {
       nextState.selectedAssetId = assignedAssetId;
     }
@@ -734,9 +763,20 @@ const PoolcarMgmt: React.FC = () => {
     if (smarttagSerialCandidate !== null && smarttagSerialCandidate !== undefined && smarttagSerialCandidate !== '') {
       nextState.smarttagSerial = String(smarttagSerialCandidate);
     }
+    nextState.returnDate = formatToDatetimeLocal(detail?.pcar_retdate);
+    nextState.returnOdo = detail?.pcar_odo_end != null ? String(detail.pcar_odo_end) : '';
+    if (isAdminRejected) {
+      nextState.cancelChecked = true;
+      nextState.cancelReason =
+        detail?.pcar_canrem ??
+        detail?.cancel_reason ??
+        detail?.pcar_cancel_reason ??
+        detail?.pcar_can_reason ??
+        '';
+    }
     setFormState(nextState);
     initialFormRef.current = cloneAssignmentFormState(nextState);
-  }, [detail]);
+  }, [detail, isAdminRejected]);
 
   // Load applications for the selected poolcar (right pane list)
   React.useEffect(() => {
@@ -916,6 +956,10 @@ const PoolcarMgmt: React.FC = () => {
       toast.error('This application was cancelled by the requestor. No further changes allowed.');
       return;
     }
+    if (isAdminRejected && (detail && (detail.status === 'rejected' || Number(detail?.approval_stat) === 2))) {
+      toast.error('This application was rejected. No further changes allowed.');
+      return;
+    }
 
     const assetId = isAdminRejected ? null : formState.selectedAssetId;
     const fleetcardId = isAdminRejected ? null : parseOptionalNumber(formState.fleetcardSelection);
@@ -989,6 +1033,46 @@ const PoolcarMgmt: React.FC = () => {
     loadDetail,
     loadData,
   ]);
+
+  const handleReturnUpdate = React.useCallback(async () => {
+    if (!selectedId) {
+      toast.error('No poolcar request selected');
+      return;
+    }
+    if (!showReturnFields) return;
+    if (!formState.returnDate) {
+      toast.error('Please set return date/time');
+      return;
+    }
+    const d = new Date(formState.returnDate);
+    if (isNaN(d.getTime())) {
+      toast.error('Invalid return date/time');
+      return;
+    }
+    const payload: any = {
+      pcar_retdate: formatDateTimeForPayload(d),
+    };
+    if (formState.returnOdo !== '') {
+      const odo = Number(formState.returnOdo);
+      if (Number.isNaN(odo)) {
+        toast.error('Odometer must be a number');
+        return;
+      }
+      payload.pcar_odo_end = odo;
+    }
+    setReturnSaving(true);
+    try {
+      await authenticatedApi.put(`/api/mtn/poolcar/${selectedId}/returned`, payload);
+      toast.success('Return details updated');
+      initialFormRef.current = cloneAssignmentFormState(formState);
+      await Promise.all([loadDetail(String(selectedId)), loadData()]);
+    } catch (error) {
+      console.error('Failed to update return info', error);
+      toast.error('Failed to update return info');
+    } finally {
+      setReturnSaving(false);
+    }
+  }, [selectedId, showReturnFields, formState, loadDetail, loadData]);
 
   // If an item is selected, render 3-pane admin view
   if (selectedId) {
@@ -1195,7 +1279,7 @@ const PoolcarMgmt: React.FC = () => {
                               }
                               setFormState((prev) => ({ ...prev, selectedAssetId: aid }));
                             }}
-                            disabled={isRequestorCancelled}
+                            disabled={isFormLocked || isApprovedLockedView}
                             placeholder={poolcarOptions.length ? 'Select poolcar' : 'No poolcars found'}
                             searchPlaceholder="Search poolcar..."
                             emptyMessage="No poolcar found."
@@ -1236,7 +1320,7 @@ const PoolcarMgmt: React.FC = () => {
                                     fleetcardSelection: enabled ? prev.fleetcardSelection : '',
                                   }));
                                 }}
-                                disabled={isRequestorCancelled}
+                                disabled={isFormLocked}
                               />
                               <Label htmlFor="option-fleetcard" className="text-sm font-medium">
                                 Fleetcard
@@ -1248,7 +1332,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onValueChange={(value) =>
                                     setFormState((prev) => ({ ...prev, fleetcardSelection: value }))
                                   }
-                                  disabled={!formState.fleetcardChecked || fleetcardLoading || isRequestorCancelled}
+                                  disabled={!formState.fleetcardChecked || fleetcardLoading || isFormLocked || isApprovedLockedView}
                                   placeholder={fleetcardLoading ? 'Loading...' : 'Select fleetcard'}
                                   searchPlaceholder="Search fleetcard..."
                                   emptyMessage="No fleetcard found."
@@ -1276,7 +1360,7 @@ const PoolcarMgmt: React.FC = () => {
                                     touchngoSelection: enabled ? prev.touchngoSelection : '',
                                   }));
                                 }}
-                                disabled={isRequestorCancelled}
+                                disabled={isFormLocked || isApprovedLockedView}
                               />
                               <Label htmlFor="option-touchngo" className="text-sm font-medium">
                                 Touch n&apos; Go
@@ -1288,7 +1372,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onValueChange={(value) =>
                                     setFormState((prev) => ({ ...prev, touchngoSelection: value }))
                                   }
-                                  disabled={!formState.touchngoChecked || tngLoading || isRequestorCancelled}
+                                  disabled={!formState.touchngoChecked || tngLoading || isFormLocked || isApprovedLockedView}
                                   placeholder={tngLoading ? 'Loading...' : "Select Touch n' Go"}
                                   searchPlaceholder="Search Touch n' Go..."
                                   emptyMessage="No Touch n' Go option available."
@@ -1316,7 +1400,7 @@ const PoolcarMgmt: React.FC = () => {
                                     smarttagSerial: enabled ? prev.smarttagSerial : '',
                                   }));
                                 }}
-                                disabled={isRequestorCancelled}
+                                disabled={isFormLocked || isApprovedLockedView}
                               />
                               <Label htmlFor="option-smarttag" className="text-sm font-medium">
                                 Smart TAG device
@@ -1328,7 +1412,7 @@ const PoolcarMgmt: React.FC = () => {
                                   onChange={(event) =>
                                     setFormState((prev) => ({ ...prev, smarttagSerial: event.target.value }))
                                   }
-                                  disabled={!formState.smarttagChecked || isRequestorCancelled}
+                                  disabled={!formState.smarttagChecked || isFormLocked || isApprovedLockedView}
                                 />
                               </div>
                             </div>
@@ -1363,7 +1447,7 @@ const PoolcarMgmt: React.FC = () => {
                                           cancelReason: checked ? prev.cancelReason : '',
                                         }));
                                       }}
-                                      disabled={isRequestorCancelled}
+                                      disabled={isFormLocked}
                                     />
                                     <span className={isRejected ? 'text-xs font-semibold text-red-600' : 'text-xs text-muted-foreground'}>
                                       Rejected
@@ -1378,7 +1462,7 @@ const PoolcarMgmt: React.FC = () => {
                                     onChange={(event) =>
                                       setFormState((prev) => ({ ...prev, cancelReason: event.target.value }))
                                     }
-                                    disabled={!isRejected || isRequestorCancelled}
+                                    disabled={!isRejected || isFormLocked}
                                     rows={4}
                                   />
                                 </div>
@@ -1386,6 +1470,51 @@ const PoolcarMgmt: React.FC = () => {
                             );
                           })()}
                         </div>
+
+                        {showReturnFields && (
+                          <div className="space-y-3">
+                            <Label className="text-sm font-medium">Return Details</Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Return Date / Time</Label>
+                                <Input
+                                  type="datetime-local"
+                                  value={formState.returnDate}
+                                  onChange={(e) => setFormState((prev) => ({ ...prev, returnDate: e.target.value }))}
+                                  disabled={isFormLocked}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Odometer (km)</Label>
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  placeholder="e.g. 12345"
+                                  value={formState.returnOdo}
+                                  onChange={(e) => setFormState((prev) => ({ ...prev, returnOdo: e.target.value }))}
+                                  disabled={isFormLocked}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={handleReturnUpdate}
+                                disabled={returnSaving || isFormLocked}
+                              >
+                                {returnSaving ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Updating...
+                                  </>
+                                ) : (
+                                  'Update Return'
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <Separator className="my-3" />
@@ -1404,7 +1533,7 @@ const PoolcarMgmt: React.FC = () => {
                             variant="outline"
                             size="sm"
                             onClick={handleResetForm}
-                            disabled={!isFormDirty || saving || isRequestorCancelled}
+                            disabled={!isFormDirty || saving || isFormLocked}
                           >
                             Reset
                           </Button>
@@ -1416,7 +1545,7 @@ const PoolcarMgmt: React.FC = () => {
                           >
                             Cancel
                           </Button>
-                          <Button size="sm" onClick={handleSaveForm} disabled={saving || isRequestorCancelled}>
+                          <Button size="sm" onClick={handleSaveForm} disabled={saving || isFormLocked || isApprovedLockedView}>
                             {saving ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
