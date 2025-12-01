@@ -1062,7 +1062,7 @@ const PoolcarMgmt: React.FC = () => {
     }
     setReturnSaving(true);
     try {
-      await authenticatedApi.put(`/api/mtn/poolcar/${selectedId}/returned`, payload);
+      await authenticatedApi.put(`/api/mtn/poolcars/${selectedId}/returned`, payload);
       toast.success('Return details updated');
       initialFormRef.current = cloneAssignmentFormState(formState);
       await Promise.all([loadDetail(String(selectedId)), loadData()]);
