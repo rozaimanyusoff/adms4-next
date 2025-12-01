@@ -1499,7 +1499,7 @@ const PoolcarMgmt: React.FC = () => {
                             <div>
                               <Button
                                 size="sm"
-                                variant="secondary"
+                                variant="default"
                                 onClick={handleReturnUpdate}
                                 disabled={returnSaving || isFormLocked}
                               >
