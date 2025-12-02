@@ -10,6 +10,7 @@ import IconCaretsDown from '@/components/icon/icon-carets-down';
 import IconCaretDown from '@/components/icon/icon-caret-down';
 import { usePathname } from 'next/navigation';
 import { AuthContext } from '@store/AuthContext'; // Ensure correct typing for AuthContext
+import { useModuleBadges } from '@/hooks/use-module-badges';
 
 const Sidebar = () => {
     const dispatch = useDispatch();
@@ -24,6 +25,7 @@ const Sidebar = () => {
     const themeConfig = useSelector((state: IRootState) => state.themeConfig);
     const semidark = useSelector((state: IRootState) => state.themeConfig.semidark);
     const [navTree, setNavTree] = useState<any[]>([]);
+    const { counts } = useModuleBadges({ enabled: true, pollIntervalMs: 60000 });
 
     useEffect(() => {
         if (authData?.navTree) {
@@ -206,13 +208,18 @@ const Sidebar = () => {
                                             ) : (
                                                 <Link
                                                     href={subItem.path || '#'}
-                                                    className="group"
+                                                    className="group relative flex items-center justify-between"
                                                 >
                                                     <div className="flex items-center">
                                                         <span className="ltr:pl-3 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
                                                             {subItem.title}
                                                         </span>
                                                     </div>
+                                                    {counts[subItem.path || ''] > 0 && (
+                                                        <span className="mr-3 inline-flex h-5 min-w-[18px] items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-semibold text-white">
+                                                            {counts[subItem.path || '']}
+                                                        </span>
+                                                    )}
                                                 </Link>
                                             )}
                                         </li>
@@ -221,12 +228,17 @@ const Sidebar = () => {
                             </AnimateHeight>
                         </>
                     ) : (
-                        <Link href={item.path || '#'} className="group">
+                        <Link href={item.path || '#'} className="group relative flex items-center justify-between">
                             <div className="flex items-center">
                                 <span className="ltr:pl-5 rtl:pr-3 text-black dark:text-[#506690] dark:group-hover:text-white-dark">
                                     {item.title}
                                 </span>
                             </div>
+                            {counts[item.path || ''] > 0 && (
+                                <span className="mr-3 inline-flex h-5 min-w-[18px] items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-semibold text-white">
+                                    {counts[item.path || '']}
+                                </span>
+                            )}
                         </Link>
                     )}
                 </li>
