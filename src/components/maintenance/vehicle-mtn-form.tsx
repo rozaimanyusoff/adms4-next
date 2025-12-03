@@ -1264,7 +1264,6 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           type="file"
                           multiple
                           accept="image/*"
-                          capture="environment"
                           onChange={handleAttachmentChange}
                         />
                       </div>
