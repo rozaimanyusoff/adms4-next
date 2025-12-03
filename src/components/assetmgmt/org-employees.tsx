@@ -5,15 +5,13 @@ import ExcelJS from 'exceljs';
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
 import { Plus, FileSpreadsheet } from "lucide-react";
-import {
-    Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { SingleSelect, type ComboboxOption } from "@/components/ui/combobox";
+import ActionSidebar from "@components/ui/action-aside";
 
 interface Department { id: number; name: string; code: string; }
 interface Position { id: number; name: string; }
@@ -45,7 +43,7 @@ const OrgEmp: React.FC = () => {
     const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
     const [data, setData] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [departments, setDepartments] = useState<Department[]>([]);
     const [positions, setPositions] = useState<Position[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
@@ -54,7 +52,7 @@ const OrgEmp: React.FC = () => {
     const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
     const [bulkResignationDate, setBulkResignationDate] = useState("");
     const [isBulkUpdating, setIsBulkUpdating] = useState(false);
-    const [formData, setFormData] = useState<Partial<Employee>>({
+    const emptyForm: Partial<Employee> = {
         ramco_id: '',
         full_name: '',
         email: '',
@@ -67,11 +65,12 @@ const OrgEmp: React.FC = () => {
         employment_type: '',
         employment_status: '',
         grade: '',
-                department: undefined,
-                position: undefined,
-                location: undefined,
-                costcenter: undefined,
-    });
+        department: undefined,
+        position: undefined,
+        location: undefined,
+        costcenter: undefined,
+    };
+    const [formData, setFormData] = useState<Partial<Employee>>({ ...emptyForm });
 
     const dataGridRef = useRef<{ deselectRow: (key: string | number) => void; clearSelectedRows: () => void } | null>(null);
 
@@ -120,6 +119,16 @@ const OrgEmp: React.FC = () => {
         { value: "resigned", label: "Resigned" },
     ], []);
 
+    const employmentTypeOptions = useMemo<ComboboxOption[]>(() => [
+        { value: "Permanent", label: "Permanent" },
+        { value: "Contract", label: "Contract" },
+    ], []);
+
+    const genderOptions = useMemo<ComboboxOption[]>(() => [
+        { value: "M", label: "M: Male" },
+        { value: "F", label: "F: Female" },
+    ], []);
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -159,12 +168,13 @@ const OrgEmp: React.FC = () => {
     const handleSubmit = async () => {
         try {
             const normalizeDate = (v?: string | null) => (v ? String(v).slice(0, 10) : null);
+            const genderValue = (formData.gender || "").charAt(0).toUpperCase();
             const payload = {
                 ramco_id: formData.ramco_id ?? null,
                 full_name: formData.full_name ?? null,
                 email: formData.email ?? null,
                 contact: formData.contact ?? null,
-                gender: formData.gender ?? null,
+                gender: genderValue || null,
                 dob: normalizeDate(formData.dob) as string | null,
                 avatar: formData.avatar ? formData.avatar : null,
                 hire_date: normalizeDate(formData.hire_date) as string | null,
@@ -174,6 +184,7 @@ const OrgEmp: React.FC = () => {
                 location_id: formData.location?.id ?? null,
                 costcenter_id: formData.costcenter?.id ?? null,
                 employment_status: formData.employment_status || null,
+                employment_type: formData.employment_type || null,
             } as any;
 
             if (formData.id) {
@@ -182,26 +193,19 @@ const OrgEmp: React.FC = () => {
                 await authenticatedApi.post("/api/assets/employees", payload);
             }
             fetchData();
-            setIsModalOpen(false);
-            setFormData({
-                ramco_id: '',
-                full_name: '',
-                email: '',
-                contact: '',
-                gender: '',
-                dob: '',
-                avatar: '',
-                hire_date: '',
-                resignation_date: '',
-                employment_type: '',
-                employment_status: '',
-                grade: '',
-                department: undefined,
-                position: undefined,
-                location: undefined,
-                costcenter: undefined,
-            });
+            setIsSidebarOpen(false);
+            setFormData({ ...emptyForm });
         } catch (error) { }
+    };
+
+    const openSidebarWithData = (employee?: Employee) => {
+        setFormData(employee ? { ...emptyForm, ...employee } : { ...emptyForm });
+        setIsSidebarOpen(true);
+    };
+
+    const closeSidebar = () => {
+        setIsSidebarOpen(false);
+        setFormData({ ...emptyForm });
     };
 
     // Add date formatting helper
@@ -473,7 +477,7 @@ const OrgEmp: React.FC = () => {
                         <FileSpreadsheet size={22} className="text-green-500" />
                         Export
                     </Button>
-                    <Button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={() => openSidebarWithData()} className="bg-blue-600 hover:bg-blue-700">
                         <Plus size={22} />
                     </Button>
                 </div>
@@ -506,7 +510,7 @@ const OrgEmp: React.FC = () => {
                     data={data}
                     inputFilter={false}
                     pagination={false}
-                    onRowDoubleClick={(row: Employee) => { setFormData(row); setIsModalOpen(true); }}
+                    onRowDoubleClick={(row: Employee) => openSidebarWithData(row)}
                     rowSelection={{
                         enabled: true,
                         getRowId: (row: Employee) => row.id,
@@ -515,12 +519,12 @@ const OrgEmp: React.FC = () => {
                     onRowSelected={(keys, rows) => updateSelectedEmployees(keys, rows as Employee[])}
                 />
             )}
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{formData.id ? "Update Employee" : "Create Employee"}</DialogTitle>
-                        <DialogDescription>Fill in the details below:</DialogDescription>
-                    </DialogHeader>
+            <ActionSidebar
+                isOpen={isSidebarOpen}
+                onClose={closeSidebar}
+                title={formData.id ? "Update Employee" : "Create Employee"}
+                size="md"
+                content={
                     <form
                         onSubmit={e => { e.preventDefault(); handleSubmit(); }}
                         className="grid grid-cols-1 gap-4 md:grid-cols-2"
@@ -559,10 +563,12 @@ const OrgEmp: React.FC = () => {
                         </div>
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="gender" className="block text-sm font-medium text-white-dark">Gender</Label>
-                            <Input
-                                id="gender"
-                                value={formData.gender || ""}
-                                onChange={e => setFormData({ ...formData, gender: e.target.value })}
+                            <SingleSelect
+                                options={genderOptions}
+                                value={(formData.gender || "").charAt(0).toUpperCase()}
+                                onValueChange={val => setFormData({ ...formData, gender: val })}
+                                placeholder="Select gender"
+                                clearable
                             />
                         </div>
                         <div className="flex flex-col gap-2">
@@ -668,12 +674,23 @@ const OrgEmp: React.FC = () => {
                                 clearable
                             />
                         </div>
-                        <div className="md:col-span-2 flex justify-end pt-2">
+                        <div className="flex flex-col gap-2">
+                            <Label className="block text-sm font-medium text-white-dark">Employment Type</Label>
+                            <SingleSelect
+                                options={employmentTypeOptions}
+                                value={formData.employment_type || ""}
+                                onValueChange={val => setFormData({ ...formData, employment_type: val })}
+                                placeholder="Select employment type"
+                                clearable
+                            />
+                        </div>
+                        <div className="md:col-span-2 flex justify-end pt-2 gap-2">
+                            <Button variant="outline" type="button" onClick={closeSidebar}>Cancel</Button>
                             <Button type="submit" className="min-w-[120px]">Submit</Button>
                         </div>
                     </form>
-                </DialogContent>
-            </Dialog>
+                }
+            />
         </div>
     );
 };
