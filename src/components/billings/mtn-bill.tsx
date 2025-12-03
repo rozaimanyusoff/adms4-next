@@ -72,6 +72,26 @@ const MaintenanceBill: React.FC = () => {
 	const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string | number>>(new Set());
 	const auth = useContext(AuthContext);
 	const [showWorkshopAlert, setShowWorkshopAlert] = useState(false);
+	const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'form' | 'invoiced'>('all');
+	const statusCounts = useMemo(() => {
+		const counts = { total: rows.length, draft: 0, formUploaded: 0, invoiced: 0 };
+		rows.forEach((row) => {
+			const status = String(row.status_display || '').toLowerCase();
+			if (status.includes('invoice')) counts.invoiced += 1;
+			else if (status.includes('form')) counts.formUploaded += 1;
+			else counts.draft += 1;
+		});
+		return counts;
+	}, [rows]);
+	const filteredRows = useMemo(() => {
+		if (statusFilter === 'all') return rows;
+		return rows.filter((row) => {
+			const status = String(row.status_display || '').toLowerCase();
+			if (statusFilter === 'invoiced') return status.includes('invoice');
+			if (statusFilter === 'form') return status.includes('form');
+			return !status.includes('invoice') && !status.includes('form');
+		});
+	}, [rows, statusFilter]);
 
 	// Custom part inputs (for adding items not in catalog)
 
@@ -547,6 +567,42 @@ const MaintenanceBill: React.FC = () => {
 					<MtnBillSummary />
 				</div>
 			)}
+			{!selectedRow && (
+				<div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+					<button
+						type="button"
+						onClick={() => setStatusFilter('all')}
+						className={`rounded-lg border p-3 text-left shadow-sm transition ${statusFilter === 'all' ? 'ring-2 ring-orange-500 bg-orange-50' : 'bg-white hover:bg-muted/50'}`}
+					>
+						<div className="text-xs text-muted-foreground">Total</div>
+						<div className="text-2xl font-semibold">{statusCounts.total}</div>
+					</button>
+					<button
+						type="button"
+						onClick={() => setStatusFilter((prev) => (prev === 'draft' ? 'all' : 'draft'))}
+						className={`rounded-lg border p-3 text-left shadow-sm transition ${statusFilter === 'draft' ? 'ring-2 ring-orange-500 bg-yellow-100' : 'bg-yellow-50 hover:bg-yellow-100/70'}`}
+					>
+						<div className="text-xs text-yellow-700">Draft</div>
+						<div className="text-2xl font-semibold text-yellow-800">{statusCounts.draft}</div>
+					</button>
+					<button
+						type="button"
+						onClick={() => setStatusFilter((prev) => (prev === 'form' ? 'all' : 'form'))}
+						className={`rounded-lg border p-3 text-left shadow-sm transition ${statusFilter === 'form' ? 'ring-2 ring-orange-500 bg-sky-100' : 'bg-sky-50 hover:bg-sky-100/70'}`}
+					>
+						<div className="text-xs text-sky-700">Form Uploaded</div>
+						<div className="text-2xl font-semibold text-sky-800">{statusCounts.formUploaded}</div>
+					</button>
+					<button
+						type="button"
+						onClick={() => setStatusFilter((prev) => (prev === 'invoiced' ? 'all' : 'invoiced'))}
+						className={`rounded-lg border p-3 text-left shadow-sm transition ${statusFilter === 'invoiced' ? 'ring-2 ring-orange-500 bg-emerald-100' : 'bg-emerald-50 hover:bg-emerald-100/70'}`}
+					>
+						<div className="text-xs text-emerald-700">Invoiced</div>
+						<div className="text-2xl font-semibold text-emerald-800">{statusCounts.invoiced}</div>
+					</button>
+				</div>
+			)}
 			{/* Data Grid */}
 			{!selectedRow && (
 				<div className="border rounded-md">
@@ -598,7 +654,7 @@ const MaintenanceBill: React.FC = () => {
 					) : (
 						<CustomDataGrid
 							columns={columns as ColumnDef<unknown>[]}
-							data={rows}
+							data={filteredRows}
 							pagination={false}
 							inputFilter={false}
 							theme="sm"

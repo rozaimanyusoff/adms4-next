@@ -29,7 +29,7 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
   const {
     enabled = true,
     socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000',
-    maintenanceBillingPath = '/billings/mtn-bill',
+    maintenanceBillingPath = '/billings/mtn',
     pollIntervalMs = 0,
   } = options;
 
@@ -37,10 +37,21 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const paths = useMemo(() => [maintenanceBillingPath], [maintenanceBillingPath]);
+  // Normalize aliases so sidebar paths still match even if route name changes
+  const maintenancePaths = useMemo(
+    () => Array.from(new Set([maintenanceBillingPath, '/billings/mtn-bill'].filter(Boolean))),
+    [maintenanceBillingPath],
+  );
+  const paths = useMemo(() => maintenancePaths, [maintenancePaths]);
 
-  const setCount = useCallback((path: string, value: number) => {
-    setCounts((prev) => ({ ...prev, [path]: Math.max(0, value) }));
+  const setCountForPaths = useCallback((pathList: string[], value: number) => {
+    setCounts((prev) => {
+      const next = { ...prev };
+      pathList.forEach((p) => {
+        next[p] = Math.max(0, value);
+      });
+      return next;
+    });
   }, []);
 
   const increment = useCallback((path: string, delta = 1) => {
@@ -67,13 +78,14 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
               : typeof payload.data?.unseen === 'number'
                 ? payload.data.unseen
                 : 0;
-      setCount(maintenanceBillingPath, Number.isFinite(derived) ? derived : 0);
+      const safeValue = Number.isFinite(derived) ? derived : 0;
+      setCountForPaths(maintenancePaths, safeValue);
     } catch (e) {
       setError('Failed to load badge counts');
     } finally {
       setLoading(false);
     }
-  }, [enabled, maintenanceBillingPath, setCount]);
+  }, [enabled, maintenancePaths, setCountForPaths]);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -86,11 +98,13 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
 
     try {
       socket = io(socketUrl, { transports: ['websocket'] });
-      socket.on('mtn:form-uploaded', () => increment(maintenanceBillingPath, 1));
+      socket.on('mtn:form-uploaded', () => {
+        maintenancePaths.forEach((p) => increment(p, 1));
+      });
       socket.on('mtn:counts', (payload: any) => {
         const value = payload?.maintenanceBilling ?? payload?.unseenBills ?? payload?.unseen;
         if (typeof value === 'number') {
-          setCount(maintenanceBillingPath, value);
+          setCountForPaths(maintenancePaths, value);
         }
       });
       socket.on('connect_error', () => {
@@ -116,7 +130,7 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
       if (socket) socket.disconnect();
       if (pollTimer) clearInterval(pollTimer);
     };
-  }, [enabled, increment, loadCounts, maintenanceBillingPath, pollIntervalMs, setCount, socketUrl]);
+  }, [enabled, increment, loadCounts, maintenancePaths, pollIntervalMs, setCountForPaths, socketUrl]);
 
   return {
     counts,
@@ -126,4 +140,3 @@ export function useModuleBadges(options: UseModuleBadgesOptions = {}) {
     paths,
   };
 }
-
