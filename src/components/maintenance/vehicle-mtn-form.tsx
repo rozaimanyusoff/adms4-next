@@ -204,6 +204,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const svcContainerRef = React.useRef<HTMLDivElement | null>(null);
   const formUploadRef = React.useRef<HTMLDivElement | null>(null);
   const formUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const cameraUploadInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Selected vehicle details for payload convenience
   const selectedVehicle = React.useMemo(() => (assetId ? vehicleById[assetId] : null), [vehicleById, assetId]);
@@ -724,6 +725,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const openFormUploadPicker = React.useCallback(() => {
     formUploadInputRef.current?.click();
+  }, []);
+
+  const openCameraPicker = React.useCallback(() => {
+    cameraUploadInputRef.current?.click();
   }, []);
 
   const refetchById = React.useCallback(async () => {
@@ -1258,7 +1263,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     <>
                       <div className="text-sm">Drag & drop images here</div>
                       <div className="text-sm">or</div>
-                      <div>
+                      <div className="flex flex-col gap-2">
                         <Input
                           id="vehicle-mtn-attachments"
                           type="file"
@@ -1266,6 +1271,19 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           accept="image/*"
                           onChange={handleAttachmentChange}
                         />
+                        <Input
+                          ref={cameraUploadInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={handleAttachmentChange}
+                        />
+                        <div className="flex gap-2">
+                          <Button type="button" variant="outline" onClick={openCameraPicker} className="w-full">
+                            Take photo
+                          </Button>
+                        </div>
                       </div>
                     </>
                   ) : (
