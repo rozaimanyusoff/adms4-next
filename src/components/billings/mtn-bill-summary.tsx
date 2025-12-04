@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-// import { Download } from 'lucide-react';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 // Excel generation handled by excel-maintenance-report helper
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { downloadMaintenanceVehicleSummary } from './excel-maintenance-report';
@@ -41,6 +41,8 @@ const MtnBillSummary: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('all');
 
   useEffect(() => {
     let mounted = true;
@@ -63,9 +65,27 @@ const MtnBillSummary: React.FC = () => {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    authenticatedApi.get('/api/assets/costcenters').then((res: any) => {
+      if (Array.isArray(res.data?.data)) {
+        setCostCenters(res.data.data.map((cc: any) => ({ id: cc.id?.toString() || '', name: cc.name || '' })));
+      }
+    }).catch((err) => {
+      console.error('Failed to load cost centers', err);
+    });
+  }, []);
+
+  const filteredData = useMemo(() => {
+    if (selectedCostCenter === 'all') return data;
+    return data.filter(item => {
+      const ccId = item.asset?.costcenter?.id ?? item.asset?.costcenter?.cc_id ?? item.asset?.costcenter;
+      return ccId != null && String(ccId) === selectedCostCenter;
+    });
+  }, [data, selectedCostCenter]);
+
   const byYearMonth = useMemo(() => {
     const map = new Map<number, number[]>(); // year -> [12 months]
-    for (const item of data) {
+    for (const item of filteredData) {
       if (!item.inv_date) continue;
       const d = new Date(item.inv_date);
       const year = d.getFullYear();
@@ -76,7 +96,7 @@ const MtnBillSummary: React.FC = () => {
     }
     // Sort by year descending by default for quick scanning
     return Array.from(map.entries()).sort((a, b) => b[0] - a[0]);
-  }, [data]);
+  }, [filteredData]);
 
   // summaryMatrix removed (export now handled via selected month range)
 
@@ -85,7 +105,8 @@ const MtnBillSummary: React.FC = () => {
     const from = `${year}-${pad(monthIdx + 1)}-01`;
     const last = new Date(year, monthIdx + 1, 0).getDate();
     const to = `${year}-${pad(monthIdx + 1)}-${pad(last)}`;
-    const url = `/api/bills/mtn/summary/vehicle?from=${from}&to=${to}`;
+    const ccQuery = selectedCostCenter !== 'all' ? `&cc=${selectedCostCenter}` : '';
+    const url = `/api/bills/mtn/summary/vehicle?from=${from}&to=${to}${ccQuery}`;
     return { from, to, url };
   };
 
@@ -108,8 +129,13 @@ const MtnBillSummary: React.FC = () => {
     const last = sels[sels.length - 1];
     const start = monthRange(first.y, first.m).from;
     const end = monthRange(last.y, last.m).to;
-    downloadMaintenanceVehicleSummary(start, end);
+    downloadMaintenanceVehicleSummary(start, end, { costCenterId: selectedCostCenter });
   };
+
+  const costCenterOptions: ComboboxOption[] = useMemo(() => {
+    const base = [{ value: 'all', label: 'All Cost Centers' }];
+    return base.concat(costCenters.map(cc => ({ value: cc.id, label: cc.name })));
+  }, [costCenters]);
 
   if (loading) {
     return (
@@ -141,13 +167,31 @@ const MtnBillSummary: React.FC = () => {
           </div>
         </AccordionTrigger>
         <AccordionContent>
-          {selected.size > 0 && (
-            <div className="flex justify-end mb-2">
-              <Button size="sm" onClick={handleExportSelection}>
-                Export Selected ({selected.size})
-              </Button>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-3 mb-2">
+            <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 w-full md:w-auto">
+              <span className="whitespace-nowrap">Cost Center</span>
+              <Combobox
+                options={costCenterOptions}
+                value={selectedCostCenter}
+                onValueChange={(val) => {
+                  setSelected(new Set());
+                  setSelectedCostCenter(val || 'all');
+                }}
+                placeholder="All Cost Centers"
+                searchPlaceholder="Search cost center..."
+                clearable
+                className="w-full md:w-56"
+              />
             </div>
-          )}
+            <Button
+              size="sm"
+              onClick={handleExportSelection}
+              disabled={selected.size === 0}
+              className="w-full md:w-auto shrink-0"
+            >
+              Export Selected ({selected.size})
+            </Button>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full border text-sm border-gray-200 dark:border-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800">
@@ -178,7 +222,7 @@ const MtnBillSummary: React.FC = () => {
                                   href={url}
                                   className="text-blue-600 hover:underline"
                                   title={`Download vehicle maintenance for ${monthShort[idx]} ${year}`}
-                                  onClick={(e) => { e.preventDefault(); downloadMaintenanceVehicleSummary(from, to); }}
+                                  onClick={(e) => { e.preventDefault(); downloadMaintenanceVehicleSummary(from, to, { costCenterId: selectedCostCenter }); }}
                                 >
                                   {formatCurrencyMY(amt)}
                                 </a>

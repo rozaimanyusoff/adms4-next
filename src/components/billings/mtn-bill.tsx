@@ -73,12 +73,26 @@ const MaintenanceBill: React.FC = () => {
 	const auth = useContext(AuthContext);
 	const [showWorkshopAlert, setShowWorkshopAlert] = useState(false);
 	const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'form' | 'invoiced'>('all');
+	const normalizeStatus = (invStat?: string | null, formUploadDate?: string | null) => {
+		const stat = String(invStat || '').trim().toLowerCase();
+		if (stat === '1' || stat === 'invoiced' || stat === 'invoice') return 'Invoiced';
+		if (
+			stat === 'form' ||
+			stat === 'form_uploaded' ||
+			stat === 'submitted' ||
+			stat.includes('form upload') ||
+			(!stat && formUploadDate)
+		) return 'Form Uploaded';
+		if (stat === 'draft') return 'Draft';
+		if (!stat) return 'Draft';
+		return stat.charAt(0).toUpperCase() + stat.slice(1);
+	};
 	const statusCounts = useMemo(() => {
 		const counts = { total: rows.length, draft: 0, formUploaded: 0, invoiced: 0 };
 		rows.forEach((row) => {
-			const status = String(row.status_display || '').toLowerCase();
-			if (status.includes('invoice')) counts.invoiced += 1;
-			else if (status.includes('form')) counts.formUploaded += 1;
+			const status = String(row.status_display || '');
+			if (status === 'Invoiced') counts.invoiced += 1;
+			else if (status === 'Form Uploaded') counts.formUploaded += 1;
 			else counts.draft += 1;
 		});
 		return counts;
@@ -86,10 +100,10 @@ const MaintenanceBill: React.FC = () => {
 	const filteredRows = useMemo(() => {
 		if (statusFilter === 'all') return rows;
 		return rows.filter((row) => {
-			const status = String(row.status_display || '').toLowerCase();
-			if (statusFilter === 'invoiced') return status.includes('invoice');
-			if (statusFilter === 'form') return status.includes('form');
-			return !status.includes('invoice') && !status.includes('form');
+			const status = String(row.status_display || '');
+			if (statusFilter === 'invoiced') return status === 'Invoiced';
+			if (statusFilter === 'form') return status === 'Form Uploaded';
+			return status === 'Draft';
 		});
 	}, [rows, statusFilter]);
 
@@ -131,12 +145,7 @@ const MaintenanceBill: React.FC = () => {
 			const data = (res.data as { data?: MaintenanceBill[] })?.data || [];
 			setRows(data.map((item, idx) => ({
 				...item,
-				status_display: (() => {
-					const stat = String(item.inv_stat ?? '').trim();
-					if (stat === '1') return 'Invoiced';
-					if (item.form_upload_date) return 'Form Uploaded';
-					return 'Draft';
-				})(),
+				status_display: normalizeStatus(item.inv_stat, item.form_upload_date),
 				rowNumber: idx + 1,
 				formatted_inv_date: item.inv_date ? formatDate(item.inv_date) : 'N/A',
 				formatted_svc_date: item.svc_date ? formatDate(item.svc_date) : 'N/A',
@@ -213,16 +222,20 @@ const MaintenanceBill: React.FC = () => {
 			header: 'Status',
 			filter: 'singleSelect',
 			colClass: 'text-center',
-			render: (row) => (
-				<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${row.status_display === 'Invoiced'
+			render: (row) => {
+				const s = (row.status_display || '').toLowerCase();
+				const badge =
+					s === 'invoiced'
 						? 'bg-green-100 text-green-800'
-						: row.status_display === 'Form Uploaded'
-							? 'bg-sky-100 text-sky-800 truncate'
-							: 'bg-yellow-100 text-yellow-800'
-					}`}>
-					{row.status_display || 'Draft'}
-				</span>
-			)
+						: s === 'form uploaded'
+							? 'bg-sky-100 text-sky-800'
+							: 'bg-yellow-100 text-yellow-800';
+				return (
+					<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badge} truncate`}>
+						{row.status_display || 'Draft'}
+					</span>
+				);
+			}
 		},
 		{
 			key: 'inv_no',

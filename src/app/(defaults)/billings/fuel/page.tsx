@@ -7,11 +7,6 @@ export const metadata: Metadata = {
 };
 
 const Telcos = () => {
-  return (
-    <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-2xl font-bold">Fuel Billings</h1>
-      <FuelBillTab />
-    </div>
-  );
+  return <FuelBillTab />;
 }
 export default Telcos;

@@ -31,17 +31,15 @@ const FuelBillTab: React.FC = () => {
     }, [activeTab]);
 
     return (
-        <div className="mt-4">
-            <ul className="mb-6 flex space-x-2 rtl:space-x-reverse">
-                <li>
-                    <Link href="#" className="text-primary hover:underline">
-                        Vehicle Maintenance
-                    </Link>
-                </li>
-                <li className="before:content-['/'] ltr:before:mr-2 rtl:before:ml-2">
-                    <span>{tabTitles.find(t => t.value === activeTab)?.label}</span>
-                </li>
-            </ul>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Fuel Billings</h1>
+                    <p className="text-gray-600">
+                        Monitor fuel costs, consumption, and vehicle usage
+                    </p>
+                </div>
+            </div>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList>
                     {tabTitles.map(tab => (

@@ -26,8 +26,6 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
         titleRow.getCell(1).font = { bold: true, size: 14 };
         titleRow.getCell(1).alignment = { horizontal: 'center' };
         worksheet.addRow([]);
-        worksheet.addRow([`Date Range: ${from} to ${to}`]);
-        worksheet.addRow([]);
 
         // Analyze data to determine which year-month combinations exist
         const yearMonthMap: Record<string, Set<number>> = {};
@@ -52,7 +50,7 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
         years.forEach(y => Array.from(yearMonthMap[y]).forEach(m => columns.push({ year: y, month: m })));
 
         // Headers
-        const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'District', 'Owner', 'Classification', 'Record Status'];
+        const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'Location', 'Owner', 'Classification', 'Record Status'];
         const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
         years.forEach(y => {
             const months = Array.from(yearMonthMap[y]);
@@ -65,8 +63,8 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
 
         const totalColumns = header1.length;
         worksheet.mergeCells(1, 1, 1, totalColumns);
-        worksheet.addRow(header1);
-        worksheet.addRow(header2);
+        const hdr1 = worksheet.addRow(header1);
+        const hdr2 = worksheet.addRow(header2);
 
         let col = 14;
         years.forEach(y => {
@@ -80,6 +78,24 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
         for (let i = 1; i <= 13; i++) {
             worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
         }
+
+        // Column widths: info columns, dynamic months, subtotal
+        const infoWidths = [5, 14, 12, 12, 18, 10, 10, 8, 16, 10, 20, 14, 14];
+        const monthWidths = columns.map(() => 12);
+        const widths = [...infoWidths, ...monthWidths, 12];
+        worksheet.columns = widths.map(w => ({ width: w }));
+        widths.forEach((w, idx) => {
+            worksheet.getColumn(idx + 1).width = w;
+        });
+
+        // Style headers
+        [hdr1, hdr2].forEach(row => {
+            row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            row.eachCell(cell => {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4F81BD' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            });
+        });
 
         const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
         let no = 1;
@@ -106,9 +122,9 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
                 vehicle.model?.name || '',
                 vehicle.transmission || '',
                 vehicle.fuel || '',
-                vehicle.age || '',
+                deriveVehicleAge(vehicle.age, vehicle.purchase_date),
                 vehicle.costcenter?.name || '',
-                vehicle.district?.code || '',
+                vehicle.location?.code || '',
                 vehicle.owner?.name || '',
                 vehicle.classification || '',
                 vehicle.record_status || '',
@@ -129,13 +145,7 @@ export async function downloadMaintenanceVehicleSummary(from: string, to: string
                 cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
             });
         }
-        worksheet.columns.forEach(col => {
-            let max = 10;
-            col.eachCell?.({ includeEmpty: true }, cell => {
-                max = Math.max(max, (cell.value ? cell.value.toString().length : 0));
-            });
-            col.width = max + 2;
-        });
+        // Amount columns formatting already handled by numFmt; widths set above
         const now = new Date();
         const ts = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}T${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
         const buffer = await workbook.xlsx.writeBuffer();
@@ -180,10 +190,10 @@ interface VehicleData {
     owner: { ramco_id: string; name: string };
     transmission: string;
     fuel: string;
-    purchase_date: string;
-    age: number;
+    purchase_date?: string | null;
+    age?: number | string | null;
     costcenter: { id: number; name: string };
-    district: { id: number; code: string };
+    location: { id: number; code: string };
     classification: string;
     record_status: string;
     total_maintenance: number;
@@ -195,6 +205,36 @@ interface VehicleApiResponse {
     status: string;
     message: string;
     data: VehicleData[];
+}
+
+function parsePurchaseDate(value?: string | null) {
+    if (!value) return null;
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) return direct;
+    const parts = value.split('/');
+    if (parts.length === 3) {
+        const [day, month, year] = parts.map(Number);
+        if (day && month && year) {
+            const parsed = new Date(year, month - 1, day);
+            if (!Number.isNaN(parsed.getTime())) return parsed;
+        }
+    }
+    return null;
+}
+
+function deriveVehicleAge(age?: number | string | null, purchaseDate?: string | null) {
+    if (age !== undefined && age !== null && age !== '') {
+        // Preserve original type if backend sends a string (e.g. "11")
+        return typeof age === 'string' ? (age.trim() === '' ? '' : age) : age;
+    }
+    const parsed = parsePurchaseDate(purchaseDate);
+    if (!parsed) return '';
+    const now = new Date();
+    let years = now.getFullYear() - parsed.getFullYear();
+    const monthDiff = now.getMonth() - parsed.getMonth();
+    const beforeAnniversary = monthDiff < 0 || (monthDiff === 0 && now.getDate() < parsed.getDate());
+    if (beforeAnniversary) years -= 1;
+    return years >= 0 ? years : '';
 }
 
 // Legacy interface for cost center report (keeping for backward compatibility)
@@ -373,10 +413,6 @@ const MaintenanceReport = () => {
                         // Add empty row for spacing
                         worksheet.addRow([]);
 
-                        // Add date range information
-                        worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
-                        worksheet.addRow([]);
-
                         // Analyze data to determine which year-month combinations exist
                         const yearMonthMap: Record<string, Set<number>> = {};
                         json.data.forEach((vehicle: VehicleData) => {
@@ -431,8 +467,8 @@ const MaintenanceReport = () => {
                         const totalColumns = header1.length;
                         worksheet.mergeCells(1, 1, 1, totalColumns);
 
-                        worksheet.addRow(header1);
-                        worksheet.addRow(header2);
+                        const hdr1 = worksheet.addRow(header1);
+                        const hdr2 = worksheet.addRow(header2);
 
                         // Merge year cells for amounts
                         let col = 14; // Start after basic columns
@@ -451,6 +487,24 @@ const MaintenanceReport = () => {
                         for (let i = 1; i <= 13; i++) {
                             worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
                         }
+
+                        // Column widths: info columns, dynamic months, subtotal
+                        const infoWidths = [5, 14, 12, 12, 18, 10, 10, 8, 16, 10, 20, 14, 14];
+                        const monthWidths = columns.map(() => 12);
+                        const widths = [...infoWidths, ...monthWidths, 12];
+                        worksheet.columns = widths.map(w => ({ width: w }));
+                        widths.forEach((w, idx) => {
+                            worksheet.getColumn(idx + 1).width = w;
+                        });
+
+                        // Style headers
+                        [hdr1, hdr2].forEach(row => {
+                            row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                            row.eachCell((cell: any) => {
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '4F81BD' } };
+                                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                            });
+                        });
 
                         const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
                         let no = 1;
@@ -495,9 +549,9 @@ const MaintenanceReport = () => {
                                     vehicle.model?.name || '',
                                     vehicle.transmission || '',
                                     vehicle.fuel || '',
-                                    vehicle.age || 0,
+                                    deriveVehicleAge(vehicle.age, vehicle.purchase_date),
                                     vehicle.costcenter?.name || '',
-                                    vehicle.district?.code || '',
+                                    vehicle.location?.code || '',
                                     vehicle.owner?.name || '',
                                     vehicle.classification || '',
                                     vehicle.record_status || '',
@@ -552,17 +606,7 @@ const MaintenanceReport = () => {
                         worksheet.getRow(headerStartRow + 1).font = { bold: true };
 
                         // Auto-fit columns
-                        worksheet.columns.forEach((column: any, index: number) => {
-                            if (index === 0) {
-                                column.width = 5; // No column
-                            } else if (index < 13) {
-                                // Info columns
-                                column.width = Math.max(12, Math.min(25, (header1[index]?.length || 10) + 2));
-                            } else {
-                                // Amount columns
-                                column.width = 10;
-                            }
-                        });
+                        // Amount columns formatting already handled by numFmt; widths set above
 
                         const buffer = await workbook.xlsx.writeBuffer();
                         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
