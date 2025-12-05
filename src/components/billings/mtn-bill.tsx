@@ -182,6 +182,7 @@ const MaintenanceBill: React.FC = () => {
 		{
 			key: 'rowNumber',
 			header: 'No',
+			filter: 'input',
 			render: (row) => (
 				<div className="flex items-center justify-between gap-2 min-w-[60px]">
 					<div className='flex flex-col'>
@@ -458,12 +459,14 @@ const MaintenanceBill: React.FC = () => {
 				const qty = Number(p.qty || 0) || 0;
 				const unit = Number(parseFloat(String(p.part_uprice || '0'))) || 0;
 				const amount = qty * unit;
+				const name = String(p.part_name ?? p.name ?? '').trim();
 				return {
 					autopart_id: Number(p.autopart_id ?? p.id ?? 0),
 					inv_id: invIdNum,
 					part_qty: qty,
 					part_uprice: Number(unit.toFixed(2)),
 					part_final_amount: Number(amount.toFixed(2)),
+					part_name: name,
 				};
 			});
 
