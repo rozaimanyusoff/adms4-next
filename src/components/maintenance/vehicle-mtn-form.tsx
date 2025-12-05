@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Loader2, X } from 'lucide-react';
+import { Camera, Download, Loader2, X } from 'lucide-react';
 
 // Users in this list will not be filtered by ?ramco
 const exclusionUser: string[] = ['000277', 'username2'];
@@ -204,6 +204,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const svcContainerRef = React.useRef<HTMLDivElement | null>(null);
   const formUploadRef = React.useRef<HTMLDivElement | null>(null);
   const formUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const formCameraUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const cameraUploadInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Selected vehicle details for payload convenience
@@ -674,6 +675,18 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     return keys;
   }, [serviceOptions]);
 
+  const filterAttachmentFiles = React.useCallback((files: File[]) => {
+    const allowed = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
+    if (files.length > 0 && allowed.length === 0) {
+      toast.error('Only PDF or image files are supported');
+      return [];
+    }
+    if (allowed.length !== files.length) {
+      toast.error('Some files were skipped. Only PDF or image files are supported.');
+    }
+    return allowed;
+  }, []);
+
   const handleServiceOptionToggle = React.useCallback((svcTypeId: number, checked: boolean, groupKey?: number) => {
     if (isNcrLocked) return;
     setSelectedServiceTypeIds((prev) => {
@@ -696,8 +709,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const handleAttachmentChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];
-    setAttachments(files);
-  }, []);
+    const allowed = filterAttachmentFiles(files);
+    setAttachments(allowed);
+  }, [filterAttachmentFiles]);
 
   const clearAttachments = React.useCallback(() => {
     setAttachments([]);
@@ -705,6 +719,11 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const handleFormUploadChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
+    if (file && !(file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
+      toast.error('Only PDF or image files are supported');
+      event.target.value = '';
+      return;
+    }
     setFormUpload(file);
     if (file) {
       const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -725,6 +744,27 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const openFormUploadPicker = React.useCallback(() => {
     formUploadInputRef.current?.click();
+  }, []);
+
+  const openFormCameraPicker = React.useCallback(() => {
+    formCameraUploadInputRef.current?.click();
+  }, []);
+
+  const onFormUploadDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const file = Array.from(e.dataTransfer.files || [])[0];
+    if (!file) return;
+    if (!(file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
+      toast.error('Only PDF or image files are supported');
+      return;
+    }
+    setFormUpload(file);
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    setFormUploadDate(timestamp);
+  }, []);
+
+  const onFormUploadDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
   }, []);
 
   const openCameraPicker = React.useCallback(() => {
@@ -836,6 +876,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   // Previews for attachments
   const [formUploadPreview, setFormUploadPreview] = React.useState<string | null>(null);
   const [previews, setPreviews] = React.useState<string[]>([]);
+  const [primaryAttachmentPreview, setPrimaryAttachmentPreview] = React.useState<string | null>(null);
+  const [primaryAttachmentIsPdf, setPrimaryAttachmentIsPdf] = React.useState<boolean>(false);
   React.useEffect(() => {
     if (!formUpload) {
       setFormUploadPreview(null);
@@ -856,23 +898,42 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       urls.forEach((u) => URL.revokeObjectURL(u));
     };
   }, [attachments]);
+  React.useEffect(() => {
+    const primary = attachments[0];
+    if (!primary) {
+      setPrimaryAttachmentPreview(null);
+      setPrimaryAttachmentIsPdf(false);
+      return;
+    }
+    const url = URL.createObjectURL(primary);
+    setPrimaryAttachmentPreview(url);
+    setPrimaryAttachmentIsPdf(primary.type === 'application/pdf' || /\.pdf$/i.test(primary.name));
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [attachments]);
 
   // Dropzone events
   const onDropFiles = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files || []);
-    if (files.length) setAttachments(files);
-  }, []);
+    const allowed = filterAttachmentFiles(files);
+    if (allowed.length) setAttachments(allowed);
+  }, [filterAttachmentFiles]);
 
   const onDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
   }, []);
 
   const openAttachmentPreview = React.useCallback((index: number = 0) => {
+    if (primaryAttachmentIsPdf && primaryAttachmentPreview) {
+      window.open(primaryAttachmentPreview, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (!previews || previews.length === 0) return;
     const url = previews[index];
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  }, [previews]);
+  }, [previews, primaryAttachmentIsPdf, primaryAttachmentPreview]);
 
   // Derived values for service mileage logic
   const isServiceRequest = svcType === '2';
@@ -887,6 +948,18 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [isServiceRequest, parsedOdoStart, parsedOdoEnd]);
   const needsLateNotice = isServiceRequest && extraMileage > 500;
   const reasonRequiredMissing = isServiceRequest && extraMileage > 500 && lateNotice.trim().length === 0;
+  const existingReqUploadUrl = React.useMemo(() => {
+    const candidate = (existing as any)?.req_upload ?? null;
+    return typeof candidate === 'string' && candidate.length > 0 ? candidate : null;
+  }, [existing]);
+  const existingReqUploadIsPdf = React.useMemo(
+    () => (existingReqUploadUrl ? /\.pdf(?:$|\?|#)/i.test(existingReqUploadUrl) : false),
+    [existingReqUploadUrl],
+  );
+  const existingReqUploadIsImage = React.useMemo(
+    () => (existingReqUploadUrl ? /\.(png|jpe?g|gif|bmp|webp)(?:$|\?|#)/i.test(existingReqUploadUrl) : false),
+    [existingReqUploadUrl],
+  );
   const existingFormUploadUrl = React.useMemo(() => {
     if (!existing || typeof existing !== 'object') return null;
     const candidate = (existing as any).form_upload ?? (existing as any).formUpload ?? null;
@@ -918,66 +991,65 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     }
   }, [showFormUploadSection, existingFormUploadUrl]);
   const formUploadContent = React.useMemo(() => {
-    if (formUpload && formUploadPreview) {
-      const isPdf = formUpload.type === 'application/pdf';
-      return (
-        <div className="relative w-full">
+    const instructions = (
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="text-sm text-foreground">Drag &amp; drop image or PDF here</div>
+        <div className="text-sm">or</div>
+        <div className="flex w-full max-w-lg items-center gap-2">
+          <Input
+            type="file"
+            accept="application/pdf,image/*"
+            onChange={handleFormUploadChange}
+            className="w-full"
+          />
           <Button
             type="button"
-            onClick={clearFormUpload}
-            className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
-            aria-label="Remove selected file"
+            variant="default"
+            onClick={openFormCameraPicker}
+            className="shrink-0"
+            aria-label="Capture maintenance form via camera"
           >
-            <X className="h-5 w-5" />
+            <Camera className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <div className="space-y-2 text-foreground">
-            <div className="text-sm font-medium break-words">{formUpload.name}</div>
-            {isPdf ? (
-              <object data={formUploadPreview} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
-                <p className="text-sm">
-                  Unable to preview PDF.
-                  {' '}
-                  <a href={formUploadPreview} target="_blank" rel="noreferrer" className="underline">
-                    Download maintenance form
-                  </a>
-                  .
-                </p>
-              </object>
-            ) : (
-              <img src={formUploadPreview} alt="Maintenance form preview" className="w-full max-h-60 object-contain rounded-md border bg-background" />
-            )}
-          </div>
         </div>
-      );
-    }
+        <div className="text-xs max-w-xs text-muted-foreground">
+          Supports PDF or images (gallery or camera).
+        </div>
+      </div>
+    );
 
-    if (existingFormUploadUrl) {
-      const overlayAction = (
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-          <Button type="button" variant="outline" size="sm" className="pointer-events-auto" onClick={openFormUploadPicker}>
-            Select File
-          </Button>
-        </div>
-      );
+    const renderExistingPreview = () => {
+      if (!existingFormUploadUrl) return null;
       if (existingFormUploadIsPdf) {
         return (
           <div className="relative w-full text-foreground">
             <object data={existingFormUploadUrl} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
-              <p className="text-sm">
+              <p className="p-3 text-sm">
                 Unable to preview PDF.
                 {' '}
-                <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="underline">
-                  Download maintenance form
+                <a
+                  href={existingFormUploadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 underline"
+                  aria-label="Download maintenance form"
+                >
+                  <Download className="h-4 w-4" />
                 </a>
                 .
               </p>
             </object>
             <div className="absolute left-3 top-3">
-              <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-xs underline">
-                Download
+              <a
+                href={existingFormUploadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs underline"
+                aria-label="Download maintenance form"
+              >
+                <Download className="h-4 w-4" />
               </a>
             </div>
-            {overlayAction}
           </div>
         );
       }
@@ -986,36 +1058,92 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
           <div className="relative w-full text-foreground">
             <img src={existingFormUploadUrl} alt="Maintenance form" className="w-full max-h-60 object-contain rounded-md border bg-background" />
             <div className="absolute left-3 top-3">
-              <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-xs underline">
-                Download
+              <a
+                href={existingFormUploadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs underline"
+                aria-label="Download maintenance form"
+              >
+                <Download className="h-4 w-4" />
               </a>
             </div>
-            {overlayAction}
           </div>
         );
       }
       return (
-        <div className="relative flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2">
           <div className="text-sm">Preview unavailable for this file type.</div>
-          <a href={existingFormUploadUrl} target="_blank" rel="noreferrer" className="text-sm underline">
-            Download maintenance form
+          <a
+            href={existingFormUploadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-sm underline"
+            aria-label="Download maintenance form"
+          >
+            <Download className="h-4 w-4" />
           </a>
-          {overlayAction}
+        </div>
+      );
+    };
+
+    if (formUpload && formUploadPreview) {
+      const isPdf = formUpload.type === 'application/pdf';
+      return (
+        <div className="w-full space-y-4 text-foreground">
+          {instructions}
+          <div className="relative w-full">
+            <Button
+              type="button"
+              onClick={clearFormUpload}
+              className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
+              aria-label="Remove selected file"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+            <div className="space-y-2">
+              <div className="text-sm font-medium break-words">{formUpload.name}</div>
+              {isPdf ? (
+                <object data={formUploadPreview} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
+                  <p className="p-3 text-sm">
+                    Unable to preview PDF.
+                    {' '}
+                    <a
+                      href={formUploadPreview}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 underline"
+                      aria-label="Download maintenance form"
+                    >
+                      <Download className="h-4 w-4" />
+                    </a>
+                    .
+                  </p>
+                </object>
+              ) : (
+                <img src={formUploadPreview} alt="Maintenance form preview" className="w-full max-h-60 object-contain rounded-md border bg-background" />
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (existingFormUploadUrl) {
+      return (
+        <div className="w-full space-y-4">
+          {instructions}
+          {renderExistingPreview()}
         </div>
       );
     }
 
     return (
-      <div className="flex flex-col items-center justify-center gap-3 text-center py-6 text-muted-foreground">
-        <Button type="button" variant="outline" onClick={openFormUploadPicker}>
-          Select File
-        </Button>
-        <div className="text-xs max-w-xs">
-          Supports PDF, PNG, JPEG, JPG, or capture from camera.
-        </div>
+      <div className="w-full space-y-3 text-muted-foreground">
+        {instructions}
       </div>
     );
-  }, [clearFormUpload, existingFormUploadIsImage, existingFormUploadIsPdf, existingFormUploadUrl, formUpload, formUploadPreview, openFormUploadPicker]);
+  }, [clearFormUpload, existingFormUploadIsImage, existingFormUploadIsPdf, existingFormUploadUrl, formUpload, formUploadPreview, handleFormUploadChange, openFormCameraPicker]);
 
   // Reset odo fields when not service request
   React.useEffect(() => {
@@ -1247,11 +1375,37 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vehicle-mtn-attachments">Attachments</Label>
-                {isReadOnly && existing?.req_upload ? (
+                {isReadOnly && existingReqUploadUrl ? (
                   <div className="rounded-md border bg-muted/20 p-2">
-                    <a href={existing.req_upload} target="_blank" rel="noreferrer">
-                      <img src={existing.req_upload} alt="Attachment" className="w-full max-h-72 object-contain rounded-md" />
-                    </a>
+                    {existingReqUploadIsPdf ? (
+                      <object data={existingReqUploadUrl} type="application/pdf" className="h-72 w-full rounded-md border bg-background">
+                        <p className="text-sm">
+                          Unable to preview PDF.
+                          {' '}
+                          <a href={existingReqUploadUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline" aria-label="Download attachment">
+                            <Download className="h-4 w-4" />
+                          </a>
+                          .
+                        </p>
+                      </object>
+                    ) : existingReqUploadIsImage ? (
+                      <a href={existingReqUploadUrl} target="_blank" rel="noreferrer">
+                        <img src={existingReqUploadUrl} alt="Attachment" className="w-full max-h-72 object-contain rounded-md" />
+                      </a>
+                    ) : (
+                      <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                        <span>Attachment available.</span>
+                        <a
+                          href={existingReqUploadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-600 underline"
+                          aria-label="Download attachment"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 ) : (
                 <div
@@ -1261,14 +1415,14 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 >
                   {attachments.length === 0 ? (
                     <>
-                      <div className="text-sm">Drag & drop images here</div>
+                      <div className="text-sm">Drag & drop images or PDF here</div>
                       <div className="text-sm">or</div>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
                         <Input
                           id="vehicle-mtn-attachments"
                           type="file"
                           multiple
-                          accept="image/*"
+                          accept="image/*,application/pdf"
                           onChange={handleAttachmentChange}
                         />
                         <Input
@@ -1280,8 +1434,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           onChange={handleAttachmentChange}
                         />
                         <div className="flex gap-2">
-                          <Button type="button" variant="outline" onClick={openCameraPicker} className="w-full">
-                            Take photo
+                          <Button onClick={openCameraPicker} className="w-full flex items-center justify-center gap-2">
+                            <Camera className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
@@ -1291,13 +1445,33 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                       <Button
                         type="button"
                         onClick={clearAttachments}
-                        className="absolute right-1.5 top-1.5 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
+                        className="absolute right-1.5 top-1.5 z-10 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
                         aria-label="Remove selected attachments"
                         size="icon"
                       >
-                        <X className="h-5 w-5" />
-                      </Button>
-                      {previews.length > 0 ? (
+                    <X className="h-5 w-5" />
+                  </Button>
+                      {primaryAttachmentIsPdf && primaryAttachmentPreview ? (
+                        <>
+                          <object
+                            data={primaryAttachmentPreview}
+                            type="application/pdf"
+                            className="absolute inset-0 h-full w-full rounded-md bg-background"
+                          >
+                            <p className="p-4 text-sm text-muted-foreground">
+                              Unable to preview PDF.
+                              {' '}
+                              <button type="button" className="underline" onClick={() => openAttachmentPreview()}>
+                                Open PDF
+                              </button>
+                              .
+                            </p>
+                          </object>
+                          <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+                            {attachments.length} file{attachments.length === 1 ? '' : 's'} selected
+                          </div>
+                        </>
+                      ) : previews.length > 0 ? (
                         <>
                           <img
                             src={previews[0]}
@@ -1305,9 +1479,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                             className="absolute inset-0 w-full h-full object-contain cursor-zoom-in"
                             onClick={() => openAttachmentPreview(0)}
                           />
-                          {previews.length > 1 && (
+                          {attachments.length > 1 && (
                             <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
-                              {previews.length} images selected
+                              {attachments.length} images selected
                             </div>
                           )}
                         </>
@@ -1424,16 +1598,26 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   <Input
                     ref={formUploadInputRef}
                     type="file"
-                    accept="application/pdf,image/png,image/jpeg"
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    onChange={handleFormUploadChange}
+                  />
+                  <Input
+                    ref={formCameraUploadInputRef}
+                    type="file"
+                    accept="image/*"
                     capture="environment"
                     className="hidden"
                     onChange={handleFormUploadChange}
                   />
                   <div
                     className={[
-                      'rounded-md border bg-muted/20 p-4 min-h-[160px] flex items-center justify-center w-full',
+                      'rounded-md border-2 border-dashed border-yellow-400 bg-yellow-100/20 p-4 min-h-[160px] flex items-center justify-center w-full',
                       showErrors && errors.formUpload ? 'border-red-500 ring-1 ring-red-500/50' : 'border-muted-foreground/40',
+                      !formUpload && !existingFormUploadUrl ? 'border-dashed' : '',
                     ].filter(Boolean).join(' ')}
+                    onDrop={onFormUploadDrop}
+                    onDragOver={onFormUploadDragOver}
                   >
                     {formUploadContent}
                   </div>
