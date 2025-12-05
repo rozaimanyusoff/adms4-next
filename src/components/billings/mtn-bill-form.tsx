@@ -8,6 +8,8 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { InputDroppable } from '@/components/ui/input-droppable';
 import { Textarea } from '@/components/ui/textarea';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type PartCategory = { svcTypeId?: number; svcType: string };
 
@@ -38,7 +40,7 @@ export interface MtnBillFormProps {
   updatePartUnitPrice: (autopart_id: number, unitPrice: string) => void;
   updatePartName: (autopart_id: number, newName: string) => void;
   addPart: (part: any) => void;
-  addCustomPart: () => void;
+  addCustomPart: (part?: any) => void;
 
   // catalogs panel (optional; when omitted, component fetches internally)
   partSearch?: string;
@@ -109,8 +111,122 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
   const [catalogLoading, setCatalogLoading] = React.useState<boolean>(false);
   const [catalogHasMore, setCatalogHasMore] = React.useState<boolean>(false);
   const [catalogPage, setCatalogPage] = React.useState<number>(1);
+  const [pendingDelete, setPendingDelete] = React.useState<{ id: number | null; name: string }>({ id: null, name: '' });
+  const [customDialogOpen, setCustomDialogOpen] = React.useState(false);
+  const [customName, setCustomName] = React.useState('');
+  const [customCategory, setCustomCategory] = React.useState<string>(''); // svcTypeId as string
+  const [customPrice, setCustomPrice] = React.useState('0.00');
+  const [customSearchResults, setCustomSearchResults] = React.useState<any[]>([]);
+  const [customSearchLoading, setCustomSearchLoading] = React.useState(false);
+  const [customSelectedPart, setCustomSelectedPart] = React.useState<any | null>(null);
+  const [customSaving, setCustomSaving] = React.useState(false);
 
   const useInternalCatalogs = true;
+
+  // Banking-style amount input: keep only digits and inject the decimal two places from the right
+  const normalizeUnitPrice = (raw: string) => {
+    const digitsOnly = (raw || '').replace(/[^\d]/g, '');
+    if (!digitsOnly) return '0.00';
+    const cents = parseInt(digitsOnly, 10);
+    return (cents / 100).toFixed(2);
+  };
+
+  const handleUnitPriceInput = (autopart_id: number, raw: string) => {
+    updatePartUnitPrice(autopart_id, normalizeUnitPrice(raw));
+  };
+
+  const confirmRemovePart = () => {
+    if (pendingDelete.id == null) return;
+    removePart(pendingDelete.id);
+    toast.success('Service item removed');
+    setPendingDelete({ id: null, name: '' });
+  };
+
+  const cancelRemovePart = () => setPendingDelete({ id: null, name: '' });
+
+  const openCustomDialog = () => {
+    setCustomName('');
+    setCustomCategory('');
+    setCustomPrice('0.00');
+    setCustomSearchResults([]);
+    setCustomSelectedPart(null);
+    setCustomSaving(false);
+    setCustomDialogOpen(true);
+  };
+
+  const handleCustomPriceInput = (raw: string) => {
+    setCustomPrice(normalizeUnitPrice(raw));
+  };
+
+  const handleAddCustomPart = async () => {
+    const name = customName.trim();
+    if (!name) {
+      toast.error('Please enter a name');
+      return;
+    }
+    const price = normalizeUnitPrice(customPrice);
+    const selectedCat = partCategories.find(c => String(c.svcTypeId) === customCategory);
+
+    // If an existing part was selected from search, just use it
+    if (customSelectedPart?.autopart_id) {
+      addCustomPart({
+        autopart_id: customSelectedPart.autopart_id,
+        part_name: customSelectedPart.part_name || name,
+        qty: 1,
+        part_uprice: normalizeUnitPrice(String(customSelectedPart.part_uprice ?? price)),
+        part_category: customSelectedPart.part_category ?? (selectedCat ? { svcTypeId: selectedCat.svcTypeId, svcType: selectedCat.svcType } : undefined),
+      });
+      setCustomDialogOpen(false);
+      await fetchCatalogs({ page: 1, per_page: 50, reset: true });
+      return;
+    }
+
+    try {
+      setCustomSaving(true);
+      const payload: any = {
+        part_name: name,
+        part_uprice: price,
+      };
+      if (selectedCat) payload.part_category = selectedCat.svcTypeId;
+
+      const res = await authenticatedApi.post('/api/bills/mtn/parts', payload);
+      const raw = (res as any)?.data;
+      const created = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
+      const autopartId = created?.autopart_id ?? created?.id ?? created?.autocat_id ?? Date.now() * -1;
+
+      addCustomPart({
+        autopart_id: autopartId,
+        part_name: created?.part_name ?? name,
+        qty: 1,
+        part_uprice: normalizeUnitPrice(String(created?.part_uprice ?? price)),
+        part_category: created?.part_category ?? (selectedCat ? { svcTypeId: selectedCat.svcTypeId, svcType: selectedCat.svcType } : undefined),
+      });
+      setCustomDialogOpen(false);
+      await fetchCatalogs({ page: 1, per_page: 50, reset: true });
+    } catch (e) {
+      console.error('Failed to create custom service item', e);
+      toast.error('Failed to create custom service item');
+    } finally {
+      setCustomSaving(false);
+    }
+  };
+
+  const mergeCategoriesFromParts = React.useCallback((parts: any[]) => {
+    if (!Array.isArray(parts) || parts.length === 0) return;
+    setPartCategories(prev => {
+      const seen = new Set(prev.map(c => String(c.svcTypeId)));
+      const additions: PartCategory[] = [];
+      parts.forEach(p => {
+        const id = p?.part_category?.svcTypeId ?? p?.part_category?.id;
+        const name = p?.part_category?.svcType ?? p?.part_category?.name;
+        if (id && name && !seen.has(String(id))) {
+          seen.add(String(id));
+          additions.push({ svcTypeId: id, svcType: name });
+        }
+      });
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  }, []);
 
   const fetchCatalogs = React.useCallback(async ({ page = 1, per_page = 50, reset = false }: { page?: number; per_page?: number; reset?: boolean } = {}) => {
     if (!useInternalCatalogs) return;
@@ -126,24 +242,14 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
       setCatalogs(prev => (reset ? list : [...prev, ...list]));
       setCatalogHasMore(list.length >= per_page);
       setCatalogPage(page);
-      // Derive categories from returned parts if none loaded yet
-      if (partCategories.length === 0) {
-        const cats: PartCategory[] = [];
-        const map = new Map<number, string>();
-        list.forEach((p: any) => {
-          const id = p?.part_category?.svcTypeId ?? p?.part_category?.id;
-          const name = p?.part_category?.svcType ?? p?.part_category?.name;
-          if (id && name && !map.has(id)) { map.set(id, name); cats.push({ svcTypeId: id, svcType: name }); }
-        });
-        if (cats.length > 0) setPartCategories(cats);
-      }
+      mergeCategoriesFromParts(list);
     } catch (e) {
       console.error('Failed to load service catalogs', e);
       toast.error('Failed to load service catalogs');
     } finally {
       setCatalogLoading(false);
     }
-  }, [useInternalCatalogs, partSearch, partCategory, partCategories.length]);
+  }, [useInternalCatalogs, partSearch, partCategory, mergeCategoriesFromParts]);
 
   // Initial catalogs load
   React.useEffect(() => {
@@ -236,6 +342,61 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
   const handleLoadMore = async () => {
     await fetchCatalogs({ page: currentPageParts + 1, per_page: 50, reset: false });
   };
+
+  // Autocomplete for custom item name
+  React.useEffect(() => {
+    const q = customName.trim();
+    setCustomSelectedPart(null);
+    if (q.length < 2) {
+      setCustomSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      setCustomSearchLoading(true);
+      try {
+        const res = await authenticatedApi.get('/api/bills/mtn/parts/search', { params: { q } });
+        const raw = (res as any)?.data;
+        const list = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
+        const items: any[] = Array.isArray(list) ? list : [];
+        if (!cancelled) setCustomSearchResults(items.slice(0, 5));
+      } catch (e) {
+        if (!cancelled) setCustomSearchResults([]);
+      } finally {
+        if (!cancelled) setCustomSearchLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [customName]);
+
+  // Load categories from API (ensures full list beyond paginated parts)
+  React.useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await authenticatedApi.get('/api/mtn/types');
+        const raw = (res as any)?.data;
+        const list = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
+        const mapped: PartCategory[] = Array.isArray(list)
+          ? list
+              .map((it: any) => ({ svcTypeId: it?.svcTypeId ?? it?.id, svcType: it?.svcType ?? it?.name }))
+              .filter((it: any) => it.svcTypeId && it.svcType)
+          : [];
+        if (mapped.length) {
+          setPartCategories(prev => {
+            const seen = new Set(prev.map(p => String(p.svcTypeId)));
+            const additions = mapped.filter(m => !seen.has(String(m.svcTypeId)));
+            return additions.length ? [...prev, ...additions] : prev;
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load maintenance categories', e);
+      }
+    };
+    loadCategories();
+  }, []);
 
   return (
     <div className="border rounded-lg bg-white dark:bg-gray-900">
@@ -400,10 +561,10 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
               </div>
 
               {/* Selected Parts Table */}
-              <div className="border rounded-md">
+                <div className="border rounded-md">
                 <div className="flex items-center justify-between p-2">
                   <h5 className="text-sm font-semibold">Service Items</h5>
-                  <Button type="button" variant="ghost" size="sm" onClick={addCustomPart} className="text-emerald-600">
+                  <Button type="button" variant="outline" size="sm" onClick={openCustomDialog} className="text-emerald-600">
                     <Plus className="h-4 w-4 mr-1" /> Add Custom Item
                   </Button>
                 </div>
@@ -433,13 +594,25 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
                               <Input type="number" min={1} value={qty} onChange={(e) => updatePartQty(p.autopart_id, Number(e.target.value) || 1)} className="w-16 h-7 text-center text-xs" />
                             </td>
                             <td className="px-2 py-2 text-center">
-                              <Input type="number" step="0.01" value={unitPrice} onChange={(e) => updatePartUnitPrice(p.autopart_id, e.target.value)} className="w-24 h-7 text-right text-xs" />
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={p.part_uprice ?? ''}
+                                onChange={(e) => handleUnitPriceInput(p.autopart_id, e.target.value)}
+                                className="w-24 h-7 text-right text-xs"
+                              />
                             </td>
                             <td className="px-2 py-2 text-right">
                               <span className="text-xs font-medium">{formatCurrency(amount)}</span>
                             </td>
                             <td className="px-2 py-2 text-center">
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removePart(p.autopart_id)} className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPendingDelete({ id: p.autopart_id, name: p.part_name || '' })}
+                                className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
                                 <X size={12} />
                               </Button>
                             </td>
@@ -526,6 +699,98 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={pendingDelete.id !== null} onOpenChange={(open) => { if (!open) cancelRemovePart(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this service item?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete.name ? `You are removing "${pendingDelete.name}". This action cannot be undone.` : 'This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelRemovePart}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemovePart} className="bg-red-600 hover:bg-red-700">Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Custom Service Item</DialogTitle>
+            <DialogDescription>Set name, category, and unit price for the custom item.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Name</label>
+              <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Custom item name" className='uppercase' />
+              {customName.trim().length >= 2 && (customSearchLoading || customSearchResults.length > 0) && (
+                <div className="absolute left-0 right-0 z-10 mt-1 rounded-md border bg-white shadow-md max-h-44 overflow-y-auto">
+                  {customSearchLoading ? (
+                    <div className="px-3 py-2 text-xs text-gray-500">Searching...</div>
+                  ) : (
+                    customSearchResults.map(item => (
+                      <button
+                        key={item.autopart_id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                        onClick={() => {
+                          setCustomSelectedPart(item);
+                          setCustomName(item.part_name || '');
+                          if (item.part_category?.svcTypeId) setCustomCategory(String(item.part_category.svcTypeId));
+                          if (item.part_uprice) setCustomPrice(normalizeUnitPrice(String(item.part_uprice)));
+                          setCustomSearchResults([]);
+                        }}
+                      >
+                        <div className="font-medium">{item.part_name}</div>
+                        <div className="text-xs text-gray-500">
+                          {item.part_category?.svcType || 'Uncategorized'} • {normalizeUnitPrice(String(item.part_uprice || '0'))}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              {customName.trim().length >= 2 && !customSearchLoading && customSearchResults.length === 0 && (
+                <p className="mt-1 text-xs text-gray-500">No matches, will use typed name</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Category (optional)</label>
+              <Select value={customCategory} onValueChange={(v) => setCustomCategory(v === 'none' ? '' : v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Uncategorized</SelectItem>
+                  {partCategories.map(cat => (
+                    <SelectItem key={cat.svcTypeId} value={String(cat.svcTypeId)}>
+                      {cat.svcType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Unit Price</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={customPrice}
+                onChange={(e) => handleCustomPriceInput(e.target.value)}
+                className="text-right"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomDialogOpen(false)} disabled={customSaving}>Cancel</Button>
+            <Button onClick={handleAddCustomPart} disabled={customSaving}>
+              {customSaving ? 'Saving...' : 'Add Item'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

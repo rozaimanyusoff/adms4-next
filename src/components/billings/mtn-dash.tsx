@@ -89,6 +89,12 @@ const MaintenanceDashboard: React.FC = () => {
         }).format(amount);
     };
 
+    const toAmount = (value: string | number | null | undefined) => {
+        const cleaned = String(value ?? '').replace(/[^0-9.-]+/g, '');
+        const num = Number(cleaned);
+        return Number.isFinite(num) ? num : 0;
+    };
+
     // Process maintenance bills data into dashboard statistics
     const processMaintenanceData = (bills: MaintenanceBill[], year: string) => {
         const filteredBills = bills.filter(bill => {
@@ -98,7 +104,7 @@ const MaintenanceDashboard: React.FC = () => {
         });
 
         // Calculate totals
-        const totalAmount = filteredBills.reduce((sum, bill) => sum + (parseFloat(bill.inv_total) || 0), 0);
+        const totalAmount = filteredBills.reduce((sum, bill) => sum + toAmount(bill.inv_total), 0);
         const totalBills = filteredBills.length;
         const activeWorkshops = new Set(filteredBills
             .filter(bill => bill.workshop)
@@ -115,7 +121,7 @@ const MaintenanceDashboard: React.FC = () => {
             if (!monthlyTotals[monthKey]) {
                 monthlyTotals[monthKey] = { amount: 0, count: 0 };
             }
-            monthlyTotals[monthKey].amount += parseFloat(bill.inv_total) || 0;
+            monthlyTotals[monthKey].amount += toAmount(bill.inv_total);
             monthlyTotals[monthKey].count += 1;
         });
 
@@ -138,7 +144,7 @@ const MaintenanceDashboard: React.FC = () => {
             if (!workshopTotals[workshopName]) {
                 workshopTotals[workshopName] = { amount: 0, count: 0 };
             }
-            workshopTotals[workshopName].amount += parseFloat(bill.inv_total) || 0;
+            workshopTotals[workshopName].amount += toAmount(bill.inv_total);
             workshopTotals[workshopName].count += 1;
         });
 
@@ -154,11 +160,11 @@ const MaintenanceDashboard: React.FC = () => {
         // Cost center data
         const costCenterTotals: { [key: string]: number } = {};
         filteredBills.forEach(bill => {
-            const costCenterName = bill.asset?.costcenter?.name || 'Unassigned';
+            const costCenterName = bill.asset?.costcenter?.name || (bill as any)?.costcenter?.name || 'Unassigned';
             if (!costCenterTotals[costCenterName]) {
                 costCenterTotals[costCenterName] = 0;
             }
-            costCenterTotals[costCenterName] += parseFloat(bill.inv_total) || 0;
+            costCenterTotals[costCenterName] += toAmount(bill.inv_total);
         });
 
         const costCenterData = Object.entries(costCenterTotals)

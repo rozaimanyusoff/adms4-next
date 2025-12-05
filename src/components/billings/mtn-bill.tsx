@@ -51,6 +51,7 @@ interface MaintenanceBill {
 	// Additional fields for grid convenience
 	status_display?: string;
 	rowNumber?: number;
+	rowNumberSearch?: string;
 	formatted_inv_date?: string;
 	formatted_svc_date?: string;
 	formatted_inv_total?: string;
@@ -147,6 +148,8 @@ const MaintenanceBill: React.FC = () => {
 				...item,
 				status_display: normalizeStatus(item.inv_stat, item.form_upload_date),
 				rowNumber: idx + 1,
+				// combine row number + invoice id for searching in the "No" column filter
+				rowNumberSearch: `${idx + 1} ${item.inv_id ?? ''}`.trim(),
 				formatted_inv_date: item.inv_date ? formatDate(item.inv_date) : 'N/A',
 				formatted_svc_date: item.svc_date ? formatDate(item.svc_date) : 'N/A',
 				formatted_inv_total: formatCurrency(item.inv_total),
@@ -178,9 +181,10 @@ const MaintenanceBill: React.FC = () => {
 		};
 	}, []);
 
-	const columns: ColumnDef<MaintenanceBill & { rowNumber: number }>[] = [
+	type GridBill = MaintenanceBill & { rowNumber: number; rowNumberSearch: string };
+	const columns: ColumnDef<GridBill>[] = [
 		{
-			key: 'rowNumber',
+			key: 'rowNumberSearch' as keyof GridBill,
 			header: 'No',
 			filter: 'input',
 			render: (row) => (
@@ -219,7 +223,7 @@ const MaintenanceBill: React.FC = () => {
 			),
 		},
 		{
-			key: 'status_display' as keyof (MaintenanceBill & { rowNumber: number }),
+			key: 'status_display' as keyof GridBill,
 			header: 'Status',
 			filter: 'singleSelect',
 			colClass: 'text-center',
@@ -250,7 +254,7 @@ const MaintenanceBill: React.FC = () => {
 		},
 		{ key: 'formatted_inv_date', header: 'Invoice Date' },
 		{
-			key: 'vehicle_search' as keyof (MaintenanceBill & { rowNumber: number }),
+			key: 'vehicle_search' as keyof GridBill,
 			header: 'Vehicle',
 			filter: 'input',
 			render: (row) => (
@@ -276,13 +280,13 @@ const MaintenanceBill: React.FC = () => {
 		{ key: 'formatted_svc_date', header: 'Service Date' },
 		{ key: 'formatted_svc_odo', header: 'Odometer', colClass: 'text-right' },
 		{
-			key: 'asset.costcenter.name' as keyof (MaintenanceBill & { rowNumber: number }),
+			key: 'asset.costcenter.name' as keyof GridBill,
 			header: 'Cost Center',
 			filter: 'singleSelect',
 			render: (row) => row.asset?.costcenter?.name || 'N/A'
 		},
 		{
-			key: 'asset.location.name' as keyof (MaintenanceBill & { rowNumber: number }),
+			key: 'asset.location.name' as keyof GridBill,
 			header: 'Location',
 			filter: 'singleSelect',
 			render: (row) => row.asset?.location?.name || 'N/A'
@@ -292,7 +296,7 @@ const MaintenanceBill: React.FC = () => {
 	];
 
 	// ----- Inline Form State -----
-	const [selectedRow, setSelectedRow] = useState<(MaintenanceBill & { rowNumber?: number }) | null>(null);
+	const [selectedRow, setSelectedRow] = useState<(MaintenanceBill & { rowNumber?: number; rowNumberSearch?: string }) | null>(null);
 	const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 	const [bulkDownloading, setBulkDownloading] = useState(false);
 
@@ -412,16 +416,22 @@ const MaintenanceBill: React.FC = () => {
 				part_name: part?.part_name ?? part?.name ?? '',
 				qty: part?.qty ?? 1,
 				part_uprice: String(incomingPrice ?? '0.00'),
-				part_category: part?.part_category ?? undefined,
+				vtype_id: part?.vtype_id ?? part?.part_category ?? part?.part_category?.svcTypeId ?? undefined,
 			};
 			return [...prev, newPart];
 		});
 	};
-	const addCustomPart = () => {
-		const id = Date.now() * -1; // temporary negative id
-		const custom = { autopart_id: id, part_name: '', qty: 1, part_uprice: '0.00' };
+	const addCustomPart = (customPart?: any) => {
+		const incomingId = customPart?.autopart_id ?? (Date.now() * -1); // use provided id when picked from search
+		const custom = {
+			autopart_id: incomingId,
+			part_name: customPart?.part_name ?? '',
+			qty: customPart?.qty ?? 1,
+			part_uprice: String(customPart?.part_uprice ?? '0.00'),
+			vtype_id: customPart?.vtype_id ?? customPart?.part_category ?? customPart?.part_category?.svcTypeId ?? undefined,
+		};
 		setSelectedParts(prev => [...prev, custom]);
-		setNewlyAddedCustomId(id);
+		setNewlyAddedCustomId(incomingId);
 		setTimeout(() => setNewlyAddedCustomId(null), 1500);
 	};
 
@@ -460,6 +470,7 @@ const MaintenanceBill: React.FC = () => {
 				const unit = Number(parseFloat(String(p.part_uprice || '0'))) || 0;
 				const amount = qty * unit;
 				const name = String(p.part_name ?? p.name ?? '').trim();
+				const vtype = p?.vtype_id ?? p?.part_category ?? p?.part_category?.svcTypeId;
 				return {
 					autopart_id: Number(p.autopart_id ?? p.id ?? 0),
 					inv_id: invIdNum,
@@ -467,6 +478,7 @@ const MaintenanceBill: React.FC = () => {
 					part_uprice: Number(unit.toFixed(2)),
 					part_final_amount: Number(amount.toFixed(2)),
 					part_name: name,
+					vtype_id: vtype ? Number(vtype) : undefined,
 				};
 			});
 
@@ -496,7 +508,7 @@ const MaintenanceBill: React.FC = () => {
 	};
 
 	// Row double-click -> open inline form; detail will be fetched by the form
-	const handleRowDoubleClick = async (row: MaintenanceBill & { rowNumber: number }) => {
+	const handleRowDoubleClick = async (row: MaintenanceBill & { rowNumber: number; rowNumberSearch?: string }) => {
 		setSelectedRow(row);
 	};
 

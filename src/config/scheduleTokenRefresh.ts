@@ -24,6 +24,7 @@ export function scheduleTokenRefresh({
   handleLogout,
 }: TokenRefreshConfig) {
   let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+  const MIN_REFRESH_LEAD_MS = 5000; // avoid immediate loops when config is larger than token lifetime
 
   const getTokenExpiration = (token: string): number | null => {
     try {
@@ -67,12 +68,22 @@ export function scheduleTokenRefresh({
       return;
     }
     const now = Date.now();
-    const refreshTime = expiration - refreshBeforeMs;
+    const remaining = expiration - now;
+    const effectiveLead = Math.min(refreshBeforeMs, Math.max(remaining - MIN_REFRESH_LEAD_MS, 0));
+    const refreshTime = expiration - effectiveLead;
     
     console.log(`⏰ Token expires at: ${new Date(expiration).toLocaleTimeString()}`);
-    console.log(`⏰ Will refresh at: ${new Date(refreshTime).toLocaleTimeString()}`);
+    console.log(`⏰ Will refresh at: ${new Date(refreshTime).toLocaleTimeString()} (lead ${effectiveLead}ms)`);
     console.log(`⏰ Time until refresh: ${Math.max(0, refreshTime - now)}ms`);
     
+    if (remaining <= 0) {
+      console.log('⚠️ Token already expired, refreshing immediately');
+      refreshToken().then(success => {
+        if (success) schedule();
+      });
+      return;
+    }
+
     if (refreshTime > now) {
       refreshTimeout = setTimeout(async () => {
         const success = await refreshToken();

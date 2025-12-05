@@ -40,20 +40,16 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
     }, []);
 
     useEffect(() => {
-        if (!authContext?.authData) {
+        const userId = authContext?.authData?.user?.id;
+        if (!userId) {
             router.push('/auth/login');
-        } else {
-            // Track the last visited route with userId
-            const userId = authContext.authData.user?.id;
-            authenticatedApi.put('/api/nav/track-route', { path: pathname, userId })
-                .then(() => {
-                    //console.log('Last route tracked successfully');
-                })
-                .catch((error) => {
-                    console.error('Error tracking last route:', error);
-                });
+            return;
         }
-    }, [authContext, router, pathname]);
+        authenticatedApi.put('/api/nav/track-route', { path: pathname, userId })
+            .catch((error) => {
+                console.error('Error tracking last route:', error);
+            });
+    }, [router, pathname, authContext?.authData?.user?.id]);
 
     // Handler for logout
     const handleLogout = async () => {
