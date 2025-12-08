@@ -965,7 +965,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                         <div className="flex items-center justify-between mb-2">
                             <h1 className="text-2xl font-semibold">Statement Info</h1>
                             {selectedVendor && getVendorLogo(selectedVendor) ? (
-                                // eslint-disable-next-line @next/next/no-img-element
+                                 
                                 <img src={getVendorLogo(selectedVendor)} alt="vendor logo" className="w-12 h-12 object-contain rounded" />
                             ) : null}
                         </div>
@@ -1015,7 +1015,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                                     <SelectItem key={v.fuel_id} value={String(v.fuel_id)}>
                                                         <div className="flex items-center gap-2">
                                                             {v.logo ? (
-                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                 
                                                                 <img src={v.logo} alt={v.vendor} className="w-6 h-6 object-contain rounded" />
                                                             ) : null}
                                                             <span>{v.vendor}</span>
@@ -1776,7 +1776,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId }) 
                                         );
                                     }).length === 0 && fleetCardSearch && (
                                             <div className="text-center py-8 text-gray-500">
-                                                <p>No fleet cards found matching "{fleetCardSearch}"</p>
+                                                <p>No fleet cards found matching &quot;{fleetCardSearch}&quot;</p>
                                             </div>
                                         )}
                                 </div>

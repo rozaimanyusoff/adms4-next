@@ -258,14 +258,14 @@ const VehicleMaintenanceAdmin = () => {
       await fetchGridRows(yearFilter, activeCard);
     };
     init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Refresh grid rows and counts when year or card changes
   useEffect(() => {
     fetchSummaryCounts(yearFilter);
     fetchGridRows(yearFilter, activeCard);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [yearFilter, activeCard]);
 
   // If returning from detail with ?refresh=1, reload data once and clean the URL
@@ -283,7 +283,7 @@ const VehicleMaintenanceAdmin = () => {
         router.replace(qs ? `${base}?${qs}` : base);
       } catch (_) { /* no-op */ }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [searchParams]);
 
   const columns: ColumnDef<MaintenanceRequest>[] = [

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable react-hooks/exhaustive-deps */
+ 
+ 
+ 
 
 /* Grid Container */
 const gridContainer = "relative rounded-none w-full transition-all duration-300 ease-in-out min-w-0 lg:min-w-[768px]";
@@ -76,8 +76,6 @@ import type { FC } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faMinus, faFileExcel, faFileCsv, faFilePdf, faGear } from '@fortawesome/free-solid-svg-icons';
 import { Plus, Minus, X } from 'lucide-react';
-import Flatpickr from 'react-flatpickr';
-import 'flatpickr/dist/flatpickr.css';
 
 // Types
 export interface ColumnDef<T> {
@@ -1515,45 +1513,12 @@ const CustomDataGridInner = <T,>({
 													const inputValue = Array.isArray(currentValue)
 														? (currentValue[0] ?? '')
 														: (currentValue ?? '');
-													return isMounted ? (
-														<Flatpickr
-															value={inputValue}
-															options={{
-																dateFormat: 'Y-m-d',
-																allowInput: true,
-																disableMobile: true,
-															}}
-															className={`${dynamicFilterCellDate} form-input`}
-															placeholder={`Select date`}
-															onChange={(selectedDates, _dateStr, instance) => {
-																if (!selectedDates.length) {
-																	updateDateFilter(filterKey, null);
-																	return;
-																}
-																const formatted = instance.formatDate(selectedDates[0], 'Y-m-d');
-																updateDateFilter(filterKey, formatted);
-															}}
-															onValueUpdate={(_selectedDates, dateStr, instance) => {
-																if (!dateStr || !dateStr.trim()) {
-																	if (instance.selectedDates.length) instance.clear();
-																	if (columnFilters[filterKey]) {
-																		updateDateFilter(filterKey, null);
-																	}
-																	return;
-																}
-																const parsed = parseDateString(dateStr);
-																updateDateFilter(
-																	filterKey,
-																	parsed ? instance.formatDate(parsed, 'Y-m-d') : dateStr
-																);
-															}}
-														/>
-													) : (
+													return (
 														<Input
 															type="date"
 															className={dynamicFilterCellDate}
 															value={typeof inputValue === 'string' ? inputValue : ''}
-															readOnly
+															onChange={(e) => updateDateFilter(filterKey, e.target.value || null)}
 														/>
 													);
 												})()}
@@ -1565,64 +1530,27 @@ const CustomDataGridInner = <T,>({
 														: typeof currentValue === 'string'
 															? currentValue.split(/\s+to\s+/i).filter(Boolean)
 															: [];
-													const displayValue = rangeValues.length > 0 ? rangeValues.join(' to ') : '';
-													return isMounted ? (
-														<Flatpickr
-															value={displayValue}
-															options={{
-																mode: 'range',
-																dateFormat: 'Y-m-d',
-																allowInput: true,
-																disableMobile: true,
-																locale: {
-																	rangeSeparator: ' to ',
-																},
-															}}
-															className={`${dynamicFilterCellDate} form-input`}
-															placeholder={`Select range`}
-															onChange={(selectedDates, _dateStr, instance) => {
-																if (!selectedDates.length) {
-																	updateDateRangeFilter(filterKey, []);
-																	return;
-																}
-																const formatted = selectedDates.map(date =>
-																	instance.formatDate(date, 'Y-m-d')
-																);
-																updateDateRangeFilter(filterKey, formatted);
-															}}
-															onValueUpdate={(_selectedDates, dateStr, instance) => {
-																if (!dateStr || !dateStr.trim()) {
-																	if (instance.selectedDates.length) instance.clear();
-																	if (columnFilters[filterKey]) {
-																		updateDateRangeFilter(filterKey, []);
-																	}
-																	return;
-																}
-																const parts = dateStr.split(/\s+to\s+/i).filter(Boolean);
-																if (parts.length === 0) {
-																	updateDateRangeFilter(filterKey, []);
-																	return;
-																}
-																const formatted = parts
-																	.map(part => parseDateString(part))
-																	.map(part => (part ? instance.formatDate(part, 'Y-m-d') : null))
-																	.filter(Boolean) as string[];
-																updateDateRangeFilter(filterKey, formatted);
-															}}
-														/>
-													) : (
+													return (
 														<div className="flex gap-1">
 															<Input
 																type="date"
 																className={dynamicFilterCellDate}
 																value={rangeValues[0] ?? ''}
-																readOnly
+																onChange={(e) => {
+																	const next = [...rangeValues];
+                                                                    next[0] = e.target.value || '';
+																	updateDateRangeFilter(filterKey, next.filter(Boolean));
+																}}
 															/>
 															<Input
 																type="date"
 																className={dynamicFilterCellDate}
 																value={rangeValues[1] ?? ''}
-																readOnly
+																onChange={(e) => {
+																	const next = [...rangeValues];
+                                                                    next[1] = e.target.value || '';
+																	updateDateRangeFilter(filterKey, next.filter(Boolean));
+																}}
 															/>
 														</div>
 													);

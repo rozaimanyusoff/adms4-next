@@ -1129,7 +1129,7 @@ const UtilityBill = () => {
                 {/* Search results indicator */}
                 {searchTerm && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
-                    {filteredAccountsWithLogos.length} result{filteredAccountsWithLogos.length !== 1 ? 's' : ''} for "{searchTerm}"
+                    {filteredAccountsWithLogos.length} result{filteredAccountsWithLogos.length !== 1 ? 's' : ''} for &quot;{searchTerm}&quot;
                   </div>
                 )}
 
@@ -1202,7 +1202,7 @@ const UtilityBill = () => {
                     <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                       {searchTerm ? (
                         <div>
-                          <p>No accounts found for "{searchTerm}"</p>
+                          <p>No accounts found for &quot;{searchTerm}&quot;</p>
                           <p className="text-xs mt-1">Try searching by provider, service, or account number</p>
                         </div>
                       ) : (

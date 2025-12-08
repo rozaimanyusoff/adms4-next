@@ -315,7 +315,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
     };
     load();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [selectedRow?.inv_id]);
 
   const formatReqDateTime = (iso?: string | null) => {

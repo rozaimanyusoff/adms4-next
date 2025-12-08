@@ -39,7 +39,7 @@ export async function exportUtilityBillSummary(
         }
         // Diagnostic: log and show brief toast so runtime shape can be confirmed
         try {
-            // eslint-disable-next-line no-console
+             
             console.log('exportUtilityBillSummary: responseBeneficiary ->', responseBeneficiary);
             if (!responseBeneficiary) {
                 toast.error('Export: beneficiary missing in API response (check console)');
@@ -364,7 +364,7 @@ export async function exportUtilityBillSummary(
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
-            // eslint-disable-next-line no-await-in-loop
+             
             await addHeaderFooter(doc, i, totalPages, pageWidth);
         }
 

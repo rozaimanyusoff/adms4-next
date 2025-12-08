@@ -122,7 +122,7 @@ const PurchaseRequestForm: React.FC = () => {
         setTypeOptions(tps.map((t: any) => ({ value: String(t.id), label: t.name })));
       } catch (err) {
         toast.error('Failed to load dropdown data');
-        // eslint-disable-next-line no-console
+         
         console.error('Combo load error', err);
       } finally {
         setLoadingCombos((s) => ({ ...s, costcenters: false, suppliers: false, types: false }));
@@ -196,7 +196,7 @@ const PurchaseRequestForm: React.FC = () => {
       setItemErrors([{}]);
     } catch (err) {
       toast.error('Failed to submit purchase request');
-      // eslint-disable-next-line no-console
+       
       console.error('Submit request error', err);
     } finally {
       setSubmitting(false);

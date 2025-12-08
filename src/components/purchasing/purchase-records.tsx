@@ -353,7 +353,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   useEffect(() => {
     const uname = getUsername();
     loadPurchases(uname);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [auth?.authData?.user?.username]);
 
   // Filter purchases based on search and status

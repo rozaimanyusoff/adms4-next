@@ -168,7 +168,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
          const list = res?.data?.data || res?.data || [];
          setRequests(Array.isArray(list) ? list : []);
       } catch (err) {
-         // eslint-disable-next-line no-console
+          
          console.error('Failed to load purchase requests list', err);
          setRequests([]);
       } finally {
@@ -196,7 +196,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                   setRequest(Array.isArray(list) ? (list[0] || null) : list);
                }
             } catch (err) {
-               // eslint-disable-next-line no-console
+                
                console.error('Failed to load purchase request', err);
                setError('Failed to load purchase request');
             } finally {
@@ -204,7 +204,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
             }
          })();
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
    }, []);
 
    const loadRequestById = async (requestId?: number | string) => {
@@ -216,7 +216,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
          const d = res?.data?.data || res?.data;
          setRequest(d || null);
       } catch (err) {
-         // eslint-disable-next-line no-console
+          
          console.error('Failed to load purchase request by id', err);
          setError('Failed to load purchase request');
       } finally {
@@ -477,11 +477,11 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                               <div className="text-xs text-black min-w-[80px] text-right">{request.pr_date ? fmtDate(request.pr_date) : '-'}</div>
                            </div>
                         </li>
-                        {/* 2. Requestor's HOD approval */}
+                        {/* 2. Requestor&apos;s HOD approval */}
                         <li className="mb-8 ml-6">
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.hod_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>2</span>
                            <div className="flex items-center justify-between gap-2">
-                              <div className="font-semibold">Requestor's HOD approval</div>
+                              <div className="font-semibold">Requestor&apos;s HOD approval</div>
                               <div className="text-xs text-black min-w-[80px] text-right">{request.hod_approval_date ? fmtDate(request.hod_approval_date) : '-'}</div>
                            </div>
                         </li>
@@ -493,11 +493,11 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                               <div className="text-xs text-black min-w-[80px] text-right">{request.asset_manager_remarks_date ? fmtDate(request.asset_manager_remarks_date) : '-'}</div>
                            </div>
                         </li>
-                        {/* 4. Asset manager's HOD approval */}
+                        {/* 4. Asset manager&apos;s HOD approval */}
                         <li className="mb-8 ml-6">
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.asset_manager_hod_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>4</span>
                            <div className="flex items-center justify-between gap-2">
-                              <div className="font-semibold">Asset manager's HOD approval</div>
+                              <div className="font-semibold">Asset manager&apos;s HOD approval</div>
                               <div className="text-xs text-black min-w-[80px] text-right">{request.asset_manager_hod_approval_date ? fmtDate(request.asset_manager_hod_approval_date) : '-'}</div>
                            </div>
                         </li>

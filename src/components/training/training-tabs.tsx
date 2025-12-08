@@ -40,7 +40,7 @@ const TrainingTabs = () => {
         if (params.get('tab') === activeTab) return;
         params.set('tab', activeTab);
         router.replace(`${pathname}?${params.toString()}`);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [activeTab, pathname, router]);
 
     return (

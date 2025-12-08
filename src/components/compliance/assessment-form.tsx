@@ -250,7 +250,7 @@ const AssessmentForm: React.FC = () => {
             }
         };
         bootstrap();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [assessmentId]);
 
     const fetchCriteria = async (deptId?: number) => {

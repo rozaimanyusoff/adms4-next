@@ -25,13 +25,14 @@ function Tabs({
           if (firstValue) return
 
           if (React.isValidElement(child)) {
+            const el = child as React.ReactElement<{ value?: string; children?: React.ReactNode }>
             // Check if this is a TabsTrigger and get its value
-            if (child.props?.value && typeof child.props.value === 'string') {
-              firstValue = child.props.value
+            if (typeof el.props?.value === "string" && el.props.value) {
+              firstValue = el.props.value
             }
             // Recursively check children
-            else if (child.props?.children) {
-              firstValue = findFirstTriggerValue(child.props.children)
+            else if (el.props?.children) {
+              firstValue = findFirstTriggerValue(el.props.children)
             }
           }
         })

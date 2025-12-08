@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { isValid as isDateValid, parseISO } from 'date-fns';
-import Flatpickr from 'react-flatpickr';
 import { Plus, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,7 +12,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import type { DeliverableType, ProjectDeliverableAttachment } from './types';
 import { authenticatedApi } from '@/config/api';
-import 'flatpickr/dist/flatpickr.css';
 
 // Kept for downstream consumers; UI no longer uses task groups
 export const TASK_GROUP_OPTIONS: ComboboxOption[] = [];
@@ -149,14 +147,6 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
         };
         void loadFeatures();
     }, [isOpen]);
-
-    const toDateOnlyLocal = (d?: Date | null): string => {
-        if (!d || !(d instanceof Date)) return '';
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-    };
 
     const featureLookup = useMemo(() => {
         return features.reduce<Record<string, FeatureItem>>((acc, f) => {
@@ -320,54 +310,34 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
                                     Clear
                                 </Button>
                             </div>
-                            <Flatpickr
-                                key={`planned-${formKey}`}
-                                options={{
-                                    mode: 'range',
-                                    dateFormat: 'd/m/Y',
-                                    showMonths: 2,
-                                    inline: false,
-                                    disableMobile: true,
-                                    locale: { firstDayOfWeek: 1 },
-                                }}
-                                value={(() => {
-                                    const s = draftStart;
-                                    const e = draftEnd;
-                                    const dates: Date[] = [];
-                                    if (s && isDateValid(parseISO(s))) dates.push(parseISO(s));
-                                    if (e && isDateValid(parseISO(e))) dates.push(parseISO(e));
-                                    return dates;
-                                })()}
-                                onChange={(selectedDates: Date[]) => {
-                                    if (!selectedDates || selectedDates.length === 0) {
-                                        setValue('startDate', '', { shouldDirty: true });
-                                        setValue('endDate', '', { shouldDirty: true });
-                                        setValue('actualStartDate', '', { shouldDirty: true });
-                                        setValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    if (selectedDates.length === 1) {
-                                        const fromDate = selectedDates[0];
-                                        const startStr = toDateOnlyLocal(fromDate);
-                                        setValue('startDate', startStr, { shouldDirty: true });
-                                        setValue('endDate', '', { shouldDirty: true });
-                                        setValue('actualStartDate', startStr, { shouldDirty: true });
-                                        setValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    const [from, toRaw] = selectedDates;
-                                    const fromDate = from;
-                                    const toDate = toRaw || fromDate;
-                                    const startStr = toDateOnlyLocal(fromDate);
-                                    const endStr = toDateOnlyLocal(toDate);
-                                    setValue('startDate', startStr, { shouldDirty: true });
-                                    setValue('endDate', endStr, { shouldDirty: true });
-                                    setValue('actualStartDate', startStr, { shouldDirty: true });
-                                    setValue('actualEndDate', endStr, { shouldDirty: true });
-                                }}
-                                className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
-                                placeholder="Click to add planned dates"
-                            />
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                    key={`planned-start-${formKey}`}
+                                    type="date"
+                                    value={draftStart || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setValue('startDate', val, { shouldDirty: true });
+                                        if (!draftActualStart) setValue('actualStartDate', val, { shouldDirty: true });
+                                    }}
+                                    className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
+                                    placeholder="Start date"
+                                />
+                                <Input
+                                    key={`planned-end-${formKey}`}
+                                    type="date"
+                                    value={draftEnd || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setValue('endDate', val, { shouldDirty: true });
+                                        if (!draftActualEnd) {
+                                            setValue('actualEndDate', val, { shouldDirty: true });
+                                        }
+                                    }}
+                                    className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
+                                    placeholder="End date"
+                                />
+                            </div>
                             <p className="text-xs text-muted-foreground">Mandays (Mon–Fri): {draftMandays || 0}</p>
                             <input type="hidden" {...register('startDate', { required: 'Start date is required' })} />
                             <input
@@ -402,48 +372,33 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
                                     Clear
                                 </Button>
                             </div>
-                            <Flatpickr
-                                key={`actual-${formKey}`}
-                                options={{
-                                    mode: 'range',
-                                    dateFormat: 'd/m/Y',
-                                    showMonths: 2,
-                                    inline: false,
-                                    disableMobile: true,
-                                    locale: { firstDayOfWeek: 1 },
-                                }}
-                                value={(() => {
-                                    const s = draftActualStart;
-                                    const e = draftActualEnd;
-                                    const dates: Date[] = [];
-                                    if (s && isDateValid(parseISO(s))) dates.push(parseISO(s));
-                                    if (e && isDateValid(parseISO(e))) dates.push(parseISO(e));
-                                    return dates;
-                                })()}
-                                onChange={(selectedDates: Date[]) => {
-                                    if (!selectedDates || selectedDates.length === 0) {
-                                        setValue('actualStartDate', '', { shouldDirty: true });
-                                        setValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    if (selectedDates.length === 1) {
-                                        const fromDate = selectedDates[0];
-                                        const startStr = toDateOnlyLocal(fromDate);
-                                        setValue('actualStartDate', startStr, { shouldDirty: true });
-                                        setValue('actualEndDate', '', { shouldDirty: true });
-                                        return;
-                                    }
-                                    const [from, toRaw] = selectedDates;
-                                    const fromDate = from;
-                                    const toDate = toRaw || fromDate;
-                                    const startStr = toDateOnlyLocal(fromDate);
-                                    const endStr = toDateOnlyLocal(toDate);
-                                    setValue('actualStartDate', startStr, { shouldDirty: true });
-                                    setValue('actualEndDate', endStr, { shouldDirty: true });
-                                }}
-                                className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
-                                placeholder="Click to add actual dates"
-                            />
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                    key={`actual-start-${formKey}`}
+                                    type="date"
+                                    value={draftActualStart || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setValue('actualStartDate', val, { shouldDirty: true });
+                                        if (!draftActualEnd && !draftEnd) {
+                                            setValue('endDate', val, { shouldDirty: true });
+                                        }
+                                    }}
+                                    className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
+                                    placeholder="Actual start"
+                                />
+                                <Input
+                                    key={`actual-end-${formKey}`}
+                                    type="date"
+                                    value={draftActualEnd || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setValue('actualEndDate', val, { shouldDirty: true });
+                                    }}
+                                    className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
+                                    placeholder="Actual end"
+                                />
+                            </div>
                             <p className="text-xs text-muted-foreground">
                                 Actual mandays (Mon–Fri): {draftActualMandays || 0}
                             </p>

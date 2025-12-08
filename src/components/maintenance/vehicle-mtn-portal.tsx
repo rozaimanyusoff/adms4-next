@@ -381,13 +381,13 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
     }
     setShowCredentialModal(false);
     fetchRequestDetails();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [requestId, token]);
 
   useEffect(() => {
     if (!token) return;
     loadPendingRecommendations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [token, currentYear, action]);
 
   useEffect(() => {
@@ -406,7 +406,7 @@ const VehicleServicePortal: React.FC<VehicleServicePortalProps> = ({ requestId }
       // Preload its detailed content
       fetchPendingDetail(Number(requestId));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [requestId]);
 
   // No credential modal; access via signed link only

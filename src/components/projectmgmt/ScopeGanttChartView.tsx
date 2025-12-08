@@ -568,7 +568,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
                       borderRight: groupIndex < monthGroups.length - 1 ? '2px solid #cbd5e1' : 'none'
                     }}
                   >
-                    {group.month}'{group.year.slice(2)}
+                    {group.month}&apos;{group.year.slice(2)}
                   </div>
                 ))}
               </div>

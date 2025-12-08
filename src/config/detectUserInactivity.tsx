@@ -94,7 +94,7 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                 }
             };
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [isCountingDown]);
 
     const stayLoggedIn = () => {
@@ -118,7 +118,7 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                                         {countdown} seconds
                                     </span>
                                 </div>
-                                <p className='my-3 text-red-600 font-semibold'>You have been inactive for a while. Respond or you'll be logged out within {countdownSeconds} seconds.</p>
+                                <p className='my-3 text-red-600 font-semibold'>You have been inactive for a while. Respond or you&apos;ll be logged out within {countdownSeconds} seconds.</p>
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -134,6 +134,7 @@ export const DetectUserInactivity: React.FC<InactivityConfig> = ({
                     </AlertDialogContent>
                 </AlertDialog>
             )}
+            {/* eslint-disable-next-line react-hooks/refs */}
             {children ? children({ isPromptVisible, countdown, stayLoggedIn }) : null}
         </>
     );

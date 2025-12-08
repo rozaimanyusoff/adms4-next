@@ -196,7 +196,7 @@ const UserManagement = () => {
                 setPendingUsers([]);
                 setPendingLoading(false);
             });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, []);
 
     const sortedUsers = useMemo(() => {
@@ -963,7 +963,7 @@ const UserManagement = () => {
         if (showBulkInviteSidebar && bulkEmployees.length === 0) {
             fetchEmployees();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [showBulkInviteSidebar]);
 
     // Show feedback toast after dialog closes

@@ -239,7 +239,7 @@ export async function generateFuelCostCenterReport({ stmt_id }: { stmt_id: numbe
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        // eslint-disable-next-line no-await-in-loop
+         
         await addHeaderFooter(doc, i, totalPages, pageWidth);
     }
 

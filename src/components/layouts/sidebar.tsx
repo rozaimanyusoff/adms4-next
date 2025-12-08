@@ -27,52 +27,7 @@ const Sidebar = () => {
     const [navTree, setNavTree] = useState<any[]>([]);
     const { counts } = useModuleBadges({ enabled: true, pollIntervalMs: 60000 });
 
-    useEffect(() => {
-        if (authData?.navTree) {
-            const filteredNavTree = authData.navTree.filter(item => item.status !== 0);
-            setNavTree(filteredNavTree); // Set navTree excluding items with status = 0
-            
-            // Re-run active route detection after nav tree is loaded
-            setTimeout(() => {
-                setActiveRoute();
-            }, 100);
-        }
-    }, [authData, pathname]); // Added pathname dependency
-
-    const toggleMenu = (value: string) => {
-        setCurrentMenu((oldValue) => {
-            return oldValue === value ? '' : value;
-        });
-    };
-
-    useEffect(() => {
-        const selector = document.querySelector('.sidebar ul a[href="' + window.location.pathname + '"]');
-        if (selector) {
-            selector.classList.add('active');
-            const ul: any = selector.closest('ul.sub-menu');
-            if (ul) {
-                let ele: any = ul.closest('li.menu').querySelectorAll('.nav-link') || [];
-                if (ele.length) {
-                    ele = ele[0];
-                    setTimeout(() => {
-                        ele.click();
-                    });
-                }
-            }
-        }
-    }, [pathname]); // Added pathname dependency
-
-    useEffect(() => {
-        setActiveRoute();
-        if (window.innerWidth < 768 && themeConfig.sidebar) {
-            dispatch(toggleSidebar());
-        }
-        // Debug: Log current path and active elements
-        console.log('Current pathname:', pathname);
-        console.log('Active links:', document.querySelectorAll('.sidebar ul a.active'));
-    }, [pathname]);
-
-    const setActiveRoute = () => {
+    const setActiveRoute = React.useCallback(() => {
         // Use setTimeout to ensure DOM is fully rendered
         setTimeout(() => {
             // Remove all existing active classes
@@ -140,7 +95,52 @@ const Sidebar = () => {
                 console.log('No matching selector found for path:', currentPath);
             }
         }, 200); // Increased delay to ensure Perfect Scrollbar is ready
+    }, []);
+
+    useEffect(() => {
+        if (authData?.navTree) {
+            const filteredNavTree = authData.navTree.filter(item => item.status !== 0);
+            setNavTree(filteredNavTree); // Set navTree excluding items with status = 0
+            
+            // Re-run active route detection after nav tree is loaded
+            setTimeout(() => {
+                setActiveRoute();
+            }, 100);
+        }
+    }, [authData, pathname, setActiveRoute]); // Added pathname dependency
+
+    const toggleMenu = (value: string) => {
+        setCurrentMenu((oldValue) => {
+            return oldValue === value ? '' : value;
+        });
     };
+
+    useEffect(() => {
+        const selector = document.querySelector('.sidebar ul a[href="' + window.location.pathname + '"]');
+        if (selector) {
+            selector.classList.add('active');
+            const ul: any = selector.closest('ul.sub-menu');
+            if (ul) {
+                let ele: any = ul.closest('li.menu').querySelectorAll('.nav-link') || [];
+                if (ele.length) {
+                    ele = ele[0];
+                    setTimeout(() => {
+                        ele.click();
+                    });
+                }
+            }
+        }
+    }, [pathname]); // Added pathname dependency
+
+    useEffect(() => {
+        setActiveRoute();
+        if (window.innerWidth < 768 && themeConfig.sidebar) {
+            dispatch(toggleSidebar());
+        }
+        // Debug: Log current path and active elements
+        console.log('Current pathname:', pathname);
+        console.log('Active links:', document.querySelectorAll('.sidebar ul a.active'));
+    }, [pathname, setActiveRoute]);
 
     const renderMenuItems = (items: any) => {
         if (!Array.isArray(items)) {

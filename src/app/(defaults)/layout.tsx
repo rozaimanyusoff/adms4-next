@@ -72,7 +72,7 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
             handleLogout,
         });
         return cleanup;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [authContext?.authData?.token]);
 
     if (!authContext?.authData) {

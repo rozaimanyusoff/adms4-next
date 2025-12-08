@@ -123,7 +123,7 @@ const Page: React.FC = () => {
           <tr>
             <td style={{ border: "1px solid #cbd5e1", padding: 6 }}>Assessed Location:</td>
             <td style={{ border: "1px solid #cbd5e1", padding: 6 }}>{data?.assessment_location?.code || data?.asset?.location?.code || ""}</td>
-            <td style={{ border: "1px solid #cbd5e1", padding: 6 }}>Driver's Employee ID:</td>
+            <td style={{ border: "1px solid #cbd5e1", padding: 6 }}>Driver&apos;s Employee ID:</td>
             <td style={{ border: "1px solid #cbd5e1", padding: 6 }}>{data?.asset?.owner?.ramco_id || ""}</td>
           </tr>
           <tr>
@@ -188,4 +188,3 @@ const Page: React.FC = () => {
 };
 
 export default Page;
-

@@ -270,7 +270,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
-      // eslint-disable-next-line no-await-in-loop
+       
       await addHeaderFooter(doc, i, totalPages, pageWidth);
     }
 

@@ -149,7 +149,7 @@ const FuelBill = () => {
       header: 'Logo',
       render: (row) => (
         row.vendor_logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
+           
           <img src={row.vendor_logo} alt={row.issuer || 'logo'} className="w-8 h-8 object-contain rounded" />
         ) : null
       ),

@@ -171,7 +171,7 @@ const Header = () => {
             setViewingUserId(useForeign ? targetUser! : null);
             setMetaTargetUserId(raw?.meta?.targetUserId ?? (useForeign ? targetUser! : null));
             // Debug logging (non-intrusive)
-            // eslint-disable-next-line no-console
+             
             console.debug('[Notifications] load ok -> endpoint:', endpoint, '| items:', mapped.length, '| viewingUserId:', viewingUserId, '| meta.targetUserId:', raw?.meta?.targetUserId);
             // Don't alter unreadCount here for foreign view: unreadCount remains for self
         } catch (e: any) {
@@ -182,7 +182,7 @@ const Header = () => {
             } else {
                 setNotifError(e?.response?.data?.message || 'Failed to load notifications');
             }
-            // eslint-disable-next-line no-console
+             
             console.error('[Notifications] load failed', e);
         } finally {
             setLoadingNotifications(false);
@@ -504,7 +504,7 @@ const Header = () => {
                                                     if (!rawVal) return;
                                                     const val = Number(rawVal);
                                                     if (!Number.isNaN(val)) {
-                                                        // eslint-disable-next-line no-console
+                                                         
                                                         console.debug('[Notifications] submit load targetUserId:', val);
                                                         loadNotifications(val);
                                                     }
@@ -528,7 +528,7 @@ const Header = () => {
                                                         if (!rawVal) return;
                                                         const val = Number(rawVal);
                                                         if (!Number.isNaN(val)) {
-                                                            // eslint-disable-next-line no-console
+                                                             
                                                             console.debug('[Notifications] click load targetUserId:', val);
                                                             // allow form onSubmit to handle; no duplicate call needed
                                                         }

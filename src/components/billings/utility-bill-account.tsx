@@ -247,7 +247,7 @@ const BillingAccount = () => {
     { key: 'logo', header: 'Logo', render: (r: any) => {
       const src = r?.beneficiary?.logo || r?.beneficiary?.bfcy_logo || r?.logo || r?.bfcy_pic;
       const alt = r?.beneficiary?.name || r?.beneficiary?.bfcy_name || r?.bill_bfcy || 'logo';
-      return src ? (<span>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" /></span>) : null;
+      return src ? (<span>{ }<img src={src} alt={alt} className="w-8 h-8 object-contain rounded" /></span>) : null;
     } },
     { key: 'account', header: 'Account No', filter: 'input' },
     { key: 'category', header: 'Category', filter: 'singleSelect' },

@@ -621,7 +621,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 </div>
                 <div className="flex items-center gap-2">
                   <Checkbox id="req-tng" checked={requirements.tng} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, tng: !!v }))} />
-                  <Label htmlFor="req-tng">Touch n' Go</Label>
+                  <Label htmlFor="req-tng">Touch n&apos; Go</Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <Checkbox id="req-st" checked={requirements.smart_tag} disabled={readOnly} onCheckedChange={(v: any) => !readOnly && setRequirements(s => ({ ...s, smart_tag: !!v }))} />
@@ -813,7 +813,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Checkbox id="agree" checked={agree} onCheckedChange={(v: any) => setAgree(!!v)} />
-                <Label htmlFor="agree">I agree to comply with the company's Terms & Conditions and all rules set by the company.</Label>
+                <Label htmlFor="agree">I agree to comply with the company&apos;s Terms &amp; Conditions and all rules set by the company.</Label>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>

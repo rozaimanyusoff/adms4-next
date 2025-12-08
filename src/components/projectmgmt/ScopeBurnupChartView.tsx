@@ -21,6 +21,40 @@ interface BurnupChartViewProps {
    chartRef?: React.RefObject<HTMLDivElement | null>;
 }
 
+type BurnupLegendProps = {
+   showPlanned: boolean;
+   showActual: boolean;
+   onTogglePlanned: () => void;
+   onToggleActual: () => void;
+};
+
+const BurnupLegend: React.FC<BurnupLegendProps> = ({ showPlanned, showActual, onTogglePlanned, onToggleActual }) => {
+   return (
+      <div className="flex items-center justify-center gap-6 pb-2 text-xs">
+         <button
+            type="button"
+            onClick={onTogglePlanned}
+            className={`flex items-center gap-1 ${showPlanned ? '' : 'line-through text-muted-foreground'}`}
+            aria-pressed={showPlanned}
+            title="Toggle Planned"
+         >
+            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
+            Planned
+         </button>
+         <button
+            type="button"
+            onClick={onToggleActual}
+            className={`flex items-center gap-1 ${showActual ? '' : 'line-through text-muted-foreground'}`}
+            aria-pressed={showActual}
+            title="Toggle Actual"
+         >
+            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }} />
+            Actual
+         </button>
+      </div>
+   );
+};
+
 const BurnupChartView: React.FC<BurnupChartViewProps> = ({
    projectName,
    timeline,
@@ -47,34 +81,6 @@ const BurnupChartView: React.FC<BurnupChartViewProps> = ({
          <text x={x} y={yy} textAnchor="middle" fontSize={10} fill={color || '#334155'}>
             {Number(value).toFixed(0)}
          </text>
-      );
-   };
-
-   // Custom clickable legend
-   const BurnupLegend = ({ payload }: any) => {
-      return (
-         <div className="flex items-center justify-center gap-6 pb-2 text-xs">
-            <button
-               type="button"
-               onClick={() => setShowPlanned(v => !v)}
-               className={`flex items-center gap-1 ${showPlanned ? '' : 'line-through text-muted-foreground'}`}
-               aria-pressed={showPlanned}
-               title="Toggle Planned"
-            >
-               <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
-               Planned
-            </button>
-            <button
-               type="button"
-               onClick={() => setShowActual(v => !v)}
-               className={`flex items-center gap-1 ${showActual ? '' : 'line-through text-muted-foreground'}`}
-               aria-pressed={showActual}
-               title="Toggle Actual"
-            >
-               <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#f59e0b' }} />
-               Actual
-            </button>
-         </div>
       );
    };
 
@@ -417,7 +423,18 @@ const BurnupChartView: React.FC<BurnupChartViewProps> = ({
                            </div>
                         );
                      }} />
-                     <Legend verticalAlign="top" align="center" content={<BurnupLegend />} />
+                     <Legend
+                        verticalAlign="top"
+                        align="center"
+                        content={
+                           <BurnupLegend
+                              showPlanned={showPlanned}
+                              showActual={showActual}
+                              onTogglePlanned={() => setShowPlanned(v => !v)}
+                              onToggleActual={() => setShowActual(v => !v)}
+                           />
+                        }
+                     />
                      
                      {/* Total Scope Reference Line */}
                      <ReferenceLine 

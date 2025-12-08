@@ -395,7 +395,7 @@ const UtilityBillProvider = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the provider "{providerToDelete?.provider_name}"? This action cannot be undone.
+              Are you sure you want to delete the provider &quot;{providerToDelete?.provider_name}&quot;? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

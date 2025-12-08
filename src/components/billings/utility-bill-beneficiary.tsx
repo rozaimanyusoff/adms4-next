@@ -379,7 +379,7 @@ const BeneficiaryManager: React.FC = () => {
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 justify-center">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      { }
                       {logoPreview ? <img src={logoPreview} alt="logo preview" className="w-16 h-16 object-contain" /> : null}
                       <div className="text-left">
                         <div className="text-sm font-medium">{logoFile.name}</div>
@@ -405,7 +405,7 @@ const BeneficiaryManager: React.FC = () => {
 
                 {/* existing preview for remote logo when no local file selected */}
                 {!logoFile && form.logo && (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img src={form.logo as string} alt="logo" className="w-16 h-16 object-contain mt-2" />
                 )}
               </div>

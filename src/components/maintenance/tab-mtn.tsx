@@ -44,7 +44,7 @@ const TabMaintenance = () => {
         params.set('tab', activeTab);
         router.replace(`${pathname}?${params.toString()}`);
         // Do not include searchParams to avoid loops; we only react to activeTab/path changes
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [activeTab, pathname, router]);
 
     return (
