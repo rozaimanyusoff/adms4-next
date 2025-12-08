@@ -895,8 +895,8 @@ const CustomDataGridInner = <T,>({
 		: null;
 
 	return (
-		<>
-			<div className={gridContainer}>
+        <>
+            <div className={gridContainer}>
 				<div className={gridHeader}>
 					{(inputFilter || columnsVisibleOption || dataExport || gridSettings) && (() => {
 						// --- Export dropdown state and logic ---
@@ -1652,8 +1652,8 @@ const CustomDataGridInner = <T,>({
 										const key = resolveRowKey(row, i);
 										const displayIndex = (paginationEnabled ? (currentPage - 1) * pageSize : 0) + i + 1;
 										return (
-											<React.Fragment key={key}>
-												<tr
+                                            <React.Fragment key={key}>
+                                                <tr
 													className={
 														`px-3 py-2 ${rowClass?.(row) ?? 'even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800'}`
 														+ ((rowSelection?.isSelectable?.(row) !== false && selectedRowKeys.has(key)) ? ` ${rowSelected}` : '')
@@ -1740,7 +1740,7 @@ const CustomDataGridInner = <T,>({
 														);
 													})}
 												</tr>
-												{rowExpandable?.enabled && expandedRows.has(key as number) && (
+                                                {rowExpandable?.enabled && expandedRows.has(key as number) && (
 													<tr>
 														{rowSelection?.enabled && (
 															<td
@@ -1767,8 +1767,8 @@ const CustomDataGridInner = <T,>({
 														</td>
 													</tr>
 												)}
-											</React.Fragment>
-										);
+                                            </React.Fragment>
+                                        );
 									})}
 								</tbody>
 							</table>
@@ -1784,7 +1784,7 @@ const CustomDataGridInner = <T,>({
 					</div>
 				)}
 			</div>
-			{paginationEnabled && (
+            {paginationEnabled && (
 				<div className={paginationContainer}>
 					<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
 						<div className="flex w-full items-end gap-2">
@@ -1916,8 +1916,8 @@ const CustomDataGridInner = <T,>({
 					</div>
 				</div>
 			)}
-		</>
-	);
+        </>
+    );
 };
 
 export const CustomDataGrid = forwardRef(CustomDataGridInner) as <T>(
@@ -1927,4 +1927,4 @@ export const CustomDataGrid = forwardRef(CustomDataGridInner) as <T>(
 			clearSelectedRows: () => void;
 		}>
 	}
-) => React.ReactElement;
+) => React.ReactElement<any>;

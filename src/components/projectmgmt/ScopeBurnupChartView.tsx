@@ -18,7 +18,7 @@ interface BurnupChartViewProps {
    deliverables: any[];
    totalPlannedEffort: number;
    calcMandays: (start: string, end: string) => number;
-   chartRef?: React.RefObject<HTMLDivElement>;
+   chartRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const BurnupChartView: React.FC<BurnupChartViewProps> = ({
