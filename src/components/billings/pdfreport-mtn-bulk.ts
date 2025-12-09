@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { authenticatedApi } from '@/config/api';
-import { addHeaderFooter, ensurePageBreakForSignatures } from './pdf-helpers';
+import { HEADER_TOP_Y, addHeaderFooter, ensurePageBreakForSignatures } from './pdf-helpers';
 
 type MaintenanceReportData = {
 	inv_id: number;
@@ -116,6 +116,8 @@ const renderMaintenanceInvoice = (
 	]);
 
 	const grandTotal = dataList.reduce((sum, item) => sum + (parseFloat(item.inv_total || '0') || 0), 0);
+	const totalInvoices = tableBody.length;
+	const rowPageMap: Record<number, number> = {};
 
 	y += 3;
 	autoTable(doc, {
@@ -124,6 +126,7 @@ const renderMaintenanceInvoice = (
 		body: tableBody,
 		// Pad the footer so the label/value align to the right
 		foot: [[{ content: '', colSpan: 4 }, 'Grand Total', formatCurrency(grandTotal)]],
+		showFoot: 'everyPage',
 		theme: 'grid',
 		headStyles: {
 			fillColor: [41, 128, 185],
@@ -154,7 +157,36 @@ const renderMaintenanceInvoice = (
 			4: { cellWidth: 0, halign: 'left' },
 			5: { cellWidth: 35, halign: 'right' },
 		},
-		margin: { left: 14, right: 14 },
+		// Leave space for header/footer on page breaks
+		margin: { left: 14, right: 14, top: HEADER_TOP_Y, bottom: 50 },
+		didParseCell: (hookData: any) => {
+			// Inject invoice count into the blank footer cell on multi-page tables
+			if (hookData.section === 'foot' && hookData.column.index === 0) {
+				const table = hookData.table as any;
+				const pageCount = table?.pageCount || 1;
+				
+				if (pageCount > 1) {
+					const currentPage = table?.pageNumber || 1;
+					let cumulativeCount = Object.values(rowPageMap).filter(p => p <= currentPage).length;
+					if (Array.isArray(table?.body)) {
+						const bodyCount = table.body.filter((row: any) => (row.pageNumber || 1) <= currentPage).length;
+						cumulativeCount = Math.max(cumulativeCount, bodyCount);
+					}
+					const label = `${cumulativeCount} of ${totalInvoices} invoices`;
+					hookData.cell.text = [label];
+					hookData.cell.styles.halign = 'center';
+					hookData.cell.styles.fontStyle = 'normal';
+				}
+			}
+		},
+		didDrawCell: hookData => {
+			// Track which page each row is drawn on
+			if (hookData.section === 'body' && typeof hookData.row.index === 'number') {
+				const tablePage = hookData.table?.pageNumber || 1;
+				rowPageMap[hookData.row.index] = tablePage;
+				(hookData.row as any).pageNumber = tablePage; // ensure available in later hooks
+			}
+		},
 	});
 
 	// Signatures (match single-invoice memo style)

@@ -10,6 +10,7 @@ import { InputDroppable } from '@/components/ui/input-droppable';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Combobox } from '@/components/ui/combobox';
 
 type PartCategory = { svcTypeId?: number; svcType: string };
 
@@ -19,7 +20,7 @@ export interface MtnBillFormProps {
 
   // form basics
   selectedRow: any | null;
-  formData: { inv_no: string; inv_date: string; svc_odo: string; svc_date: string; inv_remarks: string };
+  formData: { inv_no: string; inv_date: string; svc_odo: string; svc_date: string; inv_remarks: string; workshop_id?: string | number };
   setFormData: (updater: any) => void;
   isInvoiceValid: boolean;
   isValidatingInvoice: boolean;
@@ -75,9 +76,9 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
     setAttachmentFile,
     selectedParts,
     setSelectedParts,
-    newlyAddedCustomId,
-    formatCurrency,
-    removePart,
+  newlyAddedCustomId,
+  formatCurrency,
+  removePart,
     updatePartQty,
     updatePartUnitPrice,
     updatePartName,
@@ -120,6 +121,17 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
   const [customSearchLoading, setCustomSearchLoading] = React.useState(false);
   const [customSelectedPart, setCustomSelectedPart] = React.useState<any | null>(null);
   const [customSaving, setCustomSaving] = React.useState(false);
+  const [workshops, setWorkshops] = React.useState<any[]>([]);
+  const workshopOptions = React.useMemo(() => {
+    return workshops
+      .map(ws => {
+        const id = ws.ws_id ?? ws.id;
+        const name = ws.ws_name ?? ws.name ?? 'Unnamed';
+        if (!id) return null;
+        return { value: String(id), label: name };
+      })
+      .filter(Boolean) as { value: string; label: string }[];
+  }, [workshops]);
 
   const useInternalCatalogs = true;
 
@@ -261,6 +273,23 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
     fetchCatalogs({ page: 1, per_page: 50, reset: true });
   }, [partSearch, partCategory]);
 
+  // Load workshops list for selection
+  React.useEffect(() => {
+    const loadWorkshops = async () => {
+      try {
+        const res = await authenticatedApi.get('/api/bills/workshops');
+        const raw = (res as any)?.data;
+        const body = raw && typeof raw === 'object' && 'data' in raw ? (raw as any).data : raw;
+        const list: any[] = Array.isArray(body) ? body : [];
+        setWorkshops(list);
+      } catch (e) {
+        console.error('Failed to load workshops', e);
+        toast.error('Failed to load workshops list');
+      }
+    };
+    loadWorkshops();
+  }, []);
+
   // Fetch invoice detail here using selectedRow.inv_id
   React.useEffect(() => {
     const invId = selectedRow?.inv_id;
@@ -279,6 +308,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
 
         const invDate = detail.inv_date ? new Date(detail.inv_date).toISOString().split('T')[0] : (formData.inv_date || '');
         const svcDate = detail.svc_date ? new Date(detail.svc_date).toISOString().split('T')[0] : (formData.svc_date || '');
+        const wsId = detail?.workshop?.id ?? detail?.workshop?.ws_id ?? selectedRow?.workshop?.id ?? '';
         if (!cancelled) {
           setDetail(detail);
           setFormData((prev: any) => ({
@@ -288,6 +318,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
             svc_odo: String(detail.svc_odo ?? selectedRow?.svc_odo ?? ''),
             svc_date: svcDate,
             inv_remarks: String(detail.inv_remarks ?? selectedRow?.inv_remarks ?? ''),
+            workshop_id: wsId ? String(wsId) : '',
           }));
 
           // Map parts
@@ -443,9 +474,19 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
               <div className="font-medium">{detail?.asset?.register_number ?? selectedRow?.asset?.register_number ?? 'N/A'}</div>
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Workshop</label>
-                <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{selectedRow?.workshop?.name || 'N/A'}</div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Workshop</label>
+              <div className="mt-1">
+                <Combobox
+                  options={workshopOptions}
+                  placeholder="Select workshop"
+                  searchPlaceholder="Search workshop..."
+                  emptyMessage="No workshops found"
+                  value={String(formData.workshop_id ?? '')}
+                  onValueChange={(v: string) => setFormData((prev: any) => ({ ...prev, workshop_id: v }))}
+                  clearable
+                />
               </div>
+            </div>
             <div>
               <div className="text-gray-500 dark:text-gray-400">Form Upload</div>
               <div className="font-medium">

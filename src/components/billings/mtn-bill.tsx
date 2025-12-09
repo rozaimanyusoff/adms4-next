@@ -307,6 +307,7 @@ const MaintenanceBill: React.FC = () => {
 		svc_odo: '',
 		svc_date: '',
 		inv_remarks: '',
+		workshop_id: '',
 	});
 
 	// Validation placeholders (unique invoice validation not implemented here)
@@ -491,6 +492,9 @@ const MaintenanceBill: React.FC = () => {
 			fd.append('svc_odo', String(Number(formData.svc_odo || 0)));
 			fd.append('inv_remarks', formData.inv_remarks || '');
 			fd.append('inv_total', String(Number(invTotal.toFixed(2))));
+			if (formData.workshop_id) {
+				fd.append('ws_id', String(formData.workshop_id));
+			}
 			if (attachmentFile) fd.append('upload', attachmentFile);
 			fd.append('parts', JSON.stringify(partsPayload));
 
@@ -581,7 +585,7 @@ const MaintenanceBill: React.FC = () => {
 		setSelectedRow(null);
 		setAttachmentFile(null);
 		setSelectedParts([]);
-		setFormData({ inv_no: '', inv_date: '', svc_odo: '', svc_date: '', inv_remarks: '' });
+		setFormData({ inv_no: '', inv_date: '', svc_odo: '', svc_date: '', inv_remarks: '', workshop_id: '' });
 		setValidationMessage('');
 		setIsInvoiceValid(true);
 		setIsValidatingInvoice(false);
