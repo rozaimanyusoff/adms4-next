@@ -5,10 +5,10 @@ module.exports = {
       name: 'adms4-next',
       script: 'npm',
       args: 'start',
-      instances: 1,
+      instances: "max",
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '250M',
       env: {
         NODE_ENV: 'production',
         PORT: 3033
@@ -21,10 +21,10 @@ module.exports = {
     {
       name: 'adms4-socket-server',
       script: 'socket-server.js',
-      instances: 1,
+      instances: "max",
       autorestart: true,
       watch: false,
-      max_memory_restart: '512M',
+      max_memory_restart: '250M',
       env: {
         NODE_ENV: 'production',
         SOCKET_PORT: 4000,
