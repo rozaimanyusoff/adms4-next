@@ -1355,7 +1355,7 @@ const AssessmentForm: React.FC = () => {
                                                             >
                                                                 ×
                                                             </Button>
-                                                            <div className="text-[10px] text-gray-500 mt-1 max-w-[9rem] truncate text-center">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
+                                                            <div className="text-[10px] text-gray-500 mt-1 max-w-36 truncate text-center">{(answers[`file-${it.qset_id}`] as File)?.name}</div>
                                                         </div>
                                                     </div>
                                                 )}
