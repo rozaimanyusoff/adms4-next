@@ -28,6 +28,43 @@ interface ChecklistItem {
   helper?: string;
 }
 
+type ChecklistRenderer = (
+  item: ChecklistItem,
+  checklist: ChecklistMap,
+  setter: React.Dispatch<React.SetStateAction<ChecklistMap>>
+) => React.ReactNode;
+
+type PortKey =
+  | "usbA"
+  | "usbC"
+  | "thunderbolt"
+  | "ethernet"
+  | "hdmi"
+  | "displayPort"
+  | "vga"
+  | "sdCard"
+  | "audioJack";
+
+const portOptions: { key: PortKey; label: string }[] = [
+  { key: "usbA", label: "USB-A" },
+  { key: "usbC", label: "USB-C" },
+  { key: "thunderbolt", label: "Thunderbolt" },
+  { key: "ethernet", label: "Ethernet" },
+  { key: "hdmi", label: "HDMI" },
+  { key: "displayPort", label: "DisplayPort" },
+  { key: "vga", label: "VGA" },
+  { key: "sdCard", label: "SD/microSD" },
+  { key: "audioJack", label: "3.5mm audio" },
+];
+
+const osOptions = [
+  { key: "windows11", label: "Windows 11" },
+  { key: "windows10", label: "Windows 10" },
+  { key: "macos", label: "macOS" },
+  { key: "linux", label: "Linux" },
+  { key: "chromeos", label: "ChromeOS" },
+];
+
 interface FormState {
   assessmentYear: string;
   assessmentDate: string;
@@ -60,14 +97,16 @@ interface ChecklistMap {
 }
 
 const hardwareItems: ChecklistItem[] = [
-  { key: "cpu", label: "CPU", helper: "Model, generation, clock speed" },
-  { key: "memory", label: "Memory", helper: "Total RAM, free slots" },
-  { key: "storage", label: "Storage", helper: "Type, capacity, SMART/health" },
-  { key: "graphics", label: "Graphics", helper: "Integrated/dedicated, driver ok" },
-  { key: "battery", label: "Battery/Power", helper: "Cycle count, health (laptop/tablet)" },
-  { key: "display", label: "Display", helper: "Panel condition, dead pixels, brightness" },
-  { key: "network", label: "Networking", helper: "LAN/Wi-Fi MAC, connectivity, drivers" },
-  { key: "peripherals", label: "Ports & Peripherals", helper: "USB, audio, webcam, keyboard/mouse" },
+  { key: "cpu", label: "CPU", helper: "Model, generation, and key specs" },
+  { key: "memory", label: "Memory", helper: "Type (DDR4, DDR5, etc.) and total size" },
+  { key: "storage", label: "Storage", helper: "Drive type (HDD/SSD), form factor, size" },
+  { key: "graphics", label: "Graphics", helper: "Integrated/dedicated, model, ports, VRAM" },
+  { key: "display", label: "Display", helper: "Panel type, form factor, resolution, size" },
+  { key: "ports", label: "Ports", helper: "Tick available USB, network, display, SD, audio" },
+  { key: "battery", label: "Battery", helper: "Check if equipped; capacity and status" },
+  { key: "adapter", label: "Adapter", helper: "Check if equipped; output voltage & wattage" },
+  { key: "osEntry", label: "Operating System", helper: "Select common OS and edition/version" },
+  { key: "otherSoftware", label: "Other Installed Software", helper: "Document notable apps" },
 ];
 
 const softwareItems: ChecklistItem[] = [
@@ -137,6 +176,28 @@ const PcAssessmentForm: React.FC = () => {
   const [softwareChecklist, setSoftwareChecklist] = useState<ChecklistMap>(() =>
     buildChecklist(softwareItems)
   );
+  const [portChecks, setPortChecks] = useState<Record<PortKey, boolean>>(
+    () =>
+      portOptions.reduce(
+        (acc, opt) => {
+          acc[opt.key] = false;
+          return acc;
+        },
+        {} as Record<PortKey, boolean>
+      )
+  );
+  const [batteryEquipped, setBatteryEquipped] = useState(false);
+  const [batteryCapacity, setBatteryCapacity] = useState("");
+  const [adapterEquipped, setAdapterEquipped] = useState(false);
+  const [adapterOutput, setAdapterOutput] = useState("");
+  const [osChecks, setOsChecks] = useState<Record<string, boolean>>(
+    () =>
+      osOptions.reduce((acc, opt) => {
+        acc[opt.key] = false;
+        return acc;
+      }, {} as Record<string, boolean>)
+  );
+  const [osEdition, setOsEdition] = useState("");
 
   const completionScore = useMemo(() => {
     const totalItems = hardwareItems.length + softwareItems.length;
@@ -160,6 +221,14 @@ const PcAssessmentForm: React.FC = () => {
       ...prev,
       [key]: { status: prev[key]?.status ?? "pass", notes: prev[key]?.notes ?? "", ...partial },
     }));
+  };
+
+  const togglePort = (key: PortKey) => {
+    setPortChecks((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleOs = (key: string) => {
+    setOsChecks((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const fetchSerialSuggestions = async (value: string) => {
@@ -258,6 +327,13 @@ const PcAssessmentForm: React.FC = () => {
       ...form,
       hardwareChecklist,
       softwareChecklist,
+      portChecks,
+      batteryEquipped,
+      batteryCapacity,
+      adapterEquipped,
+      adapterOutput,
+      osChecks,
+      osEdition,
       lastSavedAt: new Date().toISOString(),
     };
     // No backend endpoint provided yet; surface the payload for technicians.
@@ -289,63 +365,234 @@ const PcAssessmentForm: React.FC = () => {
       notes: "",
       technician: "",
     }));
+    setPortChecks(
+      portOptions.reduce(
+        (acc, opt) => {
+          acc[opt.key] = false;
+          return acc;
+        },
+        {} as Record<PortKey, boolean>
+      )
+    );
+    setBatteryEquipped(false);
+    setBatteryCapacity("");
+    setAdapterEquipped(false);
+    setAdapterOutput("");
+    setOsChecks(
+      osOptions.reduce((acc, opt) => {
+        acc[opt.key] = false;
+        return acc;
+      }, {} as Record<string, boolean>)
+    );
+    setOsEdition("");
     setHardwareChecklist(buildChecklist(hardwareItems));
     setSoftwareChecklist(buildChecklist(softwareItems));
   };
 
+  const renderStatusAndNotes = (
+    key: string,
+    checklist: ChecklistMap,
+    setter: React.Dispatch<React.SetStateAction<ChecklistMap>>,
+    notesPlaceholder?: string
+  ) => (
+    <>
+      <Label className="text-xs text-muted-foreground">Status</Label>
+      <Select
+        value={checklist[key]?.status}
+        onValueChange={(value: ChecklistStatus) =>
+          updateChecklistItem(key, checklist, setter, { status: value })
+        }
+      >
+        <SelectTrigger className="w-full md:w-40">
+          <SelectValue placeholder="Choose status" />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(statusLabel).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Label htmlFor={`${key}-notes`} className="text-xs text-muted-foreground">
+        Notes / findings
+      </Label>
+      <Textarea
+        id={`${key}-notes`}
+        value={checklist[key]?.notes ?? ""}
+        onChange={(ev) => updateChecklistItem(key, checklist, setter, { notes: ev.target.value })}
+        placeholder={notesPlaceholder || "Document observed issues or version details"}
+        rows={2}
+      />
+    </>
+  );
+
   const renderChecklist = (
     items: ChecklistItem[],
     checklist: ChecklistMap,
-    setter: React.Dispatch<React.SetStateAction<ChecklistMap>>
+    setter: React.Dispatch<React.SetStateAction<ChecklistMap>>,
+    customRenderers?: Record<string, ChecklistRenderer>
   ) => (
     <div className="grid gap-3">
       {items.map((item) => (
-        <div
-          key={item.key}
-          className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4"
-        >
-          <div className="space-y-1 md:w-1/2">
-            <p className="font-medium leading-tight">{item.label}</p>
-            {item.helper ? (
-              <p className="text-sm text-muted-foreground">{item.helper}</p>
-            ) : null}
-          </div>
-          <div className="mt-3 flex flex-1 flex-col gap-2 md:mt-0">
-            <Label className="text-xs text-muted-foreground">Status</Label>
-            <Select
-              value={checklist[item.key]?.status}
-              onValueChange={(value: ChecklistStatus) =>
-                updateChecklistItem(item.key, checklist, setter, { status: value })
-              }
-            >
-              <SelectTrigger className="w-full md:w-40">
-                <SelectValue placeholder="Choose status" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(statusLabel).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Label htmlFor={`${item.key}-notes`} className="text-xs text-muted-foreground">
-              Notes / findings
-            </Label>
-            <Textarea
-              id={`${item.key}-notes`}
-              value={checklist[item.key]?.notes ?? ""}
-              onChange={(ev) =>
-                updateChecklistItem(item.key, checklist, setter, { notes: ev.target.value })
-              }
-              placeholder="Document observed issues or version details"
-              rows={2}
-            />
-          </div>
-        </div>
+        <React.Fragment key={item.key}>
+          {customRenderers?.[item.key]?.(item, checklist, setter) ?? (
+            <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
+              <div className="space-y-1 md:w-1/2">
+                <p className="font-medium leading-tight">{item.label}</p>
+                {item.helper ? (
+                  <p className="text-sm text-muted-foreground">{item.helper}</p>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-1 flex-col gap-2 md:mt-0">
+                {renderStatusAndNotes(item.key, checklist, setter)}
+              </div>
+            </div>
+          )}
+        </React.Fragment>
       ))}
     </div>
   );
+
+  const hardwareCustomRenderers: Record<string, ChecklistRenderer> = {
+    ports: (item, checklist, setter) => (
+      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
+        <div className="space-y-1 md:w-1/2">
+          <p className="font-medium leading-tight">{item.label}</p>
+          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
+        </div>
+        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Ports present</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {portOptions.map((opt) => (
+                <label
+                  key={opt.key}
+                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={portChecks[opt.key]}
+                    onCheckedChange={() => togglePort(opt.key)}
+                    id={`port-${opt.key}`}
+                  />
+                  <span className="leading-tight">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-2">{renderStatusAndNotes(item.key, checklist, setter)}</div>
+        </div>
+      </div>
+    ),
+    battery: (item, checklist, setter) => (
+      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
+        <div className="space-y-1 md:w-1/2">
+          <p className="font-medium leading-tight">{item.label}</p>
+          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
+        </div>
+        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <Checkbox
+              id="batteryEquipped"
+              checked={batteryEquipped}
+              onCheckedChange={(checked) => setBatteryEquipped(Boolean(checked))}
+            />
+            <Label htmlFor="batteryEquipped">Battery equipped</Label>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="batteryCapacity">Capacity</Label>
+              <Input
+                id="batteryCapacity"
+                value={batteryCapacity}
+                onChange={(e) => setBatteryCapacity(e.target.value)}
+                placeholder="e.g., 56 Wh, 4000 mAh"
+                disabled={!batteryEquipped}
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-2">
+              {renderStatusAndNotes(item.key, checklist, setter, "Cycle count, wear level, health")}
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+    adapter: (item, checklist, setter) => (
+      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
+        <div className="space-y-1 md:w-1/2">
+          <p className="font-medium leading-tight">{item.label}</p>
+          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
+        </div>
+        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <Checkbox
+              id="adapterEquipped"
+              checked={adapterEquipped}
+              onCheckedChange={(checked) => setAdapterEquipped(Boolean(checked))}
+            />
+            <Label htmlFor="adapterEquipped">Adapter equipped</Label>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="adapterOutput">Output</Label>
+              <Input
+                id="adapterOutput"
+                value={adapterOutput}
+                onChange={(e) => setAdapterOutput(e.target.value)}
+                placeholder="e.g., 20V / 65W"
+                disabled={!adapterEquipped}
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-2">
+              {renderStatusAndNotes(item.key, checklist, setter, "Cable/plug condition, matching wattage")}
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+    osEntry: (item, checklist, setter) => (
+      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
+        <div className="space-y-1 md:w-1/2">
+          <p className="font-medium leading-tight">{item.label}</p>
+          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
+        </div>
+        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">OS detected</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {osOptions.map((opt) => (
+                <label
+                  key={opt.key}
+                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm"
+                >
+                  <Checkbox
+                    id={`os-${opt.key}`}
+                    checked={Boolean(osChecks[opt.key])}
+                    onCheckedChange={() => toggleOs(opt.key)}
+                  />
+                  <span className="leading-tight">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="osEdition">Edition / version</Label>
+              <Input
+                id="osEdition"
+                value={osEdition}
+                onChange={(e) => setOsEdition(e.target.value)}
+                placeholder="e.g., Pro 23H2 build 22631"
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-2">
+              {renderStatusAndNotes(item.key, checklist, setter, "Activation, update channel, drivers OK")}
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  };
 
   return (
     <div className="space-y-4">
@@ -690,7 +937,7 @@ const PcAssessmentForm: React.FC = () => {
                 <h2 className="text-lg font-semibold">Hardware Checklist</h2>
                 <Badge variant="outline">Spec refresh</Badge>
               </div>
-              {renderChecklist(hardwareItems, hardwareChecklist, setHardwareChecklist)}
+              {renderChecklist(hardwareItems, hardwareChecklist, setHardwareChecklist, hardwareCustomRenderers)}
             </div>
 
             <div className="space-y-3">
