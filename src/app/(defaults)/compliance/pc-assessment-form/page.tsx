@@ -1,5 +1,4 @@
 import PcAssessmentForm from '@/components/compliance/pc-assessment-form';
-import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -9,15 +8,7 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <div className="p-2 space-y-4">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/compliance/pc-assessment"
-          className="text-sm text-blue-600 hover:text-blue-800 underline"
-        >
-          ← Back to records
-        </Link>
-      </div>
+    <div className="p-2">
       <PcAssessmentForm />
     </div>
   );

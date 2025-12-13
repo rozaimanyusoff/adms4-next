@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <div className="p-2">
-      <h1 className="text-3xl font-bold mb-4">Compliance — Computer Assessment</h1>
+      <h1 className="text-3xl font-bold mb-4">Compliance — IT Assessment</h1>
       <PcAssessmentRecord />
     </div>
   );
