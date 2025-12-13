@@ -16,8 +16,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 type DeviceType = "laptop" | "desktop" | "tablet";
 type ChecklistStatus = "pass" | "issue" | "na";
@@ -57,14 +60,6 @@ const portOptions: { key: PortKey; label: string }[] = [
   { key: "audioJack", label: "3.5mm audio" },
 ];
 
-const osOptions = [
-  { key: "windows11", label: "Windows 11" },
-  { key: "windows10", label: "Windows 10" },
-  { key: "macos", label: "macOS" },
-  { key: "linux", label: "Linux" },
-  { key: "chromeos", label: "ChromeOS" },
-];
-
 interface FormState {
   assessmentYear: string;
   assessmentDate: string;
@@ -72,8 +67,6 @@ interface FormState {
   manufacturer: string;
   model: string;
   serialNumber: string;
-  assetTag: string;
-  assignedUser: string;
   owner: string;
   costCenter: string;
   purchaseDate: string;
@@ -81,9 +74,6 @@ interface FormState {
   department: string;
   osName: string;
   osVersion: string;
-  osBuild: string;
-  osLicense: string;
-  encryption: boolean;
   antivirus: string;
   remoteTools: string;
   criticalSoftware: string;
@@ -105,8 +95,6 @@ const hardwareItems: ChecklistItem[] = [
   { key: "ports", label: "Ports", helper: "Tick available USB, network, display, SD, audio" },
   { key: "battery", label: "Battery", helper: "Check if equipped; capacity and status" },
   { key: "adapter", label: "Adapter", helper: "Check if equipped; output voltage & wattage" },
-  { key: "osEntry", label: "Operating System", helper: "Select common OS and edition/version" },
-  { key: "otherSoftware", label: "Other Installed Software", helper: "Document notable apps" },
 ];
 
 const softwareItems: ChecklistItem[] = [
@@ -135,7 +123,7 @@ const todayStr = today.toISOString().slice(0, 10);
 
 const PcAssessmentForm: React.FC = () => {
   const currentYear = String(today.getFullYear());
-  const serialSearchTimer = useRef<NodeJS.Timeout | null>(null);
+  const searchParams = useSearchParams();
 
   const [form, setForm] = useState<FormState>({
     assessmentYear: currentYear,
@@ -144,8 +132,6 @@ const PcAssessmentForm: React.FC = () => {
     manufacturer: "",
     model: "",
     serialNumber: "",
-    assetTag: "",
-    assignedUser: "",
     owner: "",
     costCenter: "",
     purchaseDate: "",
@@ -153,9 +139,6 @@ const PcAssessmentForm: React.FC = () => {
     department: "",
     osName: "",
     osVersion: "",
-    osBuild: "",
-    osLicense: "",
-    encryption: true,
     antivirus: "",
     remoteTools: "",
     criticalSoftware: "",
@@ -163,8 +146,6 @@ const PcAssessmentForm: React.FC = () => {
     notes: "",
     technician: "",
   });
-  const [serialResults, setSerialResults] = useState<any[]>([]);
-  const [serialLoading, setSerialLoading] = useState(false);
   const [costCenterOptions, setCostCenterOptions] = useState<ComboboxOption[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<ComboboxOption[]>([]);
   const [locationOptions, setLocationOptions] = useState<ComboboxOption[]>([]);
@@ -190,14 +171,6 @@ const PcAssessmentForm: React.FC = () => {
   const [batteryCapacity, setBatteryCapacity] = useState("");
   const [adapterEquipped, setAdapterEquipped] = useState(false);
   const [adapterOutput, setAdapterOutput] = useState("");
-  const [osChecks, setOsChecks] = useState<Record<string, boolean>>(
-    () =>
-      osOptions.reduce((acc, opt) => {
-        acc[opt.key] = false;
-        return acc;
-      }, {} as Record<string, boolean>)
-  );
-  const [osEdition, setOsEdition] = useState("");
 
   const completionScore = useMemo(() => {
     const totalItems = hardwareItems.length + softwareItems.length;
@@ -227,64 +200,24 @@ const PcAssessmentForm: React.FC = () => {
     setPortChecks((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const toggleOs = (key: string) => {
-    setOsChecks((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const fetchSerialSuggestions = async (value: string) => {
-    if (!value || value.trim().length < 3) {
-      setSerialResults([]);
-      return;
-    }
-    setSerialLoading(true);
-    try {
-      const res: any = await authenticatedApi.get("/api/assets", {
-        params: { type: 1, status: "active", q: value.trim() },
-      });
-      const list = Array.isArray(res?.data?.data) ? res.data.data : Array.isArray(res?.data) ? res.data : [];
-      setSerialResults(list.slice(0, 8));
-    } catch {
-      setSerialResults([]);
-    } finally {
-      setSerialLoading(false);
-    }
-  };
+  const mapDeviceType = React.useCallback(
+    (input?: string | null): DeviceType => {
+      const normalized = (input ?? "").toLowerCase();
+      if (normalized.includes("laptop") || normalized.includes("notebook")) return "laptop";
+      if (normalized.includes("desktop") || normalized.includes("pc")) return "desktop";
+      if (normalized.includes("tablet") || normalized.includes("pad")) return "tablet";
+      return form.deviceType;
+    },
+    [form.deviceType]
+  );
 
   const handleSerialChange = (value: string) => {
     updateForm("serialNumber", value);
-    if (serialSearchTimer.current) clearTimeout(serialSearchTimer.current);
-    serialSearchTimer.current = setTimeout(() => fetchSerialSuggestions(value), 350);
   };
 
   const handleSerialSelect = (asset: any) => {
+    // Legacy hook no longer used once id-driven prefill is active.
     updateForm("serialNumber", asset?.register_number || "");
-    if (asset?.id) {
-      updateForm("assetTag", String(asset.id));
-    }
-    if (asset?.purchase_date) {
-      updateForm("purchaseDate", (asset.purchase_date as string).slice(0, 10));
-    }
-    if (asset?.brand?.name || typeof asset?.brand === "string") {
-      updateForm("manufacturer", asset?.brand?.name || asset?.brand || "");
-    }
-    if (asset?.model?.name || typeof asset?.model === "string") {
-      updateForm("model", asset?.model?.name || asset?.model || "");
-    }
-    if (asset?.costcenter?.name) {
-      updateForm("costCenter", String(asset.costcenter.id ?? asset.costcenter.name));
-    }
-    if (asset?.location?.name) {
-      updateForm("location", String(asset.location.id ?? asset.location.name));
-    }
-    if (asset?.department?.name) {
-      updateForm("department", String(asset.department.id ?? asset.department.name));
-    }
-    if (asset?.owner?.full_name) {
-      const ownerValue = String(asset.owner.ramco_id ?? asset.owner.id ?? asset.owner.full_name);
-      updateForm("owner", ownerValue);
-      updateForm("assignedUser", asset.owner.full_name);
-    }
-    setSerialResults([]);
   };
 
   useEffect(() => {
@@ -317,10 +250,52 @@ const PcAssessmentForm: React.FC = () => {
     loadOptions();
   }, []);
 
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (!id) return;
+    const loadAsset = async () => {
+      try {
+        const res: any = await authenticatedApi.get(`/api/assets/${id}`);
+        const asset = res?.data?.data ?? res?.data ?? {};
+        const primaryOwner = Array.isArray(asset.owner) ? asset.owner[0] : asset.owner;
+        setForm((prev) => ({
+          ...prev,
+          deviceType: mapDeviceType(asset?.category?.name ?? asset?.type?.name ?? prev.deviceType),
+          manufacturer: asset?.brand?.name ?? prev.manufacturer,
+          model: asset?.model?.name ?? prev.model,
+          serialNumber: asset?.register_number ?? asset?.specs?.serial_number ?? prev.serialNumber,
+          owner:
+            primaryOwner?.ramco_id ??
+            primaryOwner?.name ??
+            primaryOwner?.full_name ??
+            prev.owner,
+          costCenter:
+            (asset?.costcenter?.id && String(asset.costcenter.id)) ??
+            asset?.costcenter?.name ??
+            prev.costCenter,
+          purchaseDate: asset?.purchase_date ? (asset.purchase_date as string).slice(0, 10) : prev.purchaseDate,
+          location:
+            (typeof primaryOwner?.location === "string" && primaryOwner.location) ||
+            (typeof asset?.location?.name === "string" && asset.location.name) ||
+            prev.location,
+          department:
+            primaryOwner?.department?.name ??
+            primaryOwner?.department ??
+            (typeof asset?.department?.name === "string" ? asset.department.name : prev.department),
+          osName: asset?.specs?.os ?? prev.osName,
+          osVersion: asset?.specs?.os_version ?? prev.osVersion,
+        }));
+      } catch (err) {
+        toast.error("Failed to prefill assessment");
+      }
+    };
+    loadAsset();
+  }, [mapDeviceType, searchParams]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.assignedUser || !form.osName || !form.technician) {
-      toast.error("Please complete assigned user, OS, and technician fields.");
+    if (!form.osName || !form.technician) {
+      toast.error("Please complete OS and technician fields.");
       return;
     }
     const payload = {
@@ -332,8 +307,6 @@ const PcAssessmentForm: React.FC = () => {
       batteryCapacity,
       adapterEquipped,
       adapterOutput,
-      osChecks,
-      osEdition,
       lastSavedAt: new Date().toISOString(),
     };
     // No backend endpoint provided yet; surface the payload for technicians.
@@ -347,17 +320,13 @@ const PcAssessmentForm: React.FC = () => {
       manufacturer: "",
       model: "",
       serialNumber: "",
-      assetTag: "",
       owner: "",
       costCenter: "",
       purchaseDate: "",
-      assignedUser: "",
       location: "",
       department: "",
       osName: "",
       osVersion: "",
-      osBuild: "",
-      osLicense: "",
       antivirus: "",
       remoteTools: "",
       criticalSoftware: "",
@@ -378,13 +347,6 @@ const PcAssessmentForm: React.FC = () => {
     setBatteryCapacity("");
     setAdapterEquipped(false);
     setAdapterOutput("");
-    setOsChecks(
-      osOptions.reduce((acc, opt) => {
-        acc[opt.key] = false;
-        return acc;
-      }, {} as Record<string, boolean>)
-    );
-    setOsEdition("");
     setHardwareChecklist(buildChecklist(hardwareItems));
     setSoftwareChecklist(buildChecklist(softwareItems));
   };
@@ -431,9 +393,10 @@ const PcAssessmentForm: React.FC = () => {
     items: ChecklistItem[],
     checklist: ChecklistMap,
     setter: React.Dispatch<React.SetStateAction<ChecklistMap>>,
-    customRenderers?: Record<string, ChecklistRenderer>
+    customRenderers?: Record<string, ChecklistRenderer>,
+    gridClassName?: string
   ) => (
-    <div className="grid gap-3">
+    <div className={`grid gap-3 ${gridClassName ?? ""}`}>
       {items.map((item) => (
         <React.Fragment key={item.key}>
           {customRenderers?.[item.key]?.(item, checklist, setter) ?? (
@@ -550,48 +513,6 @@ const PcAssessmentForm: React.FC = () => {
         </div>
       </div>
     ),
-    osEntry: (item, checklist, setter) => (
-      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
-        <div className="space-y-1 md:w-1/2">
-          <p className="font-medium leading-tight">{item.label}</p>
-          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
-        </div>
-        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">OS detected</Label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {osOptions.map((opt) => (
-                <label
-                  key={opt.key}
-                  className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm"
-                >
-                  <Checkbox
-                    id={`os-${opt.key}`}
-                    checked={Boolean(osChecks[opt.key])}
-                    onCheckedChange={() => toggleOs(opt.key)}
-                  />
-                  <span className="leading-tight">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="osEdition">Edition / version</Label>
-              <Input
-                id="osEdition"
-                value={osEdition}
-                onChange={(e) => setOsEdition(e.target.value)}
-                placeholder="e.g., Pro 23H2 build 22631"
-              />
-            </div>
-            <div className="flex flex-1 flex-col gap-2">
-              {renderStatusAndNotes(item.key, checklist, setter, "Activation, update channel, drivers OK")}
-            </div>
-          </div>
-        </div>
-      </div>
-    ),
   };
 
   return (
@@ -604,10 +525,9 @@ const PcAssessmentForm: React.FC = () => {
             Annual IT hardware assessment for laptops, desktops, and tablets.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge>Annual</Badge>
-          <Badge variant="secondary">Hardware + Software</Badge>
-        </div>
+        <Link href="/compliance/pc-assessment" className="text-sm text-blue-600 hover:underline">
+          ← Back to records
+        </Link>
       </div>
 
       <Card className="border-primary/30">
@@ -660,50 +580,13 @@ const PcAssessmentForm: React.FC = () => {
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1">
                 <Label htmlFor="serialNumber">Serial Number</Label>
-                <div className="relative">
-                  <Input
-                    id="serialNumber"
-                    value={form.serialNumber}
-                    onChange={(e) => handleSerialChange(e.target.value)}
-                    placeholder="Serial or service tag"
-                    autoComplete="off"
-                  />
-                  {(serialLoading || serialResults.length > 0) && (
-                    <div className="absolute z-10 mt-1 w-full rounded-md border bg-background shadow">
-                      {serialLoading ? (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>
-                      ) : (
-                        serialResults.map((asset) => {
-                          const modelLabel =
-                            asset?.model?.name ??
-                            (typeof asset?.model === "string" ? asset.model : undefined) ??
-                            asset?.category?.name ??
-                            asset?.type?.name ??
-                            asset?.name;
-                          const brandLabel =
-                            asset?.brand?.name ??
-                            (typeof asset?.brand === "string" ? asset.brand : undefined);
-                          const detail = [brandLabel, modelLabel].filter(Boolean).join(" • ");
-                          return (
-                            <button
-                              type="button"
-                              key={asset.id ?? asset.register_number}
-                              className="flex w-full flex-col items-start px-3 py-2 text-left hover:bg-muted"
-                              onClick={() => handleSerialSelect(asset)}
-                            >
-                              <span className="text-sm font-medium">
-                                {asset.register_number || "Unknown serial"}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {detail || "No model/brand"} • ID {asset.id ?? "-"}
-                              </span>
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
+                <Input
+                  id="serialNumber"
+                  value={form.serialNumber}
+                  onChange={(e) => handleSerialChange(e.target.value)}
+                  placeholder="Serial or service tag"
+                  autoComplete="off"
+                />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="deviceType">Device Type</Label>
@@ -794,8 +677,6 @@ const PcAssessmentForm: React.FC = () => {
                   value={form.owner}
                   onValueChange={(v) => {
                     updateForm("owner", v);
-                    const selected = ownerOptions.find((o) => o.value === v);
-                    if (selected?.label) updateForm("assignedUser", selected.label);
                   }}
                   placeholder="Select owner"
                   searchPlaceholder="Search owner..."
@@ -824,112 +705,6 @@ const PcAssessmentForm: React.FC = () => {
                   placeholder="Version/build"
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="osBuild">Build / Patch Level</Label>
-                <Input
-                  id="osBuild"
-                  value={form.osBuild}
-                  onChange={(e) => updateForm("osBuild", e.target.value)}
-                  placeholder="Latest cumulative update"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="osLicense">License / Activation</Label>
-                <Input
-                  id="osLicense"
-                  value={form.osLicense}
-                  onChange={(e) => updateForm("osLicense", e.target.value)}
-                  placeholder="Activated, volume license, OEM, etc."
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id="encryption"
-                  checked={form.encryption}
-                  onCheckedChange={(checked) => updateForm("encryption", Boolean(checked))}
-                />
-                <div className="space-y-1">
-                  <Label htmlFor="encryption">Full-disk encryption enabled</Label>
-                  <p className="text-sm text-muted-foreground">
-                    BitLocker/FileVault/MDM policy enforced
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="assetTag">Asset Tag</Label>
-                <Input
-                  id="assetTag"
-                  value={form.assetTag}
-                  onChange={(e) => updateForm("assetTag", e.target.value)}
-                  placeholder="Internal asset ID"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="assignedUser">Assigned User</Label>
-                <Input
-                  id="assignedUser"
-                  value={form.assignedUser}
-                  onChange={(e) => updateForm("assignedUser", e.target.value)}
-                  placeholder="Employee or owner"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="osName">Operating System</Label>
-                <Input
-                  id="osName"
-                  value={form.osName}
-                  onChange={(e) => updateForm("osName", e.target.value)}
-                  placeholder="e.g., Windows 11 Pro, macOS 14, Ubuntu 22.04"
-                  required
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="osVersion">OS Version</Label>
-                <Input
-                  id="osVersion"
-                  value={form.osVersion}
-                  onChange={(e) => updateForm("osVersion", e.target.value)}
-                  placeholder="Version/build"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="osBuild">Build / Patch Level</Label>
-                <Input
-                  id="osBuild"
-                  value={form.osBuild}
-                  onChange={(e) => updateForm("osBuild", e.target.value)}
-                  placeholder="Latest cumulative update"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="osLicense">License / Activation</Label>
-                <Input
-                  id="osLicense"
-                  value={form.osLicense}
-                  onChange={(e) => updateForm("osLicense", e.target.value)}
-                  placeholder="Activated, volume license, OEM, etc."
-                />
-              </div>
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id="encryption"
-                  checked={form.encryption}
-                  onCheckedChange={(checked) => updateForm("encryption", Boolean(checked))}
-                />
-                <div className="space-y-1">
-                  <Label htmlFor="encryption">Full-disk encryption enabled</Label>
-                  <p className="text-sm text-muted-foreground">
-                    BitLocker/FileVault/MDM policy enforced
-                  </p>
-                </div>
-              </div>
             </div>
 
             <div className="space-y-3">
@@ -937,7 +712,13 @@ const PcAssessmentForm: React.FC = () => {
                 <h2 className="text-lg font-semibold">Hardware Checklist</h2>
                 <Badge variant="outline">Spec refresh</Badge>
               </div>
-              {renderChecklist(hardwareItems, hardwareChecklist, setHardwareChecklist, hardwareCustomRenderers)}
+              {renderChecklist(
+                hardwareItems,
+                hardwareChecklist,
+                setHardwareChecklist,
+                hardwareCustomRenderers,
+                "md:grid-cols-2"
+              )}
             </div>
 
             <div className="space-y-3">
