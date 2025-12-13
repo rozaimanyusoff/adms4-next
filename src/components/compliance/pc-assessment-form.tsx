@@ -19,7 +19,17 @@ import Link from "next/link";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 type DeviceType = "laptop" | "desktop" | "tablet";
 type ChecklistStatus = "pass" | "issue" | "na";
@@ -131,7 +141,7 @@ const storageManufacturerOptions = [
   "Other",
 ];
 
-const graphicsTypeOptions = ["Integrated", "Dedicated", "Add-on"];
+const graphicsTypeOptions = ["Integrated/Built-in", "Add-on"];
 
 const graphicsManufacturerOptions = [
   "Intel",
@@ -203,6 +213,44 @@ const displayFormFactorOptions = [
   "Other",
 ];
 
+const osOptions = ["Windows", "macOS", "Ubuntu", "Fedora", "Debian", "Other"];
+
+const osVersionOptions = [
+  "11 Pro",
+  "11 Home",
+  "10 Pro",
+  "Ventura",
+  "Sonoma",
+  "22.04",
+  "24.04",
+  "Other",
+];
+
+const osPatchOptions = ["Updated", "Not updated", "Failed"];
+const avActiveOptions = ["Active", "Not active"];
+const avLicenseOptions = ["Valid", "Expired"];
+const installStatusOptions = ["Installed", "Not installed"];
+const avVendors = ["ESET", "Sophos", "CrowdStrike", "Microsoft Defender", "Other"];
+const vpnSetupTypes = ["SSL", "IPSec", "Other"];
+const productivitySuiteOptions = [
+  "Microsoft 365",
+  "Office 2019/2021",
+  "Google Workspace",
+  "LibreOffice",
+  "WPS Office",
+  "Other",
+];
+
+const specificSoftwareOptions = [
+  "PDF editor (Adobe/others)",
+  "AutoCAD",
+  "SolidWorks",
+  "Photoshop",
+  "Illustrator",
+  "Video editor",
+  "Other",
+];
+
 interface FormState {
   assessmentYear: string;
   assessmentDate: string;
@@ -217,10 +265,7 @@ interface FormState {
   department: string;
   osName: string;
   osVersion: string;
-  antivirus: string;
-  remoteTools: string;
-  criticalSoftware: string;
-  installedSoftware: string;
+  overallScore: number;
   notes: string;
   technician: string;
 }
@@ -236,16 +281,13 @@ const hardwareItems: ChecklistItem[] = [
   { key: "graphics", label: "Graphics", helper: "Integrated/dedicated, model, ports, VRAM" },
   { key: "display", label: "Display", helper: "Panel type, form factor, resolution, size" },
   { key: "ports", label: "Ports", helper: "Tick available USB, network, display, SD, audio" },
-  { key: "battery", label: "Battery", helper: "Check if equipped; capacity and status" },
-  { key: "adapter", label: "Adapter", helper: "Check if equipped; output voltage & wattage" },
+  { key: "power", label: "Power Supply", helper: "Battery and adapter availability and specs" },
 ];
 
 const softwareItems: ChecklistItem[] = [
   { key: "osPatch", label: "OS patched", helper: "Latest updates applied" },
   { key: "avEdR", label: "AV/EDR active", helper: "Definitions up to date" },
   { key: "vpn", label: "VPN/Remote access", helper: "Client installed and tested" },
-  { key: "mgmt", label: "Device management", helper: "MDM/RMM agent healthy" },
-  { key: "backup", label: "Backup/Sync", helper: "OneDrive/Drive/backup policy" },
   { key: "office", label: "Productivity suite", helper: "License status recorded" },
 ];
 
@@ -267,6 +309,7 @@ const todayStr = today.toISOString().slice(0, 10);
 const PcAssessmentForm: React.FC = () => {
   const currentYear = String(today.getFullYear());
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [form, setForm] = useState<FormState>({
     assessmentYear: currentYear,
@@ -282,10 +325,7 @@ const PcAssessmentForm: React.FC = () => {
     department: "",
     osName: "",
     osVersion: "",
-    antivirus: "",
-    remoteTools: "",
-    criticalSoftware: "",
-    installedSoftware: "",
+    overallScore: 3,
     notes: "",
     technician: "",
   });
@@ -328,10 +368,10 @@ const PcAssessmentForm: React.FC = () => {
   const [cpuModel, setCpuModel] = useState("");
   const [cpuGeneration, setCpuGeneration] = useState("");
   const [memoryType, setMemoryType] = useState("");
-  const [memorySize, setMemorySize] = useState("");
+  const [memorySize, setMemorySize] = useState("0");
   const [memoryManufacturer, setMemoryManufacturer] = useState("");
   const [storageType, setStorageType] = useState("");
-  const [storageSize, setStorageSize] = useState("");
+  const [storageSize, setStorageSize] = useState("0");
   const [storageManufacturer, setStorageManufacturer] = useState("");
   const [graphicsType, setGraphicsType] = useState("");
   const [graphicsManufacturer, setGraphicsManufacturer] = useState("");
@@ -341,6 +381,18 @@ const PcAssessmentForm: React.FC = () => {
   const [displayResolution, setDisplayResolution] = useState("");
   const [displayInterfaces, setDisplayInterfaces] = useState<string[]>([]);
   const [displayFormFactor, setDisplayFormFactor] = useState("");
+  const [osPatchStatus, setOsPatchStatus] = useState("");
+  const [avActiveStatus, setAvActiveStatus] = useState("");
+  const [avLicenseStatus, setAvLicenseStatus] = useState("");
+  const [vpnInstalledStatus, setVpnInstalledStatus] = useState("");
+  const [avInstalledStatus, setAvInstalledStatus] = useState("");
+  const [avVendor, setAvVendor] = useState("");
+  const [vpnSetupType, setVpnSetupType] = useState("");
+  const [vpnUsername, setVpnUsername] = useState("");
+  const [productivitySuites, setProductivitySuites] = useState<string[]>([]);
+  const [specificSoftware, setSpecificSoftware] = useState<string[]>([]);
+  const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
   const completionScore = useMemo(() => {
     const totalItems = hardwareItems.length + softwareItems.length;
@@ -527,44 +579,98 @@ const PcAssessmentForm: React.FC = () => {
     loadAsset();
   }, [mapDeviceType, searchParams]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.osName || !form.technician) {
       toast.error("Please complete OS and technician fields.");
       return;
     }
+    const assetId = searchParams.get("id");
+    const toNum = (v: string | number | null | undefined) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     const payload = {
-      ...form,
-      cpuManufacturer,
-      cpuModel,
-      cpuGeneration,
-      memoryType,
-      memorySize,
-      memoryManufacturer,
-      storageType,
-      storageSize,
-      storageManufacturer,
-      graphicsType,
-      graphicsManufacturer,
-      graphicsSpecs,
-      displayManufacturer,
-      displaySize,
-      displayResolution,
-      displayInterfaces,
-      displayFormFactor,
-      hardwareChecklist,
-      softwareChecklist,
-      portChecks,
-      portCounts,
-      batteryEquipped,
-      batteryCapacity,
-      adapterEquipped,
-      adapterOutput,
+      assessment_year: form.assessmentYear,
+      assessment_date: form.assessmentDate,
+      technician: form.technician,
+      overall_score: form.overallScore,
+      remarks: form.notes,
+      asset_id: assetId ? Number(assetId) : null,
+      register_number: form.serialNumber || null,
+      category: form.deviceType || null,
+      brand: form.manufacturer || null,
+      model: form.model || null,
+      purchase_date: form.purchaseDate || null,
+      costcenter_id: toNum(form.costCenter),
+      department_id: toNum(form.department),
+      location_id: toNum(form.location),
+      ramco_id: form.owner || null,
+
+      os_name: form.osName || null,
+      os_version: form.osVersion || null,
+      os_patch_status: osPatchStatus || null,
+
+      cpu_manufacturer: cpuManufacturer || null,
+      cpu_model: cpuModel || null,
+      cpu_generation: cpuGeneration || null,
+
+      memory_manufacturer: memoryManufacturer || null,
+      memory_type: memoryType || null,
+      memory_size_gb: toNum(memorySize) ?? 0,
+
+      storage_manufacturer: storageManufacturer || null,
+      storage_type: storageType || null,
+      storage_size_gb: toNum(storageSize) ?? 0,
+
+      graphics_type: graphicsType || null,
+      graphics_manufacturer: graphicsType === "Integrated/Built-in" ? null : graphicsManufacturer || null,
+      graphics_specs: graphicsSpecs || null,
+
+      display_manufacturer: displayManufacturer || null,
+      display_size: toNum(parseFloat(displaySize)) ?? null,
+      display_resolution: displayResolution || null,
+      display_form_factor: displayFormFactor || null,
+      display_interfaces: displayInterfaces,
+
+      ports_usb_a: toNum(portCounts.usbA) ?? 0,
+      ports_usb_c: toNum(portCounts.usbC) ?? 0,
+      ports_thunderbolt: toNum(portCounts.thunderbolt) ?? 0,
+      ports_ethernet: toNum(portCounts.ethernet) ?? 0,
+      ports_hdmi: toNum(portCounts.hdmi) ?? 0,
+      ports_displayport: toNum(portCounts.displayPort) ?? 0,
+      ports_vga: toNum(portCounts.vga) ?? 0,
+      ports_sdcard: toNum(portCounts.sdCard) ?? 0,
+      ports_audiojack: toNum(portCounts.audioJack) ?? 0,
+
+      battery_equipped: batteryEquipped,
+      battery_capacity: batteryCapacity || null,
+      adapter_equipped: adapterEquipped,
+      adapter_output: adapterOutput || null,
+
+      av_installed: avInstalledStatus || null,
+      av_vendor: avVendor || null,
+      av_status: avActiveStatus || null,
+      av_license: avLicenseStatus || null,
+
+      vpn_installed: vpnInstalledStatus || null,
+      vpn_setup_type: vpnSetupType || null,
+      vpn_username: vpnUsername || null,
+
+      installed_software: [...productivitySuites, ...specificSoftware].join(", ") || null,
+
+      hardware_checklist: hardwareChecklist,
+      software_checklist: softwareChecklist,
       lastSavedAt: new Date().toISOString(),
     };
-    // No backend endpoint provided yet; surface the payload for technicians.
-    console.table(payload);
-    toast.success("PC assessment saved locally. Ready for annual record keeping.");
+    try {
+      const res: any = await authenticatedApi.post("/api/compliance/it-assess", payload);
+      setSubmitStatus(res?.data?.status || "Submitted");
+      setSubmitDialogOpen(true);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Submission failed";
+      toast.error(msg);
+    }
   };
 
   const handleReset = () => {
@@ -580,10 +686,7 @@ const PcAssessmentForm: React.FC = () => {
       department: "",
       osName: "",
       osVersion: "",
-      antivirus: "",
-      remoteTools: "",
-      criticalSoftware: "",
-      installedSoftware: "",
+      overallScore: 3,
       notes: "",
       technician: "",
     }));
@@ -604,6 +707,16 @@ const PcAssessmentForm: React.FC = () => {
     setDisplayResolution("");
     setDisplayInterfaces([]);
     setDisplayFormFactor("");
+    setOsPatchStatus("");
+    setAvActiveStatus("");
+    setAvLicenseStatus("");
+    setVpnInstalledStatus("");
+    setAvInstalledStatus("");
+    setAvVendor("");
+    setVpnSetupType("");
+    setVpnUsername("");
+    setProductivitySuites([]);
+    setSpecificSoftware([]);
     setPortChecks(
       portOptions.reduce(
         (acc, opt) => {
@@ -787,9 +900,12 @@ const PcAssessmentForm: React.FC = () => {
           <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
             <Input
+              type="number"
+              inputMode="numeric"
+              min="0"
               value={memorySize}
               onChange={(e) => setMemorySize(e.target.value)}
-              placeholder="e.g., 16 GB"
+              placeholder="e.g., 16 (GB)"
             />
           </div>
         </div>
@@ -841,72 +957,75 @@ const PcAssessmentForm: React.FC = () => {
           <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
             <Input
+              type="number"
+              inputMode="numeric"
+              min="0"
               value={storageSize}
               onChange={(e) => setStorageSize(e.target.value)}
-              placeholder="e.g., 512 GB"
+              placeholder="e.g., 512 (GB)"
             />
           </div>
         </div>
       </div>
     ),
     ports: (item, checklist, setter) => (
-      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
-        <div className="space-y-1 md:w-1/2">
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
           <p className="font-medium leading-tight">{item.label}</p>
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
-        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Ports present</Label>
-            <div className="flex flex-wrap gap-2">
-              {portOptions.map((opt) => {
-                const qty = portCounts[opt.key] ?? "";
-                return (
-                  <div
-                    key={opt.key}
-                    className="flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-sm"
-                  >
-                    <Checkbox
-                      checked={portChecks[opt.key]}
-                      onCheckedChange={() => togglePort(opt.key)}
-                      id={`port-${opt.key}`}
-                    />
-                    <span className="leading-tight">{opt.label}</span>
-                    <Input
-                      type="number"
-                      min="0"
-                      className="h-8 w-16 text-xs"
-                      value={qty}
-                      onChange={(e) =>
-                        setPortCounts((prev) => ({ ...prev, [opt.key]: e.target.value }))
-                      }
-                      placeholder="Qty"
-                      disabled={!portChecks[opt.key]}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Ports present</Label>
+          <div className="flex flex-wrap gap-2">
+            {portOptions.map((opt) => {
+              const qty = portCounts[opt.key] ?? "";
+              return (
+                <div
+                  key={opt.key}
+                  className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <Checkbox
+                    checked={portChecks[opt.key]}
+                    onCheckedChange={() => togglePort(opt.key)}
+                    id={`port-${opt.key}`}
+                  />
+                  <span className="leading-tight">{opt.label}</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    min="0"
+                    className="h-8 w-16 text-xs"
+                    value={qty}
+                    onChange={(e) =>
+                      setPortCounts((prev) => ({ ...prev, [opt.key]: e.target.value }))
+                    }
+                    placeholder="Qty"
+                    disabled={!portChecks[opt.key]}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
     ),
-    battery: (item, checklist, setter) => (
-      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
-        <div className="space-y-1 md:w-1/2">
+    power: (item, checklist, setter) => (
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
           <p className="font-medium leading-tight">{item.label}</p>
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
-        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <Checkbox
-              id="batteryEquipped"
-              checked={batteryEquipped}
-              onCheckedChange={(checked) => setBatteryEquipped(Boolean(checked))}
-            />
-            <Label htmlFor="batteryEquipped">Battery equipped</Label>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Checkbox
+                id="batteryEquipped"
+                checked={batteryEquipped}
+                onCheckedChange={(checked) => setBatteryEquipped(Boolean(checked))}
+              />
+              <Label htmlFor="batteryEquipped">Battery equipped</Label>
+            </div>
             <div className="space-y-1">
               <Label htmlFor="batteryCapacity">Capacity</Label>
               <Input
@@ -917,29 +1036,16 @@ const PcAssessmentForm: React.FC = () => {
                 disabled={!batteryEquipped}
               />
             </div>
-            <div className="flex flex-1 flex-col gap-2">
-              {renderStatusAndNotes(item.key, checklist, setter, "Cycle count, wear level, health")}
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Checkbox
+                id="adapterEquipped"
+                checked={adapterEquipped}
+                onCheckedChange={(checked) => setAdapterEquipped(Boolean(checked))}
+              />
+              <Label htmlFor="adapterEquipped">Adapter equipped</Label>
             </div>
-          </div>
-        </div>
-      </div>
-    ),
-    adapter: (item, checklist, setter) => (
-      <div className="rounded-lg border bg-muted/40 p-3 md:flex md:items-start md:justify-between md:gap-4">
-        <div className="space-y-1 md:w-1/2">
-          <p className="font-medium leading-tight">{item.label}</p>
-          {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
-        </div>
-        <div className="mt-3 flex flex-1 flex-col gap-3 md:mt-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <Checkbox
-              id="adapterEquipped"
-              checked={adapterEquipped}
-              onCheckedChange={(checked) => setAdapterEquipped(Boolean(checked))}
-            />
-            <Label htmlFor="adapterEquipped">Adapter equipped</Label>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="adapterOutput">Output</Label>
               <Input
@@ -949,9 +1055,6 @@ const PcAssessmentForm: React.FC = () => {
                 placeholder="e.g., 20V / 65W"
                 disabled={!adapterEquipped}
               />
-            </div>
-            <div className="flex flex-1 flex-col gap-2">
-              {renderStatusAndNotes(item.key, checklist, setter, "Cable/plug condition, matching wattage")}
             </div>
           </div>
         </div>
@@ -964,25 +1067,20 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
-            <Label className="text-xs text-muted-foreground md:w-40">Type</Label>
-            <Select
-              value={graphicsType || undefined}
-              onValueChange={(v) => setGraphicsType(v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select type" />
-              </SelectTrigger>
-              <SelectContent>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Type</Label>
+            <RadioGroup value={graphicsType} onValueChange={(v) => setGraphicsType(v)}>
+              <div className="flex flex-wrap gap-3">
                 {graphicsTypeOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
+                  <label key={opt} className="inline-flex items-center gap-2">
+                    <RadioGroupItem value={opt} id={`gfx-type-${opt}`} className="h-5 w-5" />
+                    <span>{opt}</span>
+                  </label>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            </RadioGroup>
           </div>
-          {graphicsType && graphicsType !== "Integrated" && (
+          {graphicsType && graphicsType !== "Integrated/Built-in" && (
             <>
               <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
                 <Label className="text-xs text-muted-foreground md:w-40">Manufacturer</Label>
@@ -1111,6 +1209,204 @@ const PcAssessmentForm: React.FC = () => {
                           setDisplayInterfaces((prev) => Array.from(new Set([...prev, opt])));
                         } else {
                           setDisplayInterfaces((prev) => prev.filter((p) => p !== opt));
+                        }
+                      }}
+                    />
+                    <span className="leading-tight">{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+  };
+
+  const softwareCustomRenderers: Record<string, ChecklistRenderer> = {
+    osPatch: () => (
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
+          <p className="font-medium leading-tight">OS patched</p>
+          <p className="text-sm text-muted-foreground">Windows Update / system updates status</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs text-muted-foreground">Status</Label>
+          <RadioGroup value={osPatchStatus} onValueChange={(v) => setOsPatchStatus(v)}>
+            <div className="flex flex-wrap gap-3">
+              {osPatchOptions.map((opt) => (
+                <label key={opt} className="inline-flex items-center gap-2">
+                  <RadioGroupItem value={opt} id={`ospatch-${opt}`} className="h-5 w-5" />
+                  <span>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </RadioGroup>
+        </div>
+      </div>
+    ),
+    avEdR: () => (
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
+          <p className="font-medium leading-tight">AV/EDR active</p>
+          <p className="text-sm text-muted-foreground">Definitions up to date; service healthy</p>
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Installed</Label>
+            <RadioGroup value={avInstalledStatus} onValueChange={(v) => setAvInstalledStatus(v)}>
+              <div className="flex flex-wrap gap-3">
+                {installStatusOptions.map((opt) => (
+                  <label key={opt} className="inline-flex items-center gap-2">
+                    <RadioGroupItem value={opt} id={`avinstall-${opt}`} className="h-5 w-5" />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            </RadioGroup>
+          </div>
+          {avInstalledStatus === "Installed" && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Vendor</Label>
+              <RadioGroup value={avVendor} onValueChange={(v) => setAvVendor(v)}>
+                <div className="flex flex-wrap gap-3">
+                  {avVendors.map((opt) => (
+                    <label key={opt} className="inline-flex items-center gap-2">
+                      <RadioGroupItem value={opt} id={`avvendor-${opt}`} className="h-5 w-5" />
+                      <span>{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </RadioGroup>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <RadioGroup value={avActiveStatus} onValueChange={(v) => setAvActiveStatus(v)}>
+              <div className="flex flex-wrap gap-3">
+                {avActiveOptions.map((opt) => (
+                  <label key={opt} className="inline-flex items-center gap-2">
+                    <RadioGroupItem value={opt} id={`avstatus-${opt}`} className="h-5 w-5" />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            </RadioGroup>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">License</Label>
+            <RadioGroup value={avLicenseStatus} onValueChange={(v) => setAvLicenseStatus(v)}>
+              <div className="flex flex-wrap gap-3">
+                {avLicenseOptions.map((opt) => (
+                  <label key={opt} className="inline-flex items-center gap-2">
+                    <RadioGroupItem value={opt} id={`avlicense-${opt}`} className="h-5 w-5" />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            </RadioGroup>
+          </div>
+        </div>
+      </div>
+    ),
+    vpn: () => (
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
+          <p className="font-medium leading-tight">VPN/Remote access</p>
+          <p className="text-sm text-muted-foreground">Client installed and tested</p>
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <RadioGroup value={vpnInstalledStatus} onValueChange={(v) => setVpnInstalledStatus(v)}>
+              <div className="flex flex-wrap gap-3">
+                {installStatusOptions.map((opt) => (
+                  <label key={opt} className="inline-flex items-center gap-2">
+                    <RadioGroupItem value={opt} id={`vpnstatus-${opt}`} className="h-5 w-5" />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            </RadioGroup>
+          </div>
+          {vpnInstalledStatus === "Installed" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Setup Type</Label>
+                <RadioGroup value={vpnSetupType} onValueChange={(v) => setVpnSetupType(v)}>
+                  <div className="flex flex-wrap gap-3">
+                    {vpnSetupTypes.map((opt) => (
+                      <label key={opt} className="inline-flex items-center gap-2">
+                        <RadioGroupItem value={opt} id={`vpnsetup-${opt}`} className="h-5 w-5" />
+                        <span>{opt}</span>
+                      </label>
+                    ))}
+                  </div>
+                </RadioGroup>
+              </div>
+              <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+                <Label className="text-xs text-muted-foreground md:w-40">Username</Label>
+                <Input
+                  value={vpnUsername}
+                  onChange={(e) => setVpnUsername(e.target.value)}
+                  placeholder="VPN account username"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    office: () => (
+      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+        <div className="space-y-1">
+          <p className="font-medium leading-tight">Productivity suite</p>
+          <p className="text-sm text-muted-foreground">License status recorded</p>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Suites</Label>
+            <div className="flex flex-wrap gap-2">
+              {productivitySuiteOptions.map((opt) => {
+                const checked = productivitySuites.includes(opt);
+                return (
+                  <label
+                    key={opt}
+                    className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) => {
+                        if (v) {
+                          setProductivitySuites((prev) => Array.from(new Set([...prev, opt])));
+                        } else {
+                          setProductivitySuites((prev) => prev.filter((p) => p !== opt));
+                        }
+                      }}
+                    />
+                    <span className="leading-tight">{opt}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Other key software</Label>
+            <div className="flex flex-wrap gap-2">
+              {specificSoftwareOptions.map((opt) => {
+                const checked = specificSoftware.includes(opt);
+                return (
+                  <label
+                    key={opt}
+                    className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(v) => {
+                        if (v) {
+                          setSpecificSoftware((prev) => Array.from(new Set([...prev, opt])));
+                        } else {
+                          setSpecificSoftware((prev) => prev.filter((p) => p !== opt));
                         }
                       }}
                     />
@@ -1298,22 +1594,39 @@ const PcAssessmentForm: React.FC = () => {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1">
                 <Label htmlFor="osName">Operating System</Label>
-                <Input
-                  id="osName"
+                <Select
                   value={form.osName}
-                  onChange={(e) => updateForm("osName", e.target.value)}
-                  placeholder="e.g., Windows 11 Pro, macOS 14, Ubuntu 22.04"
-                  required
-                />
+                  onValueChange={(v) => updateForm("osName", v)}
+                >
+                  <SelectTrigger id="osName" className="w-full">
+                    <SelectValue placeholder="Select OS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {osOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label htmlFor="osVersion">OS Version</Label>
-                <Input
-                  id="osVersion"
+                <Select
                   value={form.osVersion}
-                  onChange={(e) => updateForm("osVersion", e.target.value)}
-                  placeholder="Version/build"
-                />
+                  onValueChange={(v) => updateForm("osVersion", v)}
+                >
+                  <SelectTrigger id="osVersion" className="w-full">
+                    <SelectValue placeholder="Version/build" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {osVersionOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -1336,59 +1649,43 @@ const PcAssessmentForm: React.FC = () => {
                 <h2 className="text-lg font-semibold">Software & Security Checklist</h2>
                 <Badge variant="outline">OS & apps</Badge>
               </div>
-              {renderChecklist(softwareItems, softwareChecklist, setSoftwareChecklist)}
+              {renderChecklist(
+                softwareItems,
+                softwareChecklist,
+                setSoftwareChecklist,
+                softwareCustomRenderers,
+                "md:grid-cols-2"
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="antivirus">Security tools</Label>
-                <Input
-                  id="antivirus"
-                  value={form.antivirus}
-                  onChange={(e) => updateForm("antivirus", e.target.value)}
-                  placeholder="Antivirus/EDR, firewall, disk health tools"
-                />
+              <div className="space-y-2">
+                <Label htmlFor="overallScore" className="mb-4">Overall score</Label>
+                <RadioGroup
+                  id="overallScore"
+                  value={String(form.overallScore)}
+                  onValueChange={(v) => updateForm("overallScore", Number(v))}
+                >
+                  <div className="flex flex-wrap gap-6">
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <label key={val} className="inline-flex items-center gap-2">
+                        <RadioGroupItem value={String(val)} id={`score-${val}`} className="h-5 w-5" />
+                        <span>{val}</span>
+                      </label>
+                    ))}
+                  </div>
+                </RadioGroup>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="remoteTools">Remote management</Label>
-                <Input
-                  id="remoteTools"
-                  value={form.remoteTools}
-                  onChange={(e) => updateForm("remoteTools", e.target.value)}
-                  placeholder="RMM/MDM agent, remote support tools"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="criticalSoftware">Critical software & versions</Label>
+                <Label htmlFor="notes">Overall remarks</Label>
                 <Textarea
-                  id="criticalSoftware"
-                  value={form.criticalSoftware}
-                  onChange={(e) => updateForm("criticalSoftware", e.target.value)}
-                  placeholder="Document core apps (Office, SAP, CAD, browsers, VPN clients, drivers)"
-                  rows={3}
+                  id="notes"
+                  value={form.notes}
+                  onChange={(e) => updateForm("notes", e.target.value)}
+                  placeholder="Summarize health, open issues, and planned remediation"
+                  rows={4}
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="installedSoftware">Other installed software</Label>
-                <Textarea
-                  id="installedSoftware"
-                  value={form.installedSoftware}
-                  onChange={(e) => updateForm("installedSoftware", e.target.value)}
-                  placeholder="List additional utilities or note removed/unauthorized software"
-                  rows={3}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="notes">Overall remarks</Label>
-              <Textarea
-                id="notes"
-                value={form.notes}
-                onChange={(e) => updateForm("notes", e.target.value)}
-                placeholder="Summarize health, open issues, and planned remediation"
-                rows={4}
-              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -1403,6 +1700,22 @@ const PcAssessmentForm: React.FC = () => {
           </form>
         </CardContent>
       </Card>
+
+      <AlertDialog open={submitDialogOpen} onOpenChange={setSubmitDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Submission Status</AlertDialogTitle>
+            <AlertDialogDescription>
+              {submitStatus || "Submitted successfully."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => router.push("/compliance/pc-assessment")}>
+              Back to records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
