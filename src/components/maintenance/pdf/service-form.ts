@@ -182,7 +182,7 @@ export async function downloadServiceFormPdf(reqId: string | number) {
   doc.setFontSize(PDF_STYLE.typography.section);
   const hraTableBody: any[] = [];
   hraTableBody.push([
-    { content: 'Butiran servis yang diluluskan:', styles: { fontStyle: 'bold' } },
+    { content: 'Butiran servis yang dimohon:', styles: { fontStyle: 'bold' } },
     { content: 'Lain-lain permintaan', styles: { fontStyle: 'bold' } },
     { content: 'Keterangan Jabatan HRA:', styles: { fontStyle: 'bold' } },
   ]);

@@ -163,6 +163,8 @@ const displayManufacturerOptions = [
   "Innolux",
   "CSOT",
   "Sony",
+  "Prism",
+  "Dell",
   "Other",
 ];
 
@@ -181,6 +183,9 @@ const displayResolutionOptions = [
 ];
 
 const displaySizeOptions = [
+  "10 inch",
+  "11 inch",
+  "12 inch",
   "13 inch",
   "14 inch",
   "15 inch",
@@ -219,8 +224,12 @@ const osVersionOptions = [
   "11 Pro",
   "11 Home",
   "10 Pro",
-  "Ventura",
-  "Sonoma",
+  "Tahoe 26",
+  "Sequoia 15",
+  "Sonoma 14",
+  "Ventura 13",
+  "Monterey 12",
+  "Big Sur 11",
   "22.04",
   "24.04",
   "Other",
@@ -533,7 +542,7 @@ const PcAssessmentForm: React.FC = () => {
           authenticatedApi.get("/api/assets/costcenters").catch(() => ({ data: [] })),
           authenticatedApi.get("/api/assets/departments").catch(() => ({ data: [] })),
           authenticatedApi.get("/api/assets/locations").catch(() => ({ data: [] })),
-          authenticatedApi.get("/api/assets/employees").catch(() => ({ data: [] })),
+          authenticatedApi.get("/api/assets/employees?status=active").catch(() => ({ data: [] })),
         ]);
         const mapOptions = (arr: any): ComboboxOption[] =>
           (Array.isArray(arr) ? arr : arr?.data || []).map((item: any) => ({
