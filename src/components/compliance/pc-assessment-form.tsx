@@ -251,6 +251,13 @@ const specificSoftwareOptions = [
   "Other",
 ];
 
+const technicianOptions = [
+  { value: "000277", label: "Rozaiman" },
+  { value: "000475", label: "Miza" },
+  { value: "000576", label: "Nuar" },
+  { value: "004798", label: "Tasnim" },
+];
+
 interface FormState {
   assessmentYear: string;
   assessmentDate: string;
@@ -394,13 +401,53 @@ const PcAssessmentForm: React.FC = () => {
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
-  const completionScore = useMemo(() => {
-    const totalItems = hardwareItems.length + softwareItems.length;
-    const completed =
-      Object.values(hardwareChecklist).filter((i) => !!i.status).length +
-      Object.values(softwareChecklist).filter((i) => !!i.status).length;
-    return Math.round((completed / totalItems) * 100);
-  }, [hardwareChecklist, softwareChecklist]);
+  const progressPercent = useMemo(() => {
+    const fields = [
+      form.serialNumber,
+      form.deviceType,
+      form.manufacturer,
+      form.model,
+      form.purchaseDate,
+      form.costCenter,
+      form.department,
+      form.location,
+      form.owner,
+      form.osName,
+      form.osVersion,
+      cpuManufacturer,
+      cpuModel,
+      memorySize,
+      storageSize,
+      graphicsType,
+      displaySize,
+      displayResolution,
+      String(form.overallScore),
+      form.notes,
+    ];
+    const filled = fields.filter((v) => v !== undefined && v !== null && String(v).trim() !== "").length;
+    return Math.round((filled / fields.length) * 100);
+  }, [
+    cpuManufacturer,
+    cpuModel,
+    displayResolution,
+    displaySize,
+    form.costCenter,
+    form.department,
+    form.deviceType,
+    form.location,
+    form.manufacturer,
+    form.model,
+    form.notes,
+    form.osName,
+    form.osVersion,
+    form.overallScore,
+    form.owner,
+    form.purchaseDate,
+    form.serialNumber,
+    graphicsType,
+    memorySize,
+    storageSize,
+  ]);
 
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -1436,9 +1483,9 @@ const PcAssessmentForm: React.FC = () => {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center justify-between">
             Assessment Details
-            <span className="text-sm font-normal text-muted-foreground">
-              Completion: {completionScore}%
-            </span>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-semibold text-primary">Progress: {progressPercent}%</span>
+            </div>
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             Record the current year&rsquo;s assessment. Technicians should refresh specs and
@@ -1469,13 +1516,21 @@ const PcAssessmentForm: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <Label htmlFor="technician">Technician</Label>
-                <Input
-                  id="technician"
+                <Select
                   value={form.technician}
-                  onChange={(e) => updateForm("technician", e.target.value)}
-                  placeholder="Name of assessor"
-                  required
-                />
+                  onValueChange={(v) => updateForm("technician", v)}
+                >
+                  <SelectTrigger id="technician" className="w-full">
+                    <SelectValue placeholder="Select technician" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {technicianOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.value})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -1685,7 +1740,9 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit">Save Assessment</Button>
+              <Button type="submit" disabled={progressPercent < 100}>
+                Save Assessment
+              </Button>
               <Button type="button" variant="secondary" onClick={handleReset}>
                 Reset Form
               </Button>
@@ -1712,6 +1769,9 @@ const PcAssessmentForm: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <div className="fixed bottom-4 right-4 z-50 rounded-full bg-primary px-4 py-2 text-primary-foreground shadow-lg">
+        Progress: {progressPercent}%
+      </div>
     </div>
   );
 };
