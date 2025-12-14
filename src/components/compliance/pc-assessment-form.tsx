@@ -402,6 +402,7 @@ const PcAssessmentForm: React.FC = () => {
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
   const progressPercent = useMemo(() => {
+    const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
     const fields = [
       form.serialNumber,
       form.deviceType,
@@ -424,6 +425,12 @@ const PcAssessmentForm: React.FC = () => {
       String(form.overallScore),
       form.notes,
     ];
+    if (needsPower) {
+      fields.push(batteryEquipped ? "battery-equipped" : "");
+      fields.push(batteryEquipped ? batteryCapacity : "");
+      fields.push(adapterEquipped ? "adapter-equipped" : "");
+      fields.push(adapterEquipped ? adapterOutput : "");
+    }
     const filled = fields.filter((v) => v !== undefined && v !== null && String(v).trim() !== "").length;
     return Math.round((filled / fields.length) * 100);
   }, [
@@ -447,7 +454,23 @@ const PcAssessmentForm: React.FC = () => {
     graphicsType,
     memorySize,
     storageSize,
+    batteryEquipped,
+    batteryCapacity,
+    adapterEquipped,
+    adapterOutput,
   ]);
+
+  useEffect(() => {
+    const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
+    if (needsPower) {
+      setBatteryEquipped(true);
+      setAdapterEquipped(true);
+      if (!batteryCapacity) setBatteryCapacity("Standard");
+      if (!adapterOutput) setAdapterOutput("Standard");
+    } else {
+      // For non-portable devices, leave technician choices untouched
+    }
+  }, [form.deviceType, batteryCapacity, adapterOutput]);
 
   const updateForm = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -678,7 +701,7 @@ const PcAssessmentForm: React.FC = () => {
       display_size: toNum(parseFloat(displaySize)) ?? null,
       display_resolution: displayResolution || null,
       display_form_factor: displayFormFactor || null,
-      display_interfaces: displayInterfaces,
+      display_interfaces: displayInterfaces.length ? JSON.stringify(displayInterfaces) : "[]",
 
       ports_usb_a: toNum(portCounts.usbA) ?? 0,
       ports_usb_c: toNum(portCounts.usbC) ?? 0,
