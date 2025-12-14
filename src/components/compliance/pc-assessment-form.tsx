@@ -658,10 +658,6 @@ const PcAssessmentForm: React.FC = () => {
       vpn_username: vpnUsername || null,
 
       installed_software: [...productivitySuites, ...specificSoftware].join(", ") || null,
-
-      hardware_checklist: hardwareChecklist,
-      software_checklist: softwareChecklist,
-      lastSavedAt: new Date().toISOString(),
     };
     try {
       const res: any = await authenticatedApi.post("/api/compliance/it-assess", payload);
