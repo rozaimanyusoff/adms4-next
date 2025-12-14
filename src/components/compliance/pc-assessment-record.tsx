@@ -5,14 +5,22 @@ import { CustomDataGrid, ColumnDef } from "@/components/ui/DataGrid";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { MultiSelect, type ComboboxOption } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
 import { Plus, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authenticatedApi } from "@/config/api";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
-type PcAssessmentRow = {
-  id: number;
+type AssessmentInfo = {
+  asset_id?: number;
+  register_number?: string;
+  assessment_year?: number;
+  id?: number;
+};
+
+type PcAsset = {
+  id?: number;
   age?: number | null;
   brand?: { id?: number; name?: string } | string | null;
   category?: { id?: number; name?: string } | string | null;
@@ -36,6 +44,13 @@ type PcAssessmentRow = {
   transmission?: string | null;
   type?: { id?: number; name?: string } | string | null;
   unit_price?: string | number | null;
+};
+
+type PcAssessmentRow = PcAsset & {
+  assessed?: boolean;
+  assessment_count?: number;
+  assessments?: AssessmentInfo[];
+  last_assessment?: AssessmentInfo | null;
   action?: string;
 };
 
@@ -67,22 +82,33 @@ const PcAssessmentRecord: React.FC = () => {
   const router = useRouter();
   const [data, setData] = useState<PcAssessmentRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedCostcenter, setSelectedCostcenter] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
+  const [selectedCostcenter, setSelectedCostcenter] = useState<string[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string[]>([]);
+  const [onlyDeviceCategories, setOnlyDeviceCategories] = useState(true);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
     try {
-      const res: any = await authenticatedApi.get("/api/assets", {
-        params: { type: 1, status: "active" },
-      });
+      const res: any = await authenticatedApi.get("/api/compliance/it-assets-status");
       const list = Array.isArray(res?.data?.data)
         ? res.data.data
         : Array.isArray(res?.data)
           ? res.data
           : [];
-      setData(list as PcAssessmentRow[]);
+
+      const normalized = list.map((item: any) => {
+        const asset: PcAsset = item?.asset ?? {};
+        return {
+          ...asset,
+          assessed: item?.assessed ?? false,
+          assessment_count: item?.assessment_count ?? 0,
+          assessments: item?.assessments,
+          last_assessment: item?.last_assessment,
+        };
+      });
+
+      setData(normalized as PcAssessmentRow[]);
     } catch (error) {
       console.error("Failed to load computer assets", error);
       toast.error("Failed to load computer assets");
@@ -121,19 +147,68 @@ const PcAssessmentRecord: React.FC = () => {
     () => summarize((row) => displayName(row.location)),
     [summarize]
   );
+  const lastAssessmentSummary = useMemo(
+    () =>
+      summarize((row) => {
+        const year = row.last_assessment?.assessment_year;
+        return year ? String(year) : "Not Assessed";
+      }),
+    [summarize]
+  );
+
+  const summaryToOptions = useCallback(
+    (items: { label: string; count: number }[]): ComboboxOption[] =>
+      items.map((item) => ({
+        value: item.label,
+        label: item.label,
+        render: (
+          <div className="flex w-full items-center justify-between">
+            <span className="truncate">{item.label}</span>
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+              {item.count}
+            </Badge>
+          </div>
+        ),
+      })),
+    []
+  );
+
+  const deviceCategorySet = useMemo(() => new Set(["laptop", "desktop", "tablet"]), []);
+  const categoryOptions = useMemo(
+    () =>
+      summaryToOptions(
+        categorySummary.filter(
+          (item) => !onlyDeviceCategories || deviceCategorySet.has(item.label.toLowerCase())
+        )
+      ),
+    [categorySummary, summaryToOptions, onlyDeviceCategories, deviceCategorySet]
+  );
+  const costcenterOptions = useMemo(
+    () => summaryToOptions(costcenterSummary),
+    [costcenterSummary, summaryToOptions]
+  );
+  const locationOptions = useMemo(() => summaryToOptions(locationSummary), [locationSummary, summaryToOptions]);
 
   const filteredData = useMemo(
     () =>
       data.filter((row) => {
+        const categoryLabel = displayName(row.category);
+        const costcenterLabel = displayName(row.costcenter);
+        const locationLabel = displayName(row.location);
+        const isDeviceCategory = ["laptop", "desktop", "tablet"].includes(
+          categoryLabel?.toString().toLowerCase()
+        );
+
         const categoryMatch =
-          !selectedCategory || displayName(row.category) === selectedCategory;
+          selectedCategory.length === 0 || selectedCategory.includes(categoryLabel);
         const costcenterMatch =
-          !selectedCostcenter || displayName(row.costcenter) === selectedCostcenter;
+          selectedCostcenter.length === 0 || selectedCostcenter.includes(costcenterLabel);
         const locationMatch =
-          !selectedLocation || displayName(row.location) === selectedLocation;
-        return categoryMatch && costcenterMatch && locationMatch;
+          selectedLocation.length === 0 || selectedLocation.includes(locationLabel);
+        const deviceGate = !onlyDeviceCategories || isDeviceCategory;
+        return categoryMatch && costcenterMatch && locationMatch && deviceGate;
       }),
-    [data, selectedCategory, selectedCostcenter, selectedLocation]
+    [data, selectedCategory, selectedCostcenter, selectedLocation, onlyDeviceCategories]
   );
 
   const handleCreate = useCallback(() => {
@@ -150,7 +225,7 @@ const PcAssessmentRecord: React.FC = () => {
 
   const columns: ColumnDef<PcAssessmentRow>[] = useMemo(() => {
     const typeOptions = uniqueOptions(data.map((d) => (typeof d.type === "string" ? d.type : d.type?.name)));
-    const categoryOptions = uniqueOptions(
+    const categoryFilterOptions = uniqueOptions(
       data.map((d) => (typeof d.category === "string" ? d.category : d.category?.name))
     );
     const conditionOptions = uniqueOptions(data.map((d) => d.condition_status || ""));
@@ -161,7 +236,7 @@ const PcAssessmentRecord: React.FC = () => {
     const deptOptions = uniqueOptions(
       data.map((d) => (typeof d.department === "string" ? d.department : d.department?.name || d.department?.code))
     );
-    const locationOptions = uniqueOptions(
+    const locationFilterOptions = uniqueOptions(
       data.map((d) => (typeof d.location === "string" ? d.location : d.location?.name || d.location?.code))
     );
     const fuelOptions = uniqueOptions(data.map((d) => d.fuel_type || ""));
@@ -183,7 +258,7 @@ const PcAssessmentRecord: React.FC = () => {
         key: "category",
         header: "Category",
         filter: "singleSelect",
-        filterParams: { options: categoryOptions },
+        filterParams: { options: categoryFilterOptions },
         render: (row) => displayName(row.category),
       },
       {
@@ -223,6 +298,29 @@ const PcAssessmentRecord: React.FC = () => {
             "-"
           ),
       },
+      {
+        key: "assessed",
+        header: "Assessed",
+        render: (row) =>
+          typeof row.assessed === "boolean" ? (
+            <Badge variant={row.assessed ? "secondary" : "outline"}>
+              {row.assessed ? "Yes" : "No"}
+            </Badge>
+          ) : (
+            "-"
+          ),
+      },
+      {
+        key: "assessment_count",
+        header: "Assessment Count",
+        sortable: true,
+        render: (row) => row.assessment_count ?? 0,
+      },
+      {
+        key: "last_assessment",
+        header: "Last Assessment",
+        render: (row) => row.last_assessment?.assessment_year ?? "-",
+      },
       { key: "age", header: "Age", sortable: true },
       {
         key: "purchase_date",
@@ -257,7 +355,7 @@ const PcAssessmentRecord: React.FC = () => {
         key: "location",
         header: "Location",
         filter: "singleSelect",
-        filterParams: { options: locationOptions },
+        filterParams: { options: locationFilterOptions },
         render: (row) => displayName(row.location),
       },
       {
@@ -269,20 +367,6 @@ const PcAssessmentRecord: React.FC = () => {
       },
       { key: "owner", header: "Owner", filter: "input", render: (row) => displayName(row.owner) },
       { key: "purpose", header: "Purpose", filter: "input", render: (row) => row.purpose || "-" },
-      {
-        key: "fuel_type",
-        header: "Fuel Type",
-        filter: "singleSelect",
-        filterParams: { options: fuelOptions },
-        render: (row) => row.fuel_type || "-",
-      },
-      {
-        key: "transmission",
-        header: "Transmission",
-        filter: "singleSelect",
-        filterParams: { options: transmissionOptions },
-        render: (row) => row.transmission || "-",
-      },
       {
         key: "disposed_date",
         header: "Disposed Date",
@@ -316,37 +400,75 @@ const PcAssessmentRecord: React.FC = () => {
           </p>
           <h1 className="text-xl font-semibold">PC Assessment Record</h1>
         </div>
-        <Button onClick={handleCreate} className="gap-2" disabled={loading}>
-          <Plus className="h-4 w-4" />
-          {loading ? "Loading..." : "Create"}
-        </Button>
       </div>
-      <>
-        <SummaryRow
-          title="By Category"
-          items={categorySummary}
-          active={selectedCategory}
-          onSelect={(label) =>
-            setSelectedCategory((prev) => (prev === label ? null : label))
-          }
-        />
-        <SummaryRow
-          title="By Cost Center"
-          items={costcenterSummary}
-          active={selectedCostcenter}
-          onSelect={(label) =>
-            setSelectedCostcenter((prev) => (prev === label ? null : label))
-          }
-        />
-        <SummaryRow
-          title="By Location"
-          items={locationSummary}
-          active={selectedLocation}
-          onSelect={(label) =>
-            setSelectedLocation((prev) => (prev === label ? null : label))
-          }
-        />
-      </>
+      <div className="grid gap-3 md:grid-cols-4 md:items-end">
+        <div className="space-y-1 md:col-span-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Category</p>
+          <MultiSelect
+            options={categoryOptions}
+            value={selectedCategory}
+            onValueChange={setSelectedCategory}
+            placeholder="Select category..."
+            searchPlaceholder="Search category..."
+            clearable
+          />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Cost Center</p>
+          <MultiSelect
+            options={costcenterOptions}
+            value={selectedCostcenter}
+            onValueChange={setSelectedCostcenter}
+            placeholder="Select cost center..."
+            searchPlaceholder="Search cost center..."
+            clearable
+          />
+        </div>
+        <div className="space-y-1 md:col-span-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Location</p>
+          <MultiSelect
+            options={locationOptions}
+            value={selectedLocation}
+            onValueChange={setSelectedLocation}
+            placeholder="Select location..."
+            searchPlaceholder="Search location..."
+            clearable
+          />
+        </div>
+        <div className="flex flex-col gap-1 md:items-end md:justify-end">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category Filter</p>
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-muted-foreground">Only Laptop/Desktop/Tablet</div>
+            <Switch checked={onlyDeviceCategories} onCheckedChange={setOnlyDeviceCategories} />
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last Assessment</p>
+        <div className="flex flex-wrap items-stretch gap-2">
+          {lastAssessmentSummary.map((item) => (
+            <Card key={item.label} className="border-fuchsia-200 bg-fuchsia-50/50">
+              <CardContent className="flex items-center justify-between px-3 py-2">
+                <span className="truncate font-medium">{item.label}</span>
+                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                  {item.count}
+                </Badge>
+              </CardContent>
+            </Card>
+          ))}
+          <div className="flex items-stretch ml-auto">
+            <Button onClick={handleCreate} className="gap-2 w-full sm:w-auto" disabled={loading}>
+              <Plus className="h-4 w-4" />
+              {loading ? "Loading..." : "Create"}
+            </Button>
+          </div>
+          {lastAssessmentSummary.length === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="px-3 py-2 text-sm text-muted-foreground">No assessment data</CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
       <CustomDataGrid
         data={filteredData}
         columns={columns}
@@ -355,56 +477,12 @@ const PcAssessmentRecord: React.FC = () => {
         inputFilter={false}
         dataExport={false}
         onRowDoubleClick={handleOpenRow}
+        rowClass={(row) =>
+          row.assessed
+            ? "bg-green-200/50"
+            : "even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800"
+        }
       />
-    </div>
-  );
-};
-
-type SummaryRowProps = {
-  title: string;
-  items: { label: string; count: number }[];
-  active: string | null;
-  onSelect: (label: string) => void;
-};
-
-const SummaryRow: React.FC<SummaryRowProps> = ({ title, items, active, onSelect }) => {
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <div className="flex flex-wrap gap-2">
-        {items.map((item) => {
-          const isActive = active === item.label;
-          return (
-            <Card
-              key={`${title}-${item.label}`}
-              className={cn(
-                "min-w-[125px] flex-1 cursor-pointer border-fuchsia-200 bg-fuchsia-50/50 transition sm:flex-none",
-                "hover:border-primary hover:bg-primary/10",
-                isActive && "border-primary bg-fuchsia-300/50 text-primary"
-              )}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelect(item.label)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelect(item.label);
-                }
-              }}
-            >
-              <CardContent className="flex items-center justify-between px-3 py-2">
-                <span className="truncate">{item.label}</span>
-                <Badge variant={isActive ? "secondary" : "outline"} className="bg-blue-200">{item.count}</Badge>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {items.length === 0 && (
-          <Card className="border-dashed">
-            <CardContent className="px-3 py-2 text-sm text-muted-foreground">No data available</CardContent>
-          </Card>
-        )}
-      </div>
     </div>
   );
 };

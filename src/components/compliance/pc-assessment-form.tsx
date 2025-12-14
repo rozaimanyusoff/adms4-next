@@ -561,9 +561,12 @@ const PcAssessmentForm: React.FC = () => {
     if (!id) return;
     const loadAsset = async () => {
       try {
-        const res: any = await authenticatedApi.get(`/api/assets/${id}`);
-        const asset = res?.data?.data ?? res?.data ?? {};
+        const res: any = await authenticatedApi.get(`/api/compliance/it-assets-status/${id}`);
+        const payload = res?.data?.data ?? res?.data ?? {};
+        const asset = payload?.asset ?? payload ?? {};
+        const assessment = Array.isArray(payload?.assessments) ? payload.assessments[0] : payload?.assessments;
         const primaryOwner = Array.isArray(asset.owner) ? asset.owner[0] : asset.owner;
+        const assessmentOwner = Array.isArray(assessment?.employee) ? assessment.employee[0] : assessment?.employee;
         const cpuString = asset?.specs?.cpu ?? asset?.specs?.processor ?? "";
         const detectedCpuMfr = detectCpuManufacturer(cpuString);
         const memorySpec = asset?.specs?.memory ?? asset?.specs?.ram;
@@ -571,6 +574,7 @@ const PcAssessmentForm: React.FC = () => {
         const graphicsSpec = asset?.specs?.graphics ?? asset?.specs?.gpu;
         const displaySpec = asset?.specs?.display ?? asset?.specs?.screen_size;
         const displayRes = asset?.specs?.resolution;
+
         setForm((prev) => ({
           ...prev,
           deviceType: mapDeviceType(asset?.category?.name ?? asset?.type?.name ?? prev.deviceType),
@@ -578,41 +582,76 @@ const PcAssessmentForm: React.FC = () => {
           model: asset?.model?.name ?? prev.model,
           serialNumber: asset?.register_number ?? asset?.specs?.serial_number ?? prev.serialNumber,
           owner:
+            assessmentOwner?.ramco_id ??
+            assessmentOwner?.full_name ??
             primaryOwner?.ramco_id ??
             primaryOwner?.name ??
             primaryOwner?.full_name ??
             prev.owner,
           costCenter:
+            (assessment?.costcenter?.id && String(assessment.costcenter.id)) ??
+            assessment?.costcenter?.name ??
             (asset?.costcenter?.id && String(asset.costcenter.id)) ??
             asset?.costcenter?.name ??
             prev.costCenter,
           purchaseDate: asset?.purchase_date ? (asset.purchase_date as string).slice(0, 10) : prev.purchaseDate,
           location:
+            (typeof assessment?.location?.name === "string" && assessment.location.name) ||
             (typeof primaryOwner?.location === "string" && primaryOwner.location) ||
             (typeof asset?.location?.name === "string" && asset.location.name) ||
             prev.location,
           department:
+            assessment?.department?.name ??
+            assessment?.department ??
             primaryOwner?.department?.name ??
             primaryOwner?.department ??
             (typeof asset?.department?.name === "string" ? asset.department.name : prev.department),
-          osName: asset?.specs?.os ?? prev.osName,
-          osVersion: asset?.specs?.os_version ?? prev.osVersion,
+          osName: assessment?.os_name ?? asset?.specs?.os ?? prev.osName,
+          osVersion: assessment?.os_version ?? asset?.specs?.os_version ?? prev.osVersion,
+          assessmentYear: String(assessment?.assessment_year ?? prev.assessmentYear),
+          assessmentDate: assessment?.assessment_date
+            ? (assessment.assessment_date as string).slice(0, 10)
+            : prev.assessmentDate,
+          overallScore: assessment?.overall_score ?? prev.overallScore,
+          notes: assessment?.remarks ?? prev.notes,
+          technician: assessment?.technician_name ?? prev.technician,
         }));
-        if (cpuString) {
-          setCpuModel(cpuString);
+
+        const cpuSource = assessment?.cpu_model ?? cpuString;
+        if (cpuSource) {
+          setCpuModel(cpuSource);
         }
-        if (detectedCpuMfr) {
-          setCpuManufacturer(detectedCpuMfr);
+        if (assessment?.cpu_manufacturer || detectedCpuMfr) {
+          setCpuManufacturer(assessment?.cpu_manufacturer ?? detectedCpuMfr ?? "");
         }
-        if (asset?.specs?.cpu_generation) {
-          setCpuGeneration(asset.specs.cpu_generation);
+        if (assessment?.cpu_generation || asset?.specs?.cpu_generation) {
+          setCpuGeneration(assessment?.cpu_generation ?? asset.specs.cpu_generation);
         }
-        if (typeof memorySpec === "string") {
-          setMemorySize(memorySpec);
+
+        if (typeof assessment?.memory_type === "string") {
+          setMemoryType(assessment.memory_type);
         }
-        if (typeof storageSpec === "string") {
-          setStorageSize(storageSpec);
+        if (typeof assessment?.memory_size_gb === "number" || typeof memorySpec === "string") {
+          setMemorySize(
+            assessment?.memory_size_gb != null ? String(assessment.memory_size_gb) : String(memorySpec ?? "")
+          );
         }
+        if (typeof assessment?.memory_manufacturer === "string") {
+          setMemoryManufacturer(assessment.memory_manufacturer);
+        }
+
+        if (typeof assessment?.storage_type === "string") {
+          setStorageType(assessment.storage_type);
+        }
+        if (typeof assessment?.storage_size_gb === "number" || typeof storageSpec === "string") {
+          setStorageSize(
+            assessment?.storage_size_gb != null ? String(assessment.storage_size_gb) : String(storageSpec ?? "")
+          );
+        }
+        if (typeof assessment?.storage_manufacturer === "string") {
+          setStorageManufacturer(assessment.storage_manufacturer);
+        }
+
         if (typeof graphicsSpec === "string") {
           setGraphicsSpecs(graphicsSpec);
           const lower = graphicsSpec.toLowerCase();
@@ -630,17 +669,129 @@ const PcAssessmentForm: React.FC = () => {
             setGraphicsType("Dedicated");
           }
         }
+        if (assessment?.graphics_type) {
+          setGraphicsType(assessment.graphics_type);
+        }
+        if (assessment?.graphics_manufacturer) {
+          setGraphicsManufacturer(assessment.graphics_manufacturer);
+        }
+        if (assessment?.graphics_specs) {
+          setGraphicsSpecs(assessment.graphics_specs);
+        }
+
         if (typeof displaySpec === "string") {
           setDisplaySize(displaySpec);
         }
-        if (typeof displayRes === "string") {
-          setDisplayResolution(displayRes);
+        if (typeof assessment?.display_size === "string") {
+          setDisplaySize(assessment.display_size);
         }
-        if (Array.isArray(asset?.specs?.display_interfaces)) {
-          setDisplayInterfaces(asset.specs.display_interfaces.filter((v: any) => typeof v === "string"));
+        if (typeof displayRes === "string" || typeof assessment?.display_resolution === "string") {
+          setDisplayResolution(assessment?.display_resolution ?? displayRes ?? "");
         }
-        if (typeof asset?.specs?.display_form_factor === "string") {
-          setDisplayFormFactor(asset.specs.display_form_factor);
+        if (Array.isArray(asset?.specs?.display_interfaces) || Array.isArray(assessment?.display_interfaces)) {
+          setDisplayInterfaces(
+            (assessment?.display_interfaces ?? asset?.specs?.display_interfaces ?? []).filter(
+              (v: any) => typeof v === "string"
+            )
+          );
+        }
+        if (
+          typeof assessment?.display_form_factor === "string" ||
+          typeof asset?.specs?.display_form_factor === "string"
+        ) {
+          setDisplayFormFactor(assessment?.display_form_factor ?? asset?.specs?.display_form_factor ?? "");
+        }
+        if (assessment?.display_manufacturer) {
+          setDisplayManufacturer(assessment.display_manufacturer);
+        } else if (asset?.specs?.display_manufacturer) {
+          setDisplayManufacturer(asset.specs.display_manufacturer);
+        }
+
+        if (assessment?.os_patch_status) {
+          setOsPatchStatus(assessment.os_patch_status);
+        }
+        if (assessment?.av_status) {
+          setAvActiveStatus(assessment.av_status);
+        }
+        if (assessment?.av_license) {
+          setAvLicenseStatus(assessment.av_license);
+        }
+        if (assessment?.av_installed) {
+          setAvInstalledStatus(assessment.av_installed);
+        }
+        if (assessment?.av_vendor) {
+          setAvVendor(assessment.av_vendor);
+        }
+        if (assessment?.vpn_installed) {
+          setVpnInstalledStatus(assessment.vpn_installed);
+        }
+        if (assessment?.vpn_setup_type) {
+          setVpnSetupType(assessment.vpn_setup_type);
+        }
+        if (assessment?.vpn_username) {
+          setVpnUsername(assessment.vpn_username);
+        }
+
+        const setPortState = (key: PortKey, value: any) => {
+          if (value == null) return;
+          setPortCounts((prev) => ({ ...prev, [key]: String(value ?? "") }));
+          setPortChecks((prev) => ({ ...prev, [key]: Boolean(value) }));
+        };
+        setPortState("usbA", assessment?.ports_usb_a);
+        setPortState("usbC", assessment?.ports_usb_c);
+        setPortState("thunderbolt", assessment?.ports_thunderbolt);
+        setPortState("ethernet", assessment?.ports_ethernet);
+        setPortState("hdmi", assessment?.ports_hdmi);
+        setPortState("displayPort", assessment?.ports_displayport);
+        setPortState("vga", assessment?.ports_vga);
+        setPortState("sdCard", assessment?.ports_sdcard);
+        setPortState("audioJack", assessment?.ports_audiojack);
+
+        if (assessment?.battery_equipped != null) {
+          setBatteryEquipped(Boolean(assessment.battery_equipped));
+        }
+        if (assessment?.battery_capacity != null) {
+          setBatteryCapacity(String(assessment.battery_capacity ?? ""));
+        }
+        if (assessment?.adapter_equipped != null) {
+          setAdapterEquipped(Boolean(assessment.adapter_equipped));
+        }
+        if (assessment?.adapter_output != null) {
+          setAdapterOutput(String(assessment.adapter_output ?? ""));
+        }
+
+        const installedRaw = assessment?.installed_software;
+        if (Array.isArray(installedRaw) || typeof installedRaw === "string") {
+          const installed = (Array.isArray(installedRaw)
+            ? installedRaw
+            : installedRaw.split(",").map((s) => s.trim())
+          ).filter((s: any) => typeof s === "string" && s);
+          const suites = installed.filter((s) => productivitySuiteOptions.includes(s));
+          const others = installed.filter((s) => !productivitySuiteOptions.includes(s));
+          const specific = others.filter((s) => specificSoftwareOptions.includes(s));
+          const remaining = others.filter((s) => !specificSoftwareOptions.includes(s));
+          setProductivitySuites(Array.from(new Set(suites)));
+          setSpecificSoftware(Array.from(new Set([...specific, ...remaining])));
+        }
+
+        if (assessmentOwner) {
+          setOwnerOptions((prev) => {
+            const exists = prev.some((o) => o.value === (assessmentOwner.ramco_id ?? assessmentOwner.full_name));
+            if (exists) return prev;
+            const extra = {
+              value: String(assessmentOwner.ramco_id ?? assessmentOwner.full_name ?? ""),
+              label: assessmentOwner.full_name ?? assessmentOwner.ramco_id ?? "",
+            };
+            return extra.value ? [extra, ...prev] : prev;
+          });
+          setForm((prev) => ({
+            ...prev,
+            owner:
+              assessmentOwner?.ramco_id ??
+              assessmentOwner?.full_name ??
+              assessmentOwner?.name ??
+              prev.owner,
+          }));
         }
       } catch (err) {
         toast.error("Failed to prefill assessment");
