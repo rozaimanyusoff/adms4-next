@@ -242,21 +242,19 @@ const installStatusOptions = ["Installed", "Not installed"];
 const avVendors = ["ESET", "Sophos", "CrowdStrike", "Microsoft Defender", "Other"];
 const vpnSetupTypes = ["SSL", "IPSec", "Other"];
 const productivitySuiteOptions = [
-  "Microsoft 365",
-  "Office 2019/2021",
-  "Google Workspace",
-  "LibreOffice",
-  "WPS Office",
+  "Office 365",
+  "MS Office 2013 Std",
+  "MS Office 2010 Std",
   "Other",
 ];
 
 const specificSoftwareOptions = [
   "PDF editor (Adobe/others)",
-  "AutoCAD",
-  "SolidWorks",
-  "Photoshop",
-  "Illustrator",
-  "Video editor",
+  "AutoCAD LT 2025",
+  "AutoCAD 2025",
+  "MS Project 2013",
+  "MS Project Plan 3",
+  "ArcGIS Pro",
   "Other",
 ];
 
@@ -407,8 +405,17 @@ const PcAssessmentForm: React.FC = () => {
   const [vpnUsername, setVpnUsername] = useState("");
   const [productivitySuites, setProductivitySuites] = useState<string[]>([]);
   const [specificSoftware, setSpecificSoftware] = useState<string[]>([]);
+  const [officeAccount, setOfficeAccount] = useState("");
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
+
+  const displaySizeChoices = useMemo(() => {
+    const opts = [...displaySizeOptions];
+    if (displaySize && !opts.includes(displaySize)) {
+      opts.unshift(displaySize);
+    }
+    return opts;
+  }, [displaySize]);
 
   const progressPercent = useMemo(() => {
     const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
@@ -605,15 +612,20 @@ const PcAssessmentForm: React.FC = () => {
             prev.costCenter,
           purchaseDate: asset?.purchase_date ? (asset.purchase_date as string).slice(0, 10) : prev.purchaseDate,
           location:
+            (assessment?.location?.id && String(assessment.location.id)) ||
             (typeof assessment?.location?.name === "string" && assessment.location.name) ||
             (typeof primaryOwner?.location === "string" && primaryOwner.location) ||
+            (asset?.location?.id && String(asset.location.id)) ||
             (typeof asset?.location?.name === "string" && asset.location.name) ||
             prev.location,
           department:
+            (assessment?.department?.id && String(assessment.department.id)) ??
             assessment?.department?.name ??
             assessment?.department ??
+            (primaryOwner?.department?.id && String(primaryOwner.department.id)) ??
             primaryOwner?.department?.name ??
             primaryOwner?.department ??
+            (asset?.department?.id && String(asset.department.id)) ??
             (typeof asset?.department?.name === "string" ? asset.department.name : prev.department),
           osName: assessment?.os_name ?? asset?.specs?.os ?? prev.osName,
           osVersion: assessment?.os_version ?? asset?.specs?.os_version ?? prev.osVersion,
@@ -782,6 +794,9 @@ const PcAssessmentForm: React.FC = () => {
           setProductivitySuites(Array.from(new Set(suites)));
           setSpecificSoftware(Array.from(new Set([...specific, ...remaining])));
         }
+        if (assessment?.office_account) {
+          setOfficeAccount(String(assessment.office_account));
+        }
 
         if (assessmentOwner) {
           setOwnerOptions((prev) => {
@@ -888,6 +903,7 @@ const PcAssessmentForm: React.FC = () => {
       vpn_username: vpnUsername || null,
 
       installed_software: [...productivitySuites, ...specificSoftware].join(", ") || null,
+      office_account: officeAccount || null,
     };
     try {
       const res: any = await authenticatedApi.post("/api/compliance/it-assess", payload);
@@ -943,6 +959,7 @@ const PcAssessmentForm: React.FC = () => {
     setVpnUsername("");
     setProductivitySuites([]);
     setSpecificSoftware([]);
+    setOfficeAccount("");
     setPortChecks(
       portOptions.reduce(
         (acc, opt) => {
@@ -1366,21 +1383,21 @@ const PcAssessmentForm: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
-            <Select
-              value={displaySize || undefined}
-              onValueChange={(v) => setDisplaySize(v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select size" />
-              </SelectTrigger>
-              <SelectContent>
-                {displaySizeOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select
+                value={displaySize || undefined}
+                onValueChange={(v) => setDisplaySize(v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {displaySizeChoices.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
           </div>
           <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
             <Label className="text-xs text-muted-foreground md:w-40">Resolution</Label>
@@ -1595,8 +1612,9 @@ const PcAssessmentForm: React.FC = () => {
             <div className="flex flex-wrap gap-2">
               {productivitySuiteOptions.map((opt) => {
                 const checked = productivitySuites.includes(opt);
+                const isOffice = opt === "Office 365";
                 return (
-                  <label
+                  <div
                     key={opt}
                     className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
                   >
@@ -1607,11 +1625,20 @@ const PcAssessmentForm: React.FC = () => {
                           setProductivitySuites((prev) => Array.from(new Set([...prev, opt])));
                         } else {
                           setProductivitySuites((prev) => prev.filter((p) => p !== opt));
+                          if (isOffice) setOfficeAccount("");
                         }
                       }}
                     />
-                    <span className="leading-tight">{opt}</span>
-                  </label>
+                    <span className="leading-tight whitespace-nowrap">{opt}</span>
+                    {isOffice && checked && (
+                      <Input
+                        className="ml-2 h-8"
+                        value={officeAccount}
+                        onChange={(e) => setOfficeAccount(e.target.value)}
+                        placeholder="Enter account(s), e.g. user@domain.com"
+                      />
+                    )}
+                  </div>
                 );
               })}
             </div>
