@@ -90,10 +90,10 @@ const SortableTaskRow: React.FC<SortableTaskRowProps> = ({
       key={task.id}
       ref={setNodeRef}
       style={style}
-      className="p-2 border-b border-slate-200 bg-white flex items-center h-[56px] hover:bg-blue-50/30 transition-colors"
+      className="p-2 border-b border-slate-200 bg-white flex items-center h-14 hover:bg-blue-50/30 transition-colors"
     >
       {/* 3-Dot Menu */}
-      <div className="mr-2 flex-shrink-0">
+      <div className="mr-2 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -450,7 +450,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
         {/* Fixed Left Column - Task Info */}
         <div className="flex-none w-[520px] border-r border-slate-200">
           {/* Headers */}
-          <div className="p-2 font-semibold text-slate-700 bg-white border-b bg-gradient-to-r from-slate-50 to-slate-100 sticky top-0 z-40 h-[42px] flex items-center">
+          <div className="p-2 font-semibold text-slate-700 bg-white border-b bg-linear-to-r from-slate-50 to-slate-100 sticky top-0 z-40 h-[42px] flex items-center">
             {/* Drag handle space */}
             <div className="w-6 mr-2"></div>
             <div className="grid grid-cols-[200px_1fr] gap-3 flex-1">
@@ -556,7 +556,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
             )}
             
             {/* Timeline Header */}
-            <div className="bg-gradient-to-r from-slate-50 to-slate-100 sticky top-0 z-40 h-[42px] border-b border-slate-200">
+            <div className="bg-linear-to-r from-slate-50 to-slate-100 sticky top-0 z-40 h-[42px] border-b border-slate-200">
               {/* Month Headers Row */}
               <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${timeColumns.length}, 1fr)` }}>
                 {monthGroups.map((group, groupIndex) => (
@@ -581,7 +581,7 @@ const GanttChart: React.FC<GanttChartProps> = ({
                 if (!taskBar) return null;
 
                 return (
-                  <div key={task.id} className="relative h-[56px] flex items-center px-2 border-b border-slate-200 bg-white">
+                  <div key={task.id} className="relative h-14 flex items-center px-2 border-b border-slate-200 bg-white">
                     <div className="w-full relative h-full">
                       {/* Actual Progress Bar - Renders first, sits below */}
                       {showActual && taskBar.actualBar && (

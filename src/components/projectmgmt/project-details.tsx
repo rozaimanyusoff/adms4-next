@@ -10,13 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type ComboboxOption } from '@/components/ui/combobox';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, ClipboardList as ClipboardListIcon } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { authenticatedApi } from '@/config/api';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import GanttChart, { type GanttTask } from './ScopeGanttChartView';
+import GanttChart, { type GanttTask } from './ScopeTimelineView';
 import ScopesTableView, { type ScopeRow } from './ScopesTableView';
 import BurnupChartView from './ScopeBurnupChartView';
 import { TASK_GROUP_OPTIONS } from './scope-form';
@@ -790,20 +790,34 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
     }
     return (
         <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <h1 className="text-lg font-semibold text-slate-800">Project Details</h1>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="px-2 text-primary"
+                    onClick={() => {
+                        if (editProjectId && typeof window !== 'undefined') {
+                            window.location.href = '/projectmgmt';
+                        }
+                    }}
+                >
+                    ← Back to projects
+                </Button>
+            </div>
+
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
                 {/* Scopes View Card */}
                 <Card className="order-1">
-                    <CardHeader>
-                        <div className="flex items-start justify-between gap-4">
-                            {/* Project Info */}
+                    <CardHeader className="space-y-4">
+                        <div className="flex flex-col gap-2">
                             <div className="flex items-start gap-3">
-                                <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                    </svg>
+                                <div className="h-10 w-10 rounded-lg bg-linear-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white">
+                                    <ClipboardListIcon className="h-6 w-6" strokeWidth={2.2} />
                                 </div>
                                 <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <div>
                                             <h3 className="font-bold text-lg text-slate-800">
                                                 {watch('name') || 'Untitled Project'}
@@ -857,60 +871,74 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                     )}
                                 </div>
                             </div>
+                        </div>
 
-                            {/* View Controls */}
-                            <div className="flex items-center gap-2">
-                                {/* View Mode Toggle */}
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        type="button"
-                                        variant={viewMode === 'table' ? 'default' : 'outline'}
-                                        size="sm"
-                                        disabled={scopeRows.length === 0}
-                                        onClick={() => setViewMode('table')}
-                                    >
-                                        Table View
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={viewMode === 'gantt' ? 'default' : 'outline'}
-                                        size="sm"
-                                        disabled={scopeRows.length === 0}
-                                        onClick={() => setViewMode('gantt')}
-                                    >
-                                        Timeline Chart
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={viewMode === 'burnup' ? 'default' : 'outline'}
-                                        size="sm"
-                                        disabled={scopeRows.length === 0}
-                                        onClick={() => setViewMode('burnup')}
-                                    >
-                                        Burnup Chart
-                                    </Button>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                    {/* Export Buttons */}
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={exportGanttExcel}
-                                    >
-                                        Export Timeline (Excel)
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={downloadBurnupPNG}
-                                    >
-                                        Download Burnup (PNG)
-                                    </Button>
-                                </div>
+                        {/* View Controls */}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'table' ? 'default' : 'outline'}
+                                    size="sm"
+                                    disabled={scopeRows.length === 0}
+                                    onClick={() => setViewMode('table')}
+                                >
+                                    Table View
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'gantt' ? 'default' : 'outline'}
+                                    size="sm"
+                                    disabled={scopeRows.length === 0}
+                                    onClick={() => setViewMode('gantt')}
+                                >
+                                    Timeline Chart
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'burnup' ? 'default' : 'outline'}
+                                    size="sm"
+                                    disabled={scopeRows.length === 0}
+                                    onClick={() => setViewMode('burnup')}
+                                >
+                                    Burnup Chart
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={exportGanttExcel}
+                                >
+                                    Export Timeline (Excel)
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={downloadBurnupPNG}
+                                >
+                                    Download Burnup (PNG)
+                                </Button>
                             </div>
+
+                            {editProjectId && (
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm">
+                                        {scopeRows.length === 0 ? 'No scopes yet.' : 'Add more scopes.'}
+                                    </p>
+                                    <Button
+                                        type="button"
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                            if (!editProjectId) return;
+                                            openScopeEditor(editProjectId);
+                                        }}
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     </CardHeader>
 
@@ -1051,26 +1079,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                             </div>
                         )}
 
-                        {/* Add / empty state helper */}
-                        {editProjectId && (
-                            <div className="mb-2 flex items-center justify-end gap-2">
-                                <p className="text-sm">
-                                    {scopeRows.length === 0 ? 'No scopes yet.' : 'Add more scopes.'}
-                                </p>
-                                <Button
-                                    type="button"
-                                    variant="default"
-                                    size="sm"
-                                    onClick={() => {
-                                        if (!editProjectId) return;
-                                        openScopeEditor(editProjectId);
-                                    }}
-                                >
-                                    <Plus className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        )}
-
                         {/* Content based on view mode */}
                         {scopeRows.length === 0 ? null : viewMode === 'table' ? (
                             <ScopesTableView
@@ -1174,7 +1182,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
 
                     {/* Footer Stats - displayed on all views */}
                     {scopeRows.length > 0 && timeline.startDate && timeline.endDate && (
-                        <CardFooter className="bg-gradient-to-r from-slate-50 to-gray-50 text-sm">
+                        <CardFooter className="bg-linear-to-r from-slate-50 to-gray-50 text-sm">
                             <div className="flex justify-between items-center text-slate-600 w-full">
                                 <div className="flex items-center gap-6">
                                     <span className="font-medium">{scopeRows.length} tasks total</span>

@@ -1,17 +1,20 @@
-'use client';
-
-import React from 'react';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import ProjectDetails from '@/components/projectmgmt/project-details';
 import { assignorDirectory, assigneeDirectory, PROJECT_TAGS } from '@/components/projectmgmt/project-dash-constants';
 
 type ProjectDetailsPageProps = {
-    params: { projectId: string };
+    params: { projectId?: string };
 };
 
-const ProjectDetailsPage: React.FC<ProjectDetailsPageProps> = ({ params }) => {
-    const projectId = decodeURIComponent(params.projectId);
+const ProjectDetailsPage = ({ params }: ProjectDetailsPageProps) => {
+    const projectIdRaw = params?.projectId;
+    const projectId = projectIdRaw ? decodeURIComponent(projectIdRaw) : '';
+
+    if (!projectId || projectId === 'undefined') {
+        redirect('/projectmgmt');
+    }
 
     return (
         <div className="space-y-6">

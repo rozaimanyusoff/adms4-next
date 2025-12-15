@@ -215,7 +215,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
                 ) : (
                     <div className="grid gap-6 lg:grid-cols-[2fr_1.8fr]">
                         <div className="space-y-4">
-                            <ChartContainer config={workloadStatusConfig} className="!aspect-auto h-64">
+                            <ChartContainer config={workloadStatusConfig} className="aspect-auto! h-64">
                                 <BarChart data={workloadChartData} margin={{ left: 8, right: 16, bottom: 8 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="name" />
@@ -237,7 +237,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
                             </ChartContainer>
                             <ChartContainer
                                 config={workloadDistributionConfig}
-                                className="!aspect-square h-52 w-full max-w-xs mx-auto"
+                                className="aspect-square! h-52 w-full max-w-xs mx-auto"
                             >
                                 <PieChart>
                                     <Pie
@@ -271,7 +271,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="font-medium truncate flex items-center gap-2">
                                                 <span
-                                                    className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                                                    className="h-2.5 w-2.5 rounded-full shrink-0"
                                                     style={{ backgroundColor: row.color }}
                                                 />
                                                 <span className="truncate">{row.name}</span>
@@ -330,7 +330,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
                             Distribution of planned mandays across assignees.
                         </p>
                     </div>
-                    <ChartContainer config={workloadDistributionConfig} className="!aspect-auto h-64">
+                    <ChartContainer config={workloadDistributionConfig} className="aspect-auto! h-64">
                         <BarChart data={workloadDistributionData} margin={{ left: 8, right: 16, bottom: 8 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="name" />
@@ -361,7 +361,7 @@ const ProjectReports: React.FC<ProjectReportsProps> = ({ projects, tags }) => {
                     </div>
                     <ChartContainer
                         config={radarSeriesConfig}
-                        className="!aspect-square h-72 w-full max-w-xl mx-auto"
+                        className="aspect-square! h-72 w-full max-w-xl mx-auto"
                     >
                         <RadarChart data={radarData}>
                             <PolarGrid />

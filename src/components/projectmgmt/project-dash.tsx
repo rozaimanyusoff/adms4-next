@@ -18,6 +18,7 @@ import type {
     ProjectRecord,
     ProjectStatus,
     AssignmentType,
+    AssignmentRole,
     ProjectTag,
     ProjectAssignment,
     ProjectMilestone,
@@ -495,6 +496,23 @@ const defaultProjects: ProjectRecord[] = [
     ),
 ];
 
+const extractPersonName = (person: any): string => {
+    if (!person) return '';
+    if (typeof person === 'string') return person;
+    if (typeof person !== 'object') return '';
+
+    const directName = person.full_name || person.name;
+    if (directName) return String(directName);
+
+    const ramco = person.ramco_id;
+    if (typeof ramco === 'string') return ramco;
+    if (ramco && typeof ramco === 'object') {
+        return String(ramco.full_name || ramco.name || ramco.ramco_id || '').trim();
+    }
+
+    return '';
+};
+
 // Map API project to local ProjectRecord shape
 function mapApiProjectToRecord(item: any): ProjectRecord {
     const id = String(item?.id ?? generateId('proj'));
@@ -526,15 +544,15 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
         ? item.scopes.map((scope: any) => ({
             id: String(scope?.id || generateId('deliverable')),
             serverId: scope?.id,
-            name: scope?.name || '',
+            name: scope?.title || scope?.name || '',
             type: (scope?.type || 'development') as DeliverableType,
             description: scope?.description || '',
-            startDate: (scope?.start_date || '').slice(0, 10),
-            endDate: (scope?.end_date || '').slice(0, 10),
+            startDate: (scope?.planned_start_date || scope?.start_date || '').slice(0, 10),
+            endDate: (scope?.planned_end_date || scope?.end_date || '').slice(0, 10),
             attachments: [],
             progress: Number(scope?.progress ?? 0) || 0,
-            mandays: Number(scope?.mandays ?? 0) || 0,
-            assignee: scope?.assignee || '',
+            mandays: Number(scope?.planned_mandays ?? scope?.mandays ?? 0) || 0,
+            assignee: extractPersonName(scope?.assignee),
             status: scope?.status as MilestoneStatus || 'not_started',
             actualStartDate: scope?.actual_start_date ? scope.actual_start_date.slice(0, 10) : '',
             actualEndDate: scope?.actual_end_date ? scope.actual_end_date.slice(0, 10) : '',
@@ -546,9 +564,9 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
         ? item.assignments.map((assignment: any, index: number) => ({
             id: assignment?.id ? String(assignment.id) : generateId(`assign_${index}`),
             projectId: id,
-            assignor: assignment?.assignor || '',
-            assignee: assignment?.assignee?.full_name || assignment?.assignee || '',
-            role: (assignment?.role as AssignmentType) || 'developer',
+            assignor: extractPersonName(assignment?.assignor),
+            assignee: extractPersonName(assignment?.assignee),
+            role: (assignment?.role as AssignmentRole) || 'developer',
             active: assignment?.active ?? true,
             createdAt: assignment?.created_at || item?.created_at || new Date().toISOString(),
         }))
@@ -761,13 +779,6 @@ const ProjectMain: React.FC = () => {
 
                         {isCreating && (
                             <div className="panel space-y-6 p-5">
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center text-sm font-medium text-primary hover:underline"
-                                    onClick={() => { setIsCreating(false); setEditingProjectId(null); void fetchProjects(); }}
-                                >
-                                    ← Back to projects
-                                </button>
                                 <ProjectDetails
                                     onSubmit={() => { /* form posts internally */ }}
                                     editProjectId={editingProjectId || undefined}
@@ -781,10 +792,7 @@ const ProjectMain: React.FC = () => {
                 </TabsContent>
 
                 <TabsContent value="kanban">
-                    <ProjectKanban
-                        projects={projects}
-                        onCreateProject={() => { setEditingProjectId(null); setIsCreating(true); }}
-                    />
+                    <ProjectKanban projects={projects} />
                 </TabsContent>
 
                 <TabsContent value="reports">
