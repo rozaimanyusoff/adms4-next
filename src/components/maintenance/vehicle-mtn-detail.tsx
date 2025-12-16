@@ -610,7 +610,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 <div className="flex items-center gap-3 ml-2">
                   {request.verification_date && (
                     <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border-1 border-amber-700 bg-amber-200 text-black font-medium">
+                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-amber-700 bg-amber-200 text-black font-medium">
                         <span>Verified: </span>
                         <span className="text-black">{formatDate(request.verification_date)}</span>
                       </span>
@@ -618,7 +618,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                   )}
                   {request.recommendation_date && (
                     <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border-1 border-blue-700 bg-blue-50 text-blue-700 font-medium">
+                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-blue-700 bg-blue-50 text-blue-700 font-medium">
                         <span>Recommended: </span>
                         <span className="text-blue-700">{formatDate(request.recommendation_date)}</span>
                       </span>
@@ -626,7 +626,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                   )}
                   {request.approval_date && (
                     <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border-1 border-green-700 bg-green-50 text-green-700 font-medium">
+                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-green-700 bg-green-50 text-green-700 font-medium">
                         <span>Approved: </span>
                         <span className="text-green-800">{formatDate(request.approval_date)}</span>
                       </span>
@@ -1036,7 +1036,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 ) : serviceHistory.length === 0 ? (
                   <p className="text-sm text-gray-500">No service records found for this asset.</p>
                 ) : (
-                  <div className="group space-y-2 max-h-[750px] border-0 overflow-y-hidden hover:overflow-y-auto">
+                  <div className="space-y-2 max-h-[60vh] sm:max-h-[750px] border-0 overflow-y-auto overscroll-contain pr-1">
                     {serviceHistory.map(rec => (
                       <div key={rec.req_id} className="p-2 border rounded-lg shadow bg-sky-100 dark:bg-gray-800 hover:bg-sky-200 transition-colors">
                         <div className="flex items-center justify-between">
