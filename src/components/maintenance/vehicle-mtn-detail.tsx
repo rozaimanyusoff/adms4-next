@@ -599,45 +599,41 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
     <>
       {/* Top navbar similar to screenshot */}
       <div className="mb-4">
-        <div className="bg-slate-800 text-white rounded-0 p-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="text-lg font-semibold">Vehicle Maintenance Request #{request.req_id}</div>
+        <div className="bg-slate-800 text-white rounded-0 p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="text-lg font-semibold whitespace-normal sm:whitespace-nowrap">Vehicle Maintenance Request #{request.req_id}</div>
 
-            <div className="flex items-start justify-center">
-              <div className="flex items-start space-x-3">
-                {getPriorityBadge(request.priority)}
-                {/* Horizontal timeline badges with dates (label + small date) */}
-                <div className="flex items-center gap-3 ml-2">
-                  {request.verification_date && (
-                    <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-amber-700 bg-amber-200 text-black font-medium">
-                        <span>Verified: </span>
-                        <span className="text-black">{formatDate(request.verification_date)}</span>
-                      </span>
-                    </div>
-                  )}
-                  {request.recommendation_date && (
-                    <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-blue-700 bg-blue-50 text-blue-700 font-medium">
-                        <span>Recommended: </span>
-                        <span className="text-blue-700">{formatDate(request.recommendation_date)}</span>
-                      </span>
-                    </div>
-                  )}
-                  {request.approval_date && (
-                    <div className="flex flex-col items-center text-center">
-                      <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-green-700 bg-green-50 text-green-700 font-medium">
-                        <span>Approved: </span>
-                        <span className="text-green-800">{formatDate(request.approval_date)}</span>
-                      </span>
-                    </div>
-                  )}
+            <div className="flex flex-wrap items-center gap-2">
+              {getPriorityBadge(request.priority)}
+              {/* Horizontal timeline badges with dates (label + small date) */}
+              {request.verification_date && (
+                <div className="flex flex-col items-start text-left">
+                  <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-amber-700 bg-amber-200 text-black font-medium">
+                    <span>Verified: </span>
+                    <span className="text-black">{formatDate(request.verification_date)}</span>
+                  </span>
                 </div>
-              </div>
+              )}
+              {request.recommendation_date && (
+                <div className="flex flex-col items-start text-left">
+                  <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-blue-700 bg-blue-50 text-blue-700 font-medium">
+                    <span>Recommended: </span>
+                    <span className="text-blue-700">{formatDate(request.recommendation_date)}</span>
+                  </span>
+                </div>
+              )}
+              {request.approval_date && (
+                <div className="flex flex-col items-start text-left">
+                  <span className="inline-flex gap-2 items-center px-3 py-1 rounded-full border border-green-700 bg-green-50 text-green-700 font-medium">
+                    <span>Approved: </span>
+                    <span className="text-green-800">{formatDate(request.approval_date)}</span>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end w-full sm:w-auto">
             <Button
               variant="ghost"
               size="sm"
@@ -662,7 +658,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
               variant="ghost"
               size="sm"
               onClick={handleBackClick}
-              className="bg-red-600 hover:bg-red-500 text-white hover:text-white px-2 py-1"
+              className="bg-red-600 hover:bg-red-500 text-white hover:text-white px-2 py-1 ml-auto sm:ml-0 order-3 sm:order-0"
               aria-label="Back"
             >
               <ArrowLeft className="w-4 h-4 mr-1" /> Back
