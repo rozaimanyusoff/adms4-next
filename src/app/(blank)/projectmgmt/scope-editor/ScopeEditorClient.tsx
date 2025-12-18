@@ -21,6 +21,7 @@ const EMPTY_SCOPE_FORM: ScopeFormValues = {
     actualEndDate: '',
     files: [],
     featureKeys: [],
+    checklistDetails: [],
 };
 
 type ScopeEditorClientProps = {
@@ -35,6 +36,20 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
     const [assigneeChoices, setAssigneeChoices] = useState<ComboboxOption[]>([]);
     const [assigneeLoading, setAssigneeLoading] = useState(false);
     const [assigneeError, setAssigneeError] = useState<string | null>(null);
+    const detailsPath = useMemo(() => `/projectmgmt/${encodeURIComponent(projectId)}`, [projectId]);
+
+    const handleClose = () => {
+        if (typeof window !== 'undefined') {
+            window.close();
+            setTimeout(() => {
+                if (!window.closed) {
+                    router.push(detailsPath);
+                }
+            }, 100);
+            return;
+        }
+        router.push(detailsPath);
+    };
 
     useEffect(() => {
         const fetchAssignees = async () => {
@@ -83,6 +98,7 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
                         actualEndDate: toDateOnly(scope.actual_end_date),
                         progress: Number(scope.progress ?? 0) || 0,
                         featureKeys: Array.isArray(scope.featureKeys) ? scope.featureKeys : [],
+                        checklistDetails: Array.isArray(scope.checklistDetails) ? scope.checklistDetails : [],
                     });
                 }
             } catch (err: any) {
@@ -140,10 +156,7 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
                 await authenticatedApi.post(`/api/projects/${projectId}/scopes`, formData);
                 toast.success('Scope added');
             }
-            router.push('/projectmgmt');
-            if (typeof window !== 'undefined') {
-                window.close();
-            }
+            handleClose();
             return true;
         } catch (err: any) {
             const msg = err?.response?.data?.message || err?.message || 'Failed to save scope';
@@ -162,9 +175,9 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
         <>
             <ScopeForm
                 isOpen
-                onClose={() => router.push('/projectmgmt')}
+                onClose={handleClose}
                 onSubmit={handleSubmit}
-                onCancelEdit={() => router.push('/projectmgmt')}
+                onCancelEdit={handleClose}
                 editingScopeIndex={scopeId ? 0 : null}
                 assigneeChoices={assigneeChoices}
                 assigneeLoading={assigneeLoading}

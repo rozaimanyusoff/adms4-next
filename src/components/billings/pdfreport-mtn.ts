@@ -42,11 +42,12 @@ export interface MaintenanceReportData {
    inv_total: string;
    inv_stat: string;
    inv_remarks?: string;
+   service_details?: string;
    asset: {
       register_number: string;
       fuel_type: string;
       costcenter?: { name: string };
-      location?: { name: string };
+      location?: { code: string };
    };
    workshop: {
       name: string;
@@ -154,7 +155,9 @@ export async function generateMaintenanceReport({
    y += 4;
    doc.text(`Service Date: ${data.svc_date ? new Date(data.svc_date).toLocaleDateString() : 'N/A'}`, 16, y);
    y += 4;
-   doc.text(`Service Remarks: ${data.inv_remarks || 'N/A'}`, 16, y);
+   doc.text(`Service Details: ${data.service_details || 'N/A'}`, 16, y);
+   y += 4;
+   doc.text(`Invoice Remarks: ${data.inv_remarks || 'N/A'}`, 16, y);
 
    // Right column - Vehicle Information
    y = 91;
@@ -173,7 +176,7 @@ export async function generateMaintenanceReport({
    y += 4;
    doc.text(`Cost Center: ${data.asset?.costcenter?.name || 'N/A'}`, pageWidth / 2 + 10, y);
    y += 4;
-   doc.text(`Location: ${data.asset?.location?.name || 'N/A'}`, pageWidth / 2 + 10, y);
+   doc.text(`Location: ${data.asset?.location?.code || 'N/A'}`, pageWidth / 2 + 10, y);
 
    // Service Items Table
    y += 10;

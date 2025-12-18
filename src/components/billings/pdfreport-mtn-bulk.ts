@@ -112,6 +112,7 @@ const renderMaintenanceInvoice = (
 		item.inv_no || 'N/A',
 		item.asset?.register_number || 'N/A',
 		item.service_details || 'N/A',
+		item.asset?.costcenter?.name || 'N/A',
 		formatCurrency(parseFloat(item.inv_total || '0')),
 	]);
 
@@ -122,7 +123,7 @@ const renderMaintenanceInvoice = (
 	y += 3;
 	autoTable(doc, {
 		startY: y,
-		head: [['No', 'Request No', 'Invoice No', 'Vehicle', 'Service Details', 'Sub-Total (RM)']],
+		head: [['No', 'Request No', 'Invoice No', 'Vehicle', 'Service Details', 'Cost Ctr', 'Sub-Total (RM)']],
 		body: tableBody,
 		// Pad the footer so the label/value align to the right
 		foot: [[{ content: '', colSpan: 4 }, 'Grand Total', formatCurrency(grandTotal)]],
@@ -151,11 +152,12 @@ const renderMaintenanceInvoice = (
 		},
 		columnStyles: {
 			0: { cellWidth: 10, halign: 'center' },
-			1: { cellWidth: 30, halign: 'center' },
-			2: { cellWidth: 35, halign: 'center' },
-			3: { cellWidth: 30, halign: 'center' },
+			1: { cellWidth: 25, halign: 'center' },
+			2: { cellWidth: 30, halign: 'center' },
+			3: { cellWidth: 25, halign: 'center' },
 			4: { cellWidth: 0, halign: 'left' },
-			5: { cellWidth: 35, halign: 'right' },
+			5: { cellWidth: 25, halign: 'center' },
+			6: { cellWidth: 30, halign: 'right' },
 		},
 		// Leave space for header/footer on page breaks
 		margin: { left: 14, right: 14, top: HEADER_TOP_Y, bottom: 50 },
