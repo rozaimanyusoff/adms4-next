@@ -213,7 +213,7 @@ export async function generateMaintenanceReport({
          '0.00', // Discount placeholder
          formatCurrency(row.subTotal)
       ]),
-      foot: [[{ content: '', colSpan: 5 }, 'Grand Total', '']], // value set below via footStyles.halign right
+      foot: [[{ content: 'Grand Total', colSpan: 6 }, formatCurrency(grandTotal)]],
       theme: 'grid',
       headStyles: {
          fillColor: [41, 128, 185],
@@ -245,12 +245,7 @@ export async function generateMaintenanceReport({
          6: { cellWidth: 30, halign: 'right' }   // Sub-total
       },
       margin: { left: 14, right: 14 },
-      didParseCell: (data: any) => {
-         // inject grand total value into last foot column
-         if (data.section === 'foot' && data.column.index === 6) {
-            data.cell.text = [formatCurrency(grandTotal)];
-         }
-      }
+      didParseCell: (_data: any) => {}
    });
 
    // Position after table

@@ -125,8 +125,8 @@ const renderMaintenanceInvoice = (
 		startY: y,
 		head: [['No', 'Request No', 'Invoice No', 'Vehicle', 'Service Details', 'Cost Ctr', 'Sub-Total (RM)']],
 		body: tableBody,
-		// Pad the footer so the label/value align to the right
-		foot: [[{ content: '', colSpan: 4 }, 'Grand Total', formatCurrency(grandTotal)]],
+			// Footer spans No through Cost Ctr, amount in last column
+			foot: [[{ content: 'Grand Total', colSpan: 6 }, formatCurrency(grandTotal)]],
 		showFoot: 'everyPage',
 		theme: 'grid',
 		headStyles: {

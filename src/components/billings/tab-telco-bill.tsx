@@ -4,17 +4,27 @@ import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import TelcoDash from "./telco-dash";
 import TelcoBill from "./telco-bill";
+import TelcoAccounts from "./telco-accounts";
+import TelcoSubs from "./telco-subs";
+import TelcoSims from "./telco-sims";
 import Link from "next/link";
 
 const TelcoBillTab: React.FC = () => {
     const tabTitles = [
         { value: "telco-dash", label: "Dashboard" },
-        { value: "telco-bill", label: "Telco Bills" },
+        { value: "telco-bill", label: "Billing" },
+        { value: "telco-accounts", label: "Accounts" },
+        { value: "telco-subs", label: "Subscribers" },
+        { value: "telco-sims", label: "SIMs" },
+        { value: "devices", label: "Devices" },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
         "telco-dash": <TelcoDash />,
         "telco-bill": <TelcoBill />,
+        "telco-accounts": <TelcoAccounts />,
+        "telco-subs": <TelcoSubs />,
+        "telco-sims": <TelcoSims />,
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {

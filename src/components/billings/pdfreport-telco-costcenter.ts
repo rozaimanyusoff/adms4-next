@@ -7,22 +7,37 @@ import { addHeaderFooter } from './pdf-helpers';
 
 
 export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
-    if (!utilIds || utilIds.length === 0) return;
-    function formatDate(dateInput: string | Date | undefined): string {
-        if (!dateInput) return '';
-        const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1);
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
-    }
-    try {
-        // Fetch all bills in one request
-        const res = await authenticatedApi.post('/api/telco/bills/by-ids',
-            JSON.stringify({ ids: utilIds }),
-            { headers: { 'Content-Type': 'application/json' } }
-        ) as { data: { data: any[] } };
+        if (!utilIds || utilIds.length === 0) return;
+        function formatDate(dateInput: string | Date | undefined): string {
+            if (!dateInput) return '';
+            const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1);
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        }
+        const fetchBase64 = async (url?: string) => {
+            if (!url) return undefined;
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+            });
+            reader.readAsDataURL(blob);
+            return await base64Promise;
+        };
+        let headerLogoBase64: string | undefined;
+        let footerLogoBase64: string | undefined;
+        try {
+            // Fetch all bills in one request
+            const res = await authenticatedApi.post('/api/telco/bills/by-ids',
+                JSON.stringify({ ids: utilIds }),
+                { headers: { 'Content-Type': 'application/json' } }
+        ) as { data: { data: any[]; bill_summary?: any } };
         const bills = (res as any)?.data?.data || [];
+        const billSummary = (res as any)?.data?.bill_summary;
         if (bills.length === 0) {
             toast.error('No bill data found for selected bills.');
             return;
@@ -33,16 +48,8 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         const logoUrl = process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT;
         if (logoUrl) {
             try {
-                const response = await fetch(logoUrl);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                const base64Promise = new Promise<string>((resolve, reject) => {
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                });
-                reader.readAsDataURL(blob);
-                const base64 = await base64Promise;
-                doc.addImage(base64, 'PNG', pageWidth - 32, 14, 18, 28);
+                headerLogoBase64 = await fetchBase64(logoUrl);
+                if (headerLogoBase64) doc.addImage(headerLogoBase64, 'PNG', pageWidth - 32, 14, 18, 28);
             } catch (e) { }
         }
         doc.setFont('helvetica', 'bold');
@@ -75,119 +82,78 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         doc.text(`Kindly please make a payment to the following providers as follows:`, 15, 70);
         let y = 75;
         const tableHeaderRow = [
-            'No', 'Account No', 'Date', 'Bill/Inv No', 'Provider', 'Cost Center', 'Total (RM)'
+            'No', 'Account No', 'Date', 'Bill/Inv No', 'Provider', 'Sub-total (RM)', 'Bill Tax (RM)', 'Rounding (RM)', 'Total (RM)'
         ];
         let rowNum = 1;
-        const tableBody = [
-            tableHeaderRow,
-            ...bills.map((bill: any) => {
-                // Debug: log the bill structure
-                console.log('Bill data:', {
-                    id: bill.id,
-                    bill_no: bill.bill_no,
-                    subscriber: bill.subscriber,
-                    costcenter: bill.subscriber?.costcenter
-                });
-                
-                return [
-                    String(rowNum++),
-                    bill.account?.account_no || '',
-                    bill.bill_date ? formatDate(bill.bill_date) : '',
-                    bill.bill_no || '',
-                    bill.account?.provider || '',
-                    bill.subscriber?.costcenter?.name || '-',
-                    Number(bill.grand_total).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                ];
-            })
-        ];
+        const tableBody: any[] = [];
+        let totalAccumulator = 0;
+
+        bills.forEach((bill: any) => {
+            const accountNo = bill.account?.account_no || '';
+            const billDate = bill.bill_date ? formatDate(bill.bill_date) : '';
+            const billNo = bill.bill_no || '';
+            const provider = bill.account?.provider || '';
+            const billTax = Number(bill.tax || 0);
+            const billSubtotal = Number(bill.subtotal || 0);
+            const billTotal = Number(bill.grand_total || 0);
+            const billRounding = Number(bill.rounding || 0);
+            totalAccumulator += billTotal;
+            tableBody.push([
+                String(rowNum++),
+                accountNo,
+                billDate,
+                billNo,
+                provider,
+                billSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                billTax.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                billRounding.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                billTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ]);
+        });
+
+        const grandTotalValue = totalAccumulator.toLocaleString(undefined, { minimumFractionDigits: 2 });
         autoTable(doc, {
             startY: y,
-            head: [],
+            head: [tableHeaderRow],
             body: tableBody,
+            foot: [[
+                { content: 'Grand Total (RM)', colSpan: 8 },
+                grandTotalValue
+            ]],
+            showFoot: 'everyPage',
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
-            didParseCell: function (data: any) {
-                if (data.row.index === 0) {
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [255,255,255];
-                    data.cell.styles.textColor = [0,0,0];
-                }
-            },
-            didDrawCell: function (data: any) {
-                if (data.row.index === 0) {
-                    const { cell } = data;
-                    const doc = data.doc;
-                    doc.setDrawColor(200);
-                    doc.setLineWidth(0.1);
-                    doc.rect(cell.x, cell.y, cell.width, cell.height);
-                }
+            headStyles: {
+                fillColor: [41, 128, 185],
+                textColor: 255,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'center',
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' },
-                1: { cellWidth: 28, halign: 'center' },
-                2: { cellWidth: 25, halign: 'center' },
-                3: { cellWidth: 38, halign: 'center' },
-                4: { cellWidth: 27, halign: 'center' },
-                5: { cellWidth: 26, halign: 'center' },
-                6: { cellWidth: 25, halign: 'right' },
+                0: { cellWidth: 8, halign: 'center' },
+                1: { cellWidth: 22, halign: 'center' },
+                2: { cellWidth: 22, halign: 'center' },
+                3: { cellWidth: 27, halign: 'center' },
+                4: { cellWidth: 20, halign: 'center' },
+                5: { cellWidth: 20, halign: 'right' },
+                6: { cellWidth: 20, halign: 'right' },
+                7: { cellWidth: 20, halign: 'right' },
+                8: { cellWidth: 23, halign: 'right' },
+            },
+            footStyles: {
+                fillColor: [242, 242, 242],
+                textColor: 0,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'right',
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200],
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
             theme: 'grid',
         });
-        y = (doc as any).lastAutoTable.finalY + 4;
-        // Calculate totals for all selected bills
-        const subtotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.subtotal || 0), 0);
-        const totalTax = bills.reduce((sum: number, bill: any) => sum + Number(bill.tax || 0), 0);
-        const totalRounding = bills.reduce((sum: number, bill: any) => sum + Number(bill.rounding || 0), 0);
-        const grandTotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.grand_total || 0), 0);
-        const subtotalLabel = 'Subtotal (RM):';
-        const subtotalValue = subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const taxLabel = 'Tax (RM):';
-        const totalTaxValue = totalTax.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const roundLabel = 'Rounding (RM):';
-        const roundValue = totalRounding.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const grandTotalLabel = 'Grand Total (RM):';
-        const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const colWidths = [10, 28, 25, 38, 27, 26, 25];
-        const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
-        const xStart = 14;
-        const rowHeight = 6;
-        /* doc.setFillColor(255,255,255);
-        doc.setDrawColor(200);
-        doc.setLineWidth(0.1);
-        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text(subtotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
-        doc.text(subtotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight; */
-        /* doc.setFillColor(255,255,255);
-        doc.setDrawColor(200);
-        doc.setLineWidth(0.1);
-        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text(taxLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
-        doc.text(totalTaxValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight; */
-        /* doc.setFillColor(255,255,255);
-        doc.setDrawColor(200);
-        doc.setLineWidth(0.1);
-        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text(roundLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
-        doc.text(roundValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += rowHeight; */
-        doc.setFillColor(255,255,255);
-        doc.setDrawColor(200);
-        doc.setLineWidth(0.1);
-        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text(grandTotalLabel, xStart + totalTableWidth - 28, y, { align: 'right' });
-        doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += 10;
+        y = (doc as any).lastAutoTable.finalY + 10;
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         doc.text('Your cooperation on the above is highly appreciated.', 15, y);
@@ -223,31 +189,101 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         doc.text('Date:', 15, y);
         doc.text('Date:', pageWidth / 2 - 28, y);
         doc.text('Date:', pageWidth - 73, y);
-        y += 10;
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(8);
-        const pageHeight = doc.internal.pageSize.getHeight();
-        doc.text('This document is generated by ADMS4', pageWidth / 2, pageHeight - 35, { align: 'center' });
         const footerLogoUrl = process.env.NEXT_PUBLIC_REPORT_FOOTER_LOGO;
-        if (footerLogoUrl) {
-            try {
-                const response = await fetch(footerLogoUrl);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                const base64Promise = new Promise<string>((resolve, reject) => {
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                });
-                reader.readAsDataURL(blob);
-                const base64 = await base64Promise;
-                const imgWidth = 205;
-                const imgHeight = 26;
-                const x = (pageWidth - imgWidth) / 4;
+        const addFooterNoteToAllPages = async () => {
+            if (footerLogoUrl && !footerLogoBase64) {
+                try {
+                    footerLogoBase64 = await fetchBase64(footerLogoUrl);
+                } catch (e) { }
+            }
+            for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+                doc.setPage(i);
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(8);
                 const pageHeight = doc.internal.pageSize.getHeight();
-                doc.addImage(base64, 'PNG', x, pageHeight - imgHeight - 2, imgWidth, imgHeight);
-            } catch (e) { }
+                doc.text('This document is generated by ADMS4', doc.internal.pageSize.getWidth() / 2, pageHeight - 35, { align: 'center' });
+                if (footerLogoBase64) {
+                    try {
+                        const imgWidth = 205;
+                        const imgHeight = 26;
+                        const x = (doc.internal.pageSize.getWidth() - imgWidth) / 4;
+                        doc.addImage(footerLogoBase64, 'PNG', x, pageHeight - imgHeight - 2, imgWidth, imgHeight);
+                    } catch (e) { }
+                }
+            }
+        };
+        const addHeaderLogoToAllPages = () => {
+            if (!headerLogoBase64) return;
+            for (let i = 1; i <= doc.getNumberOfPages(); i++) {
+                doc.setPage(i);
+                try {
+                    doc.addImage(headerLogoBase64, 'PNG', pageWidth - 32, 14, 18, 28);
+                } catch (e) { }
+            }
+        };
+
+        if (billSummary?.cc_summary_across_bills && billSummary.cc_summary_across_bills.length > 0) {
+            const ccRows = billSummary.cc_summary_across_bills.length;
+            const estimatedHeight = 20 + (ccRows + 2) * 6;
+            const footerReserve = 60;
+            const pageHeight = doc.internal.pageSize.getHeight();
+            let summaryY = y + 12;
+            if (summaryY + estimatedHeight > pageHeight - footerReserve) {
+                doc.addPage();
+                summaryY = 60; // keep content below header logo on new page
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text('Cost Center Summary Across Bills', 14, summaryY);
+            summaryY += 4;
+
+            const ccHead = [['Cost Center', 'Sub-total (RM)', 'Total Tax (RM)', 'Cost Center Total (RM)']];
+            const ccBody = billSummary.cc_summary_across_bills.map((item: any) => [
+                item.costcenter?.name || '-',
+                Number(item.cc_sub_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                Number(item.tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                Number(item.cc_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ]);
+
+            autoTable(doc, {
+                startY: summaryY,
+                head: ccHead,
+                body: ccBody,
+                theme: 'grid',
+                styles: { font: 'helvetica', fontSize: 9, cellPadding: 1.5 },
+                headStyles: {
+                    fillColor: [41, 128, 185],
+                    textColor: 255,
+                    fontStyle: 'bold',
+                    fontSize: 9,
+                    halign: 'center',
+                },
+                columnStyles: {
+                    0: { cellWidth: 60, halign: 'left' },
+                    1: { cellWidth: 35, halign: 'right' },
+                    2: { cellWidth: 35, halign: 'right' },
+                    3: { cellWidth: 40, halign: 'right' },
+                },
+                margin: { left: 14, right: 14 },
+                tableWidth: 'auto',
+            });
+
+            summaryY = (doc as any).lastAutoTable.finalY + 6;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text(
+                `Grand Total Across Bills (RM): ${Number(billSummary.grand_total_across_bills || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                14,
+                summaryY
+            );
+
         }
-        doc.save(`telco-bill-summary-batch.pdf`);
+        addHeaderLogoToAllPages();
+        await addFooterNoteToAllPages();
+
+        const now = new Date();
+        const timestamp = `${String(now.getDate()).padStart(2, '0')}${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+        doc.save(`telco-bill-summary-batch-${timestamp}.pdf`);
         toast.success('Batch PDF downloaded!');
     } catch (err) {
         toast.error('Failed to export batch PDF.');
