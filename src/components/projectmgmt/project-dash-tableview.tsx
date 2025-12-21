@@ -10,7 +10,7 @@ import {
     getPriorityMeta,
     STATUS_META,
     STATUS_PROGRESS_COLORS,
-    TYPE_LABEL,
+    CATEGORY_LABEL,
     ROLE_LABEL,
 } from './project-dash-helpers';
 
@@ -87,7 +87,7 @@ const ProjectDashTableView: React.FC<ProjectDashTableViewProps> = ({ projects, o
                                 </td>
                                 <td className="px-4 py-3">
                                     <div className="flex flex-wrap items-center gap-1">
-                                        <Badge variant="secondary">{TYPE_LABEL[project.assignmentType]}</Badge>
+                                        <Badge variant="secondary">{CATEGORY_LABEL[project.projectCategory]}</Badge>
                                         {primaryAssignment && (
                                             <Badge variant="outline" className="text-[11px] uppercase">
                                                 {ROLE_LABEL[primaryAssignment.role]}

@@ -16,7 +16,7 @@ import { authenticatedApi } from '@/config/api';
 // Kept for downstream consumers; UI no longer uses task groups
 export const TASK_GROUP_OPTIONS: ComboboxOption[] = [];
 
-export type ScopeFormValues = {
+export type ModuleFormValues = {
     name: string;
     type: DeliverableType;
     description: string;
@@ -33,22 +33,22 @@ export type ScopeFormValues = {
     checklistDetails: ChecklistDetail[];
 };
 
-type ScopeFormProps = {
+type ModuleFormProps = {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (values: ScopeFormValues) => Promise<boolean | void> | boolean | void;
+    onSubmit: (values: ModuleFormValues) => Promise<boolean | void> | boolean | void;
     onCancelEdit: () => void;
-    editingScopeIndex: number | null;
+    editingModuleIndex: number | null;
     assigneeChoices: ComboboxOption[];
     assigneeLoading: boolean;
     assigneeError: string | null;
-    scopeStats: { total: number; completed: number; inProgress: number };
+    moduleStats: { total: number; completed: number; inProgress: number };
     calcMandays: (startISO?: string, endISO?: string) => number;
-    initialValues?: ScopeFormValues;
+    initialValues?: ModuleFormValues;
     shouldCloseOnSubmit?: boolean;
 };
 
-const EMPTY_VALUES: ScopeFormValues = {
+const EMPTY_VALUES: ModuleFormValues = {
     name: '',
     type: 'development',
     description: '',
@@ -77,16 +77,16 @@ type ChecklistDetail = {
     expectedMandays: number | '';
 };
 
-const ScopeForm: React.FC<ScopeFormProps> = ({
+const ModuleForm: React.FC<ModuleFormProps> = ({
     isOpen,
     onClose,
     onSubmit,
     onCancelEdit,
-    editingScopeIndex,
+    editingModuleIndex,
     assigneeChoices,
     assigneeLoading,
     assigneeError,
-    scopeStats: _scopeStats,
+    moduleStats: _moduleStats,
     calcMandays,
     initialValues,
     shouldCloseOnSubmit = false,
@@ -104,7 +104,7 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
         setValue,
         watch,
         formState: { errors },
-    } = useForm<ScopeFormValues>({
+    } = useForm<ModuleFormValues>({
         defaultValues: EMPTY_VALUES,
     });
 
@@ -236,7 +236,7 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
         if (ok === false) return;
         reset({ ...EMPTY_VALUES });
         setFormKey(k => k + 1);
-        if (editingScopeIndex !== null) {
+        if (editingModuleIndex !== null) {
             onCancelEdit();
         }
         if (shouldCloseOnSubmit) {
@@ -251,8 +251,8 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
         <Card className="space-y-4 p-4 shadow-sm">
             <div className="flex items-center justify-between">
                 <div>
-                    <p className="text-sm font-semibold">{editingScopeIndex !== null ? 'Edit scope' : 'Add scope'}</p>
-                    <p className="text-xs text-muted-foreground">Define scope details and attach planned timelines.</p>
+                    <p className="text-sm font-semibold">{editingModuleIndex !== null ? 'Edit module' : 'Add module'}</p>
+                    <p className="text-xs text-muted-foreground">Define module details and attach planned timelines.</p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={onClose} className='bg-red-600 text-white'>
                     Close
@@ -413,7 +413,7 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
                     </div>
                     <div className="flex items-center justify-end pt-2">
                         <div className="flex items-center gap-2">
-                            {editingScopeIndex !== null && (
+                            {editingModuleIndex !== null && (
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -427,7 +427,7 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
                             )}
                             <Button type="button" variant="secondary" onClick={submitForm}>
                                 <Plus className="mr-2 h-4 w-4" />
-                                {editingScopeIndex !== null ? 'Save scope' : 'Add scope'}
+                                {editingModuleIndex !== null ? 'Save module' : 'Add module'}
                             </Button>
                         </div>
                     </div>
@@ -497,4 +497,4 @@ const ScopeForm: React.FC<ScopeFormProps> = ({
     );
 };
 
-export default ScopeForm;
+export default ModuleForm;

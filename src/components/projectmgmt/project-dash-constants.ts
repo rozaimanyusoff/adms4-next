@@ -1,9 +1,21 @@
 'use client';
 
-import type { ProjectTag } from './types';
+import type { ProjectTag, ProjectCategory, ProjectType } from './types';
 
 export const assignorDirectory = ['PMO Lead', 'Service Desk Manager', 'Finance Head', 'Operations Director'];
 export const assigneeDirectory = ['Melissa Carter', 'Benjamin Lee', 'April Ramos', 'Liam Patel', 'Natalie Chen', 'Omar Idris'];
+
+// Project Categories
+export const PROJECT_CATEGORIES: Array<{ value: ProjectCategory; label: string }> = [
+    { value: 'new', label: 'New Project' },
+    { value: 'enhancement', label: 'Enhancement' },
+];
+
+// Project Types
+export const PROJECT_TYPES: Array<{ value: ProjectType; label: string }> = [
+    { value: 'claimable', label: 'Claimable' },
+    { value: 'internal', label: 'Internal' },
+];
 
 export const PROJECT_TAGS: ProjectTag[] = [
     { id: 'tag_ops', name: 'Operational Excellence', slug: 'operational-excellence', colorHex: '#0ea5e9' },

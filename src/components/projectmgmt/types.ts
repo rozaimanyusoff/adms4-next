@@ -2,6 +2,10 @@ export type AssignmentType = 'project' | 'support' | 'ad_hoc';
 
 export type ProjectStatus = 'not_started' | 'in_progress' | 'completed' | 'at_risk';
 
+export type ProjectCategory = 'new' | 'enhancement';
+
+export type ProjectType = 'claimable' | 'internal';
+
 export type AssignmentRole = 'developer' | 'collaborator' | 'supervisor';
 
 export type MilestoneStatus = 'not_started' | 'in_progress' | 'completed' | 'at_risk';
@@ -74,7 +78,7 @@ export interface ProjectDeliverableAttachment {
 
 export interface ProjectDeliverable {
     id: string;
-    // Optional original server id when editing existing scope
+    // Optional original server id when editing existing module
     serverId?: string | number;
     name: string;
     type: DeliverableType;
@@ -86,7 +90,7 @@ export interface ProjectDeliverable {
     progress?: number;
     // Working days between start and end excluding weekends
     mandays?: number;
-    // Scope-specific enrichments (optional, UI-only for now)
+    // Module-specific enrichments (optional, UI-only for now)
     taskGroups?: string[];
     assignee?: string;
     status?: MilestoneStatus;
@@ -99,11 +103,11 @@ export interface ProjectDeliverable {
 
 export interface ProjectRecord {
     id: string;
-    code: string;
+    code: string;                     // Project code/contract identifier
     name: string;
     description?: string;
-    projectType?: 'dev' | 'it';
-    assignmentType: AssignmentType;
+    projectType?: ProjectType;        // Changed from 'dev' | 'it' to 'claimable' | 'internal'
+    projectCategory: ProjectCategory; // Changed from assignmentType: 'new' | 'enhancement'
     priority?: string;
     status: ProjectStatus;
     startDate: string;
@@ -121,17 +125,17 @@ export interface ProjectRecord {
 }
 
 export interface ProjectFormValues {
-    code: string;
+    contract: string;                 // Changed from 'code'
     name: string;
     description?: string;
-    assignmentType: AssignmentType;
+    projectType?: ProjectType;        // 'claimable' | 'internal'
+    projectCategory: ProjectCategory; // Changed from 'assignmentType'
     assignor: string;
     assignee: string;
     assignmentRole: AssignmentRole;
     startDate: string;
     dueDate: string;
     percentComplete: number;
-    tagSlugs: string[];
     deliverables: Array<{
         id: string;
         serverId?: string | number;
@@ -143,7 +147,7 @@ export interface ProjectFormValues {
         attachments: ProjectDeliverableAttachment[];
         progress?: number;
         mandays?: number;
-        // Scope-specific enrichments (optional, UI-only for now)
+        // Module-specific enrichments (optional, UI-only for now)
         taskGroups?: string[];
         assignee?: string;
         status?: MilestoneStatus;
@@ -152,4 +156,16 @@ export interface ProjectFormValues {
         actualMandays?: number;
         fileBlobs?: File[];
     }>;
+}
+
+// Registration-specific form for initial project setup
+export interface ProjectRegistrationValues {
+    contract: string;                 // Unique contract identifier
+    name: string;
+    description?: string;
+    projectType?: ProjectType;        // 'claimable' | 'internal'
+    projectCategory: ProjectCategory; // 'new' | 'enhancement'
+    priority?: string;
+    startDate: string;
+    dueDate: string;
 }

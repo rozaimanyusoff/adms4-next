@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { differenceInCalendarDays, isBefore, isValid, parseISO } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { LayoutGrid, Plus, Table } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ProjectDetails from './project-details';
 import ProjectDashCardView from './project-dash-cardview';
 import ProjectDashTableView from './project-dash-tableview';
 import ProjectKanban from './project-kanban';
@@ -17,7 +17,6 @@ import type {
     ProjectFormValues,
     ProjectRecord,
     ProjectStatus,
-    AssignmentType,
     AssignmentRole,
     ProjectTag,
     ProjectAssignment,
@@ -43,7 +42,7 @@ const generateId = (prefix = 'proj') => {
     return `${prefix}_${core}`;
 };
 
-const normalizeProjectCode = (code: string) => code.trim().toUpperCase().replace(/\s+/g, '-');
+const normalizeContract = (code: string) => code.trim().toUpperCase().replace(/\s+/g, '-');
 
 const computeDurationDays = (startDate: string, dueDate: string) => {
     const start = parseISO(startDate);
@@ -182,21 +181,8 @@ const buildProgressLogs = (
 };
 
 const buildSupportShifts = (projectId: string, values: ProjectFormValues, timestamp: string): ProjectSupportShift[] => {
-    if (values.assignmentType !== 'support') {
-        return [];
-    }
-
-    return [
-        {
-            id: generateId('shift'),
-            projectId,
-            shiftStart: `${values.startDate}T09:00:00Z`,
-            shiftEnd: `${values.startDate}T17:00:00Z`,
-            coverageHours: 8,
-            notes: 'Primary coverage established at registration.',
-            createdAt: timestamp,
-        },
-    ];
+    // Support shift management is handled separately
+    return [];
 };
 
 const buildTagLinks = (
@@ -256,7 +242,7 @@ const hydrateRecord = (values: ProjectFormValues, tagLookup: Record<string, Proj
     const dueDate = timeline.endDate || values.dueDate;
     const durationDays = computeDurationDays(startDate, dueDate);
     const percentComplete = clampPercent(values.percentComplete);
-    const code = normalizeProjectCode(values.code || generateId('code'));
+    const code = normalizeContract(values.contract || generateId('code'));
     const createdAt = new Date().toISOString();
     const projectId = generateId('proj');
     const status = inferStatus({
@@ -270,15 +256,15 @@ const hydrateRecord = (values: ProjectFormValues, tagLookup: Record<string, Proj
     const milestones = buildMilestones(projectId, baseValues, percentComplete, createdAt);
     const progressLogs = buildProgressLogs(projectId, baseValues, percentComplete, durationDays, status, createdAt);
     const supportShifts = buildSupportShifts(projectId, baseValues, createdAt);
-    const tags = buildTagLinks(projectId, values.tagSlugs, createdAt, tagLookup);
+    const tags = buildTagLinks(projectId, [], createdAt, tagLookup);
 
     return {
         id: projectId,
         code,
         name: values.name,
         description: values.description,
-        projectType: 'dev',
-        assignmentType: values.assignmentType,
+        projectType: 'claimable',
+        projectCategory: values.projectCategory || 'new',
         status,
         startDate,
         dueDate,
@@ -298,17 +284,16 @@ const hydrateRecord = (values: ProjectFormValues, tagLookup: Record<string, Proj
 const defaultProjects: ProjectRecord[] = [
     hydrateRecord(
         {
-            code: 'CS-OPS-001',
+            contract: 'CS-OPS-001',
             name: 'Customer Support Ticket Automation',
             description: 'Integrate AI triage rules for high-volume support queues.',
-            assignmentType: 'project',
+            projectCategory: 'new',
             assignor: assignorDirectory[0],
             assignee: assigneeDirectory[0],
             assignmentRole: 'developer',
             startDate: '2024-10-01',
             dueDate: '2024-12-15',
             percentComplete: 55,
-            tagSlugs: ['operational-excellence', 'automation'],
             deliverables: [
                 {
                     id: generateId('deliverable'),
@@ -352,17 +337,16 @@ const defaultProjects: ProjectRecord[] = [
     ),
     hydrateRecord(
         {
-            code: 'FIN-SUP-014',
+            contract: 'FIN-SUP-014',
             name: 'Finance Month-End Stabilization',
             description: 'Support finance team during quarter close with reconciliations.',
-            assignmentType: 'support',
+            projectCategory: 'enhancement',
             assignor: assignorDirectory[2],
             assignee: assigneeDirectory[2],
             assignmentRole: 'developer',
             startDate: '2024-11-10',
             dueDate: '2025-01-05',
             percentComplete: 35,
-            tagSlugs: ['finance', 'risk-watch'],
             deliverables: [
                 {
                     id: generateId('deliverable'),
@@ -397,17 +381,16 @@ const defaultProjects: ProjectRecord[] = [
     ),
     hydrateRecord(
         {
-            code: 'OPS-PLAY-007',
+            contract: 'OPS-PLAY-007',
             name: 'Operations Playbook Refresh',
             description: 'Update SOPs to reflect the new logistics workflow.',
-            assignmentType: 'ad_hoc',
+            projectCategory: 'enhancement',
             assignor: assignorDirectory[3],
             assignee: assigneeDirectory[4],
             assignmentRole: 'supervisor',
             startDate: '2024-09-18',
             dueDate: '2024-11-22',
             percentComplete: 85,
-            tagSlugs: ['operational-excellence'],
             deliverables: [
                 {
                     id: generateId('deliverable'),
@@ -451,17 +434,16 @@ const defaultProjects: ProjectRecord[] = [
     ),
     hydrateRecord(
         {
-            code: 'SD-SHIFT-003',
+            contract: 'SD-SHIFT-003',
             name: 'Service Desk Holiday Coverage',
             description: 'Coordinate backup support schedule for holiday period.',
-            assignmentType: 'support',
+            projectCategory: 'new',
             assignor: assignorDirectory[1],
             assignee: assigneeDirectory[1],
             assignmentRole: 'developer',
             startDate: '2024-12-01',
             dueDate: '2025-01-10',
             percentComplete: 15,
-            tagSlugs: ['support-coverage', 'risk-watch'],
             deliverables: [
                 {
                     id: generateId('deliverable'),
@@ -574,11 +556,11 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
 
     return {
         id,
-        code: item?.code || '',
+        code: item?.code || item?.contract || '',
         name: item?.name || '',
         description: item?.description || '',
         projectType,
-        assignmentType: (item?.assignment_type || 'project') as AssignmentType,
+        projectCategory: (item?.project_category || 'new') as any,
         priority: item?.priority || 'medium',
         status,
         startDate,
@@ -597,11 +579,10 @@ function mapApiProjectToRecord(item: any): ProjectRecord {
 }
 
 const ProjectMain: React.FC = () => {
+    const router = useRouter();
     const [projects, setProjects] = React.useState<ProjectRecord[]>([]);
-    const [assignmentFilter, setAssignmentFilter] = React.useState<AssignmentType | 'all'>('all');
-    const [projectTypeFilter, setProjectTypeFilter] = React.useState<'all' | 'dev' | 'it'>('dev');
-    const [isCreating, setIsCreating] = React.useState(false);
-    const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
+    const [projectCategoryFilter, setProjectCategoryFilter] = React.useState<'all' | 'new' | 'enhancement'>('all');
+    const [projectTypeFilter, setProjectTypeFilter] = React.useState<'all' | 'claimable' | 'internal'>('all');
     const [viewMode, setViewMode] = React.useState<'card' | 'table'>('card');
 
     const fetchProjects = React.useCallback(async () => {
@@ -626,9 +607,9 @@ const ProjectMain: React.FC = () => {
 
     const portfolioSnapshot = React.useMemo(() => {
         const total = projects.length;
-        const projectAssignments = projects.filter(project => project.assignmentType === 'project').length;
-        const supportAssignments = projects.filter(project => project.assignmentType === 'support').length;
-        const adHocAssignments = projects.filter(project => project.assignmentType === 'ad_hoc').length;
+        const newProjects = projects.filter(project => project.projectCategory === 'new').length;
+        const enhancementProjects = projects.filter(project => project.projectCategory === 'enhancement').length;
+        const claimableProjects = projects.filter(project => project.projectType === 'claimable').length;
         const dueSoon = projects.filter(project => {
             const due = parseISO(project.dueDate);
             if (!isValid(due)) return false;
@@ -638,15 +619,15 @@ const ProjectMain: React.FC = () => {
         const averageProgress = total
             ? Math.round(projects.reduce((acc, project) => acc + project.percentComplete, 0) / total)
             : 0;
-        return { total, projectAssignments, supportAssignments, adHocAssignments, dueSoon, averageProgress };
+        return { total, newProjects, enhancementProjects, claimableProjects, dueSoon, averageProgress };
     }, [projects]);
 
     const summaryCards = React.useMemo(
         () => [
             { label: 'Total projects', value: portfolioSnapshot.total },
-            { label: 'Project assignments', value: portfolioSnapshot.projectAssignments },
-            { label: 'Support assignments', value: portfolioSnapshot.supportAssignments },
-            { label: 'Ad-hoc assignments', value: portfolioSnapshot.adHocAssignments },
+            { label: 'New projects', value: portfolioSnapshot.newProjects },
+            { label: 'Enhancement projects', value: portfolioSnapshot.enhancementProjects },
+            { label: 'Claimable projects', value: portfolioSnapshot.claimableProjects },
             { label: 'Due this week', value: portfolioSnapshot.dueSoon },
             { label: 'Average progress', value: `${portfolioSnapshot.averageProgress}%` },
         ],
@@ -655,11 +636,11 @@ const ProjectMain: React.FC = () => {
 
     const filteredProjects = React.useMemo(() => {
         return projects.filter(project => {
-            const matchesAssignment = assignmentFilter === 'all' ? true : project.assignmentType === assignmentFilter;
-            const matchesProjectType = projectTypeFilter === 'all' ? true : (project.projectType || 'dev') === projectTypeFilter;
-            return matchesAssignment && matchesProjectType;
+            const matchesCategory = projectCategoryFilter === 'all' ? true : project.projectCategory === projectCategoryFilter;
+            const matchesProjectType = projectTypeFilter === 'all' ? true : (project.projectType || 'claimable') === projectTypeFilter;
+            return matchesCategory && matchesProjectType;
         });
-    }, [projects, assignmentFilter, projectTypeFilter]);
+    }, [projects, projectCategoryFilter, projectTypeFilter]);
 
     const sortedProjects = React.useMemo(() => {
         return [...filteredProjects].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -680,9 +661,8 @@ const ProjectMain: React.FC = () => {
 
                 <TabsContent value="manage" className="space-y-6">
                     <div className="space-y-4">
-                        {!isCreating && (
-                            <>
-                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                        <>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                                     {summaryCards.map(card => (
                                         <div key={card.label} className="rounded-xl border border-border/60 bg-background px-4 py-3 shadow-sm">
                                             <p className="text-sm text-muted-foreground">{card.label}</p>
@@ -699,28 +679,27 @@ const ProjectMain: React.FC = () => {
                                         </div>
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm text-muted-foreground">Assignment type</span>
-                                                <Select value={assignmentFilter} onValueChange={value => setAssignmentFilter(value as AssignmentType | 'all')}>
+                                                <span className="text-sm text-muted-foreground">Project Category</span>
+                                                <Select value={projectCategoryFilter} onValueChange={value => setProjectCategoryFilter(value as 'all' | 'new' | 'enhancement')}>
                                                     <SelectTrigger className="w-40 sm:w-[180px]">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="all">All</SelectItem>
-                                                        <SelectItem value="project">Project</SelectItem>
-                                                        <SelectItem value="support">Support</SelectItem>
-                                                        <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                        <SelectItem value="new">New Project</SelectItem>
+                                                        <SelectItem value="enhancement">Enhancement</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-sm text-muted-foreground">Project type</span>
-                                                <Select value={projectTypeFilter} onValueChange={value => setProjectTypeFilter(value as 'all' | 'dev' | 'it')}>
+                                                <Select value={projectTypeFilter} onValueChange={value => setProjectTypeFilter(value as 'all' | 'claimable' | 'internal')}>
                                                     <SelectTrigger className="w-40 sm:w-[180px]">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="dev">Dev</SelectItem>
-                                                        <SelectItem value="it">IT</SelectItem>
+                                                        <SelectItem value="claimable">Claimable</SelectItem>
+                                                        <SelectItem value="internal">Internal</SelectItem>
                                                         <SelectItem value="all">All</SelectItem>
                                                     </SelectContent>
                                                 </Select>
@@ -755,7 +734,7 @@ const ProjectMain: React.FC = () => {
                                                     <span className="hidden sm:inline">Table</span>
                                                 </Button>
                                             </div>
-                                            <Button onClick={() => { setEditingProjectId(null); setIsCreating(true); }} className="self-end sm:self-auto">
+                                            <Button onClick={() => router.push('/projectmgmt/new')} className="self-end sm:self-auto">
                                                 <Plus className="mr-2 h-4 w-4" />
                                                 Create project
                                             </Button>
@@ -765,29 +744,16 @@ const ProjectMain: React.FC = () => {
                                     {viewMode === 'card' ? (
                                         <ProjectDashCardView
                                             projects={sortedProjects}
-                                            onOpenProject={(id) => { setEditingProjectId(id); setIsCreating(true); }}
+                                            onOpenProject={(id) => router.push(`/projectmgmt/${id}`)}
                                         />
                                     ) : (
                                         <ProjectDashTableView
                                             projects={sortedProjects}
-                                            onOpenProject={(id) => { setEditingProjectId(id); setIsCreating(true); }}
+                                            onOpenProject={(id) => router.push(`/projectmgmt/${id}`)}
                                         />
                                     )}
                                 </div>
                             </>
-                        )}
-
-                        {isCreating && (
-                            <div className="panel space-y-6 p-5">
-                                <ProjectDetails
-                                    onSubmit={() => { /* form posts internally */ }}
-                                    editProjectId={editingProjectId || undefined}
-                                    assignorOptions={assignorDirectory}
-                                    assigneeOptions={assigneeDirectory}
-                                    availableTags={PROJECT_TAGS}
-                                />
-                            </div>
-                        )}
                     </div>
                 </TabsContent>
 

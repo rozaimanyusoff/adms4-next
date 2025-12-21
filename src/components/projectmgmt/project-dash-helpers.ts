@@ -1,7 +1,7 @@
 'use client';
 
 import { format, parseISO, eachDayOfInterval, isWeekend } from 'date-fns';
-import type { AssignmentType, ProjectStatus } from './types';
+import type { ProjectCategory, ProjectStatus } from './types';
 
 // Store public holidays in memory to reuse across views
 let cachedHolidays: string[] = [];
@@ -80,10 +80,9 @@ export const STATUS_PROGRESS_COLORS: Record<ProjectStatus, { indicator: string; 
     at_risk: { indicator: 'bg-amber-600', track: 'bg-amber-100' },
 };
 
-export const TYPE_LABEL: Record<AssignmentType, string> = {
-    project: 'Project',
-    support: 'Support',
-    ad_hoc: 'Ad-hoc',
+export const CATEGORY_LABEL: Record<ProjectCategory, string> = {
+    new: 'New Project',
+    enhancement: 'Enhancement',
 };
 
 export const ROLE_LABEL: Record<'developer' | 'collaborator' | 'supervisor', string> = {

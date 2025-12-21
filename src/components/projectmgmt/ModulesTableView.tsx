@@ -8,7 +8,7 @@ import { ArrowUp, ArrowDown, MoreVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 
-export type ScopeRow = {
+export type ModuleRow = {
    id: string;
    index: number;
    serverId?: string;
@@ -23,8 +23,8 @@ export type ScopeRow = {
    status: string;
 };
 
-interface ScopesTableViewProps {
-   scopeRows: ScopeRow[];
+interface ModulesTableViewProps {
+   moduleRows: ModuleRow[];
    savingProgressId: string | null;
    editProjectId?: string;
    onProgressChange: (index: number, value: number) => void;
@@ -33,8 +33,8 @@ interface ScopesTableViewProps {
    onDelete: (index: number, serverId?: string) => void;
 }
 
-const ScopesTableView: React.FC<ScopesTableViewProps> = ({
-   scopeRows,
+const ModulesTableView: React.FC<ModulesTableViewProps> = ({
+   moduleRows,
    savingProgressId,
    editProjectId,
    onProgressChange,
@@ -42,7 +42,7 @@ const ScopesTableView: React.FC<ScopesTableViewProps> = ({
    onEdit,
    onDelete,
 }) => {
-   const scopeColumns: ColumnDef<ScopeRow>[] = [
+   const moduleColumns: ColumnDef<ModuleRow>[] = [
       {
          key: 'index',
          header: '#',
@@ -51,7 +51,7 @@ const ScopesTableView: React.FC<ScopesTableViewProps> = ({
       },
       {
          key: 'title',
-         header: 'Scopes',
+         header: 'Modules',
          render: (row) => (
             <div className="flex flex-col">
                <span className="font-medium">{row.title}</span>
@@ -125,7 +125,7 @@ const ScopesTableView: React.FC<ScopesTableViewProps> = ({
                </Button>
                <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                     <Button variant="ghost" size="icon" aria-label="Scope actions">
+                     <Button variant="ghost" size="icon" aria-label="Module actions">
                         <MoreVertical className="h-4 w-4" />
                      </Button>
                   </DropdownMenuTrigger>
@@ -151,16 +151,16 @@ const ScopesTableView: React.FC<ScopesTableViewProps> = ({
       },
    ];
 
-   if (scopeRows.length === 0) {
+   if (moduleRows.length === 0) {
       return (
-         <p className="text-sm text-muted-foreground">No scopes yet. Use the sidebar to add.</p>
+         <p className="text-sm text-muted-foreground">No modules yet. Use the sidebar to add.</p>
       );
    }
 
    return (
       <CustomDataGrid
-         data={scopeRows}
-         columns={scopeColumns}
+         data={moduleRows}
+         columns={moduleColumns}
          pagination={false}
          inputFilter={false}
          dataExport={false}
@@ -168,4 +168,4 @@ const ScopesTableView: React.FC<ScopesTableViewProps> = ({
    );
 };
 
-export default ScopesTableView;
+export default ModulesTableView;

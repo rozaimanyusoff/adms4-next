@@ -490,7 +490,7 @@ const BurnupChartView: React.FC<BurnupChartViewProps> = ({
                <div className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground">Completion by</span>
                   <Select value={completionMode} onValueChange={(v) => setCompletionMode(v as 'actual' | 'planned')}>
-                     <SelectTrigger className="h-7 w-[160px]">
+                     <SelectTrigger className="h-7 w-40">
                         <SelectValue placeholder="Actual end" />
                      </SelectTrigger>
                      <SelectContent>

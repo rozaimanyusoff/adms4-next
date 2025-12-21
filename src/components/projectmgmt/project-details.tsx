@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { differenceInCalendarDays, isValid as isDateValid, parseISO, addDays, startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import type { DeliverableType, ProjectDeliverableAttachment, ProjectFormValues, ProjectTag } from './types';
@@ -16,10 +17,10 @@ import { authenticatedApi } from '@/config/api';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import GanttChart, { type GanttTask } from './ScopeTimelineView';
-import ScopesTableView, { type ScopeRow } from './ScopesTableView';
-import BurnupChartView from './ScopeBurnupChartView';
-import { TASK_GROUP_OPTIONS } from './scope-form';
+import GanttChart, { type GanttTask } from './ModuleTimelineView';
+import ModulesTableView, { type ModuleRow } from './ModulesTableView';
+import BurnupChartView from './ModuleBurnupChartView';
+import { TASK_GROUP_OPTIONS } from './module-form';
 
 type ProjectDetailsProps = {
     onSubmit: (values: ProjectFormValues) => void;
@@ -29,7 +30,6 @@ type ProjectDetailsProps = {
     editProjectId?: string;
 };
 
-// Project tags now a simple string input (API: projectTags)
 
 // Task color palette for Gantt chart
 const TASK_COLORS = [
@@ -50,7 +50,7 @@ const generateId = (prefix: string) => {
     return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const createEmptyDeliverable = () => ({
+const createEmptyModule = () => ({
     id: generateId('deliverable'),
     name: '',
     type: 'development' as DeliverableType,
@@ -68,20 +68,21 @@ const createEmptyDeliverable = () => ({
 });
 
 const BASE_FORM_VALUES = {
-    code: '',
+    contract: '',
     name: '',
     description: '',
-    assignmentType: 'project' as const,
+    projectType: undefined,
+    projectCategory: 'new' as const,
     assignor: '',
     assignee: '',
     assignmentRole: 'developer' as const,
     startDate: '',
     dueDate: '',
     percentComplete: 10,
-    tagSlugs: [] as string[],
 };
 
 const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptions, assigneeOptions, availableTags, editProjectId }) => {
+    const router = useRouter();
     const [assigneeChoices, setAssigneeChoices] = useState<Array<{ value: string; label: string }>>([]);
     const [assigneeLoading, setAssigneeLoading] = useState(false);
     const [assigneeError, setAssigneeError] = useState<string | null>(null);
@@ -141,13 +142,13 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
     const [showActual, setShowActual] = useState(true);
     const [showValues, setShowValues] = useState(true);
     const [completionMode, setCompletionMode] = useState<'actual' | 'planned'>('actual');
-    const [projectDetailsOpen, setProjectDetailsOpen] = useState(false);
+    const [projectFormVisible, setProjectFormVisible] = useState(false);
 
     // Shared Excel export function
     const exportGanttExcel = async () => {
         try {
             const workbook = new ExcelJS.Workbook();
-            const ws = workbook.addWorksheet('Scopes');
+            const ws = workbook.addWorksheet('Modules');
             ws.columns = [
                 { header: '#', key: 'num', width: 6 },
                 { header: 'Title', key: 'title', width: 36 },
@@ -159,7 +160,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                 { header: 'Progress', key: 'progress', width: 10 },
                 { header: 'Status', key: 'status', width: 14 },
             ];
-            scopeRows.forEach((r, i) => {
+            moduleRows.forEach((r, i) => {
                 const d = (watchDeliverables ?? [])[r.index] as any;
                 ws.addRow({
                     num: i + 1,
@@ -241,7 +242,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `project-scopes-${Date.now()}.xlsx`;
+            a.download = `project-modules-${Date.now()}.xlsx`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -411,18 +412,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
 
                 reset({
                     ...BASE_FORM_VALUES,
-                    code: data.code || '',
+                    contract: data.contract || data.code || '',
                     name: data.name || '',
                     description: data.description || '',
-                    assignmentType: (data.assignment_type as any) || 'project',
+                    projectType: (data.projectType as any) || undefined,
+                    projectCategory: (data.project_category as any) || 'new',
                     startDate: toDateOnly(data.start_date),
                     dueDate: toDateOnly(data.due_date),
                     percentComplete: Number(data.overall_progress ?? 0) || 0,
-                    tagSlugs: [],
                     deliverables,
                 });
                 // Also set API-aligned extras used during submit
-                setValue('projectTags' as any, data.project_tags || '');
                 setValue('priority' as any, data.priority || 'medium');
             } catch (err) {
                 // ignore for now; errors surfaced in list
@@ -551,8 +551,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
         });
     }, [watchDeliverables, assigneeChoices]);
 
-    // Build DataGrid rows for scopes
-    const scopeRows: ScopeRow[] = useMemo(() => {
+    // Build DataGrid rows for modules
+    const moduleRows: ModuleRow[] = useMemo(() => {
         const delivs = watchDeliverables ?? [];
         return (deliverableFields || []).map((field, index) => {
             const d: any = delivs[index] || {};
@@ -582,17 +582,17 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                 actualMandays,
                 progress: d.progress ?? 0,
                 status,
-            } as ScopeRow;
+            } as ModuleRow;
         });
     }, [deliverableFields, watchDeliverables, assigneeChoices]);
 
-    const scopeStats = useMemo(
+    const moduleStats = useMemo(
         () => ({
-            total: scopeRows.length,
-            completed: scopeRows.filter(s => s.status === 'completed').length,
-            inProgress: scopeRows.filter(s => s.status === 'in_progress').length,
+            total: moduleRows.length,
+            completed: moduleRows.filter(s => s.status === 'completed').length,
+            inProgress: moduleRows.filter(s => s.status === 'in_progress').length,
         }),
-        [scopeRows],
+        [moduleRows],
     );
 
     const openScopeEditor = (projectId: string, scopeId?: string) => {
@@ -615,15 +615,14 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
         const dueDate = timeline.endDate || values.dueDate;
         // Build API-aligned payload with snake_case
         const apiJson = {
-            code: values.code,
+            contract: values.contract,
             name: values.name,
             description: values.description,
-            assignment_type: values.assignmentType,
+            project_category: values.projectCategory,
             start_date: startDate,
             due_date: dueDate,
             priority: (watch as any)('priority') ?? 'medium',
             overall_progress: overallProgress,
-            project_tags: (watch as any)('projectTags') ?? '',
             scopes: (deliverables ?? []).map(d => ({
                 id: d.serverId,
                 title: d.name,
@@ -643,17 +642,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
         } as const;
 
         const formData = new FormData();
-        if (apiJson.code && apiJson.code.trim()) {
-            formData.append('code', apiJson.code.trim());
+        if (apiJson.contract && apiJson.contract.trim()) {
+            formData.append('contract', apiJson.contract.trim());
         }
         formData.append('name', apiJson.name);
         if (apiJson.description) formData.append('description', apiJson.description);
-        formData.append('assignment_type', apiJson.assignment_type);
+        formData.append('project_category', apiJson.project_category);
         if (apiJson.start_date) formData.append('start_date', apiJson.start_date);
         if (apiJson.due_date) formData.append('due_date', apiJson.due_date);
         formData.append('priority', apiJson.priority);
         formData.append('overall_progress', String(apiJson.overall_progress));
-        if (apiJson.project_tags) formData.append('project_tags', apiJson.project_tags);
         if (!editProjectId) {
             // Append scopes as indexed fields + files for backend-friendly parsing
             (apiJson.scopes || []).forEach((s, i) => {
@@ -682,20 +680,29 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
             if (editProjectId) {
                 await authenticatedApi.put(`/api/projects/${editProjectId}`, formData);
                 toast.success('Project updated');
-                setSuccessInfo({ code: (values.code || '').trim(), name: values.name });
+                setProjectFormVisible(false);
+                setSuccessInfo({ code: (values.contract || '').trim(), name: values.name });
                 setSuccessOpen(true);
-                setProjectDetailsOpen(false);
             } else {
-                await authenticatedApi.post('/api/projects', formData);
+                const response = await authenticatedApi.post('/api/projects', formData);
+                const newProjectId = (response.data as any)?.id || (response.data as any)?.project_id;
                 toast.success('Project created');
-                setSuccessInfo({ code: (values.code || '').trim(), name: values.name });
+                setSuccessInfo({ code: (values.contract || '').trim(), name: values.name });
                 setSuccessOpen(true);
-                reset({
-                    ...BASE_FORM_VALUES,
-                    assignmentType: values.assignmentType,
-                    assignmentRole: values.assignmentRole,
-                    deliverables: [],
-                });
+                // Navigate to the new project's details page
+                if (newProjectId) {
+                    setTimeout(() => {
+                        router.push(`/projectmgmt/${newProjectId}`);
+                    }, 1000);
+                } else {
+                    reset({
+                        ...BASE_FORM_VALUES,
+                        projectType: values.projectType,
+                        projectCategory: values.projectCategory,
+                        assignmentRole: values.assignmentRole,
+                        deliverables: [],
+                    });
+                }
             }
         } catch (err: any) {
             const msg = err?.response?.data?.message || err?.message || 'Failed to create project';
@@ -715,18 +722,16 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
         const dueDate = tl.endDate || formValues.dueDate || '';
 
         const formData = new FormData();
-        if (formValues.code && formValues.code.trim()) {
-            formData.append('code', formValues.code.trim());
+        if (formValues.contract && formValues.contract.trim()) {
+            formData.append('contract', formValues.contract.trim());
         }
         formData.append('name', formValues.name || '');
         if (formValues.description) formData.append('description', formValues.description);
-        formData.append('assignment_type', formValues.assignmentType || 'project');
+        formData.append('project_category', formValues.projectCategory || 'new');
         if (startDate) formData.append('start_date', startDate);
         if (dueDate) formData.append('due_date', dueDate);
         formData.append('priority', (watch as any)('priority') ?? 'medium');
         formData.append('overall_progress', String(overall));
-        const projectTags = (watch as any)('projectTags') ?? '';
-        if (projectTags) formData.append('project_tags', projectTags);
 
         try {
             await authenticatedApi.put(`/api/projects/${editProjectId}`, formData);
@@ -792,19 +797,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-lg font-semibold text-slate-800">Project Details</h1>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="px-2 text-primary"
-                    onClick={() => {
-                        if (editProjectId && typeof window !== 'undefined') {
-                            window.location.href = '/projectmgmt';
-                        }
-                    }}
-                >
-                    ← Back to projects
-                </Button>
             </div>
 
             <form onSubmit={handleSubmit(submitHandler)} className="flex flex-col gap-6">
@@ -818,25 +810,25 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                 </div>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <div>
+                                        <div className="flex items-center gap-2">
                                             <h3 className="font-bold text-lg text-slate-800">
                                                 {watch('name') || 'Untitled Project'}
                                             </h3>
-                                            {watch('code') && (
-                                                <p className="text-sm text-slate-500">{watch('code')}</p>
+                                            {editProjectId && (
+                                                <Button
+                                                    type="button"
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                                                    onClick={() => setProjectFormVisible(true)}
+                                                    aria-label="Edit project details"
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
                                             )}
                                         </div>
-                                        {editProjectId && (
-                                            <Button
-                                                type="button"
-                                                size="icon"
-                                                variant="ghost"
-                                                className="h-8 w-8 text-amber-500 hover:text-amber-600"
-                                                onClick={() => setProjectDetailsOpen(true)}
-                                                aria-label="Edit project details"
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
+                                        {watch('contract') && (
+                                            <p className="text-sm text-slate-500">{watch('contract')}</p>
                                         )}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -873,14 +865,15 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                             </div>
                         </div>
 
-                        {/* View Controls */}
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                        {/* View Controls - hidden when form is visible during edit */}
+                        {(!editProjectId || !projectFormVisible) && (
+                            <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-2">
                                 <Button
                                     type="button"
                                     variant={viewMode === 'table' ? 'default' : 'outline'}
                                     size="sm"
-                                    disabled={scopeRows.length === 0}
+                                    disabled={moduleRows.length === 0}
                                     onClick={() => setViewMode('table')}
                                 >
                                     Table View
@@ -889,7 +882,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                     type="button"
                                     variant={viewMode === 'gantt' ? 'default' : 'outline'}
                                     size="sm"
-                                    disabled={scopeRows.length === 0}
+                                    disabled={moduleRows.length === 0}
                                     onClick={() => setViewMode('gantt')}
                                 >
                                     Timeline Chart
@@ -898,7 +891,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                     type="button"
                                     variant={viewMode === 'burnup' ? 'default' : 'outline'}
                                     size="sm"
-                                    disabled={scopeRows.length === 0}
+                                    disabled={moduleRows.length === 0}
                                     onClick={() => setViewMode('burnup')}
                                 >
                                     Burnup Chart
@@ -924,7 +917,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                             {editProjectId && (
                                 <div className="flex items-center gap-2">
                                     <p className="text-sm">
-                                        {scopeRows.length === 0 ? 'No scopes yet.' : 'Add more scopes.'}
+                                        {moduleRows.length === 0 ? 'No modules yet.' : 'Add more modules.'}
                                     </p>
                                     <Button
                                         type="button"
@@ -939,12 +932,13 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                     </Button>
                                 </div>
                             )}
-                        </div>
+                            </div>
+                        )}
                     </CardHeader>
 
                     <CardContent>
-                        {/* Create mode: inline project registration fields inside scopes card */}
-                        {!editProjectId && (
+                        {/* Project registration fields - shown in create mode or when editing and form is visible */}
+                        {(!editProjectId || projectFormVisible) && (
                             <div className="mb-6 rounded-lg border border-border/60 bg-stone-50 p-4 space-y-6">
                                 <div>
                                     <h3 className="text-sm font-medium">Register Project</h3>
@@ -954,12 +948,21 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-3">
                                     <div className="space-y-2">
-                                        <Label htmlFor="projectTags_inline">Project tags</Label>
-                                        <Input
-                                            id="projectTags_inline"
-                                            placeholder="e.g. adms4"
-                                            value={(watch('projectTags' as any) as any) || ''}
-                                            onChange={e => setValue('projectTags' as any, e.target.value)}
+                                        <Label htmlFor="projectType_inline">Project Type</Label>
+                                        <Controller
+                                            control={control}
+                                            name="projectType"
+                                            render={({ field }) => (
+                                                <Select value={field.value || ''} onValueChange={field.onChange}>
+                                                    <SelectTrigger id="projectType_inline" className='w-full'>
+                                                        <SelectValue placeholder="Select type" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="claimable">Claimable</SelectItem>
+                                                        <SelectItem value="internal">Internal</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            )}
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -987,8 +990,8 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                 <div className="space-y-6">
                                     <div className="grid gap-4 md:grid-cols-3">
                                         <div className="space-y-2">
-                                            <Label htmlFor="code_inline">Project code (optional)</Label>
-                                            <Input id="code_inline" className="uppercase" placeholder="e.g. OPS-2024-08" {...register('code')} />
+                                            <Label htmlFor="code_inline">Contract (optional)</Label>
+                                            <Input id="code_inline" className="uppercase" placeholder="e.g. OPS-2024-08" {...register('contract')} />
                                         </div>
                                         <div className="space-y-2">
                                             <Label htmlFor="name_inline">Project name</Label>
@@ -1001,25 +1004,24 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                             {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>Assignment type</Label>
+                                            <Label>Project Category</Label>
                                             <Controller
                                                 control={control}
-                                                name="assignmentType"
-                                                rules={{ required: 'Assignment type is required' }}
+                                                name="projectCategory"
+                                                rules={{ required: 'Project category is required' }}
                                                 render={({ field }) => (
                                                     <Select value={field.value} onValueChange={field.onChange}>
                                                         <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select type" />
+                                                            <SelectValue placeholder="Select category" />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="project">Project</SelectItem>
-                                                            <SelectItem value="support">Support</SelectItem>
-                                                            <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
+                                                            <SelectItem value="new">New Project</SelectItem>
+                                                            <SelectItem value="enhancement">Enhancement</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                 )}
                                             />
-                                            {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
+                                            {errors.projectCategory && <p className="text-sm text-destructive">{errors.projectCategory.message}</p>}
                                         </div>
                                     </div>
 
@@ -1070,19 +1072,49 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end">
+                                    <div className="flex justify-end gap-2">
+                                        {editProjectId && projectFormVisible && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setProjectFormVisible(false)}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        )}
+                                        {editProjectId && projectFormVisible && (
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                                onClick={async () => {
+                                                    if (!editProjectId) return;
+                                                    const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
+                                                    if (!ok) return;
+                                                    try {
+                                                        await authenticatedApi.delete(`/api/projects/${editProjectId}`);
+                                                        toast.success('Project deleted');
+                                                    } catch (err: any) {
+                                                        toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
+                                                    }
+                                                }}
+                                            >
+                                                Delete project
+                                            </Button>
+                                        )}
                                         <Button type="submit" disabled={!isValid || isSubmitting} aria-disabled={!isValid || isSubmitting}>
-                                            Save project
+                                            {editProjectId ? 'Update project' : 'Save project'}
                                         </Button>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* Content based on view mode */}
-                        {scopeRows.length === 0 ? null : viewMode === 'table' ? (
-                            <ScopesTableView
-                                scopeRows={scopeRows}
+                        {/* Content based on view mode - hidden when form is visible during edit */}
+                        {(!editProjectId || !projectFormVisible) && (
+                            <>
+                        {moduleRows.length === 0 ? null : viewMode === 'table' ? (
+                            <ModulesTableView
+                                moduleRows={moduleRows}
                                 savingProgressId={savingProgressId}
                                 editProjectId={editProjectId}
                                 onProgressChange={handleInlineProgressChange}
@@ -1109,7 +1141,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                 projectStart={timeline.startDate}
                                 projectEnd={timeline.endDate}
                                 projectName={watch('name') || 'Untitled Project'}
-                                projectCode={watch('code') || undefined}
+                                projectCode={watch('contract') || undefined}
                                 onTasksReorder={(reorderedTasks: GanttTask[]) => {
                                     // Map reordered tasks back to deliverables and update form state
                                     const reorderedDeliverables = reorderedTasks.map(task => {
@@ -1178,16 +1210,18 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                 className="min-h-[400px]"
                             />
                         )}
+                            </>
+                        )}
                     </CardContent>
 
                     {/* Footer Stats - displayed on all views */}
-                    {scopeRows.length > 0 && timeline.startDate && timeline.endDate && (
+                    {moduleRows.length > 0 && timeline.startDate && timeline.endDate && (
                         <CardFooter className="bg-linear-to-r from-slate-50 to-gray-50 text-sm">
                             <div className="flex justify-between items-center text-slate-600 w-full">
                                 <div className="flex items-center gap-6">
-                                    <span className="font-medium">{scopeRows.length} tasks total</span>
-                                    <span>{scopeRows.filter(s => s.status === 'completed').length} completed</span>
-                                    <span>{scopeRows.filter(s => s.status === 'in_progress').length} in progress</span>
+                                    <span className="font-medium">{moduleRows.length} modules total</span>
+                                    <span>{moduleRows.filter(s => s.status === 'completed').length} completed</span>
+                                    <span>{moduleRows.filter(s => s.status === 'in_progress').length} in progress</span>
                                 </div>
                                 <div className="flex items-center gap-6">
                                     <div className="text-right">
@@ -1202,7 +1236,7 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                                     <div className="text-right">
                                         <div className="text-xs text-slate-500">Overall Progress</div>
                                         <div className="font-semibold text-emerald-600 text-lg">
-                                            {scopeRows.length > 0 ? Math.round(scopeRows.reduce((sum, s) => sum + (s.progress || 0), 0) / scopeRows.length) : 0}%
+                                            {moduleRows.length > 0 ? Math.round(moduleRows.reduce((sum, s) => sum + (s.progress || 0), 0) / moduleRows.length) : 0}%
                                         </div>
                                     </div>
                                 </div>
@@ -1210,147 +1244,6 @@ const ProjectDetails: React.FC<ProjectDetailsProps> = ({ onSubmit, assignorOptio
                         </CardFooter>
                     )}
                 </Card>
-
-                {/* Project details dialog for edit mode */}
-                {editProjectId && (
-                    <Dialog open={projectDetailsOpen} onOpenChange={setProjectDetailsOpen}>
-                        <DialogContent className="min-w-4xl">
-                            <DialogHeader>
-                                <DialogTitle>Edit project details</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-6">
-                                <div className="grid gap-4 md:grid-cols-3">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="projectTags_dialog">Project tags</Label>
-                                        <Input
-                                            id="projectTags_dialog"
-                                            placeholder="e.g. adms4"
-                                            value={(watch('projectTags' as any) as any) || ''}
-                                            onChange={e => setValue('projectTags' as any, e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Priority</Label>
-                                        <Controller
-                                            control={control}
-                                            name={'priority' as any}
-                                            render={({ field }) => (
-                                                <Select value={field.value || 'medium'} onValueChange={field.onChange}>
-                                                    <SelectTrigger className="w-full">
-                                                        <SelectValue placeholder="Select priority" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="low">Low</SelectItem>
-                                                        <SelectItem value="medium">Medium</SelectItem>
-                                                        <SelectItem value="high">High</SelectItem>
-                                                        <SelectItem value="critical">Critical</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="grid gap-4 md:grid-cols-3">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="code_dialog">Project code (optional)</Label>
-                                            <Input id="code_dialog" className="uppercase" placeholder="e.g. OPS-2024-08" {...register('code')} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="name_dialog">Project name</Label>
-                                            <Input
-                                                id="name_dialog"
-                                                className="capitalize"
-                                                placeholder="e.g. Employee Onboarding Portal"
-                                                {...register('name', { required: 'Project name is required' })}
-                                            />
-                                            {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Assignment type</Label>
-                                            <Controller
-                                                control={control}
-                                                name="assignmentType"
-                                                rules={{ required: 'Assignment type is required' }}
-                                                render={({ field }) => (
-                                                    <Select value={field.value} onValueChange={field.onChange}>
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select type" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="project">Project</SelectItem>
-                                                            <SelectItem value="support">Support</SelectItem>
-                                                            <SelectItem value="ad_hoc">Ad-hoc</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                            {errors.assignmentType && <p className="text-sm text-destructive">{errors.assignmentType.message}</p>}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="description_dialog">Description</Label>
-                                        <Textarea
-                                            id="description_dialog"
-                                            placeholder="Optional context that helps assignees understand the project"
-                                            rows={3}
-                                            {...register('description')}
-                                        />
-                                    </div>
-
-                                    <div className="grid gap-4 md:grid-cols-3">
-                                        <div className="space-y-2">
-                                            <Label>Project start (auto)</Label>
-                                            <Input value={timeline.startDate ? formatDMY(timeline.startDate) : ''} readOnly placeholder="Derived from scopes" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Project due (auto)</Label>
-                                            <Input value={timeline.endDate ? formatDMY(timeline.endDate) : ''} readOnly placeholder="Derived from scopes" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label>Duration (mandays, Mon–Fri)</Label>
-                                            <Input value={durationDays ? `${durationDays}` : ''} readOnly placeholder="Auto calculated" />
-                                            <p className="text-xs text-muted-foreground">Sum of working days between Project start and due.</p>
-                                            <p className="text-xs text-muted-foreground">Scopes total: {totalPlannedEffort} md</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex justify-end gap-2">
-                                        <Button
-                                            type="button"
-                                            variant="destructive"
-                                            onClick={async () => {
-                                                if (!editProjectId) return;
-                                                const ok = typeof window !== 'undefined' ? window.confirm('Delete this project and all its scopes?') : true;
-                                                if (!ok) return;
-                                                try {
-                                                    await authenticatedApi.delete(`/api/projects/${editProjectId}`);
-                                                    toast.success('Project deleted');
-                                                    setProjectDetailsOpen(false);
-                                                } catch (err: any) {
-                                                    toast.error(err?.response?.data?.message || err?.message || 'Failed to delete project');
-                                                }
-                                            }}
-                                        >
-                                            Delete project
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            disabled={isSubmitting}
-                                            aria-disabled={isSubmitting}
-                                            onClick={handleSubmit(submitHandler)}
-                                        >
-                                            Update project
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
-                )}
-
             </form>
             <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
                 <DialogContent>

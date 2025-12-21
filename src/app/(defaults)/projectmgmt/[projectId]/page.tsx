@@ -1,19 +1,36 @@
+'use client';
+
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { use } from 'react';
 import ProjectDetails from '@/components/projectmgmt/project-details';
 import { assignorDirectory, assigneeDirectory, PROJECT_TAGS } from '@/components/projectmgmt/project-dash-constants';
 
 type ProjectDetailsPageProps = {
-    params: { projectId?: string };
+    params: Promise<{ projectId?: string }>;
 };
 
 const ProjectDetailsPage = ({ params }: ProjectDetailsPageProps) => {
-    const projectIdRaw = params?.projectId;
-    const projectId = projectIdRaw ? decodeURIComponent(projectIdRaw) : '';
+    const router = useRouter();
+    const [projectId, setProjectId] = useState<string>('');
+    const resolvedParams = use(params);
+    
+    useEffect(() => {
+        const projectIdRaw = resolvedParams?.projectId;
+        const id = projectIdRaw ? decodeURIComponent(projectIdRaw) : '';
+        
+        if (!id || id === 'undefined') {
+            router.push('/projectmgmt');
+            return;
+        }
+        
+        setProjectId(id);
+    }, [resolvedParams?.projectId, router]);
 
-    if (!projectId || projectId === 'undefined') {
-        redirect('/projectmgmt');
+    if (!projectId) {
+        return <div className="text-center py-8">Loading project...</div>;
     }
 
     return (

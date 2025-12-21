@@ -2,12 +2,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ScopeForm, { type ScopeFormValues } from '@/components/projectmgmt/scope-form';
+import ModuleForm, { type ModuleFormValues } from '@/components/projectmgmt/module-form';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import type { ComboboxOption } from '@/components/ui/combobox';
 
-const EMPTY_SCOPE_FORM: ScopeFormValues = {
+const EMPTY_MODULE_FORM: ModuleFormValues = {
     name: '',
     type: 'development',
     description: '',
@@ -24,15 +24,15 @@ const EMPTY_SCOPE_FORM: ScopeFormValues = {
     checklistDetails: [],
 };
 
-type ScopeEditorClientProps = {
+type ModuleEditorClientProps = {
     projectId: string;
-    scopeId?: string | null;
+    moduleId?: string | null;
 };
 
-const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeId }) => {
+const ModuleEditorClient: React.FC<ModuleEditorClientProps> = ({ projectId, moduleId }) => {
     const router = useRouter();
-    const [initialValues, setInitialValues] = useState<ScopeFormValues>(EMPTY_SCOPE_FORM);
-    const [loading, setLoading] = useState<boolean>(!!scopeId);
+    const [initialValues, setInitialValues] = useState<ModuleFormValues>(EMPTY_MODULE_FORM);
+    const [loading, setLoading] = useState<boolean>(!!moduleId);
     const [assigneeChoices, setAssigneeChoices] = useState<ComboboxOption[]>([]);
     const [assigneeLoading, setAssigneeLoading] = useState(false);
     const [assigneeError, setAssigneeError] = useState<string | null>(null);
@@ -73,42 +73,42 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
     }, []);
 
     useEffect(() => {
-        if (!projectId || !scopeId) return;
-        const fetchScope = async () => {
+        if (!projectId || !moduleId) return;
+        const fetchModule = async () => {
             try {
                 setLoading(true);
                 const res: any = await authenticatedApi.get(`/api/projects/${projectId}`);
                 const data = res?.data?.data ?? res?.data;
-                const scopes = Array.isArray(data?.scopes) ? data.scopes : [];
-                const scope = scopes.find((s: any) => String(s.id) === String(scopeId));
-                if (scope) {
+                const modules = Array.isArray(data?.modules) ? data.modules : [];
+                const module = modules.find((m: any) => String(m.id) === String(moduleId));
+                if (module) {
                     const toDateOnly = (v?: string | null) => (v ? String(v).slice(0, 10) : '');
                     setInitialValues({
-                        ...EMPTY_SCOPE_FORM,
-                        name: scope.title || '',
-                        description: scope.description || '',
-                        taskGroups: String(scope.task_groups || '')
+                        ...EMPTY_MODULE_FORM,
+                        name: module.title || '',
+                        description: module.description || '',
+                        taskGroups: String(module.task_groups || '')
                             .split(',')
                             .map((x: string) => x.trim())
                             .filter(Boolean),
-                        assignee: scope.assignee || '',
-                        startDate: toDateOnly(scope.planned_start_date),
-                        endDate: toDateOnly(scope.planned_end_date),
-                        actualStartDate: toDateOnly(scope.actual_start_date),
-                        actualEndDate: toDateOnly(scope.actual_end_date),
-                        progress: Number(scope.progress ?? 0) || 0,
-                        featureKeys: Array.isArray(scope.featureKeys) ? scope.featureKeys : [],
-                        checklistDetails: Array.isArray(scope.checklistDetails) ? scope.checklistDetails : [],
+                        assignee: module.assignee || '',
+                        startDate: toDateOnly(module.planned_start_date),
+                        endDate: toDateOnly(module.planned_end_date),
+                        actualStartDate: toDateOnly(module.actual_start_date),
+                        actualEndDate: toDateOnly(module.actual_end_date),
+                        progress: Number(module.progress ?? 0) || 0,
+                        featureKeys: Array.isArray(module.featureKeys) ? module.featureKeys : [],
+                        checklistDetails: Array.isArray(module.checklistDetails) ? module.checklistDetails : [],
                     });
                 }
             } catch (err: any) {
-                toast.error(err?.response?.data?.message || err?.message || 'Failed to load scope');
+                toast.error(err?.response?.data?.message || err?.message || 'Failed to load module');
             } finally {
                 setLoading(false);
             }
         };
-        void fetchScope();
-    }, [projectId, scopeId]);
+        void fetchModule();
+    }, [projectId, moduleId]);
 
     const calcMandays = (startISO?: string, endISO?: string) => {
         if (!startISO || !endISO) return 0;
@@ -125,7 +125,7 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
         return count;
     };
 
-    const handleSubmit = async (values: ScopeFormValues) => {
+    const handleSubmit = async (values: ModuleFormValues) => {
         if (!projectId) {
             toast.error('Project ID is required.');
             return false;
@@ -149,40 +149,40 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
         if (Array.isArray(files)) files.forEach(file => formData.append('attachment', file));
 
         try {
-            if (scopeId) {
-                await authenticatedApi.put(`/api/projects/${projectId}/scopes/${scopeId}`, formData);
-                toast.success('Scope updated');
+            if (moduleId) {
+                await authenticatedApi.put(`/api/projects/${projectId}/modules/${moduleId}`, formData);
+                toast.success('Module updated');
             } else {
-                await authenticatedApi.post(`/api/projects/${projectId}/scopes`, formData);
-                toast.success('Scope added');
+                await authenticatedApi.post(`/api/projects/${projectId}/modules`, formData);
+                toast.success('Module added');
             }
             handleClose();
             return true;
         } catch (err: any) {
-            const msg = err?.response?.data?.message || err?.message || 'Failed to save scope';
+            const msg = err?.response?.data?.message || err?.message || 'Failed to save module';
             toast.error(msg);
             return false;
         }
     };
 
-    const scopeStats = useMemo(() => ({ total: 0, completed: 0, inProgress: 0 }), []);
+    const moduleStats = useMemo(() => ({ total: 0, completed: 0, inProgress: 0 }), []);
 
     if (loading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading scope...</div>;
+        return <div className="p-6 text-sm text-muted-foreground">Loading module...</div>;
     }
 
     return (
         <>
-            <ScopeForm
+            <ModuleForm
                 isOpen
                 onClose={handleClose}
                 onSubmit={handleSubmit}
                 onCancelEdit={handleClose}
-                editingScopeIndex={scopeId ? 0 : null}
+                editingModuleIndex={moduleId ? 0 : null}
                 assigneeChoices={assigneeChoices}
                 assigneeLoading={assigneeLoading}
                 assigneeError={assigneeError}
-                scopeStats={scopeStats}
+                moduleStats={moduleStats}
                 calcMandays={calcMandays}
                 initialValues={initialValues}
                 shouldCloseOnSubmit
@@ -191,4 +191,4 @@ const ScopeEditorClient: React.FC<ScopeEditorClientProps> = ({ projectId, scopeI
     );
 };
 
-export default ScopeEditorClient;
+export default ModuleEditorClient;
