@@ -2153,7 +2153,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   };
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-6">
 
       {/* Header with Search and Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">

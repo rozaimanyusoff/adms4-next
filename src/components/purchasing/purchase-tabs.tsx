@@ -31,14 +31,14 @@ const PurchaseTabs: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-6">
       <PurchaseSummary
         purchases={purchases}
         onFilter={(f: { type?: string; request_type?: string }) => setFilters(prev => ({ ...prev, ...f }))}
       />
 
       <Tabs defaultValue="records">
-        <TabsList className="grid w-full grid-cols-2 lg:w-[700px]">
+        <TabsList>
           <TabsTrigger value="records">Purchase Records</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
         </TabsList>
