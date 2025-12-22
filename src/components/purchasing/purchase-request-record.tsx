@@ -247,7 +247,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
             return (
                <div className="flex flex-wrap gap-1">
                   {entries.map(([name, cnt]) => (
-                     <span key={name} className={`${getItemTypeBadgeClass(name)} inline-flex items-center px-2 py-0.5 rounded-full text-[length:var(--text-size-small)]`}>
+                     <span key={name} className={`${getItemTypeBadgeClass(name)} inline-flex items-center px-2 py-0.5 rounded-full text-(length:--text-size-small)`}>
                         {`${cnt} x ${name}`}
                      </span>
                   ))}
@@ -367,7 +367,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                         const displayedYears = [...years];
                         if (includeUnknown) displayedYears.push('Unknown');
                         return (
-                           <div key={typeKey} className="min-w-[240px]">
+                           <div key={typeKey} className="min-w-60">
                               <Card
                                  className={`${getItemTypeBadgeClass(typeKey).replace('text-', 'text-')} ${selectedType === typeKey ? 'ring-2 ring-offset-1 ring-indigo-300' : ''} overflow-hidden`}
                                  onClick={() => setSelectedType(selectedType === typeKey ? null : typeKey)}
@@ -474,7 +474,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.pr_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>1</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">Application submission</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.pr_date ? fmtDate(request.pr_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.pr_date ? fmtDate(request.pr_date) : '-'}</div>
                            </div>
                         </li>
                         {/* 2. Requestor&apos;s HOD approval */}
@@ -482,7 +482,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.hod_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>2</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">Requestor&apos;s HOD approval</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.hod_approval_date ? fmtDate(request.hod_approval_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.hod_approval_date ? fmtDate(request.hod_approval_date) : '-'}</div>
                            </div>
                         </li>
                         {/* 3. Asset Manager remarks */}
@@ -490,7 +490,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.asset_manager_remarks_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>3</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">Asset Manager remarks</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.asset_manager_remarks_date ? fmtDate(request.asset_manager_remarks_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.asset_manager_remarks_date ? fmtDate(request.asset_manager_remarks_date) : '-'}</div>
                            </div>
                         </li>
                         {/* 4. Asset manager&apos;s HOD approval */}
@@ -498,7 +498,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.asset_manager_hod_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>4</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">Asset manager&apos;s HOD approval</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.asset_manager_hod_approval_date ? fmtDate(request.asset_manager_hod_approval_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.asset_manager_hod_approval_date ? fmtDate(request.asset_manager_hod_approval_date) : '-'}</div>
                            </div>
                         </li>
                         {/* 5. Division Head Approval */}
@@ -506,7 +506,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.division_head_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>5</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">Division Head Approval</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.division_head_approval_date ? fmtDate(request.division_head_approval_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.division_head_approval_date ? fmtDate(request.division_head_approval_date) : '-'}</div>
                            </div>
                         </li>
                         {/* 6. CPD approval */}
@@ -514,7 +514,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
                            <span className={`absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white ${request.cpd_approval_date ? 'bg-green-600 text-white' : 'bg-gray-300 text-gray-700'}`}>6</span>
                            <div className="flex items-center justify-between gap-2">
                               <div className="font-semibold">CPD approval</div>
-                              <div className="text-xs text-black min-w-[80px] text-right">{request.cpd_approval_date ? fmtDate(request.cpd_approval_date) : '-'}</div>
+                              <div className="text-xs text-black min-w-20 text-right">{request.cpd_approval_date ? fmtDate(request.cpd_approval_date) : '-'}</div>
                            </div>
                         </li>
                      </ol>

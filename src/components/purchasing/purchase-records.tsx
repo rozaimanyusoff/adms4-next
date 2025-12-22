@@ -1,34 +1,21 @@
 /* Procurement Management Module */
 'use client';
-import React, { useEffect, useMemo, useState, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
-import ActionSidebar from '@/components/ui/action-aside';
+import { useRouter } from 'next/navigation';
 // PurchaseSummary is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
-import { Plus, ShoppingCart, Package, Truck, Eye, Edit, Trash2, Grid, List, Search, PlusCircle, FileText } from 'lucide-react';
-import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import PurchaseRegisterForm from './purchase-register-form';
+import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle } from 'lucide-react';
+import type { ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '@/components/ui/alert-dialog';
+import { ApiPurchase, PurchaseFormData } from './types';
 // import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 // Removed Excel importer – creating records directly in-app
 
@@ -40,109 +27,21 @@ const fmtRM = (value: number) => {
 // Users allowed to delete purchase records
 const deletePermissionAdmin = ['000705', '000277'];
 
-interface ApiPurchase {
-  id: number;
-  request_id?: number;
-  asset_registry?: string;
-  request?: {
-    id: number;
-    pr_no?: string;
-    pr_date?: string;
-    request_type?: string;
-    requested_by?: { ramco_id: string; full_name: string } | null;
-    costcenter?: { id: number; name: string } | null;
-    department?: any;
-    created_at?: string | null;
-    updated_at?: string | null;
-  } | null;
-  // API now returns nested objects for some fields. Keep unions so older records still work.
-  requestor?: { ramco_id: string; full_name: string } | string; // legacy
-  costcenter?: { id: number; name: string } | string; // legacy
-  type?: { id: number; name: string } | string; // maps to item_type in form
-  category?: { id: number; name: string } | string | null;
-  description?: string; // new field replaces items
-  items?: string; // legacy
-  purpose?: string | null;
-  supplier?: { id: number; name: string } | string;
-  brand?: { id: number; name: string } | string;
-  qty: number;
-  unit_price: string;          // API returns as string
-  total_price?: string;        // API returns as string
-  pr_date?: string; // legacy
-  pr_no?: string;   // legacy
-  po_date?: string;
-  po_no?: string;
-  do_date?: string; // legacy
-  do_no?: string;   // legacy
-  inv_date?: string; // legacy
-  inv_no?: string;   // legacy
-  grn_date?: string; // legacy
-  grn_no?: string;   // legacy
-  deliveries?: Array<{
-    do_date?: string;
-    do_no?: string;
-    inv_date?: string;
-    inv_no?: string;
-    grn_date?: string;
-    grn_no?: string;
-    id?: number;
-    purchase_id?: number;
-    request_id?: number;
-    upload_path?: string | null;
-    upload_url?: string | null;
-    created_at?: string | null;
-    updated_at?: string | null;
-  }>;
-  handover_to?: string | null;
-  handover_at?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  upload_path?: string | null;
-  upload_url?: string | null;
-  status?: string;
+interface PurchaseRecordsProps {
+  filters?: { type?: string; request_type?: string };
+  initialFormMode?: 'create' | 'edit';
+  initialPurchaseId?: number | string;
+  inlineFormOnly?: boolean;
 }
 
-interface PurchaseFormData {
-  request_type: string;
-  costcenter: string;          // Match API field name
-  pic: string;                 // Person in charge  
-  type_id: string;             // maps to purchase.type.id
-  category_id?: string;        // category linked to type
-  items: string;               // Match API field name
-  purpose?: string;            // additional purpose/remarks
-  supplier_id: string;
-  brand_id: string;            // send brand_id instead of brand name
-  qty: number;
-  unit_price: number;          // Will convert to string when sending to API
-  pr_date: string;             // Match API field name
-  pr_no: string;               // Match API field name
-  po_date: string;
-  po_no: string;               // Match API field name
-  do_date: string;
-  do_no: string;               // Match API field name
-  inv_date: string;            // Match API field name
-  inv_no: string;              // Match API field name
-  grn_date: string;
-  grn_no: string;              // Match API field name
-  deliveries: Array<{
-    do_date: string;
-    do_no: string;
-    inv_date: string;
-    inv_no: string;
-    grn_date: string;
-    grn_no: string;
-    upload_url?: string | null;
-    id?: number; // For existing deliveries from backend
-  }>;
-}
-
-const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: string } }> = ({ filters }) => {
+const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormMode, initialPurchaseId, inlineFormOnly }) => {
+  const router = useRouter();
   const [purchases, setPurchases] = useState<ApiPurchase[]>([]);
   const [filteredPurchases, setFilteredPurchases] = useState<ApiPurchase[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<'view' | 'create' | 'edit'>('create');
   const [selectedPurchase, setSelectedPurchase] = useState<ApiPurchase | null>(null);
+  const [showInlineForm, setShowInlineForm] = useState<boolean>(!!initialFormMode || !!inlineFormOnly);
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -175,6 +74,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   // Delivery deletion confirm dialog state
   const [pendingDelete, setPendingDelete] = useState<{ index: number; message: string } | null>(null);
+  const draftKey = 'purchase_register_draft';
+  const draftLoadedRef = useRef(false);
+  const formDataRef = useRef(formData);
 
   // Per-delivery file uploads
   const [deliveryFiles, setDeliveryFiles] = useState<Array<File | null>>([]);
@@ -272,9 +174,9 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         const tps = (typesRes as any).data?.data || (typesRes as any).data || [];
 
         setEmployees(emps);
-  const opts = emps.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name }));
-  console.log('Loaded employee options:', opts);
-  setEmployeeOptions(opts);
+        const opts = emps.map((e: any) => ({ value: String(e.ramco_id), label: e.full_name }));
+        console.log('Loaded employee options:', opts);
+        setEmployeeOptions(opts);
 
         setCostcenters(ccs);
         setCostcenterOptions(ccs.map((c: any) => ({ value: String(c.id), label: c.name })));
@@ -353,8 +255,74 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   useEffect(() => {
     const uname = getUsername();
     loadPurchases(uname);
-     
+
   }, [auth?.authData?.user?.username]);
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  // Auto-open inline form when rendered from register route
+  useEffect(() => {
+    if (initialFormMode === 'create') {
+      startInlineForm('create');
+    } else if (initialFormMode === 'edit' && initialPurchaseId) {
+      startInlineForm('edit', initialPurchaseId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFormMode, initialPurchaseId]);
+
+  // Load draft on mount for create mode to survive refresh
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (draftLoadedRef.current) return;
+    if (!showInlineForm || sidebarMode !== 'create') return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        setFormData(draft);
+      }
+      draftLoadedRef.current = true;
+    } catch {
+      // ignore parse/storage errors
+    }
+  }, [showInlineForm, sidebarMode]);
+
+  // Persist draft for create mode so refresh won't lose data
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (sidebarMode !== 'create' || !showInlineForm) return;
+    if (!draftLoadedRef.current) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(formData));
+    } catch {
+      // ignore storage errors
+    }
+  }, [formData, sidebarMode, showInlineForm]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return;
+      if (sidebarMode !== 'create') return;
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(formDataRef.current));
+      } catch {
+        // ignore storage errors
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // If rendered in register page, open form immediately
+  useEffect(() => {
+    if (initialFormMode === 'create') {
+      startInlineForm('create');
+    } else if (initialFormMode === 'edit' && initialPurchaseId) {
+      startInlineForm('edit', initialPurchaseId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFormMode, initialPurchaseId]);
 
   // Filter purchases based on search and status
   useEffect(() => {
@@ -471,14 +439,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   const findDuplicateDeliveries = (): number[] => {
     const duplicateIndices: number[] = [];
     const deliveries = formData.deliveries || [];
-    
+
     console.log('Checking for duplicates in deliveries:', deliveries);
-    
+
     // Helper function to normalize strings for comparison
     const normalize = (str: string | undefined | null): string => {
       return (str || '').toString().trim().toUpperCase();
     };
-    
+
     for (let i = 0; i < deliveries.length; i++) {
       const current = deliveries[i];
       // Skip completely empty deliveries
@@ -486,15 +454,15 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         console.log(`Delivery ${i} is completely empty, skipping`);
         continue;
       }
-      
+
       for (let j = i + 1; j < deliveries.length; j++) {
         const other = deliveries[j];
-        
+
         // Skip comparison if other delivery is completely empty
         if (!other.do_date && !other.do_no && !other.inv_date && !other.inv_no && !other.grn_date && !other.grn_no) {
           continue;
         }
-        
+
         // Normalize values for comparison
         const currentNorm = {
           do_date: normalize(current.do_date),
@@ -502,14 +470,14 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           inv_date: normalize(current.inv_date),
           inv_no: normalize(current.inv_no)
         };
-        
+
         const otherNorm = {
           do_date: normalize(other.do_date),
           do_no: normalize(other.do_no),
           inv_date: normalize(other.inv_date),
           inv_no: normalize(other.inv_no)
         };
-        
+
         // Check if deliveries match on key fields
         const isDuplicate = (
           currentNorm.do_date === otherNorm.do_date &&
@@ -519,13 +487,13 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           // Only consider it duplicate if at least some key fields are filled
           (currentNorm.do_date || currentNorm.do_no || currentNorm.inv_date || currentNorm.inv_no)
         );
-        
+
         console.log(`Comparing delivery ${i} with ${j}:`, {
           current: currentNorm,
           other: otherNorm,
           isDuplicate
         });
-        
+
         if (isDuplicate) {
           console.log(`Found duplicate: deliveries ${i} and ${j}`);
           if (!duplicateIndices.includes(i)) duplicateIndices.push(i);
@@ -533,7 +501,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         }
       }
     }
-    
+
     console.log('Duplicate indices found:', duplicateIndices);
     return duplicateIndices.sort((a, b) => a - b);
   };
@@ -543,44 +511,44 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
     const partialDuplicates: number[] = [];
     const details: string[] = [];
     const deliveries = formData.deliveries || [];
-    
+
     const normalize = (str: string | undefined | null): string => {
       return (str || '').toString().trim().toUpperCase();
     };
-    
+
     for (let i = 0; i < deliveries.length; i++) {
       const current = deliveries[i];
       if (!current.do_no && !current.inv_no && !current.grn_no) continue;
-      
+
       for (let j = i + 1; j < deliveries.length; j++) {
         const other = deliveries[j];
         if (!other.do_no && !other.inv_no && !other.grn_no) continue;
-        
+
         const currentNorm = {
           do_no: normalize(current.do_no),
           inv_no: normalize(current.inv_no),
           grn_no: normalize(current.grn_no)
         };
-        
+
         const otherNorm = {
           do_no: normalize(other.do_no),
           inv_no: normalize(other.inv_no),
           grn_no: normalize(other.grn_no)
         };
-        
+
         // Check for same numbers but different dates
         const sameNumbers = (
           (currentNorm.do_no && currentNorm.do_no === otherNorm.do_no) ||
           (currentNorm.inv_no && currentNorm.inv_no === otherNorm.inv_no) ||
           (currentNorm.grn_no && currentNorm.grn_no === otherNorm.grn_no)
         );
-        
+
         const differentDates = (
           normalize(current.do_date) !== normalize(other.do_date) ||
           normalize(current.inv_date) !== normalize(other.inv_date) ||
           normalize(current.grn_date) !== normalize(other.grn_date)
         );
-        
+
         if (sameNumbers && differentDates) {
           if (!partialDuplicates.includes(i)) {
             partialDuplicates.push(i);
@@ -593,32 +561,169 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         }
       }
     }
-    
+
     return { indices: partialDuplicates.sort((a, b) => a - b), details };
   };
-  
+
+  const handleSupplierSelect = (val: string) => {
+    if (val === '__add_supplier__') {
+      setAddingSupplier(true);
+      return;
+    }
+    setAddingSupplier(false);
+    handleInputChange('supplier_id', val);
+  };
+
+  const handleCreateSupplier = async () => {
+    const name = newSupplierName.trim();
+    if (!name) {
+      toast.error('Supplier name is required');
+      return;
+    }
+    try {
+      setCreatingSupplier(true);
+      const res = await authenticatedApi.post('/api/purchases/suppliers', { name });
+      const created: any = (res as any).data || {};
+      const newId = created.id || created.data?.id || created.insertId || created.lastId || name;
+      const option = { value: String(newId), label: name };
+      setSuppliers(prev => [...prev, { id: newId, name }]);
+      setSupplierOptions(prev => [...prev, option]);
+      setFormData(prev => ({ ...prev, supplier_id: String(newId) }));
+      setNewSupplierName('');
+      setAddingSupplier(false);
+      toast.success('Supplier created');
+    } catch (err) {
+      toast.error('Failed to create supplier');
+      console.error('Create supplier error', err);
+    } finally {
+      setCreatingSupplier(false);
+    }
+  };
+
+  const handleBrandSelect = (val: string) => {
+    if (val === '__add_brand__') {
+      setAddingBrand(true);
+      return;
+    }
+    setAddingBrand(false);
+    handleInputChange('brand_id', val);
+  };
+
+  const handleCreateBrand = async () => {
+    if (!formData.type_id) {
+      toast.error('Select item type first');
+      return;
+    }
+    const name = newBrandName.trim();
+    if (!name) {
+      toast.error('Brand name is required');
+      return;
+    }
+    try {
+      setCreatingBrand(true);
+      const res = await authenticatedApi.post('/api/assets/brands', { name, type_id: Number(formData.type_id) });
+      const created: any = (res as any).data || {};
+      const newIdFromResponse = created.id || created.data?.id || created.code || created.lastId;
+
+      // Refresh brands for this type to ensure we get the saved ID
+      try {
+        const resBrands = await authenticatedApi.get(`/api/assets/brands?type=${formData.type_id}`);
+        const dataBrands = (resBrands as any).data?.data || (resBrands as any).data || [];
+        setBrands(dataBrands);
+        const options = dataBrands.map((b: any) => ({ value: String(b.id ?? b.code ?? b.name), label: b.name }));
+        setBrandOptions(options);
+
+        const selectedId =
+          newIdFromResponse ||
+          dataBrands.find((b: any) => b.name?.toLowerCase() === name.toLowerCase())?.id;
+
+        if (selectedId) {
+          setFormData(prev => ({ ...prev, brand_id: String(selectedId) }));
+        }
+      } catch {
+        // fallback to using the immediate response id if refresh fails
+        if (newIdFromResponse) {
+          const option = { value: String(newIdFromResponse), label: name };
+          setBrands(prev => [...prev, { id: newIdFromResponse, name }]);
+          setBrandOptions(prev => [...prev, option]);
+          setFormData(prev => ({ ...prev, brand_id: String(newIdFromResponse) }));
+        }
+      }
+
+      setNewBrandName('');
+      setAddingBrand(false);
+      toast.success('Brand created');
+    } catch (err) {
+      toast.error('Failed to create brand');
+      console.error('Create brand error', err);
+    } finally {
+      setCreatingBrand(false);
+    }
+  };
+
+  const addDeliverySlot = () => {
+    const nextIdx = (formData.deliveries?.length || 0);
+    if (nextIdx > 0) {
+      const last = formData.deliveries![nextIdx - 1];
+      const started = !!(last.do_date || last.do_no || last.inv_date || last.inv_no || last.grn_date || last.grn_no || deliveryFiles[nextIdx - 1]);
+      if (started && (!last.do_date || !last.do_no)) {
+        setDeliveryErrors(prev => {
+          const arr = [...prev];
+          arr[nextIdx - 1] = { ...(arr[nextIdx - 1] || {}), do_date: (!last.do_date ? 'DO date is required' : undefined) as any, do_no: (!last.do_no ? 'DO number is required' : undefined) as any };
+          return arr;
+        });
+        toast.error('Complete DO date and number for current delivery before adding another.');
+        return;
+      }
+    }
+    if (nextIdx >= maxDeliveries) {
+      toast.error(`Cannot add more than ${maxDeliveries} deliveries for quantity ${formData.qty}.`);
+      return;
+    }
+    setFormData(prev => ({
+      ...prev,
+      deliveries: [
+        ...(prev.deliveries || []),
+        { do_date: '', do_no: '', inv_date: '', inv_no: '', grn_date: '', grn_no: '' }
+      ]
+    }));
+    setDeliveryErrors(prev => ([...prev, {}]));
+    setDeliveryFiles(prev => ([...prev, null]));
+    setActiveDeliveryTab(`delivery-${nextIdx}`);
+  };
+
+  const removeDeliverySlot = (idx: number) => {
+    const arr = [...(formData.deliveries || [])];
+    arr.splice(idx, 1);
+    setFormData(prev => ({ ...prev, deliveries: arr }));
+    setDeliveryFiles(prev => { const nf = [...prev]; nf.splice(idx, 1); return nf; });
+    setDeliveryErrors(prev => { const errs = [...prev]; errs.splice(idx, 1); return errs; });
+    const newIdx = Math.max(0, idx - 1);
+    setActiveDeliveryTab(`delivery-${newIdx}`);
+  };
+
   // Delete delivery function that calls backend API
   const deleteDelivery = async (deliveryIndex: number) => {
     try {
       const delivery = formData.deliveries?.[deliveryIndex];
-      
+
       // If delivery has an ID, delete from backend
       if (delivery?.id && sidebarMode === 'edit') {
         await authenticatedApi.delete(`/api/purchases/deliveries/${delivery.id}`);
         toast.success('Delivery deleted successfully');
       }
-      
+
       // Remove from local state
       const updatedDeliveries = [...(formData.deliveries || [])];
       updatedDeliveries.splice(deliveryIndex, 1);
-      
+
       // Remove associated file
       const updatedFiles = [...deliveryFiles];
       updatedFiles.splice(deliveryIndex, 1);
-      
+
       setFormData(prev => ({ ...prev, deliveries: updatedDeliveries }));
       setDeliveryFiles(updatedFiles);
-      
+
       // Adjust active tab if necessary
       const newLength = updatedDeliveries.length;
       if (newLength === 0) {
@@ -627,267 +732,87 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         const newActiveIndex = Math.max(0, Math.min(deliveryIndex - 1, newLength - 1));
         setActiveDeliveryTab(`delivery-${newActiveIndex}`);
       }
-      
+
     } catch (error) {
       console.error('Error deleting delivery:', error);
       toast.error('Failed to delete delivery');
     }
   };
 
-  const validateDeliveries = (): boolean => {
-    const errs: Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>> = [];
-    let ok = true;
-    (formData.deliveries || []).forEach((d, i) => {
-      const e: any = {};
-      const hasDO = !!(d.do_date || d.do_no);
-      const hasINV = !!(d.inv_date || d.inv_no);
-      const hasGRN = !!(d.grn_date || d.grn_no);
-      const hasAny = hasDO || hasINV || hasGRN || !!deliveryFiles[i];
-      // If the delivery slot exists but is completely empty (no fields and no file), flag it as an error
-      if (!hasAny) {
-        // mark a visible field (do_no) with message so user sees the error under DO Number
-        e.do_no = 'Empty delivery entry — remove or fill required fields';
-        errs[i] = e;
-        ok = false;
-        return; // continue to next
+
+  const hydrateFormFromPurchase = async (purchase?: ApiPurchase | number | string) => {
+    let p: any = purchase;
+    if (!p) return null;
+    if (typeof p === 'number' || typeof p === 'string') {
+      try {
+        const res = await authenticatedApi.get(`/api/purchases/${p}`);
+        p = (res as any).data?.data || (res as any).data || null;
+      } catch {
+        p = null;
       }
-      // If user started this delivery (or attached file), require pairs accordingly
-      if (hasAny) {
-        if (hasDO) {
-          if (!d.do_date) e.do_date = 'DO date is required';
-          if (!d.do_no) e.do_no = 'DO number is required';
-        }
-        if (hasINV) {
-          if (!d.inv_date) e.inv_date = 'Invoice date is required';
-          if (!d.inv_no) e.inv_no = 'Invoice number is required';
-        }
-        if (hasGRN) {
-          if (!d.grn_date) e.grn_date = 'GRN date is required';
-          if (!d.grn_no) e.grn_no = 'GRN number is required';
-        }
-      }
-      errs[i] = e;
-      if (Object.keys(e).length > 0) ok = false;
+    }
+    if (!p) return null;
+
+    setSelectedPurchase(p);
+
+    const ccId = p.request?.costcenter?.id ? String(p.request.costcenter.id) : (typeof p.costcenter === 'string' ? p.costcenter : (p.costcenter?.name || ''));
+    const picVal = p.request?.requested_by?.ramco_id || (typeof p.requestor === 'string' ? p.requestor : (p.requestor?.ramco_id || ''));
+    const supplierId = typeof p.supplier === 'string' || !p.supplier ? '' : (p.supplier?.id ? String(p.supplier.id) : '');
+    const brandId = typeof p.brand === 'string' || !p.brand ? '' : (p.brand?.id ? String(p.brand.id) : '');
+    const typeId = typeof p.type !== 'string' && p.type?.id ? String(p.type.id) : (typeof p.type === 'string' ? p.type : '');
+    const categoryId = typeof p.category !== 'string' && p.category?.id ? String(p.category.id) : '';
+
+    const deliveries = Array.isArray(p.deliveries)
+      ? p.deliveries.map((d: any) => ({
+        id: d.id,
+        do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
+        do_no: d.do_no || '',
+        inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
+        inv_no: d.inv_no || '',
+        grn_date: d.grn_date ? String(d.grn_date).split('T')[0] : '',
+        grn_no: d.grn_no || '',
+        upload_url: d.upload_url || d.upload_path || null,
+      }))
+      : [];
+    const last = deliveries[deliveries.length - 1];
+
+    setFormData({
+      request_type: p.request?.request_type || p.request_type || '',
+      costcenter: ccId || '',
+      pic: picVal || '',
+      type_id: typeId || '',
+      category_id: categoryId || '',
+      items: p.description || p.items || '',
+      purpose: p.purpose || '',
+      supplier_id: supplierId,
+      brand_id: brandId,
+      qty: p.qty || 0,
+      unit_price: parseFloat(p.unit_price || '0'),
+      pr_date: p.request?.pr_date ? String(p.request.pr_date).split('T')[0] : (p.pr_date ? String(p.pr_date).split('T')[0] : ''),
+      pr_no: p.request?.pr_no || p.pr_no || '',
+      po_date: p.po_date ? String(p.po_date).split('T')[0] : '',
+      po_no: p.po_no || '',
+      do_date: last ? last.do_date : '',
+      do_no: last ? last.do_no : '',
+      inv_date: last ? last.inv_date : '',
+      inv_no: last ? last.inv_no : '',
+      grn_date: last ? last.grn_date : '',
+      grn_no: last ? last.grn_no : '',
+      deliveries
     });
-    setDeliveryErrors(errs);
-    return ok;
+    setActiveDeliveryTab(`delivery-${Math.max(0, deliveries.length - 1)}`);
+    setDeliveryFiles(new Array(deliveries.length).fill(null));
+    return p;
   };
 
-  // Validate form
-  const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
-
-    if (!formData.request_type) errors.request_type = 'Request type is required';
-    if (!formData.costcenter) errors.costcenter = 'Cost center is required';
-    if (!formData.pic) errors.pic = 'Requester is required';
-    if (!formData.items) errors.items = 'Item description is required';
-    if (!formData.type_id) errors.type_id = 'Item type is required';
-    if (!formData.supplier_id) errors.supplier_id = 'Supplier is required';
-    if (!formData.pr_no?.trim()) errors.pr_no = 'PR number is required';
-    if (!formData.pr_date?.trim()) errors.pr_date = 'PR date is required';
-    if (!formData.po_no?.trim()) errors.po_no = 'PO number is required';
-    if (!formData.po_date?.trim()) errors.po_date = 'PO date is required';
-    if (!formData.qty || formData.qty <= 0) errors.qty = 'Quantity must be greater than 0';
-    if (!formData.unit_price || formData.unit_price <= 0) errors.unit_price = 'Unit price must be greater than 0';
-
-    const baseOk = Object.keys(errors).length === 0;
-    const deliveriesOk = validateDeliveries();
-    setValidationErrors(errors);
-    return baseOk && deliveriesOk;
-  };
-
-  // Handle form submission
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-
-    setLoading(true);
-    try {
-      const rawDeliveries = formData.deliveries || [];
-      const deliveriesWithIndex = rawDeliveries
-        .map((d, i) => ({ d, i }))
-        .filter(({ d, i }) => {
-          const hasVals = [d.do_date, d.do_no, d.inv_date, d.inv_no, d.grn_date, d.grn_no]
-            .some(v => !!(v && String(v).trim() !== ''));
-          const hasFile = !!deliveryFiles[i];
-          return hasVals || hasFile;
-        });
-      const cleanDeliveries = deliveriesWithIndex.map(x => x.d);
-      const allowedDeliveries = Math.min(Math.max(formData.qty || 0, 0), 5);
-      if (cleanDeliveries.length > allowedDeliveries) {
-        toast.error(`Deliveries exceed allowed limit (${allowedDeliveries}). Remove extra deliveries or adjust quantity.`);
-        setLoading(false);
-        return;
-      }
-      const jsonPayload: any = {
-        ...formData,
-        total_price: calculatedTotal.toString(),
-        unit_price: String(formData.unit_price ?? ''),
-        // map to API expected keys (keep as-is; backend can coerce types if needed)
-        costcenter_id: formData.costcenter,
-        ramco_id: formData.pic,
-        brand_id: formData.brand_id || undefined,
-        category_id: formData.category_id || undefined,
-        purpose: formData.purpose || undefined,
-        description: formData.items,
-      };
-
-      // Ensure request_id is included on update (edit mode)
-      if (sidebarMode === 'edit' && selectedPurchase) {
-        const reqId = (selectedPurchase.request && selectedPurchase.request.id)
-          ? selectedPurchase.request.id
-          : (selectedPurchase as any).request_id;
-        if (reqId) {
-          jsonPayload.request_id = reqId;
-        }
-      }
-
-      // remove top-level logistics fields to avoid duplication (kept only in deliveries)
-      delete jsonPayload.do_date;
-      delete jsonPayload.do_no;
-      delete jsonPayload.inv_date;
-      delete jsonPayload.inv_no;
-      delete jsonPayload.grn_date;
-      delete jsonPayload.grn_no;
-
-      // include deliveries only; use cleaned subset
-      if (cleanDeliveries.length > 0) {
-        jsonPayload.deliveries = cleanDeliveries.map((d) => ({
-          do_date: d.do_date || '',
-          do_no: d.do_no || '',
-          inv_date: d.inv_date || '',
-          inv_no: d.inv_no || '',
-          grn_date: d.grn_date || '',
-          grn_no: d.grn_no || '',
-          // include key for stability; real file goes in multipart branch
-          upload_path: ''
-        }));
-      }
-
-      // remove the old keys to avoid sending duplicate data
-      delete jsonPayload.costcenter;
-      delete jsonPayload.pic;
-      delete jsonPayload.items;
-      // Do not send brand name field
-      delete jsonPayload.brand;
-
-      // If any delivery has a file, send multipart/form-data and include files under deliveries[i][upload_path]
-      const selectedIndexes = deliveriesWithIndex.map(x => x.i);
-      const hasDeliveryFiles = selectedIndexes.some(idx => !!deliveryFiles[idx]);
-      if (hasDeliveryFiles) {
-        const fd = new FormData();
-        // append scalar fields
-        Object.entries(jsonPayload).forEach(([k, v]) => {
-          if (v === undefined || v === null) return;
-          if (k === 'deliveries') return; // append deliveries individually
-          fd.append(k, String(v));
-        });
-        // append deliveries fields and files
-        deliveriesWithIndex.forEach(({ d, i }, idx) => {
-          // use a compact delivery index (idx) for the form payload
-          fd.append(`deliveries[${idx}][do_date]`, d.do_date || '');
-          fd.append(`deliveries[${idx}][do_no]`, d.do_no || '');
-          fd.append(`deliveries[${idx}][inv_date]`, d.inv_date || '');
-          fd.append(`deliveries[${idx}][inv_no]`, d.inv_no || '');
-          fd.append(`deliveries[${idx}][grn_date]`, d.grn_date || '');
-          fd.append(`deliveries[${idx}][grn_no]`, d.grn_no || '');
-          const f = deliveryFiles[i];
-          if (f) {
-            fd.append(`deliveries[${idx}][upload_path]`, f, f.name);
-          } else {
-            fd.append(`deliveries[${idx}][upload_path]`, '');
-          }
-        });
-
-        if (sidebarMode === 'edit' && selectedPurchase) {
-          await authenticatedApi.put(`/api/purchases/${selectedPurchase.id}`, fd, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-          toast.success('Purchase record updated successfully');
-        } else {
-          await authenticatedApi.post('/api/purchases', fd, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-          });
-          toast.success('Purchase record created successfully');
-        }
-      } else {
-        // No file: send JSON payload as before
-        if (sidebarMode === 'edit' && selectedPurchase) {
-          await authenticatedApi.put(`/api/purchases/${selectedPurchase.id}`, jsonPayload);
-          toast.success('Purchase record updated successfully');
-        } else {
-          await authenticatedApi.post('/api/purchases', jsonPayload);
-          toast.success('Purchase record created successfully');
-        }
-      }
-
-      loadPurchases();
-      closeSidebar();
-    } catch (error: any) {
-      // Prefer backend-provided message over generic 500
-      const getApiErrorMessage = (err: any): string => {
-        try {
-          const resp = err?.response;
-          const data = resp?.data;
-          if (!data) return err?.message || 'Failed to save purchase record';
-          // Common shapes: { message }, { error }, string, { errors: { field: [msg] } }
-          if (typeof data === 'string') return data;
-          if (data.message && typeof data.message === 'string') return data.message;
-          if (data.error && typeof data.error === 'string') return data.error;
-          if (data.errors && typeof data.errors === 'object') {
-            const first = Object.values<any>(data.errors).flat().find((m: any) => typeof m === 'string');
-            if (first) return first as string;
-          }
-          return err?.message || 'Failed to save purchase record';
-        } catch {
-          return 'Failed to save purchase record';
-        }
-      };
-
-      const msg = getApiErrorMessage(error);
-      toast.error(msg || 'Failed to save purchase record');
-      console.error('Error saving purchase:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle delete
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this purchase record?')) return;
-
-    setLoading(true);
-    try {
-      await authenticatedApi.delete(`/api/purchases/${id}`);
-      toast.success('Purchase record deleted successfully');
-      loadPurchases();
-      closeSidebar();
-    } catch (error: any) {
-      const getApiErrorMessage = (err: any): string => {
-        const data = err?.response?.data;
-        if (!data) return err?.message || 'Failed to delete purchase record';
-        if (typeof data === 'string') return data;
-        if (data.message && typeof data.message === 'string') return data.message;
-        if (data.error && typeof data.error === 'string') return data.error;
-        if (data.errors && typeof data.errors === 'object') {
-          const first = Object.values<any>(data.errors).flat().find((m: any) => typeof m === 'string');
-          if (first) return first as string;
-        }
-        return err?.message || 'Failed to delete purchase record';
-      };
-      toast.error(getApiErrorMessage(error));
-      console.error('Error deleting purchase:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sidebar handlers
-  const openSidebar = (mode: 'view' | 'create' | 'edit', purchase?: ApiPurchase) => {
+  const startInlineForm = async (mode: 'create' | 'edit', purchase?: ApiPurchase | number | string) => {
     setSidebarMode(mode);
-    setSelectedPurchase(purchase || null);
+    setShowInlineForm(true);
+    setShowSubmitConfirm(false);
 
     if (mode === 'create') {
-      setFormData({
+      setSelectedPurchase(null);
+      const blank = {
         request_type: '',
         costcenter: '',
         pic: '',
@@ -910,79 +835,43 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         grn_date: '',
         grn_no: '',
         deliveries: []
-      });
+      };
+      let draft = null;
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(draftKey);
+          draft = raw ? JSON.parse(raw) : null;
+        } catch {
+          draft = null;
+        }
+      }
+      setFormData(draft || blank);
+      draftLoadedRef.current = true;
       setActiveDeliveryTab('delivery-0');
       setDeliveryFiles([]);
-    } else if ((mode === 'edit' || mode === 'view') && purchase) {
-      // Always hydrate latest data by id (list payload may not include nested fields)
-      (async () => {
-        let p: any = purchase;
-        try {
-          const res = await authenticatedApi.get(`/api/purchases/${purchase.id}`);
-          p = (res as any).data?.data || (res as any).data || purchase;
-          setSelectedPurchase(p);
-        } catch {
-          // fall back to provided purchase
-        }
-
-        const ccId = p.request?.costcenter?.id ? String(p.request.costcenter.id) : (typeof p.costcenter === 'string' ? p.costcenter : (p.costcenter?.name || ''));
-        const picVal = p.request?.requested_by?.ramco_id || (typeof p.requestor === 'string' ? p.requestor : (p.requestor?.ramco_id || ''));
-        const supplierId = typeof p.supplier === 'string' || !p.supplier ? '' : (p.supplier?.id ? String(p.supplier.id) : '');
-        const brandId = typeof p.brand === 'string' || !p.brand ? '' : (p.brand?.id ? String(p.brand.id) : '');
-        const typeId = typeof p.type !== 'string' && p.type?.id ? String(p.type.id) : (typeof p.type === 'string' ? p.type : '');
-        const categoryId = typeof p.category !== 'string' && p.category?.id ? String(p.category.id) : '';
-
-        const deliveries = Array.isArray(p.deliveries)
-          ? p.deliveries.map((d: any) => ({
-              id: d.id,
-              do_date: d.do_date ? String(d.do_date).split('T')[0] : '',
-              do_no: d.do_no || '',
-              inv_date: d.inv_date ? String(d.inv_date).split('T')[0] : '',
-              inv_no: d.inv_no || '',
-              grn_date: d.grn_date ? String(d.grn_date).split('T')[0] : '',
-              grn_no: d.grn_no || '',
-              upload_url: d.upload_url || d.upload_path || null,
-            }))
-          : [];
-        const last = deliveries[deliveries.length - 1];
-
-        setFormData({
-          request_type: p.request?.request_type || p.request_type || '',
-          costcenter: ccId || '',
-          pic: picVal || '',
-          type_id: typeId || '',
-          category_id: categoryId || '',
-          items: p.description || p.items || '',
-          purpose: p.purpose || '',
-          supplier_id: supplierId,
-          brand_id: brandId,
-          qty: p.qty || 0,
-          unit_price: parseFloat(p.unit_price || '0'),
-          pr_date: p.request?.pr_date ? String(p.request.pr_date).split('T')[0] : (p.pr_date ? String(p.pr_date).split('T')[0] : ''),
-          pr_no: p.request?.pr_no || p.pr_no || '',
-          po_date: p.po_date ? String(p.po_date).split('T')[0] : '',
-          po_no: p.po_no || '',
-          do_date: last ? last.do_date : '',
-          do_no: last ? last.do_no : '',
-          inv_date: last ? last.inv_date : '',
-          inv_no: last ? last.inv_no : '',
-          grn_date: last ? last.grn_date : '',
-          grn_no: last ? last.grn_no : '',
-          deliveries
-        });
-        setActiveDeliveryTab(`delivery-${Math.max(0, deliveries.length - 1)}`);
-        setDeliveryFiles(new Array(deliveries.length).fill(null));
-      })();
+      return;
     }
 
-    setSidebarOpen(true);
-    setValidationErrors({});
+    await hydrateFormFromPurchase(purchase);
   };
 
-  const closeSidebar = () => {
-    setSidebarOpen(false);
+  // Sidebar handlers (view only; forms now inline)
+  const closeInlineForm = () => {
+    setShowInlineForm(false);
     setSelectedPurchase(null);
     setValidationErrors({});
+    if (inlineFormOnly) {
+      router.push('/purchase');
+    }
+  };
+
+  const clearDraft = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
   };
 
   // Handle Excel import
@@ -1001,7 +890,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       await authenticatedApi.post('/api/purchases/import', { data: importData });
       toast.success(`Successfully imported ${importData.length} purchase records`);
       loadPurchases();
-      closeSidebar();
+      closeInlineForm();
     } catch (error) {
       toast.error('Failed to import purchase records');
       console.error('Error importing purchases:', error);
@@ -1055,7 +944,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
   // Define columns for DataGrid
   const columns: ColumnDef<any>[] = [
     { key: 'id', header: 'No' },
-        // Exclude deliveries columns for now; /api/purchases list does not include them
+    // Exclude deliveries columns for now; /api/purchases list does not include them
     {
       key: 'status',
       header: 'Status',
@@ -1146,1011 +1035,95 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
       header: 'PO Date',
       render: (row: any) => row.po_date ? new Date(row.po_date).toLocaleDateString('en-GB') : ''
     },
-    { key: 'po_no', header: 'PO Number', filter: 'input' },
+  { key: 'po_no', header: 'PO Number', filter: 'input' },
 
   ];
 
   // Render form content
   const renderFormContent = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Request Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center">
-              <ShoppingCart className="mr-2 h-5 w-5" />
-              Request Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="request_type">Request Type *</Label>
-              <Select
-                value={formData.request_type}
-                onValueChange={(value) => handleInputChange('request_type', value)}
-              >
-                <SelectTrigger className='w-full'>
-                  <SelectValue placeholder="Select request type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CAPEX">CAPEX</SelectItem>
-                  <SelectItem value="OPEX">OPEX</SelectItem>
-                  <SelectItem value="SERVICES">SERVICES</SelectItem>
-                </SelectContent>
-              </Select>
-              {validationErrors.request_type && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.request_type}</p>
-              )}
-            </div>
-            {/* PR fields moved above Request Type (readonly in edit mode) */}
-            <div>
-              <Label htmlFor="pr_date">Request Date *</Label>
-              <Input
-                id="pr_date"
-                type="date"
-                value={formData.pr_date}
-                onChange={(e) => handleInputChange('pr_date', e.target.value)}
-              />
-              {validationErrors.pr_date && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="pr_no">Request Number *</Label>
-              <Input
-                id="pr_no"
-                value={formData.pr_no}
-                onChange={(e) => handleInputChange('pr_no', e.target.value)}
-                placeholder="Enter PR number"
-              />
-              {validationErrors.pr_no && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="costcenter">Cost Center *</Label>
-              <Combobox
-                options={costcenterOptions}
-                value={formData.costcenter}
-                onValueChange={(val) => handleInputChange('costcenter', val)}
-                placeholder="Select cost center"
-                emptyMessage="No cost centers"
-                disabled={costcentersLoading}
-                clearable={true}
-              />
-              {validationErrors.costcenter && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.costcenter}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="pic">Requester *</Label>
-              <Combobox
-                options={
-                  employeeOptions.some(opt => opt.value === formData.pic)
-                    ? employeeOptions
-                    : formData.pic
-                      ? [
-                          ...employeeOptions,
-                          {
-                            value: formData.pic,
-                            label:
-                              (() => {
-                                let fullName = '';
-                                if (selectedPurchase?.request?.requested_by?.ramco_id === formData.pic) {
-                                  fullName = selectedPurchase.request.requested_by.full_name;
-                                } else if (
-                                  selectedPurchase?.requestor &&
-                                  typeof selectedPurchase.requestor === 'object' &&
-                                  'ramco_id' in selectedPurchase.requestor &&
-                                  (selectedPurchase.requestor as any).ramco_id === formData.pic
-                                ) {
-                                  fullName = (selectedPurchase.requestor as any).full_name;
-                                }
-                                return fullName || formData.pic;
-                              })()
-                          }
-                        ]
-                      : employeeOptions
-                }
-                value={formData.pic}
-                onValueChange={(val) => handleInputChange('pic', val)}
-                placeholder="Select person in charge"
-                emptyMessage="No employees"
-                disabled={employeesLoading}
-                clearable={true}
-              />
-              {validationErrors.pic && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.pic}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="type_id">Item Type *</Label>
-              <Combobox
-                options={typeOptions}
-                value={formData.type_id}
-                onValueChange={(val) => handleInputChange('type_id', val)}
-                placeholder="Select item type"
-                emptyMessage="No types"
-                disabled={typesLoading}
-                clearable={true}
-              />
-              {validationErrors.type_id && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.type_id}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="category_id">Category</Label>
-              <Combobox
-                options={categoryOptions}
-                value={formData.category_id || ''}
-                onValueChange={(val) => handleInputChange('category_id', val)}
-                placeholder={formData.type_id ? 'Select category' : 'Select item type first'}
-                emptyMessage={formData.type_id ? 'No categories found' : 'Select item type first'}
-                disabled={categoriesLoading || !formData.type_id}
-                clearable={true}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="items">Description *</Label>
-              <Textarea
-                id="items"
-                value={formData.items}
-                onChange={(e) => handleInputChange('items', e.target.value)}
-                placeholder="Enter item description"
-                rows={3}
-              />
-              {validationErrors.items && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.items}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="purpose">Purpose</Label>
-              <Textarea
-                id="purpose"
-                value={formData.purpose || ''}
-                onChange={(e) => handleInputChange('purpose', e.target.value)}
-                placeholder="Enter purpose/remarks"
-                rows={2}
-              />
-            </div>
-
-            {/* Brand moved to Pricing & Order Information card */}
-          </CardContent>
-        </Card>
-
-        {/* Pricing Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center">
-              <Package className="mr-2 h-5 w-5" />
-              Pricing & Order Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-
-            <div>
-              <Label htmlFor="qty">Quantity *</Label>
-              <Input
-                id="qty"
-                type="number"
-                min="1"
-                value={formData.qty || ''}
-                onChange={(e) => handleInputChange('qty', parseInt(e.target.value) || 0)}
-                placeholder="Enter quantity"
-              />
-              {validationErrors.qty && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.qty}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="unit_price">Unit Price (RM) *</Label>
-              <Input
-                id="unit_price"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={formData.unit_price || ''}
-                onChange={(e) => handleInputChange('unit_price', parseFloat(e.target.value) || 0)}
-                placeholder="Enter unit price"
-              />
-              {validationErrors.unit_price && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.unit_price}</p>
-              )}
-            </div>
-
-            <div>
-              <Label>Total Amount</Label>
-              <div className="text-2xl font-bold text-green-600">
-                RM {fmtRM(calculatedTotal)}
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="supplier">Supplier *</Label>
-              <Combobox
-                options={[...supplierOptions, { value: '__add_supplier__', label: 'Add new supplier…' }]}
-                value={formData.supplier_id}
-                onValueChange={(val) => {
-                  if (val === '__add_supplier__') { setAddingSupplier(true); return; }
-                  setAddingSupplier(false);
-                  handleInputChange('supplier_id', val)
-                }}
-                placeholder="Select supplier"
-                emptyMessage="No suppliers"
-                disabled={suppliersLoading}
-                clearable={true}
-              />
-              {validationErrors.supplier_id && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.supplier_id}</p>
-              )}
-              {addingSupplier && (
-                <div className="relative mt-2">
-                  <Input
-                    value={newSupplierName}
-                    onChange={(e) => setNewSupplierName(e.target.value)}
-                    placeholder="Enter new supplier name"
-                    disabled={creatingSupplier}
-                    className="pr-10"
-                  />
-                  <Button
-                    size="icon"
-                    type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                    onClick={async () => {
-                      const name = newSupplierName.trim();
-                      if (!name) { toast.error('Supplier name is required'); return; }
-                      try {
-                        setCreatingSupplier(true);
-                        const res = await authenticatedApi.post('/api/purchases/suppliers', { name });
-                        const created: any = (res as any).data || {};
-                        const newId = created.id || created.data?.id || created.insertId || created.lastId || name;
-                        const option = { value: String(newId), label: name };
-                        setSuppliers(prev => [...prev, { id: newId, name }]);
-                        setSupplierOptions(prev => [...prev, option]);
-                        setFormData(prev => ({ ...prev, supplier_id: String(newId) }));
-                        setNewSupplierName('');
-                        setAddingSupplier(false);
-                        toast.success('Supplier created');
-                      } catch (err) {
-                        toast.error('Failed to create supplier');
-                        console.error('Create supplier error', err);
-                      } finally {
-                        setCreatingSupplier(false);
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="brand">Brand</Label>
-              <Combobox
-                options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
-                value={formData.brand_id}
-                onValueChange={(val) => {
-                  if (val === '__add_brand__') { setAddingBrand(true); return; }
-                  setAddingBrand(false);
-                  handleInputChange('brand_id', val);
-                }}
-                placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
-                emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
-                disabled={brandsLoading || !formData.type_id}
-                clearable={true}
-              />
-              {addingBrand && (
-                <div className="relative mt-2">
-                  <Input
-                    value={newBrandName}
-                    onChange={(e) => setNewBrandName(e.target.value)}
-                    placeholder="Enter new brand name"
-                    disabled={!formData.type_id || creatingBrand}
-                    className="pr-10"
-                  />
-                  <Button
-                    size="icon"
-                    type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                    onClick={async () => {
-                      if (!formData.type_id) { toast.error('Select item type first'); return; }
-                      const name = newBrandName.trim();
-                      if (!name) { toast.error('Brand name is required'); return; }
-                      try {
-                        setCreatingBrand(true);
-                        const res = await authenticatedApi.post('/api/assets/brands', { name, type_id: Number(formData.type_id) });
-                        const created: any = (res as any).data || {};
-                        const newId = created.id || created.data?.id || created.code || name;
-                        const option = { value: String(newId), label: name };
-                        setBrands(prev => [...prev, { id: newId, name }]);
-                        setBrandOptions(prev => [...prev, option]);
-                        setFormData(prev => ({ ...prev, brand_id: String(newId) }));
-                        setNewBrandName('');
-                        setAddingBrand(false);
-                        toast.success('Brand created');
-                      } catch (err) {
-                        toast.error('Failed to create brand');
-                        console.error('Create brand error', err);
-                      } finally {
-                        setCreatingBrand(false);
-                      }
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="po_no">PO Number *</Label>
-              <Input
-                id="po_no"
-                value={formData.po_no}
-                onChange={(e) => handleInputChange('po_no', e.target.value)}
-                placeholder="Enter PO number"
-              />
-              {validationErrors.po_no && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.po_no}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="po_no">PO Date *</Label>
-              <Input
-                id="po_date"
-                type="date"
-                value={formData.po_date}
-                onChange={(e) => handleInputChange('po_date', e.target.value)}
-                placeholder="Enter PO date"
-              />
-              {validationErrors.po_date && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.po_date}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Purchase Order & Delivery Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center justify-between">
-            <span className="flex items-center"><Truck className="mr-2 h-5 w-5" />Delivery Information</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const nextIdx = (formData.deliveries?.length || 0);
-                // Validate the current last delivery before adding a new one
-                if (nextIdx > 0) {
-                  const last = formData.deliveries![nextIdx - 1];
-                  const started = !!(last.do_date || last.do_no || last.inv_date || last.inv_no || last.grn_date || last.grn_no || deliveryFiles[nextIdx - 1]);
-                  if (started && (!last.do_date || !last.do_no)) {
-                    setDeliveryErrors(prev => {
-                      const arr = [...prev];
-                      arr[nextIdx - 1] = { ...(arr[nextIdx - 1] || {}), do_date: (!last.do_date ? 'DO date is required' : undefined) as any, do_no: (!last.do_no ? 'DO number is required' : undefined) as any };
-                      return arr;
-                    });
-                    toast.error('Complete DO date and number for current delivery before adding another.');
-                    return;
-                  }
-                }
-                if (nextIdx >= maxDeliveries) {
-                  toast.error(`Cannot add more than ${maxDeliveries} deliveries for quantity ${formData.qty}.`);
-                  return;
-                }
-                setFormData(prev => ({
-                  ...prev,
-                  deliveries: [
-                    ...(prev.deliveries || []),
-                    { do_date: '', do_no: '', inv_date: '', inv_no: '', grn_date: '', grn_no: '' }
-                  ]
-                }));
-                setDeliveryErrors(prev => ([...prev, {}]));
-                setDeliveryFiles(prev => ([...prev, null]));
-                setActiveDeliveryTab(`delivery-${nextIdx}`);
-              }}
-              className="gap-2"
-              disabled={(formData.deliveries?.length || 0) >= maxDeliveries || maxDeliveries === 0}
-            >
-              <Plus className="h-4 w-4" /> Add Delivery
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-3 text-xs text-gray-500">
-            {(formData.deliveries?.length || 0)} of {maxDeliveries} deliveries used (max 5)
-          </div>
-          {(() => {
-            const duplicateIndices = findDuplicateDeliveries();
-            const partialDuplicates = findPartialDuplicates();
-            const deliveryCount = formData.deliveries?.length || 0;
-            const itemQty = formData.qty || 0;
-            const isOverDelivery = deliveryCount > itemQty;
-            
-            const hasAnyWarnings = duplicateIndices.length > 0 || partialDuplicates.indices.length > 0 || isOverDelivery;
-            
-            if (!hasAnyWarnings) return null;
-            
-            return (
-              <div className="mb-3 space-y-2">
-                {/* Exact Duplicates Warning */}
-                {duplicateIndices.length > 0 && (
-                  <div className="p-2 bg-red-50 border border-red-200 rounded">
-                    <p className="text-red-800 text-sm font-medium">
-                      🚨 {duplicateIndices.length} exact duplicate {duplicateIndices.length === 1 ? 'delivery' : 'deliveries'} detected
-                    </p>
-                    <p className="text-red-600 text-xs">
-                      Deliveries with identical DO date, DO number, invoice date, and invoice number.
-                    </p>
-                  </div>
-                )}
-                
-                {/* Partial Duplicates Warning */}
-                {partialDuplicates.indices.length > 0 && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
-                    <p className="text-yellow-800 text-sm font-medium">
-                      ⚠️ Potential duplicate entries detected: {partialDuplicates.details.join(', ')}
-                    </p>
-                    <p className="text-yellow-600 text-xs">
-                      Same DO/Invoice/GRN numbers but different dates. Please verify if these are separate deliveries or data entry errors.
-                    </p>
-                  </div>
-                )}
-                
-                {/* Over-delivery Warning */}
-                {isOverDelivery && (
-                  <div className="p-2 bg-orange-50 border border-orange-200 rounded">
-                    <p className="text-orange-800 text-sm font-medium">
-                      📦 Over-delivery detected: {deliveryCount} deliveries for {itemQty} {itemQty === 1 ? 'item' : 'items'}
-                    </p>
-                    <p className="text-orange-600 text-xs">
-                      You have more delivery records than the item quantity. Please verify if this is correct.
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <Tabs value={activeDeliveryTab} onValueChange={setActiveDeliveryTab}>
-            <TabsList className="flex flex-wrap gap-1">
-              {(() => {
-                const duplicateIndices = findDuplicateDeliveries();
-                const partialDuplicates = findPartialDuplicates();
-                console.log('Rendering tabs, duplicate indices:', duplicateIndices);
-                console.log('Rendering tabs, partial duplicate indices:', partialDuplicates.indices);
-                return (formData.deliveries || []).map((_, idx) => {
-                  const isExactDuplicate = duplicateIndices.includes(idx);
-                  const isPartialDuplicate = partialDuplicates.indices.includes(idx);
-                  const isDuplicate = isExactDuplicate || isPartialDuplicate;
-                  console.log(`Tab ${idx}: isExactDuplicate = ${isExactDuplicate}, isPartialDuplicate = ${isPartialDuplicate}`);
-                  
-                  const tabStyle = isExactDuplicate 
-                    ? 'bg-red-100 text-red-800 border-2 border-red-400' 
-                    : isPartialDuplicate 
-                    ? 'bg-yellow-100 text-yellow-800 border-2 border-yellow-400' 
-                    : '';
-                  
-                  const warningIcon = isExactDuplicate ? '🚨' : isPartialDuplicate ? '⚠️' : '';
-                  const warningTitle = isExactDuplicate 
-                    ? 'Exact duplicate delivery detected' 
-                    : isPartialDuplicate 
-                    ? 'Potential duplicate delivery detected' 
-                    : '';
-                  
-                  return (
-                    <div key={`delivery-tab-wrapper-${idx}`} className="flex items-center gap-1">
-                      <TabsTrigger 
-                        value={`delivery-${idx}`}
-                        className={tabStyle}
-                      >
-                        Delivery {idx + 1}
-                        {isDuplicate && (
-                          <span className="ml-1 text-sm" title={warningTitle}>{warningIcon}</span>
-                        )}
-                      </TabsTrigger>
-                      {isDuplicate && (
-                        <Trash2
-                          className="h-4 w-4 cursor-pointer text-red-600 hover:text-red-700"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const confirmMessage = isExactDuplicate
-                              ? `Delete duplicate Delivery ${idx + 1}? This action cannot be undone.`
-                              : `Delete potential duplicate Delivery ${idx + 1}? Please verify this is correct. This action cannot be undone.`;
-                            setPendingDelete({ index: idx, message: confirmMessage });
-                          }}
-                          aria-label={`Delete ${isExactDuplicate ? 'duplicate' : 'potential duplicate'} Delivery ${idx + 1}`}
-                        />
-                      )}
-                    </div>
-                  );
-                });
-              })()
-              }
-            </TabsList>
-            {(formData.deliveries || []).map((d, idx) => {
-              const duplicateIndices = findDuplicateDeliveries();
-              const partialDuplicates = findPartialDuplicates();
-              const isExactDuplicate = duplicateIndices.includes(idx);
-              const isPartialDuplicate = partialDuplicates.indices.includes(idx);
-              const isDuplicate = isExactDuplicate || isPartialDuplicate;
-              
-              return (
-                <TabsContent key={`delivery-content-${idx}`} value={`delivery-${idx}`} className="mt-4">
-                  {/* Removed in-content duplicate warning; using tablist icon + AlertDialog */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor={`do_date_${idx}`}>DO Date</Label>
-                    <Input
-                      id={`do_date_${idx}`}
-                      type="date"
-                      value={d.do_date}
-                      onChange={(e) => updateDeliveryField(idx, 'do_date', e.target.value)}
-                    />
-                    {deliveryErrors[idx]?.do_date && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.do_date}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor={`do_no_${idx}`}>DO Number</Label>
-                    <Input
-                      id={`do_no_${idx}`}
-                      value={d.do_no}
-                      onChange={(e) => updateDeliveryField(idx, 'do_no', e.target.value)}
-                      placeholder="Enter DO number"
-                    />
-                    {deliveryErrors[idx]?.do_no && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.do_no}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor={`inv_date_${idx}`}>Invoice Date</Label>
-                    <Input
-                      id={`inv_date_${idx}`}
-                      type="date"
-                      value={d.inv_date}
-                      onChange={(e) => updateDeliveryField(idx, 'inv_date', e.target.value)}
-                    />
-                    {deliveryErrors[idx]?.inv_date && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.inv_date}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor={`inv_no_${idx}`}>Invoice Number</Label>
-                    <Input
-                      id={`inv_no_${idx}`}
-                      value={d.inv_no}
-                      onChange={(e) => updateDeliveryField(idx, 'inv_no', e.target.value)}
-                      placeholder="Enter invoice number"
-                    />
-                    {deliveryErrors[idx]?.inv_no && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.inv_no}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor={`grn_date_${idx}`}>GRN Date</Label>
-                    <Input
-                      id={`grn_date_${idx}`}
-                      type="date"
-                      value={d.grn_date}
-                      onChange={(e) => updateDeliveryField(idx, 'grn_date', e.target.value)}
-                    />
-                    {deliveryErrors[idx]?.grn_date && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.grn_date}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor={`grn_no_${idx}`}>GRN Number</Label>
-                    <Input
-                      id={`grn_no_${idx}`}
-                      value={d.grn_no}
-                      onChange={(e) => updateDeliveryField(idx, 'grn_no', e.target.value)}
-                      placeholder="Enter GRN number"
-                    />
-                    {deliveryErrors[idx]?.grn_no && (
-                      <p className="text-red-500 text-xs mt-1">{deliveryErrors[idx]?.grn_no}</p>
-                    )}
-                  </div>
-                </div>
-                {/* PDF upload area for this delivery */}
-                <div className="md:col-span-2">
-                  {/* Existing uploaded document preview */}
-                  {((formData.deliveries?.[idx]?.upload_url) && !deliveryFiles[idx]) && (
-                    <div className="mb-3 flex items-center justify-between rounded border bg-gray-50 px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded bg-red-100 text-red-600">
-                          <FileText className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium">Uploaded document</div>
-                          <a
-                            href={String(formData.deliveries[idx].upload_url)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            {String(formData.deliveries[idx].upload_url)}
-                          </a>
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-500">PDF</div>
-                    </div>
-                  )}
-                  <Label>Attach PDF (optional)</Label>
-                  <div
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => onDeliveryFileDrop(idx, e)}
-                    onClick={() => fileInputRefs.current[idx]?.click()}
-                    className="mt-2 flex items-center justify-center border-2 border-dashed border-gray-300 rounded-md h-28 cursor-pointer bg-gray-50"
-                  >
-                    {!deliveryFiles[idx] ? (
-                      <div className="text-center text-sm text-gray-600">
-                        Drop PDF here or click to select
-                        <div className="text-xs text-gray-400">Only .pdf files accepted</div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between w-full px-4">
-                        <div className="truncate">{deliveryFiles[idx]?.name}</div>
-                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); removeDeliveryFile(idx); }}>
-                          Remove
-                        </Button>
-                      </div>
-                    )}
-                    <input
-                      ref={(el) => { fileInputRefs.current[idx] = el; }}
-                      type="file"
-                      accept="application/pdf"
-                      className="hidden"
-                      onChange={(e) => onDeliveryFileSelect(idx, e)}
-                    />
-                  </div>
-                </div>
-                {idx > 0 && (
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const arr = [...(formData.deliveries || [])];
-                        arr.splice(idx, 1);
-                        setFormData(prev => ({ ...prev, deliveries: arr }));
-                        setDeliveryFiles(prev => { const nf = [...prev]; nf.splice(idx, 1); return nf; });
-                        const newIdx = Math.max(0, idx - 1);
-                        setActiveDeliveryTab(`delivery-${newIdx}`);
-                      }}
-                    >
-                      Remove Delivery
-                    </Button>
-                  </div>
-                )}
-              </TabsContent>
-              );
-            })}
-          </Tabs>
-        </CardContent>
-      </Card>
-
-      <Separator />
-
-      <div className="flex justify-between items-center">
-        <div>
-          {sidebarMode === 'edit' && selectedPurchase?.id && canDelete ? (
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => handleDelete(selectedPurchase.id!)}
-              disabled={loading}
-            >
-              <Trash2 className="mr-2 h-4 w-4" /> Delete
-            </Button>
-          ) : null}
-        </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={closeSidebar}>
-          Cancel
-          </Button>
-          <Button onClick={() => setShowSubmitConfirm(true)} disabled={loading}>
-          {loading ? 'Saving...' : sidebarMode === 'edit' ? 'Update Purchase' : 'Create Purchase'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Confirmation dialog before form submit */}
-      <AlertDialog open={showSubmitConfirm} onOpenChange={open => { if (!open) setShowSubmitConfirm(false); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{sidebarMode === 'edit' ? 'Confirm Update' : 'Confirm Create'}</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            <div className="text-sm">Are you sure you want to {sidebarMode === 'edit' ? 'update' : 'create'} this purchase record? Please confirm.</div>
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel asChild>
-              <Button variant="secondary" size="sm">Cancel</Button>
-            </AlertDialogCancel>
-            <AlertDialogAction asChild>
-              <Button variant="default" size="sm" onClick={async () => { setShowSubmitConfirm(false); await handleSubmit(); }}>Confirm</Button>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirmation dialog before deleting a delivery */}
-      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Delete</AlertDialogTitle>
-          </AlertDialogHeader>
-          <AlertDialogDescription>
-            <div className="text-sm">{pendingDelete?.message || 'Are you sure you want to delete this delivery?'}</div>
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel asChild>
-              <Button variant="secondary" size="sm">Cancel</Button>
-            </AlertDialogCancel>
-            <AlertDialogAction asChild>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={async () => {
-                  if (pendingDelete?.index != null) {
-                    await deleteDelivery(pendingDelete.index);
-                  }
-                  setPendingDelete(null);
-                }}
-              >
-                Delete
-              </Button>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <PurchaseRegisterForm
+      formData={formData}
+      validationErrors={validationErrors}
+      deliveryErrors={deliveryErrors}
+      setValidationErrors={setValidationErrors}
+      setDeliveryErrors={setDeliveryErrors}
+      calculatedTotal={calculatedTotal}
+      maxDeliveries={maxDeliveries}
+      activeDeliveryTab={activeDeliveryTab}
+      setActiveDeliveryTab={setActiveDeliveryTab}
+      costcenterOptions={costcenterOptions}
+      employeeOptions={employeeOptions}
+      typeOptions={typeOptions}
+      categoryOptions={categoryOptions}
+      supplierOptions={supplierOptions}
+      brandOptions={brandOptions}
+      costcentersLoading={costcentersLoading}
+      employeesLoading={employeesLoading}
+      typesLoading={typesLoading}
+      categoriesLoading={categoriesLoading}
+      suppliersLoading={suppliersLoading}
+      brandsLoading={brandsLoading}
+      addingSupplier={addingSupplier}
+      creatingSupplier={creatingSupplier}
+      newSupplierName={newSupplierName}
+      onSupplierSelect={handleSupplierSelect}
+      onSupplierNameChange={setNewSupplierName}
+      onCreateSupplier={handleCreateSupplier}
+      addingBrand={addingBrand}
+      creatingBrand={creatingBrand}
+      newBrandName={newBrandName}
+      onBrandSelect={handleBrandSelect}
+      onBrandNameChange={setNewBrandName}
+      onCreateBrand={handleCreateBrand}
+      handleInputChange={handleInputChange}
+      selectedPurchase={selectedPurchase}
+      deliveryFiles={deliveryFiles}
+      onDeliveryFileDrop={onDeliveryFileDrop}
+      onDeliveryFileSelect={onDeliveryFileSelect}
+      onRemoveDeliveryFile={removeDeliveryFile}
+      fileInputRefs={fileInputRefs}
+      updateDeliveryField={updateDeliveryField}
+      findDuplicateDeliveries={findDuplicateDeliveries}
+      findPartialDuplicates={findPartialDuplicates}
+      onAddDelivery={addDeliverySlot}
+      onRemoveDelivery={removeDeliverySlot}
+      pendingDelete={pendingDelete}
+      setPendingDelete={setPendingDelete}
+      deleteDelivery={deleteDelivery}
+      showSubmitConfirm={showSubmitConfirm}
+      setShowSubmitConfirm={setShowSubmitConfirm}
+      sidebarMode={sidebarMode}
+      canDelete={canDelete}
+      loading={loading}
+      closeSidebar={closeInlineForm}
+      loadPurchases={loadPurchases}
+      setLoading={setLoading}
+      onSubmitSuccess={clearDraft}
+    />
   );
 
-  // Render view content
-  const renderViewContent = () => {
-    if (!selectedPurchase) return null;
-
+  if (showInlineForm || inlineFormOnly) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-semibold">{selectedPurchase.description || selectedPurchase.items}</h3>
-            <p className="text-gray-600">Purchase Record #{selectedPurchase.id}</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {sidebarMode === 'edit' ? 'Edit Purchase Record' : 'Create Purchase Record'}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              {sidebarMode === 'edit'
+                ? 'Update the purchase record details'
+                : 'Create a new purchase record'}
+            </p>
           </div>
-          <Badge variant={getStatusVariant(selectedPurchase) as any} className="text-sm">
-            {getStatusText(selectedPurchase)}
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Request Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Request Type</Label>
-                <div className="mt-1">
-                  <span className={getRequestTypeBadgeClass(selectedPurchase.request?.request_type || (selectedPurchase as any).request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
-                            {selectedPurchase.request?.request_type || (selectedPurchase as any).request_type}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Cost Center</Label>
-                <p className="font-medium">{selectedPurchase.request?.costcenter?.name || (typeof selectedPurchase.costcenter === 'string' ? selectedPurchase.costcenter : (selectedPurchase.costcenter as any)?.name || '')}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">PIC</Label>
-                <p className="font-medium">
-                  {selectedPurchase.request?.requested_by?.ramco_id && selectedPurchase.request?.requested_by?.full_name
-                    ? `${selectedPurchase.request.requested_by.ramco_id} - ${selectedPurchase.request.requested_by.full_name}`
-                    : (typeof selectedPurchase.requestor === 'string' ? selectedPurchase.requestor : (selectedPurchase.requestor?.ramco_id && selectedPurchase.requestor?.full_name ? `${selectedPurchase.requestor.ramco_id} - ${selectedPurchase.requestor.full_name}` : (selectedPurchase.requestor?.full_name || '')))
-                  }
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Item Type</Label>
-                <p className="font-medium">{typeof selectedPurchase.type === 'string' ? selectedPurchase.type : (selectedPurchase.type?.name || '')}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Supplier</Label>
-                <p className="font-medium">{typeof selectedPurchase.supplier === 'string' ? selectedPurchase.supplier : (selectedPurchase.supplier?.name || '')}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Brand</Label>
-                <p className="font-medium">{typeof selectedPurchase.brand === 'string' ? selectedPurchase.brand : (selectedPurchase.brand?.name || 'N/A')}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Pricing Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Quantity</Label>
-                <p className="font-medium">{selectedPurchase.qty}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Unit Price</Label>
-                <p className="font-medium">RM {parseFloat(selectedPurchase.unit_price).toFixed(2)}</p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-600">Total Amount</Label>
-                <p className="text-xl font-bold text-green-600">RM {(selectedPurchase.qty * parseFloat(selectedPurchase.unit_price)).toFixed(2)}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Purchase Process Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {Array.isArray((selectedPurchase as any).deliveries) && (selectedPurchase as any).deliveries.length > 1 ? (
-              <Tabs defaultValue={`vdelivery-0`}>
-                <TabsList className="flex flex-wrap">
-                  {((selectedPurchase as any).deliveries as any[]).map((_: any, idx: number) => (
-                    <TabsTrigger key={`vdelivery-tab-${idx}`} value={`vdelivery-${idx}`}>Delivery {idx + 1}</TabsTrigger>
-                  ))}
-                </TabsList>
-                {((selectedPurchase as any).deliveries as any[]).map((d: any, idx: number) => (
-                  <TabsContent key={`vdelivery-content-${idx}`} value={`vdelivery-${idx}`} className="mt-4">
-                    <div className="space-y-4">
-                      {(selectedPurchase.request?.pr_date || selectedPurchase.pr_date) && (
-                        <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                          <div>
-                            <p className="font-medium">Request Date</p>
-                            <p className="text-sm text-gray-600">PR: {selectedPurchase.request?.pr_no || selectedPurchase.pr_no || 'N/A'}</p>
-                          </div>
-                          <p className="font-medium">{new Date(selectedPurchase.request?.pr_date || selectedPurchase.pr_date as any).toLocaleDateString('en-GB')}</p>
-                        </div>
-                      )}
-                      {selectedPurchase.po_date && (
-                        <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
-                          <div>
-                            <p className="font-medium">Purchase Order</p>
-                            <p className="text-sm text-gray-600">PO: {selectedPurchase.po_no || 'N/A'}</p>
-                          </div>
-                          <p className="font-medium">{new Date(selectedPurchase.po_date).toLocaleDateString('en-GB')}</p>
-                        </div>
-                      )}
-                      {(d?.do_date || d?.do_no) && (
-                        <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                          <div>
-                            <p className="font-medium">Delivery Order</p>
-                            <p className="text-sm text-gray-600">DO: {d?.do_no || 'N/A'}</p>
-                          </div>
-                          <p className="font-medium">{d?.do_date ? new Date(d.do_date).toLocaleDateString('en-GB') : ''}</p>
-                        </div>
-                      )}
-                      {(d?.inv_date || d?.inv_no) && (
-                        <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                          <div>
-                            <p className="font-medium">Handover</p>
-                            <p className="text-sm text-gray-600">Handover: {d?.inv_no || 'N/A'}</p>
-                          </div>
-                          <p className="font-medium">{d?.inv_date ? new Date(d.inv_date).toLocaleDateString('en-GB') : ''}</p>
-                        </div>
-                      )}
-                      {(d?.grn_date || d?.grn_no) && (
-                        <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                          <div>
-                            <p className="font-medium">Goods Receipt Note</p>
-                            <p className="text-sm text-gray-600">GRN: {d?.grn_no || 'N/A'}</p>
-                          </div>
-                          <p className="font-medium">{d?.grn_date ? new Date(d.grn_date).toLocaleDateString('en-GB') : ''}</p>
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
-            ) : (
-              <div className="space-y-4">
-                {(selectedPurchase.request?.pr_date || selectedPurchase.pr_date) && (
-                  <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Request Date</p>
-                      <p className="text-sm text-gray-600">PR: {selectedPurchase.request?.pr_no || selectedPurchase.pr_no || 'N/A'}</p>
-                    </div>
-                    <p className="font-medium">{new Date(selectedPurchase.request?.pr_date || selectedPurchase.pr_date as any).toLocaleDateString('en-GB')}</p>
-                  </div>
-                )}
-                {selectedPurchase.po_date && (
-                  <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Purchase Order</p>
-                      <p className="text-sm text-gray-600">PO: {selectedPurchase.po_no || 'N/A'}</p>
-                    </div>
-                    <p className="font-medium">{new Date(selectedPurchase.po_date).toLocaleDateString('en-GB')}</p>
-                  </div>
-                )}
-                {selectedPurchase.do_date && (
-                  <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Delivery Order</p>
-                      <p className="text-sm text-gray-600">DO: {selectedPurchase.do_no || 'N/A'}</p>
-                    </div>
-                    <p className="font-medium">{new Date(selectedPurchase.do_date).toLocaleDateString('en-GB')}</p>
-                  </div>
-                )}
-                {selectedPurchase.inv_date && (
-                  <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Handover</p>
-                      <p className="text-sm text-gray-600">Handover: {selectedPurchase.inv_no || 'N/A'}</p>
-                    </div>
-                    <p className="font-medium">{new Date(selectedPurchase.inv_date).toLocaleDateString('en-GB')}</p>
-                  </div>
-                )}
-                {selectedPurchase.grn_date && (
-                  <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">Goods Receipt Note</p>
-                      <p className="text-sm text-gray-600">GRN: {selectedPurchase.grn_no || 'N/A'}</p>
-                    </div>
-                    <p className="font-medium">{new Date(selectedPurchase.grn_date).toLocaleDateString('en-GB')}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => openSidebar('edit', selectedPurchase)}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Purchase
-          </Button>
-          <Button variant="outline" onClick={closeSidebar}>
-            Close
+          <Button variant="outline" onClick={closeInlineForm}>
+            Cancel and Back to Records
           </Button>
         </div>
+        {renderFormContent()}
       </div>
     );
-  };
-
-  // Get sidebar content based on mode
-  const getSidebarContent = () => {
-    switch (sidebarMode) {
-      case 'view':
-        return renderViewContent();
-      case 'create':
-      case 'edit':
-        return renderFormContent();
-      default:
-        return null;
-    }
-  };
-
-  const getSidebarTitle = () => {
-    switch (sidebarMode) {
-      case 'view':
-        return 'View Purchase Record';
-      case 'create':
-        return 'Create New Purchase Record';
-      case 'edit':
-        return 'Edit Purchase Record';
-      default:
-        return 'Purchase Record';
-    }
-  };
+  }
 
   return (
     <div className="space-y-6">
@@ -2214,7 +1187,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
           </div>
 
           {/* Add Purchase */}
-          <Button variant={'default'} onClick={() => openSidebar('create')}>
+          <Button variant={'default'} onClick={() => router.push('/purchase/register/new')}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -2238,7 +1211,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 inputFilter={false}
                 columnsVisibleOption={false}
                 dataExport={true}
-                onRowDoubleClick={(row: any) => openSidebar('edit', row)}
+                onRowDoubleClick={(row: any) => router.push(`/purchase/register/${row.id}`)}
               />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2246,7 +1219,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                   <PurchaseCard
                     key={purchase.id}
                     purchase={purchase}
-                    onEdit={() => openSidebar('edit', purchase)}
+                    onEdit={() => router.push(`/purchase/register/${purchase.id}`)}
                   />
                 ))}
               </div>
@@ -2266,7 +1239,7 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
                 </p>
                 {purchases.length === 0 && (
                   <div className="flex justify-center space-x-4">
-                    <Button onClick={() => openSidebar('create')}>
+                    <Button onClick={() => router.push('/purchase/register/new')}>
                       <ShoppingCart className="mr-2 h-4 w-4" />
                       Create First Record
                     </Button>
@@ -2278,14 +1251,6 @@ const PurchaseRecords: React.FC<{ filters?: { type?: string; request_type?: stri
         )}
       </div>
 
-      {/* Action Sidebar */}
-      <ActionSidebar
-        isOpen={sidebarOpen}
-        title={getSidebarTitle()}
-        content={getSidebarContent()}
-        onClose={closeSidebar}
-        size="lg"
-      />
     </div>
   );
 };

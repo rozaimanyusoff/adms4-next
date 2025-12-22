@@ -45,7 +45,7 @@ const ActionSidebar: React.FC<ActionSidebarProps> = ({ title, content, onClose, 
                         <X className="h-5.5 w-5.5" />
                     </button>
                 </div>
-                <div className="text-sm whitespace-pre-wrap break-words overflow-auto pr-1 flex-1 p-4">
+                <div className="text-sm whitespace-pre-wrap wrap-break-words overflow-auto pr-1 flex-1 p-4">
                     {content}
                 </div>
             </div>

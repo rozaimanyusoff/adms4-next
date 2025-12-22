@@ -339,272 +339,272 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
         </AccordionTrigger>
         <AccordionContent className="pt-2">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* Purchases summary (count + value) */}
-      <Card className={`${pick(0).border} md:col-span-2`}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Purchases Overview</CardTitle>
-          <ShoppingCart className={`h-4 w-4 ${pick(0).icon}`} />
-        </CardHeader>
-        <CardContent>
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="year" />
-                <YAxis yAxisId="left" orientation="left" />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `RM ${fmtRM(Number(v))}`} />
-                <Tooltip formatter={(value: any, name: string) => {
-                  if (['capex','opex','total'].includes(String(name))) return `RM ${fmtRM(Number(value))}`;
-                  return value;
-                }} />
-                <Legend
-                  verticalAlign="top"
-                  align="center"
-                  wrapperStyle={{ fontSize: '12px', textAlign: 'center' }}
-                />
-                {/* Stacked bars for CAPEX and OPEX with wider bar size */}
-                <Bar yAxisId="right" dataKey="capex" stackId="amount" fill="#60a5fa" barSize={100} name="capex" />
-                <Bar yAxisId="right" dataKey="opex" stackId="amount" fill="#34d399" barSize={100} name="opex" />
-                {/* Count line */}
-                <Line yAxisId="left" type="monotone" dataKey="count" stroke="#243c5a" strokeWidth={2} dot={{ r: 3 }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Request by Item Types (table with per-year breakdown) */}
-      <Card className={`md:col-span-2 ${pick(1).border}`}>
-        <CardHeader>
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">
-            Request by Item Types
-            <span className="ml-2 text-gray-500 text-[length:var(--text-size-small)]">• Total to date: RM {fmtRM(totalByItemTypes)}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {typeYearRows.rows.length === 0 ? (
-            <div className="text-[length:var(--text-size-base)] text-gray-600">No item-typed purchases available</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[length:var(--text-size-small)] table-auto">
-                <thead>
-                  <tr className="text-center bg-muted/50">
-                    <th className="pb-2">Item Type</th>
-                    {typeYearRows.years.map(y => (
-                      <th key={y} className="pb-2 text-right">{y}</th>
-                    ))}
-                    <th className="pb-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {typeYearRows.rows.map((r, idx) => (
-                    <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ type: r.type })}>
-                      <td className="py-2 text-foreground">{r.type}</td>
-                      {typeYearRows.years.map(y => (
-                        <td key={y} className="py-2 text-right">{
-                          r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
-                        }</td>
-                      ))}
-                      <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Completion Rate & Pending Items removed — covered in Process Status */}
-
-      {/* Status Breakdown */}
-      <Card className={`md:col-span-2 ${pick(2).border}`}>
-        <CardHeader>
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">Process Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4 text-yellow-600" />
-                <span className="text-[length:var(--text-size-base)]">Requested</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[length:var(--text-size-base)] font-medium">{stats.pending}</span>
-                <Badge variant="secondary" className="text-[length:var(--text-size-small)]">
-                  {stats.total > 0 ? ((stats.pending / stats.total) * 100).toFixed(0) : 0}%
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Package className="h-4 w-4 text-blue-600" />
-                <span className="text-[length:var(--text-size-base)]">Ordered</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[length:var(--text-size-base)] font-medium">{stats.ordered}</span>
-                <Badge variant="default" className="text-[length:var(--text-size-small)]">
-                  {stats.total > 0 ? ((stats.ordered / stats.total) * 100).toFixed(0) : 0}%
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Truck className="h-4 w-4 text-amber-600" />
-                <span className="text-[length:var(--text-size-base)]">Delivered</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[length:var(--text-size-base)] font-medium">{stats.delivered}</span>
-                <Badge variant="outline" className="text-[length:var(--text-size-small)]">
-                  {stats.total > 0 ? ((stats.delivered / stats.total) * 100).toFixed(0) : 0}%
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <FileText className="h-4 w-4 text-purple-600" />
-                <span className="text-[length:var(--text-size-base)]">Handover</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[length:var(--text-size-base)] font-medium">{stats.handover}</span>
-                <Badge variant="secondary" className="text-[length:var(--text-size-small)]">
-                  {stats.total > 0 ? ((stats.handover / stats.total) * 100).toFixed(0) : 0}%
-                </Badge>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-[length:var(--text-size-base)]">Completed</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[length:var(--text-size-base)] font-medium">{stats.completed}</span>
-                <Badge variant="default" className="text-[length:var(--text-size-small)] bg-green-600">
-                  {completionRate}%
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          {/* Breakdown by Item Type for Handover monitoring */}
-          <div className="mt-4">
-            <p className="text-[length:var(--text-size-small)] text-muted-foreground mb-2">By Item Type (Handover progress)</p>
-            {statusByType.length === 0 ? (
-              <div className="text-[length:var(--text-size-small)] text-muted-foreground">No data</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[length:var(--text-size-small)]">
-                  <thead>
-                    <tr className="text-left bg-muted/50">
-                      <th className="px-2 py-1">Type</th>
-                      <th className="px-2 py-1 text-right">Handover</th>
-                      <th className="px-2 py-1 text-right">Pending</th>
-                      <th className="px-2 py-1 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statusByType.map(row => (
-                      <tr key={row.type} className="border-t">
-                        <td className="px-2 py-1">{row.type}</td>
-                        <td className="px-2 py-1 text-right">{row.handover}</td>
-                        <td className="px-2 py-1 text-right">{row.total - row.handover}</td>
-                        <td className="px-2 py-1 text-right">{row.total}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Request Type Breakdown */}
-      <Card className={`md:col-span-2 ${pick(3).border}`}>
-        <CardHeader>
-          <CardTitle className="text-[length:var(--text-size-base)] font-medium">
-            Request Types
-            <span className="ml-2 text-gray-500 text-[length:var(--text-size-small)]">• Total to date: RM {fmtRM(totalByRequestTypes)}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {requestTypeYearRows.years.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[length:var(--text-size-base)] table-auto">
-                <thead>
-                  <tr className="text-left bg-muted/50">
-                    <th className="pb-2">Request Type</th>
-                    {requestTypeYearRows.years.map(y => (
-                      <th key={y} className="pb-2 text-right">{y}</th>
-                    ))}
-                    <th className="pb-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {requestTypeYearRows.rows.map(r => (
-                    <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ request_type: r.type })}>
-                      <td className="py-2 text-gray-700">{r.type}</td>
-                      {requestTypeYearRows.years.map(y => (
-                        <td key={y} className="py-2 text-right">{
-                          r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
-                        }</td>
-                      ))}
-                      <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span className="text-[length:var(--text-size-base)]">CAPEX</span>
+            {/* Purchases summary (count + value) */}
+            <Card className={`${pick(0).border} md:col-span-2`}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-(length:--text-size-base) font-medium">Purchases Overview</CardTitle>
+                <ShoppingCart className={`h-4 w-4 ${pick(0).icon}`} />
+              </CardHeader>
+              <CardContent>
+                <div style={{ height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="year" />
+                      <YAxis yAxisId="left" orientation="left" />
+                      <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `RM ${fmtRM(Number(v))}`} />
+                      <Tooltip formatter={(value: any, name: string) => {
+                        if (['capex', 'opex', 'total'].includes(String(name))) return `RM ${fmtRM(Number(value))}`;
+                        return value;
+                      }} />
+                      <Legend
+                        verticalAlign="top"
+                        align="center"
+                        wrapperStyle={{ fontSize: '12px', textAlign: 'center' }}
+                      />
+                      {/* Stacked bars for CAPEX and OPEX with wider bar size */}
+                      <Bar yAxisId="right" dataKey="capex" stackId="amount" fill="#60a5fa" barSize={100} name="capex" />
+                      <Bar yAxisId="right" dataKey="opex" stackId="amount" fill="#34d399" barSize={100} name="opex" />
+                      {/* Count line */}
+                      <Line yAxisId="left" type="monotone" dataKey="count" stroke="#243c5a" strokeWidth={2} dot={{ r: 3 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.capex}</span>
-                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
-                    {stats.total > 0 ? ((stats.capex / stats.total) * 100).toFixed(0) : 0}%
-                  </Badge>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="text-[length:var(--text-size-base)]">OPEX</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.opex}</span>
-                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
-                    {stats.total > 0 ? ((stats.opex / stats.total) * 100).toFixed(0) : 0}%
-                  </Badge>
-                </div>
-              </div>
+            {/* Request by Item Types (table with per-year breakdown) */}
+            <Card className={`md:col-span-2 ${pick(1).border}`}>
+              <CardHeader>
+                <CardTitle className="text-(length:--text-size-base) font-medium">
+                  Request by Item Types
+                  <span className="ml-2 text-gray-500 text-(length:--text-size-small)">• Total to date: RM {fmtRM(totalByItemTypes)}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {typeYearRows.rows.length === 0 ? (
+                  <div className="text-(length:--text-size-base) text-gray-600">No item-typed purchases available</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-(length:--text-size-small) table-auto">
+                      <thead>
+                        <tr className="text-center bg-muted/50">
+                          <th className="pb-2">Item Type</th>
+                          {typeYearRows.years.map(y => (
+                            <th key={y} className="pb-2 text-right">{y}</th>
+                          ))}
+                          <th className="pb-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {typeYearRows.rows.map((r, idx) => (
+                          <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ type: r.type })}>
+                            <td className="py-2 text-foreground">{r.type}</td>
+                            {typeYearRows.years.map(y => (
+                              <td key={y} className="py-2 text-right">{
+                                r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
+                              }</td>
+                            ))}
+                            <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                  <span className="text-[length:var(--text-size-base)]">SERVICES</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="text-[length:var(--text-size-base)] font-medium">{stats.services}</span>
-                  <Badge variant="outline" className="text-[length:var(--text-size-small)]">
-                    {stats.total > 0 ? ((stats.services / stats.total) * 100).toFixed(0) : 0}%
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {/* Completion Rate & Pending Items removed — covered in Process Status */}
 
-      {/* Yearly breakdown moved into Total Purchases & Total Value cards */}
+            {/* Status Breakdown */}
+            <Card className={`md:col-span-2 ${pick(2).border}`}>
+              <CardHeader>
+                <CardTitle className="text-(length:--text-size-base) font-medium">Process Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Clock className="h-4 w-4 text-yellow-600" />
+                      <span className="text-(length:--text-size-base)">Requested</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-(length:--text-size-base) font-medium">{stats.pending}</span>
+                      <Badge variant="secondary" className="text-(length:--text-size-small)">
+                        {stats.total > 0 ? ((stats.pending / stats.total) * 100).toFixed(0) : 0}%
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Package className="h-4 w-4 text-blue-600" />
+                      <span className="text-(length:--text-size-base)">Ordered</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-(length:--text-size-base) font-medium">{stats.ordered}</span>
+                      <Badge variant="default" className="text-(length:--text-size-small)">
+                        {stats.total > 0 ? ((stats.ordered / stats.total) * 100).toFixed(0) : 0}%
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Truck className="h-4 w-4 text-amber-600" />
+                      <span className="text-(length:--text-size-base)">Delivered</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-(length:--text-size-base) font-medium">{stats.delivered}</span>
+                      <Badge variant="outline" className="text-(length:--text-size-small)">
+                        {stats.total > 0 ? ((stats.delivered / stats.total) * 100).toFixed(0) : 0}%
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-purple-600" />
+                      <span className="text-(length:--text-size-base)">Handover</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-(length:--text-size-base) font-medium">{stats.handover}</span>
+                      <Badge variant="secondary" className="text-(length:--text-size-small)">
+                        {stats.total > 0 ? ((stats.handover / stats.total) * 100).toFixed(0) : 0}%
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-(length:--text-size-base)">Completed</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-(length:--text-size-base) font-medium">{stats.completed}</span>
+                      <Badge variant="default" className="text-(length:--text-size-small) bg-green-600">
+                        {completionRate}%
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Breakdown by Item Type for Handover monitoring */}
+                <div className="mt-4">
+                  <p className="text-(length:--text-size-small) text-muted-foreground mb-2">By Item Type (Handover progress)</p>
+                  {statusByType.length === 0 ? (
+                    <div className="text-(length:--text-size-small) text-muted-foreground">No data</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-(length:--text-size-small)">
+                        <thead>
+                          <tr className="text-left bg-muted/50">
+                            <th className="px-2 py-1">Type</th>
+                            <th className="px-2 py-1 text-right">Handover</th>
+                            <th className="px-2 py-1 text-right">Pending</th>
+                            <th className="px-2 py-1 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {statusByType.map(row => (
+                            <tr key={row.type} className="border-t">
+                              <td className="px-2 py-1">{row.type}</td>
+                              <td className="px-2 py-1 text-right">{row.handover}</td>
+                              <td className="px-2 py-1 text-right">{row.total - row.handover}</td>
+                              <td className="px-2 py-1 text-right">{row.total}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Request Type Breakdown */}
+            <Card className={`md:col-span-2 ${pick(3).border}`}>
+              <CardHeader>
+                <CardTitle className="text-(length:--text-size-base) font-medium">
+                  Request Types
+                  <span className="ml-2 text-gray-500 text-(length:--text-size-small)">• Total to date: RM {fmtRM(totalByRequestTypes)}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {requestTypeYearRows.years.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-(length:--text-size-base) table-auto">
+                      <thead>
+                        <tr className="text-left bg-muted/50">
+                          <th className="pb-2">Request Type</th>
+                          {requestTypeYearRows.years.map(y => (
+                            <th key={y} className="pb-2 text-right">{y}</th>
+                          ))}
+                          <th className="pb-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {requestTypeYearRows.rows.map(r => (
+                          <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ request_type: r.type })}>
+                            <td className="py-2 text-gray-700">{r.type}</td>
+                            {requestTypeYearRows.years.map(y => (
+                              <td key={y} className="py-2 text-right">{
+                                r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
+                              }</td>
+                            ))}
+                            <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                        <span className="text-(length:--text-size-base)">CAPEX</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-(length:--text-size-base) font-medium">{stats.capex}</span>
+                        <Badge variant="outline" className="text-(length:--text-size-small)">
+                          {stats.total > 0 ? ((stats.capex / stats.total) * 100).toFixed(0) : 0}%
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                        <span className="text-(length:--text-size-base)">OPEX</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-(length:--text-size-base) font-medium">{stats.opex}</span>
+                        <Badge variant="outline" className="text-(length:--text-size-small)">
+                          {stats.total > 0 ? ((stats.opex / stats.total) * 100).toFixed(0) : 0}%
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                        <span className="text-(length:--text-size-base)">SERVICES</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-(length:--text-size-base) font-medium">{stats.services}</span>
+                        <Badge variant="outline" className="text-(length:--text-size-small)">
+                          {stats.total > 0 ? ((stats.services / stats.total) * 100).toFixed(0) : 0}%
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Yearly breakdown moved into Total Purchases & Total Value cards */}
           </div>
         </AccordionContent>
       </AccordionItem>
