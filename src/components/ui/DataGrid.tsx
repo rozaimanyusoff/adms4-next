@@ -73,9 +73,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { createPortal } from 'react-dom';
 import type { FC } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faMinus, faFileExcel, faFileCsv, faFilePdf, faGear } from '@fortawesome/free-solid-svg-icons';
-import { Plus, Minus, X } from 'lucide-react';
+import { Plus, Minus, X, FileSpreadsheet, FileText, Settings } from 'lucide-react';
 
 // Types
 export interface ColumnDef<T> {
@@ -830,7 +828,7 @@ const CustomDataGridInner = <T,>({
 							setOpenExportDropdown(false);
 						}}
 					>
-						<FontAwesomeIcon icon={faFileCsv} size='xl' className="mr-2" /> CSV
+						<FileText className="w-5 h-5 mr-2 inline" /> CSV
 					</button>
 					<button
 						className="block w-full text-left text-sm px-2 py-1 hover:bg-gray-300 dark:hover:bg-amber-600"
@@ -839,7 +837,7 @@ const CustomDataGridInner = <T,>({
 							setOpenExportDropdown(false);
 						}}
 					>
-						<FontAwesomeIcon icon={faFileExcel} size='xl' className="mr-2 text-green-600" /> Excel
+						<FileSpreadsheet className="w-5 h-5 mr-2 text-green-600 inline" /> Excel
 					</button>
 					<button
 						className="block w-full text-left text-sm px-2 py-1 hover:bg-gray-300 dark:hover:bg-amber-600"
@@ -848,7 +846,7 @@ const CustomDataGridInner = <T,>({
 							setOpenExportDropdown(false);
 						}}
 					>
-						<FontAwesomeIcon icon={faFilePdf} size='xl' className="mr-2 text-red-600" /> PDF
+						<FileText className="w-5 h-5 mr-2 text-red-600 inline" /> PDF
 					</button>
 				</div>
 			</div>,
@@ -949,7 +947,7 @@ const CustomDataGridInner = <T,>({
 												setOpenExportDropdown(false);
 											}}
 										>
-											<FontAwesomeIcon icon={faFileCsv} size='xl' className="mr-2" /> CSV
+											<FileText className="w-5 h-5 mr-2 inline" /> CSV
 										</button>
 										<button
 											className="block w-full text-left text-sm px-2 py-1 hover:bg-gray-300 dark:hover:bg-amber-600"
@@ -958,7 +956,7 @@ const CustomDataGridInner = <T,>({
 												setOpenExportDropdown(false);
 											}}
 										>
-											<FontAwesomeIcon icon={faFileExcel} size='xl' className="mr-2 text-green-600" /> Excel
+											<FileSpreadsheet className="w-5 h-5 mr-2 text-green-600 inline" /> Excel
 										</button>
 										<button
 											className="block w-full text-left text-sm px-2 py-1 hover:bg-gray-300 dark:hover:bg-amber-600"
@@ -967,7 +965,7 @@ const CustomDataGridInner = <T,>({
 												setOpenExportDropdown(false);
 											}}
 										>
-											<FontAwesomeIcon icon={faFilePdf} size='xl' className="mr-2 text-red-600" /> PDF
+											<FileText className="w-5 h-5 mr-2 text-red-600 inline" /> PDF
 										</button>
 									</div>
 								</div>,
@@ -1201,7 +1199,7 @@ const CustomDataGridInner = <T,>({
 												variant="default"
 												title="Grid settings"
 											>
-												<FontAwesomeIcon icon={faGear} className="mr-2" />
+												<Settings className="w-4 h-4 mr-2" />
 												Settings
 											</Button>
 											{settingsDropdown}
@@ -1628,12 +1626,14 @@ const CustomDataGridInner = <T,>({
 																	: expandCellCollapsed)
 															}
 														>
-															<FontAwesomeIcon icon={expandedRows.has(key as number) ? faMinus : faPlus} className={`${expandedRows.has(key as number) ? 'text-red-600 dark:text-red-800' : 'text-green-600 dark:text-green-700'}`} onClick={() => {
+															<button onClick={() => {
 																const newExpanded = new Set(expandedRows);
 																if (newExpanded.has(key as number)) newExpanded.delete(key as number);
 																else newExpanded.add(key as number);
 																setExpandedRows(newExpanded);
-															}} />
+															}}>
+																{expandedRows.has(key as number) ? <Minus className="w-4 h-4 text-red-600 dark:text-red-800" /> : <Plus className="w-4 h-4 text-green-600 dark:text-green-700" />}
+															</button>
 														</td>
 													)}
 													{flatColumns.filter(col => visibleColumns[String(col.key)]).map((col) => {

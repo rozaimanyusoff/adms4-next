@@ -24,6 +24,10 @@ if ! command -v pm2 &> /dev/null; then
     fi
 fi
 
+# Install dependencies (must happen before build)
+echo "📦 Installing dependencies..."
+npm ci
+
 # Build the Next.js application
 echo "🏗️  Building Next.js application..."
 npm run build

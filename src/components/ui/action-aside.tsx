@@ -1,7 +1,5 @@
 import React from "react";
 import { cva, VariantProps } from "class-variance-authority";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTimes } from "@fortawesome/free-solid-svg-icons";
 import { X } from "lucide-react";
 
 const actionSidebarVariants = cva(

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlusCircle, faTh, faList } from '@fortawesome/free-solid-svg-icons';
+import { PlusCircle, Grid3x3, List } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
 
 const SidebarItemPicker: React.FC<{
@@ -52,14 +51,14 @@ const SidebarItemPicker: React.FC<{
                         onClick={() => setView('list')}
                         title="List View"
                     >
-                        <FontAwesomeIcon icon={faList} />
+                        <List className="w-4 h-4" />
                     </button>
                     <button
                         className={`p-1 rounded border ${view === 'card' ? 'bg-primary text-white border-primary' : 'bg-white border-gray-300'}`}
                         onClick={() => setView('card')}
                         title="Card View"
                     >
-                        <FontAwesomeIcon icon={faTh} />
+                        <Grid3x3 className="w-4 h-4" />
                     </button>
                 </div>
             </div>
@@ -78,7 +77,7 @@ const SidebarItemPicker: React.FC<{
                                     onClick={() => handleAdd(item)}
                                 >
                                     <span>
-                                        <FontAwesomeIcon icon={faPlusCircle} size='2xl' className='text-green-600' />
+                                        <PlusCircle className='w-6 h-6 text-green-600' />
                                     </span>
                                 </button>
                                 <img
@@ -105,7 +104,7 @@ const SidebarItemPicker: React.FC<{
                                         disabled={item.balance === 0}
                                         title={item.balance === 0 ? 'Out of stock' : 'Add'}
                                     >
-                                        <FontAwesomeIcon icon={faPlusCircle} size="2xl" className={item.balance === 0 ? 'text-gray-400' : 'text-green-600 hover:text-green-700'} />
+                                        <PlusCircle className={`w-6 h-6 ${item.balance === 0 ? 'text-gray-400' : 'text-green-600 hover:text-green-700'}`} />
                                     </button>
                                 </div>
                                 {/* Image section */}

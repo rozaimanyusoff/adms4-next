@@ -1,6 +1,5 @@
 import React from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTimes } from '@fortawesome/free-solid-svg-icons';
+import { X } from 'lucide-react';
 import Setting from './setting';
 
 const CustomSidebar = ({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) => {
@@ -14,7 +13,7 @@ const CustomSidebar = ({ isOpen, onClose, children }: { isOpen: boolean; onClose
                 className="absolute top-4 right-4 z-10 text-red-600 hover:text-red-800"
                 onClick={onClose}
             >
-                <FontAwesomeIcon icon={faTimes} className="w-5 h-5" />
+                <X className="w-5 h-5" />
             </button>
             <div className="p-4">{children}</div>
         </aside>
