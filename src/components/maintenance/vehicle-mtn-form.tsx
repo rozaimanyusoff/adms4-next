@@ -156,6 +156,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [showSuccess, setShowSuccess] = React.useState<boolean>(false);
   const [successTitle, setSuccessTitle] = React.useState<string>('Form submitted');
   const [successDescription, setSuccessDescription] = React.useState<string>('Your maintenance request has been successfully submitted.');
+  const [submitting, setSubmitting] = React.useState<boolean>(false);
   // Terms alert on open
   const [termsOpen, setTermsOpen] = React.useState<boolean>(false);
   const [serviceOptionsError, setServiceOptionsError] = React.useState<string | null>(null);
@@ -173,15 +174,37 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [ncrPromptedAsset, setNcrPromptedAsset] = React.useState<string | null>(null);
   const hasActiveNcr = Boolean(assetId && assessmentDetails.length > 0);
   const isNcrLocked = hasActiveNcr && ncrAgreedForAsset === assetId;
+  // Identify latest assessment with NCR findings
+  const latestNcrAssessment = React.useMemo(() => {
+    const candidates = (assessmentSummaries || []).filter((s) => Number(s?.a_ncr) > 0);
+    if (!candidates.length) return null;
+    const sorted = [...candidates].sort((a, b) => {
+      const da = new Date(a.a_date || 0).getTime();
+      const db = new Date(b.a_date || 0).getTime();
+      if (!Number.isNaN(db - da) && db !== da) return db - da;
+      return Number(b.assess_id || 0) - Number(a.assess_id || 0);
+    });
+    return sorted[0];
+  }, [assessmentSummaries]);
+
+  const latestNcrDetails = React.useMemo(() => {
+    if (!latestNcrAssessment) return [];
+    const targetId = Number((latestNcrAssessment as any)?.assess_id);
+    if (!Number.isFinite(targetId)) return [];
+    return assessmentDetails.filter((detail) => Number((detail as any)?.assess_id) === targetId && Number((detail as any).adt_ncr) > 0);
+  }, [assessmentDetails, latestNcrAssessment]);
+
   const ncrIssuesList = React.useMemo(
     () => assessmentDetails.map((detail) => detail.qset_desc || 'NCR Issue'),
     [assessmentDetails],
   );
+
   const ncrRemarksText = React.useMemo(() => {
-    if (!ncrIssuesList.length) return '';
-    const lines = ncrIssuesList.map((issue) => `• ${issue}`);
-    return `Vehicle Assessment NCR Findings (${currentYear}):\n${lines.join('\n')}`;
-  }, [currentYear, ncrIssuesList]);
+    if (!latestNcrAssessment || latestNcrDetails.length === 0) return '';
+    const lines = latestNcrDetails.map((detail) => `• ${detail.qset_desc || 'NCR finding'}`);
+    const assessLabel = latestNcrAssessment.assess_id ? `Assess #${latestNcrAssessment.assess_id}` : 'Latest Assessment';
+    return `Vehicle Assessment NCR Findings (${currentYear}) — ${assessLabel}:\n${lines.join('\n')}`;
+  }, [currentYear, latestNcrAssessment, latestNcrDetails]);
   const handleSvcTypeChange = React.useCallback(
     (value: string) => {
       if (isNcrLocked) return;
@@ -241,7 +264,70 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     if (e.formUpload && formUploadRef.current) { formUploadRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   }, []);
 
+  // Compress an image on the client to reduce upload size (max 1600px, ~72% quality)
+  const compressImage = React.useCallback(async (file: File): Promise<File> => {
+    if (typeof document === 'undefined' || !file.type.startsWith('image/')) return file;
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read image'));
+      reader.readAsDataURL(file);
+    });
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Failed to load image'));
+      image.src = dataUrl;
+    });
+    const maxDim = 1600;
+    const maxSide = Math.max(img.width, img.height);
+    const scale = maxSide > maxDim ? maxDim / maxSide : 1;
+    const targetW = Math.max(1, Math.round(img.width * scale));
+    const targetH = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.72));
+    if (!blob) return file;
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'attachment';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+  }, []);
+
+  // Filter attachment files to only allow images and PDFs
+  const filterAttachmentFiles = React.useCallback((files: File[]) => {
+    const allowed = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
+    if (files.length > 0 && allowed.length === 0) {
+      toast.error('Only PDF or image files are supported');
+      return [];
+    }
+    if (allowed.length !== files.length) {
+      toast.error('Some files were skipped. Only PDF or image files are supported.');
+    }
+    return allowed;
+  }, []);
+
+  // Filter + compress attachments before storing them
+  const normalizeAttachments = React.useCallback(async (files: File[]) => {
+    const allowed = filterAttachmentFiles(files);
+    if (!allowed.length) return;
+    const compressed = await Promise.all(
+      allowed.map(async (file) => {
+        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return file;
+        try {
+          return await compressImage(file);
+        } catch {
+          return file;
+        }
+      }),
+    );
+    setAttachments(compressed);
+  }, [compressImage, filterAttachmentFiles]);
+
   const attemptSubmit = React.useCallback(async () => {
+    if (submitting) return;
     setShowErrors(true);
     const newErrors: typeof errors = {};
     const isServiceRequest = svcType === '2';
@@ -284,9 +370,6 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       return;
     }
 
-
-
-
     // build and submit
     const form = new FormData();
     form.append('req_date', new Date().toISOString().slice(0, 19).replace('T', ' '));
@@ -322,6 +405,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       const uploadDate = formUploadDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
       form.append('form_upload_date', uploadDate);
     }
+    setSubmitting(true);
     try {
       await authenticatedApi.post('/api/mtn/request', form, { headers: { 'Content-Type': 'multipart/form-data' } });
       setSuccessTitle('Form submitted');
@@ -330,8 +414,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       onSubmitted?.();
     } catch (e) {
       toast.error('Failed to submit application');
+    } finally {
+      setSubmitting(false);
     }
-  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted, formUpload, formUploadDate, hasActiveNcr, isNcrLocked]);
+  }, [assetId, svcType, selectedServiceTypeIds, odoStart, odoEnd, lateNotice, agree, requestor, remarks, selectedVehicle, existing, attachments, focusFirstError, onSubmitted, formUpload, formUploadDate, hasActiveNcr, isNcrLocked, submitting]);
 
   // Load existing record (edit mode)
   React.useEffect(() => {
@@ -675,17 +761,6 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     return keys;
   }, [serviceOptions]);
 
-  const filterAttachmentFiles = React.useCallback((files: File[]) => {
-    const allowed = files.filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
-    if (files.length > 0 && allowed.length === 0) {
-      toast.error('Only PDF or image files are supported');
-      return [];
-    }
-    if (allowed.length !== files.length) {
-      toast.error('Some files were skipped. Only PDF or image files are supported.');
-    }
-    return allowed;
-  }, []);
 
   const handleServiceOptionToggle = React.useCallback((svcTypeId: number, checked: boolean, groupKey?: number) => {
     if (isNcrLocked) return;
@@ -709,9 +784,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   const handleAttachmentChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];
-    const allowed = filterAttachmentFiles(files);
-    setAttachments(allowed);
-  }, [filterAttachmentFiles]);
+    if (event.target.value) event.target.value = '';
+    if (!files.length) return;
+    normalizeAttachments(files);
+  }, [normalizeAttachments]);
 
   const clearAttachments = React.useCallback(() => {
     setAttachments([]);
@@ -917,9 +993,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const onDropFiles = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files || []);
-    const allowed = filterAttachmentFiles(files);
-    if (allowed.length) setAttachments(allowed);
-  }, [filterAttachmentFiles]);
+    if (!files.length) return;
+    normalizeAttachments(files);
+  }, [normalizeAttachments]);
 
   const onDragOver = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -1102,7 +1178,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
               <X className="h-5 w-5" />
             </Button>
             <div className="space-y-2">
-              <div className="text-sm font-medium break-words">{formUpload.name}</div>
+              <div className="text-sm font-medium wrap-break-words">{formUpload.name}</div>
               {isPdf ? (
                 <object data={formUploadPreview} type="application/pdf" className="w-full h-60 rounded-md border bg-background">
                   <p className="p-3 text-sm">
@@ -1157,7 +1233,15 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [isServiceRequest]);
 
   return (
-    <div>
+    <div className="relative">
+      {submitting && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-lg bg-white px-4 py-3 text-slate-800 shadow-lg dark:bg-slate-800 dark:text-slate-100">
+            <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+            <div className="text-sm font-medium">Uploading attachments... please wait</div>
+          </div>
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader>
@@ -1555,7 +1639,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     !agree ||
                     (selectedServiceTypeIds.length === 0) ||
                     (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0))) ||
-                    (hasActiveNcr && !isNcrLocked);
+                    (hasActiveNcr && !isNcrLocked) ||
+                    submitting;
                   if (disabledByState) {
                     e.stopPropagation();
                     attemptSubmit();
@@ -1570,10 +1655,18 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                       !agree ||
                       (selectedServiceTypeIds.length === 0) ||
                       (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0))) ||
-                      (hasActiveNcr && !isNcrLocked)
+                      (hasActiveNcr && !isNcrLocked) ||
+                      submitting
                     }
                   >
-                    Done
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Done'
+                    )}
                   </Button>
                 </div>
               </div>
@@ -1612,7 +1705,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   />
                   <div
                     className={[
-                      'rounded-md border-2 border-dashed border-yellow-400 bg-yellow-100/20 p-4 min-h-[160px] flex items-center justify-center w-full',
+                      'rounded-md border-2 border-dashed border-yellow-400 bg-yellow-100/20 p-4 min-h-40 flex items-center justify-center w-full',
                       showErrors && errors.formUpload ? 'border-red-500 ring-1 ring-red-500/50' : 'border-muted-foreground/40',
                       !formUpload && !existingFormUploadUrl ? 'border-dashed' : '',
                     ].filter(Boolean).join(' ')}
@@ -1702,7 +1795,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     Total previous services:{' '}
                     <span className="font-semibold text-foreground">{serviceHistory.length}</span>
                   </div>
-                  <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 hide-scrollbar">
+                  <div className="space-y-3 max-h-130 overflow-y-auto pr-1 hide-scrollbar">
                     {serviceHistory.map((record) => (
                       <div key={record.req_id} className="rounded-md border bg-sky-100 dark:bg-gray-800 border-border p-3">
                         <div className="flex items-center justify-between text-sm font-semibold">
@@ -1766,7 +1859,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                             <img
                               src={detail.adt_image}
                               alt={detail.qset_desc || 'NCR attachment'}
-                              className="max-h-32 max-w-[220px] rounded border border-border object-cover"
+                              className="max-h-32 max-w-55 rounded border border-border object-cover"
                             />
                           </a>
                         )}

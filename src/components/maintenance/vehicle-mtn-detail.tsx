@@ -478,6 +478,15 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
     }
   }, [requestId]);
 
+  // Update browser tab title to reflect the current maintenance request
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const baseTitle = 'Vehicle Maintenance Request';
+    const idPart = request?.req_id ? ` #${request.req_id}` : '';
+    const regPart = request?.asset?.register_number ? ` – ${request.asset.register_number}` : '';
+    document.title = `${baseTitle}${idPart}${regPart}`;
+  }, [request?.req_id, request?.asset?.register_number]);
+
   // Fetch service history for the asset when request.asset.id becomes available
   useEffect(() => {
     const assetId = request?.asset?.id;
@@ -570,7 +579,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-100">
         <Loader2 className="animate-spin w-8 h-8" />
         <span className="ml-2">Loading maintenance details...</span>
       </div>
@@ -1032,7 +1041,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 ) : serviceHistory.length === 0 ? (
                   <p className="text-sm text-gray-500">No service records found for this asset.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[60vh] sm:max-h-[750px] border-0 overflow-y-auto overscroll-contain pr-1">
+                  <div className="space-y-2 max-h-[60vh] sm:max-h-187.5 border-0 overflow-y-auto overscroll-contain pr-1">
                     {serviceHistory.map(rec => (
                       <div key={rec.req_id} className="p-2 border rounded-lg shadow bg-sky-100 dark:bg-gray-800 hover:bg-sky-200 transition-colors">
                         <div className="flex items-center justify-between">

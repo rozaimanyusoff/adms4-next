@@ -47,6 +47,35 @@ interface AssessmentDetail {
     adt_image?: string | null; // proof image absolute URL from backend
 }
 
+interface AssessmentNcrTrackingItem {
+    adt_id: number;
+    assess_id: number;
+    adt_item: string | number;
+    adt_ncr: number;
+    adt_rem?: string | null;
+    adt_image?: string | null;
+    ncr_status?: string | null;
+    closed_at?: string | null;
+    action?: string | null;
+    svc_order?: string | null;
+    qset_desc?: string | null;
+    qset_type?: string | null;
+}
+
+interface AssessmentNcrDriverAction {
+    req_id: number;
+    req_date?: string | null;
+    req_comment?: string | null;
+    drv_stat?: number | null;
+    drv_date?: string | null;
+    verification_stat?: number | null;
+    verification_date?: string | null;
+    recommendation_stat?: number | null;
+    recommendation_date?: string | null;
+    approval_stat?: number | null;
+    approval_date?: string | null;
+}
+
 interface AssessmentData {
     assess_id: number;
     a_date: string;
@@ -221,6 +250,9 @@ const AssessmentForm: React.FC = () => {
     // Editing states
     const [isEditing, setIsEditing] = useState(false);
     const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
+    const [ncrTrackingItems, setNcrTrackingItems] = useState<AssessmentNcrTrackingItem[]>([]);
+    const [ncrTrackingActions, setNcrTrackingActions] = useState<AssessmentNcrDriverAction[]>([]);
+    const [closeNcrLoading, setCloseNcrLoading] = useState<Record<string, boolean>>({});
     const [loadingAssessment, setLoadingAssessment] = useState(false);
 
     // Header section state
@@ -396,6 +428,20 @@ const AssessmentForm: React.FC = () => {
         }
     };
 
+    const fetchNcrTracking = async (assessId: string) => {
+        try {
+            const res: any = await authenticatedApi.get(`/api/compliance/assessments/${assessId}/ncr-tracking`);
+            const payload = res?.data?.data ?? {};
+            const items = Array.isArray(payload?.ncr_items?.items) ? payload.ncr_items.items : [];
+            const actions = Array.isArray(payload?.driver_actions?.records) ? payload.driver_actions.records : [];
+            setNcrTrackingItems(items as AssessmentNcrTrackingItem[]);
+            setNcrTrackingActions(actions as AssessmentNcrDriverAction[]);
+        } catch (err) {
+            setNcrTrackingItems([]);
+            setNcrTrackingActions([]);
+        }
+    };
+
     const fetchAssessmentData = async (id: string) => {
         setLoadingAssessment(true);
         try {
@@ -478,6 +524,9 @@ const AssessmentForm: React.FC = () => {
                         return prevItems;
                     }
                 });
+
+                // Fetch NCR tracking details in edit mode
+                fetchNcrTracking(id);
             }
         } catch (e) {
             toast.error('Failed to load assessment data');
@@ -516,6 +565,46 @@ const AssessmentForm: React.FC = () => {
             });
         }
     };
+
+    const handleCloseNcrClick = React.useCallback(async (item: AssessmentNcrTrackingItem) => {
+        if (!assessmentData?.assess_id || !item?.adt_id) return;
+        const key = String(item.adt_id);
+        setCloseNcrLoading(prev => ({ ...prev, [key]: true }));
+        // Pick the most recent driver action (by req_date then req_id) to use as svc_order
+        const sortedActions = [...ncrTrackingActions].sort((a, b) => {
+            const da = new Date(a.req_date || 0).getTime();
+            const db = new Date(b.req_date || 0).getTime();
+            if (!Number.isNaN(db - da) && db !== da) return db - da;
+            return Number(b.req_id || 0) - Number(a.req_id || 0);
+        });
+        const latestAction = sortedActions[0];
+        const svcOrder = latestAction?.req_id ? String(latestAction.req_id) : '';
+        const today = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const closedAt = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+        const payload = {
+            ncr_status: 'closed',
+            closed_at: closedAt,
+            action: 'maintenance request',
+            svc_order: svcOrder,
+        };
+        try {
+            await authenticatedApi.put(`/api/compliance/assessments/${assessmentData.assess_id}/close-ncr/${item.adt_id}`, payload);
+            toast.success('NCR closed successfully');
+            // Update local tracking state to reflect closure
+            setNcrTrackingItems(prev => prev.map((t) => (
+                String(t.adt_id) === key ? { ...t, ...payload } : t
+            )));
+        } catch (err) {
+            toast.error('Failed to close NCR');
+        } finally {
+            setCloseNcrLoading(prev => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+        }
+    }, [assessmentData?.assess_id, ncrTrackingActions]);
 
     // No per-criteria drag & drop handler anymore
 
@@ -835,7 +924,7 @@ const AssessmentForm: React.FC = () => {
 
         try {
             // Submit the form data
-            const endpoint = isEditing ? `/api/compliance/assessment/${assessmentData?.assess_id}` : '/api/compliance/assessments';
+            const endpoint = isEditing ? `/api/compliance/assessments/${assessmentData?.assess_id}` : '/api/compliance/assessments';
             const method = isEditing ? 'PUT' : 'POST';
 
             const response = await authenticatedApi.request({
@@ -1175,6 +1264,7 @@ const AssessmentForm: React.FC = () => {
                 )}
                 {!loading && pageItems.map((it, idx) => {
                     const currentAnswer = answers[it.qset_id];
+                    const isNotComply = it.qset_type === 'NCR' && (currentAnswer === 'Not-comply' || currentAnswer === 2 || currentAnswer === '2');
                     const needsCommentOrFile = (
                         it.qset_type === 'NCR' && currentAnswer === 'Not-comply'
                     ) || (
@@ -1186,6 +1276,10 @@ const AssessmentForm: React.FC = () => {
                     const commentVal = (answers[commentKey] ?? '') as string;
                     const commentIsRequired = needsCommentOrFile;
                     const commentShowError = commentIsRequired && String(commentVal).trim().length === 0;
+                    const trackingItem = ncrTrackingItems.find((t) => String(t.adt_item) === String(it.qset_id));
+                    const hasDriverActions = ncrTrackingActions.length > 0;
+                    const isClosed = trackingItem?.ncr_status && String(trackingItem.ncr_status).toLowerCase() === 'closed';
+                    const showCloseNcr = Boolean(isEditing && it.qset_type === 'NCR' && trackingItem && hasDriverActions);
                     // Highlight unanswered
                     let isUnanswered = false;
                     if (it.qset_type === 'NCR') {
@@ -1204,8 +1298,36 @@ const AssessmentForm: React.FC = () => {
                     }
 
                     return (
-                        <div key={it.qset_id} className={`p-4 border rounded shadow-sm ${isUnanswered ? 'bg-yellow-100 border-yellow-400' : 'bg-white'}`}>
-                            <div className="font-medium mb-2">{start + idx + 1}. {it.qset_desc}</div>
+                        <div
+                            key={it.qset_id}
+                            className={[
+                              'p-4 border rounded shadow-sm transition-colors',
+                            isUnanswered ? 'bg-yellow-100 border-yellow-400' : 'bg-white',
+                            isNotComply ? 'bg-red-50 border-red-400 ring-1 ring-red-300' : '',
+                          ].join(' ')}
+                        >
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                                <div className="font-medium">{start + idx + 1}. {it.qset_desc}</div>
+                                <div className="flex items-center gap-2">
+                                    {isNotComply && (
+                                        <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 border border-red-200">
+                                            Not-comply
+                                        </span>
+                                    )}
+                                    {showCloseNcr && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="border-green-500 text-green-700 hover:bg-green-50 disabled:opacity-60"
+                                            onClick={() => trackingItem && handleCloseNcrClick(trackingItem)}
+                                            disabled={isClosed || (trackingItem && closeNcrLoading[String(trackingItem.adt_id)])}
+                                        >
+                                            {trackingItem && closeNcrLoading[String(trackingItem.adt_id)] ? 'Closing...' : (isClosed ? 'Closed' : 'Close NCR')}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
                             <div>
                                 {it.qset_type === 'NCR' && (
                                     <div className="flex flex-col items-center gap-2">
