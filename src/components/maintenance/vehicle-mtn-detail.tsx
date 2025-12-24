@@ -112,6 +112,8 @@ interface ServiceHistoryRecord {
   verification_date?: string | null;
   recommendation_date?: string | null;
   approval_date?: string | null;
+  form_upload?: string | null;
+  form_upload_date?: string | null;
   emailStat?: number;
   inv_status?: number;
   odo_start?: number;
@@ -138,6 +140,7 @@ interface MaintenanceRequestDetail {
   verification_date: string | null;
   recommendation_date: string | null;
   approval_date: string | null;
+  form_upload: string | null;
   form_upload_date: string | null;
   emailStat: number;
   inv_status: number;
@@ -832,6 +835,27 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                     </ul>
                   </div>
 
+                  {request.form_upload && request.form_upload_date ? (
+                    <div>
+                      <label className="font-medium dark:text-dark-light">Form Upload</label>
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <a
+                          href={request.form_upload}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center"
+                        >
+                          <Badge variant="default" className="bg-emerald-600 text-white text-xs hover:bg-emerald-700">
+                            Form Uploaded
+                          </Badge>
+                        </a>
+                        <span className="text-sm text-gray-600">
+                          Uploaded: {formatDate(request.form_upload_date)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {request.req_comment ? (
                     <div className="mt-2">
                       <label className="font-medium dark:text-dark-light">Request Comment</label>
@@ -1056,7 +1080,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                             </div>
                             <p className="text-xs text-gray-700">{new Date(rec.req_date).toLocaleDateString()}</p>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right flex flex-col items-end gap-1">
                             {rec.invoice?.inv_no ? (
                               <div>
                                 <p className="text-xs dark:text-dark-light font-bold">Inv: {rec.invoice.inv_no}</p>
@@ -1065,6 +1089,23 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                             ) : (
                               <p className="text-sm text-red-600">No invoice</p>
                             )}
+                            {(() => {
+                              const uploadUrl = rec.form_upload || (request && rec.req_id === request.req_id ? request.form_upload : null);
+                              const uploadDate = rec.form_upload_date || (request && rec.req_id === request.req_id ? request.form_upload_date : null);
+                              if (!uploadUrl || !uploadDate) return null;
+                              return (
+                                <a
+                                  href={uploadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex flex-col items-end text-right"
+                                >
+                                  <Badge variant="default" className="bg-emerald-600 text-white text-center text-[10px] hover:bg-emerald-700">
+                                    Form Uploaded on {formatDate(uploadDate)}
+                                  </Badge>
+                                </a>
+                              );
+                            })()}
                           </div>
                         </div>
                         {rec.svc_type && rec.svc_type.length > 0 && (

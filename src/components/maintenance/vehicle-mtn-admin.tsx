@@ -212,9 +212,14 @@ const VehicleMaintenanceAdmin = () => {
     const s = (row.status || '').toLowerCase().trim();
     const normalized = s.replace(/\s+/g, ' ');
     const hasApprovalDate = !!row.approval_date;
+    const hasFormUpload = !!row.form_upload_date;
 
     if (normalized.includes('cancel')) return { label: 'CANCELLED', color: 'bg-red-100 text-red-800' };
     if (normalized.includes('reject')) return { label: 'REJECTED', color: 'bg-rose-100 text-rose-800' };
+    // Show "Form Uploaded" state when upload is present, regardless of status string
+    if (hasFormUpload || normalized.includes('form upload')) {
+      return { label: 'FORM UPLOADED', color: 'bg-blue-100 text-blue-600 text-[10px]' };
+    }
     // If an approval date exists or status is approved, treat as approved
     if (normalized.includes('approved') || (hasApprovalDate && !normalized.includes('pending'))) {
       return { label: 'APPROVED', color: 'bg-green-100 text-green-800' };
@@ -291,7 +296,7 @@ const VehicleMaintenanceAdmin = () => {
       key: 'rowNumber',
       header: 'No',
       render: (row) => (
-        <div className="flex items-center min-w-[60px]">
+        <div className="flex items-center min-w-15">
           <span>{row.rowNumber}</span>
         </div>
       ),
