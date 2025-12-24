@@ -53,6 +53,10 @@ interface ServiceHistoryRecord {
   odo_end?: number | null;
   mileage?: number | null;
   invoice?: { inv_date?: string | null; inv_total?: string | number | null } | null;
+  status?: string | null;
+  application_status?: string | null;
+  form_upload?: string | null;
+  form_upload_date?: string | null;
 }
 
 interface AssessmentSummary {
@@ -218,6 +222,13 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   // Validation state
   const [showErrors, setShowErrors] = React.useState(false);
   const [errors, setErrors] = React.useState<{ asset?: boolean; svcType?: boolean; odoStart?: boolean; odoEnd?: boolean; lateNotice?: boolean; serviceOptions?: boolean; agree?: boolean; formUpload?: boolean; }>({});
+  // Back confirmation
+  const [showBackConfirm, setShowBackConfirm] = React.useState(false);
+  // Draft persistence (create mode)
+  const draftKey = React.useMemo(() => 'vehicle-mtn-form-draft', []);
+  // Vehicle change warning
+  const [pendingAssetId, setPendingAssetId] = React.useState<string | null>(null);
+  const [showVehicleChangeConfirm, setShowVehicleChangeConfirm] = React.useState(false);
   // Refs for focusing first error
   const vehicleRef = React.useRef<HTMLDivElement | null>(null);
   const svcTypeRef = React.useRef<HTMLDivElement | null>(null);
@@ -229,6 +240,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const formUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const formCameraUploadInputRef = React.useRef<HTMLInputElement | null>(null);
   const cameraUploadInputRef = React.useRef<HTMLInputElement | null>(null);
+  const prevAssetId = React.useRef<string>('');
 
   // Selected vehicle details for payload convenience
   const selectedVehicle = React.useMemo(() => (assetId ? vehicleById[assetId] : null), [vehicleById, assetId]);
@@ -411,6 +423,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       setSuccessTitle('Form submitted');
       setSuccessDescription('Your maintenance request has been successfully submitted.');
       setShowSuccess(true);
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+      }
       onSubmitted?.();
     } catch (e) {
       toast.error('Failed to submit application');
@@ -697,6 +712,49 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     return () => { cancelled = true; };
   }, [assetId, currentYear]);
 
+  // Load draft (create mode only)
+  React.useEffect(() => {
+    if (id) return; // do not override edit mode
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft || typeof draft !== 'object') return;
+      if (draft.requestor) setRequestor((s: any) => ({ ...s, ...draft.requestor }));
+      if (draft.assetId) setAssetId(String(draft.assetId));
+      if (draft.svcType) setSvcType(String(draft.svcType));
+      if (Array.isArray(draft.selectedServiceTypeIds)) setSelectedServiceTypeIds(draft.selectedServiceTypeIds);
+      if (typeof draft.remarks === 'string') setRemarks(draft.remarks);
+      if (typeof draft.odoStart === 'string') setOdoStart(draft.odoStart);
+      if (typeof draft.odoEnd === 'string') setOdoEnd(draft.odoEnd);
+      if (typeof draft.lateNotice === 'string') setLateNotice(draft.lateNotice);
+    } catch {
+      // ignore malformed draft
+    }
+  }, [id, draftKey]);
+
+  // Persist draft (create mode only, exclude files)
+  React.useEffect(() => {
+    if (id) return;
+    if (typeof window === 'undefined') return;
+    const payload = {
+      requestor,
+      assetId,
+      svcType,
+      selectedServiceTypeIds,
+      remarks,
+      odoStart,
+      odoEnd,
+      lateNotice,
+    };
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage errors
+    }
+  }, [id, draftKey, requestor, assetId, svcType, selectedServiceTypeIds, remarks, odoStart, odoEnd, lateNotice]);
+
   React.useEffect(() => {
     if (!assetId || assessmentDetails.length === 0) {
       setNcrDialogOpen(false);
@@ -948,6 +1006,42 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     }
     prevSvcType.current = svcType;
   }, [id, svcType, carWashIds, ncrIds, selectedServiceTypeIds.length, serviceOptions]);
+
+  // Reset form when switching vehicle (create mode)
+  React.useEffect(() => {
+    if (id) {
+      prevAssetId.current = assetId;
+      return;
+    }
+    if (!assetId) {
+      prevAssetId.current = '';
+      return;
+    }
+    if (prevAssetId.current && prevAssetId.current !== assetId) {
+      setSvcType('');
+      setSelectedServiceTypeIds([]);
+      setRemarks('');
+      setOdoStart('');
+      setOdoEnd('');
+      setLateNotice('');
+      setAgree(false);
+      setAttachments([]);
+      setFormUpload(null);
+      setFormUploadDate(null);
+      setErrors({});
+      setShowErrors(false);
+    }
+    prevAssetId.current = assetId;
+  }, [assetId, id]);
+
+  // Handle vehicle change confirmation
+  React.useEffect(() => {
+    if (!showVehicleChangeConfirm && pendingAssetId === null) return;
+    // cleanup pending if dialog is closed without action
+    if (!showVehicleChangeConfirm) {
+      setPendingAssetId(null);
+    }
+  }, [showVehicleChangeConfirm, pendingAssetId]);
 
   // Previews for attachments
   const [formUploadPreview, setFormUploadPreview] = React.useState<string | null>(null);
@@ -1291,7 +1385,15 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   <SingleSelect
                     options={vehicleOptions}
                     value={assetId}
-                    onValueChange={setAssetId}
+                    onValueChange={(val) => {
+                      if (id) { setAssetId(val); return; }
+                      if (prevAssetId.current && prevAssetId.current !== val) {
+                        setPendingAssetId(val);
+                        setShowVehicleChangeConfirm(true);
+                        return;
+                      }
+                      setAssetId(val);
+                    }}
                     placeholder="Select vehicle"
                     className={showErrors && errors.asset ? 'ring-1 ring-red-500' : ''}
                     disabled={isReadOnly}
@@ -1597,7 +1699,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     className={["h-24", cancelChecked && !cancelReason.trim() ? 'ring-1 ring-red-500' : ''].join(' ')}
                   />
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={onClose}>Back</Button>
+                    <Button variant="outline" onClick={() => setShowBackConfirm(true)}>Back</Button>
                     <Button
                       onClick={async () => {
                         if (!cancelChecked) { toast.error('Tick to confirm cancellation'); return; }
@@ -1612,6 +1714,9 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                           setSuccessTitle('Application Cancelled');
                           setSuccessDescription('Your cancellation request has been submitted.');
                           setShowSuccess(true);
+                          if (typeof window !== 'undefined') {
+                            try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+                          }
                           onSubmitted?.();
                         } catch (e) {
                           toast.error('Failed to cancel application');
@@ -1631,22 +1736,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   <Checkbox id="vehicle-mtn-agree" checked={agree} onCheckedChange={(v) => setAgree(Boolean(v))} />
                   <span>I confirm the information provided is accurate.</span>
                 </label>
-                <div className="flex justify-end gap-2" onClick={(e) => {
-                  const isServiceRequest = svcType === '2';
-                  const disabledByState =
-                    !assetId ||
-                    (!svcType && selectedServiceTypeIds.length === 0) ||
-                    !agree ||
-                    (selectedServiceTypeIds.length === 0) ||
-                    (isServiceRequest && (odoStart === '' || odoEnd === '' || Number.isNaN(parsedOdoStart) || Number.isNaN(parsedOdoEnd) || (extraMileage > 500 && lateNotice.trim().length === 0))) ||
-                    (hasActiveNcr && !isNcrLocked) ||
-                    submitting;
-                  if (disabledByState) {
-                    e.stopPropagation();
-                    attemptSubmit();
-                  }
-                }}>
-                  <Button variant="outline" onClick={onClose}>Back</Button>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowBackConfirm(true)}>Back</Button>
                   <Button
                     onClick={attemptSubmit}
                     disabled={
@@ -1797,7 +1888,16 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   </div>
                   <div className="space-y-3 max-h-130 overflow-y-auto pr-1 hide-scrollbar">
                     {serviceHistory.map((record) => (
-                      <div key={record.req_id} className="rounded-md border bg-sky-100 dark:bg-gray-800 border-border p-3">
+                      <div
+                        key={record.req_id}
+                        className={`rounded-md border border-border p-3 ${
+                          (() => {
+                            const status = String(record.application_status || record.status || '').toLowerCase();
+                            const rejected = new Set(['verification_rejected', 'recommendation_rejected', 'approval_rejected', 'cancelled']);
+                            return rejected.has(status) ? 'bg-red-100 border-red-300' : 'bg-sky-100 dark:bg-gray-800';
+                          })()
+                        }`}
+                      >
                         <div className="flex items-center justify-between text-sm font-semibold">
                           <span className="flex items-center gap-2">
                             Request #{record.req_id}
@@ -1828,6 +1928,35 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                             Invoice: {record.invoice.inv_date ? formatDMY(String(record.invoice.inv_date)) : '-'}
                           </div>
                         )}
+                        {(() => {
+                          const uploadUrl = record.form_upload;
+                          const uploadDate = record.form_upload_date;
+                          if (!uploadDate) return null;
+                          const badge = (
+                            <Badge variant="default" className="bg-emerald-600 text-white text-[10px] hover:bg-emerald-700">
+                              Form Uploaded on {formatDMY(uploadDate)}
+                            </Badge>
+                          );
+                          return (
+                            <div className="mt-1">
+                              {uploadUrl ? (
+                                <a href={uploadUrl} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                                  {badge}
+                                </a>
+                              ) : (
+                                <span className="inline-flex">{badge}</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const status = String(record.application_status || record.status || '').toLowerCase();
+                          const rejected = new Set(['verification_rejected', 'recommendation_rejected', 'approval_rejected', 'cancelled']);
+                          if (rejected.has(status)) {
+                            return <p className="mt-1 text-xs font-semibold text-red-700">Verification Status: Rejected</p>;
+                          }
+                          return null;
+                        })()}
                         {record.req_comment && (
                           <p className="mt-2 text-xs">Comment: {record.req_comment}</p>
                         )}
@@ -1886,6 +2015,57 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
         .hide-scrollbar { scrollbar-width: none; }
         .hide-scrollbar:hover { scrollbar-width: thin; }
       `}</style>
+
+      {/* Vehicle change confirmation */}
+      <AlertDialog open={showVehicleChangeConfirm} onOpenChange={(o) => { if (!o) { setShowVehicleChangeConfirm(false); setPendingAssetId(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change vehicle?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Changing vehicle will clear the current form selections and inputs.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setShowVehicleChangeConfirm(false); setPendingAssetId(null); }}>Stay</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (pendingAssetId !== null) {
+                  setAssetId(pendingAssetId);
+                }
+                setShowVehicleChangeConfirm(false);
+                setPendingAssetId(null);
+              }}
+            >
+              Change Vehicle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Back confirmation dialog */}
+      <AlertDialog open={showBackConfirm} onOpenChange={setShowBackConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave this form?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your progress will be lost if you leave without submitting.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowBackConfirm(false)}>Stay</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowBackConfirm(false);
+                onClose?.();
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Terms & Conditions Alert shown on open */}
       <AlertDialog open={termsOpen} onOpenChange={setTermsOpen}>

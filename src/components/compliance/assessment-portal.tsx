@@ -345,6 +345,16 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
       const rowsHtml = details.map((d, idx) => {
         const type = (d.qset_type || '').toUpperCase();
         const ncrLabel = type === 'NCR' ? (d.adt_ncr === 1 ? 'Comply' : (d.adt_ncr === 2 ? 'Not-comply' : '')) : '';
+        const actionLabel = (() => {
+          const status = (d as any)?.ncr_status ? String((d as any).ncr_status).toLowerCase() : '';
+          const closedAt = (d as any)?.closed_at;
+          const formattedDate = closedAt ? formatDMY(closedAt) : '';
+          if (status === 'closed' || formattedDate) {
+            return formattedDate ? `Closed ${formattedDate}` : 'Closed';
+          }
+          if (status === 'open' || status === 'pending') return 'Open';
+          return '';
+        })();
         let rateCell = '';
         if (type === 'NCR') {
           const r = Number(d.adt_rate);
@@ -365,6 +375,7 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
             <td style="border:1px solid #e5e7eb;padding:6px">${ncrLabel}</td>
             <td style="border:1px solid #e5e7eb;padding:6px">${rateCell}</td>
             <td style="border:1px solid #e5e7eb;padding:6px">${type}</td>
+            <td style="border:1px solid #e5e7eb;padding:6px">${actionLabel}</td>
           </tr>`;
       }).join('');
 
@@ -395,7 +406,7 @@ const AssessmentPortal: React.FC<AssessmentPortalProps> = ({ assetId }) => {
         ${headerHtml}
         <div style="margin-top:10px"></div>
         <table>
-          <thead><tr><th>Item</th><th>Description</th><th>NCR</th><th>Rate</th><th>Type</th></tr></thead>
+          <thead><tr><th>Item</th><th>Description</th><th>NCR</th><th>Rate</th><th>Type</th><th>NCR Action</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
         <div style="margin-top:8px;font-size:10px;color:#374151">Skala: 1-Tidak Memuaskan / Tidak Berfungsi 2-Memuaskan 3-Baik 4-Cemerlang / Berfungsi Dengan Baik</div>

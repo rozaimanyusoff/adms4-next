@@ -1,6 +1,12 @@
 import React from 'react';
+import type { Metadata } from 'next';
 import ComplianceSummonList from '@components/compliance/summon-record';
 import TabSummon from '@components/compliance/tab-summon';
+
+export const metadata: Metadata = {
+  title: 'Traffic Summon',
+  description: 'Traffic summon records and management.',
+};
 
 const Page: React.FC = () => {
   return (

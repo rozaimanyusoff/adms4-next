@@ -7,11 +7,11 @@ import { AuthContext } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { Plus, RefreshCw, Download } from 'lucide-react';
 import { toast } from 'sonner';
-import VehicleMtnForm from './vehicle-mtn-form';
 import { Badge } from '@/components/ui/badge';
 import { downloadServiceFormPdf } from './pdf/service-form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import VehicleMtnSummary from './vehicle-mtn-summary';
+import { useRouter } from 'next/navigation';
 
 // Exclusion list: users in this list will retrieve all data (no ?ramco= filter)
 const exclusionUser: string[] = ['username1', 'username2'];
@@ -55,11 +55,10 @@ function StatusBadge({ status }: { status: string }) {
 const VehicleMtnRecord: React.FC = () => {
   const auth = React.useContext(AuthContext);
   const username = auth?.authData?.user?.username || '';
+  const router = useRouter();
 
   const [rows, setRows] = React.useState<MtnRecordRow[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [showForm, setShowForm] = React.useState(false);
-  const [editId, setEditId] = React.useState<number | string | undefined>(undefined);
 
   const loadData = async () => {
     if (!username) return;
@@ -200,29 +199,9 @@ const VehicleMtnRecord: React.FC = () => {
     if (!row) return;
     const id = row.id;
     if (id !== undefined) {
-      setEditId(id);
-      setShowForm(true);
+      router.push(`/mtn/vehicle/form/${id}`);
     }
   };
-
-  if (showForm) {
-    return (
-      <div className="py-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Vehicle Maintenance Form</h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => { setShowForm(false); setEditId(undefined); }}
-          >
-            Back to Records
-          </Button>
-        </div>
-        <VehicleMtnForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} onSubmitted={loadData} />
-      </div>
-    );
-  }
 
   return (
     <div className="py-4 space-y-4">
@@ -232,14 +211,14 @@ const VehicleMtnRecord: React.FC = () => {
             <span className="text-base font-medium">Summary by Year/Month</span>
           </AccordionTrigger>
           <AccordionContent>
-            <VehicleMtnSummary onOpen={(id:number)=>{ setEditId(id); setShowForm(true); }} />
+            <VehicleMtnSummary onOpen={(id:number)=>{ router.push(`/mtn/vehicle/form/${id}`); }} />
           </AccordionContent>
         </AccordionItem>
       </Accordion>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold">My Vehicle Maintenance Requests</div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => { setEditId(undefined); setShowForm(true); }}>
+          <Button size="sm" onClick={() => { router.push('/mtn/vehicle/form/new'); }}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
           </Button>
         </div>

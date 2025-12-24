@@ -1,6 +1,12 @@
 import React from 'react';
+import type { Metadata } from 'next';
 import TabAssessment from '@components/compliance/tab-assessment';
 import TabSummon from '@components/compliance/tab-summon';
+
+export const metadata: Metadata = {
+  title: 'Vehicle Assessment',
+  description: 'Vehicle assessment records, criteria, ownership, and dashboards.',
+};
 
 const Page: React.FC = () => {
   return (

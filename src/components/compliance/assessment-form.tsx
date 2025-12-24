@@ -132,6 +132,53 @@ interface Location {
 }
 
 const PAGE_SIZE = 10;
+const MAX_IMAGE_DIMENSION = 1600;
+
+const compressImageFile = async (file: File, opts: { maxDimension?: number; quality?: number } = {}) => {
+    const { maxDimension = MAX_IMAGE_DIMENSION, quality = 0.7 } = opts;
+    if (!file.type.startsWith('image/')) return file;
+    const imageUrl = URL.createObjectURL(file);
+    try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = reject;
+            i.src = imageUrl;
+        });
+        const { width, height } = img;
+        const maxSide = Math.max(width, height);
+        // Skip compression for already small files
+        if (maxSide <= maxDimension && file.size <= 800 * 1024) return file;
+        const scale = maxSide > maxDimension ? maxDimension / maxSide : 1;
+        const targetWidth = Math.round(width * scale);
+        const targetHeight = Math.round(height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return file;
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+        const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (!blob) return file;
+        const baseName = (file.name.replace(/\s+/g, '_').replace(/\.[^.]+$/, '')) || 'image';
+        return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+    } catch {
+        return file;
+    } finally {
+        URL.revokeObjectURL(imageUrl);
+    }
+};
+
+const sanitizeFileName = (file: File) => {
+    const safeName = file.name.replace(/\s+/g, '_');
+    if (safeName === file.name) return file;
+    return new File([file], safeName, { type: file.type });
+};
+
+const prepareImageFile = async (file: File, opts?: { maxDimension?: number; quality?: number }) => {
+    const compressed = await compressImageFile(file, opts);
+    return sanitizeFileName(compressed);
+};
 
 const AssessmentForm: React.FC = () => {
     // Track asset IDs already assessed this year
@@ -179,7 +226,7 @@ const AssessmentForm: React.FC = () => {
         fetchAssessedAssetsAndVehicles();
     }, []);
     // Handles drag-and-drop for vehicle images (limit 4)
-    const handleVehicleImageDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleVehicleImageDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setVehicleImageDragOver && setVehicleImageDragOver(false);
@@ -190,15 +237,16 @@ const AssessmentForm: React.FC = () => {
         const currentCount = vehicleImages.length;
         const newFiles: File[] = [];
         const newUrls: string[] = [];
-        Array.from(files).forEach(file => {
+        for (const file of Array.from(files)) {
             const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
             if (isImage) {
                 if (currentCount + newFiles.length < maxImages) {
-                    newFiles.push(file);
-                    newUrls.push(URL.createObjectURL(file));
+                    const prepared = await prepareImageFile(file, { maxDimension: 1600, quality: 0.7 });
+                    newFiles.push(prepared);
+                    newUrls.push(URL.createObjectURL(prepared));
                 }
             }
-        });
+        }
         if (currentCount + newFiles.length > maxImages) {
             toast.error('Maximum 4 vehicle images allowed.');
         }
@@ -212,7 +260,7 @@ const AssessmentForm: React.FC = () => {
     };
 
     // Handles file selection for individual criteria proof upload
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
         const original = e.target.files?.[0] || null;
         if (!original) { setProofFile(id, null); return; }
         const isImage = /^image\/(png|jpeg)$/i.test(original.type) || /\.(png|jpg|jpeg)$/i.test(original.name);
@@ -222,16 +270,8 @@ const AssessmentForm: React.FC = () => {
             return;
         }
         // Sanitize filename: replace spaces with underscores to avoid backend rejection
-        let file: File = original;
-        if (/\s/.test(original.name)) {
-            try {
-                const safeName = original.name.replace(/\s+/g, '_');
-                file = new File([original], safeName, { type: original.type });
-            } catch {
-                // Fallback: keep original if File constructor fails (older browsers)
-            }
-        }
-        setProofFile(id, file);
+        const prepared = await prepareImageFile(original, { maxDimension: 1400, quality: 0.7 });
+        setProofFile(id, prepared);
     };
     const [items, setItems] = useState<CriteriaItem[]>([]);
     const [rawItems, setRawItems] = useState<CriteriaItem[]>([]);
@@ -608,7 +648,7 @@ const AssessmentForm: React.FC = () => {
 
     // No per-criteria drag & drop handler anymore
 
-    const handleVehicleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleVehicleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files?.length) return;
 
@@ -617,15 +657,16 @@ const AssessmentForm: React.FC = () => {
         const currentCount = vehicleImages.length;
         const maxImages = 4;
 
-        Array.from(files).forEach(file => {
+        for (const file of Array.from(files)) {
             const isImage = /^image\/(png|jpeg)$/i.test(file.type) || /\.(png|jpg|jpeg)$/i.test(file.name);
             if (isImage) {
                 if (currentCount + newFiles.length < maxImages) {
-                    newFiles.push(file);
-                    newUrls.push(URL.createObjectURL(file));
+                    const prepared = await prepareImageFile(file, { maxDimension: 1600, quality: 0.7 });
+                    newFiles.push(prepared);
+                    newUrls.push(URL.createObjectURL(prepared));
                 }
             }
-        });
+        }
 
         if (currentCount + newFiles.length > maxImages) {
             toast.error('Maximum 4 vehicle images allowed.');

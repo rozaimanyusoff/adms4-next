@@ -129,6 +129,7 @@ interface ServiceHistoryRecord {
   invoice?: Invoice | null;
   // Optional status string if provided by API (e.g. 'pending verification', 'approved', 'cancelled')
   status?: string;
+  application_status?: string | null;
 }
 
 interface MaintenanceRequestDetail {
@@ -1067,7 +1068,16 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                 ) : (
                   <div className="space-y-2 max-h-[60vh] sm:max-h-187.5 border-0 overflow-y-auto overscroll-contain pr-1">
                     {serviceHistory.map(rec => (
-                      <div key={rec.req_id} className="p-2 border rounded-lg shadow bg-sky-100 dark:bg-gray-800 hover:bg-sky-200 transition-colors">
+                      <div
+                        key={rec.req_id}
+                        className={`p-2 border rounded-lg shadow hover:bg-sky-200 transition-colors ${
+                          (() => {
+                            const status = String(rec.application_status || rec.status || '').toLowerCase();
+                            const rejected = new Set(['verification_rejected', 'recommendation_rejected', 'approval_rejected', 'cancelled']);
+                            return rejected.has(status) ? 'bg-red-100 border-red-300' : 'bg-sky-100';
+                          })()
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="flex items-center gap-2">
@@ -1089,6 +1099,20 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
                             ) : (
                               <p className="text-sm text-red-600">No invoice</p>
                             )}
+                            {(() => {
+                              const status = String(rec.application_status || rec.status || '').toLowerCase();
+                              if (!status) return null;
+                              const rejectedStatuses = new Set([
+                                'verification_rejected',
+                                'recommendation_rejected',
+                                'approval_rejected',
+                                'cancelled'
+                              ]);
+                              if (rejectedStatuses.has(status)) {
+                                return <p className="text-xs font-semibold text-red-600">Verification Status: Rejected</p>;
+                              }
+                              return null;
+                            })()}
                             {(() => {
                               const uploadUrl = rec.form_upload || (request && rec.req_id === request.req_id ? request.form_upload : null);
                               const uploadDate = rec.form_upload_date || (request && rec.req_id === request.req_id ? request.form_upload_date : null);
