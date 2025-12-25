@@ -1,4 +1,4 @@
-import UserProfile from '@/components/usermgmt/user-profile';
+import UserProfile from '@components/usermgmt/profiles';
 
 import { Metadata } from 'next';
 import Link from 'next/link';

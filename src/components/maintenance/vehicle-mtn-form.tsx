@@ -1339,15 +1339,15 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3 flex flex-col">
           <CardHeader>
-            <CardTitle>
-              {id ? `Vehicle Maintenance Request #${id}` : 'Create Vehicle Maintenance Request'}
+            <CardTitle className='text-lg'>
+              {id ? `Vehicle Maintenance Request #${id}` : 'Vehicle Maintenance Request Form'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6 flex-1">
             {/* Requestor Section */}
             <div>
               <div className="font-semibold mb-2">Requestor</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 <div>
                   <Label>Application Date</Label>
                   <Input readOnly value={formatDMY(requestor.application_date)} />
@@ -1426,7 +1426,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   </RadioGroup>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
                 <div>
                   <Label htmlFor="vehicle-mtn-odo-start">Current ODO {isServiceRequest && <span className="text-red-500">*</span>}</Label>
                   <Input
@@ -1495,7 +1495,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
               ) : groupedServiceOptions.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No service options available.</div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                   {groupedServiceOptions.map(({ key, label, items }) => {
                     const anyChecked = items.some((opt) => selectedServiceTypeIds.includes(opt.svcTypeId));
                     const disabledCard =
@@ -1547,7 +1547,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
             <Separator />
 
             {/* Remarks & Attachments */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div className="space-y-2">
                 <Label htmlFor="vehicle-mtn-remarks">Remarks</Label>
                 <Textarea

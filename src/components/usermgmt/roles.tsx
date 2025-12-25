@@ -42,7 +42,7 @@ const RoleManagement = () => {
     const [newlyAssignedUserIds, setNewlyAssignedUserIds] = useState<number[]>([]);
 
     useEffect(() => {
-        authenticatedApi.get<RolesApiResponse>("/api/roles").then(res => {
+        authenticatedApi.get<RolesApiResponse>("/api/admin/roles").then(res => {
             if (res.data.success) setRoles(res.data.data);
         });
     }, []);
@@ -89,14 +89,14 @@ const RoleManagement = () => {
         };
         try {
             if (editRole && editRole.id) {
-                await authenticatedApi.put(`/api/roles/${editRole.id}`, payload);
+                await authenticatedApi.put(`/api/admin/roles/${editRole.id}`, payload);
                 toast.success('Role updated successfully!');
             } else {
-                await authenticatedApi.post(`/api/roles`, payload);
+                await authenticatedApi.post(`/api/admin/roles`, payload);
                 toast.success('Role created successfully!');
             }
             setEditRole(null);
-            const res = await authenticatedApi.get<RolesApiResponse>("/api/roles");
+            const res = await authenticatedApi.get<RolesApiResponse>("/api/admin/roles");
             if (res.data.success) setRoles(res.data.data);
         } catch (err) {
             toast.error('Failed to save role');
@@ -263,7 +263,7 @@ const RoleManagement = () => {
                         setRole={setEditRole}
                         onSaved={async () => {
                             setEditRole(null);
-                            const res = await authenticatedApi.get<RolesApiResponse>("/api/roles");
+                            const res = await authenticatedApi.get<RolesApiResponse>("/api/admin/roles");
                             if (res.data.success) setRoles(res.data.data);
                         }}
                         formName={formName}

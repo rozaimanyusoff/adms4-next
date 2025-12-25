@@ -17,7 +17,7 @@ const VehicleMtnFormPage: React.FC<VehicleMtnFormPageProps> = ({ idParam }) => {
   }, [router]);
 
   return (
-    <div className="p-4">
+    <div>
       <VehicleMtnForm id={formId} onClose={goBack} onSubmitted={goBack} />
     </div>
   );

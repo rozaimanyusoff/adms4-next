@@ -6,10 +6,10 @@ import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
 import { AuthContext } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
-import PoolcarApplicationForm from './poolcar-application-form';
 import { toast } from 'sonner';
 import PoolcarCalendar from './poolcar-calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { useRouter } from 'next/navigation';
 
 // Users who can view all poolcar requests without filtering by ramco
 const poolcarAdmin: string[] = ['003456'];
@@ -194,10 +194,9 @@ const columns: ColumnDef<PoolcarRecord>[] = [
 
 const PoolcarRecord: React.FC = () => {
   const auth = React.useContext(AuthContext);
+  const router = useRouter();
   const [rows, setRows] = React.useState<PoolcarRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [showForm, setShowForm] = React.useState(false);
-  const [editId, setEditId] = React.useState<string | number | undefined>(undefined);
   const username = auth?.authData?.user?.username || '';
 
   const loadData = async () => {
@@ -285,30 +284,9 @@ const PoolcarRecord: React.FC = () => {
     if (!row) return;
     const id = row.id;
     if (id !== undefined) {
-      setEditId(id);
-      setShowForm(true);
+      router.push(`/mtn/poolcar/record/${id}`);
     }
   };
-
-  if (showForm) {
-    return (
-      <div className="py-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Poolcar Application Form</h2>
-          <Button
-            type="button"
-            variant="outline"
-            className="ring-1 ring-red-500"
-            size="sm"
-            onClick={() => { setShowForm(false); setEditId(undefined); }}
-          >
-            Back to Requests
-          </Button>
-        </div>
-        <PoolcarApplicationForm id={editId} onClose={() => { setShowForm(false); setEditId(undefined); }} onSubmitted={loadData} />
-      </div>
-    );
-  }
 
   return (
     <div className="py-4 space-y-4">
@@ -325,7 +303,7 @@ const PoolcarRecord: React.FC = () => {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold">My Poolcar Requests</div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => { setEditId(undefined); setShowForm(true); }}>
+          <Button size="sm" onClick={() => router.push('/mtn/poolcar/record/new')}>
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
           </Button>
         </div>

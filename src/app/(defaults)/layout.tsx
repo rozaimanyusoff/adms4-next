@@ -45,7 +45,7 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
             router.push('/auth/login');
             return;
         }
-        authenticatedApi.put('/api/nav/track-route', { path: pathname, userId })
+        authenticatedApi.put('/api/admin/nav/track-route', { path: pathname, userId })
             .catch((error) => {
                 console.error('Error tracking last route:', error);
             });

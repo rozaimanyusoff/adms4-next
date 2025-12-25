@@ -79,7 +79,7 @@ const GroupManagement = () => {
     // Fetch groups function for reuse
     const fetchGroups = React.useCallback(async () => {
         try {
-            const response = await authenticatedApi.get<GroupsApiResponse>("/api/groups");
+            const response = await authenticatedApi.get<GroupsApiResponse>("/api/admin/groups");
             if (response.data.success) {
                 setGroups(response.data.data);
             }
@@ -174,7 +174,7 @@ const GroupManagement = () => {
     const rowExpandable = {
         enabled: true,
         render: (row: Group & { users?: any[]; navTree?: any[] }) => (
-            <div className="flex flex-row gap-6 w-full text-sm max-h-[200px] overflow-y-auto">
+            <div className="flex flex-row gap-6 w-full text-sm max-h-50 overflow-y-auto">
                 {/* Users List */}
                 <div className="w-1/2">
                     <div className="font-semibold underline underline-offset-4 mb-1">Assigned Users</div>
@@ -280,10 +280,10 @@ const GroupManagement = () => {
         };
         try {
             if (!editGroup.id) {
-                await authenticatedApi.post(`/api/groups`, payload);
+                await authenticatedApi.post(`/api/admin/groups`, payload);
                 toast.success('Group created successfully!');
             } else {
-                await authenticatedApi.put(`/api/groups/${editGroup.id}`, payload);
+                await authenticatedApi.put(`/api/admin/groups/${editGroup.id}`, payload);
                 toast.success('Group updated successfully!');
             }
             setEditGroup(null);

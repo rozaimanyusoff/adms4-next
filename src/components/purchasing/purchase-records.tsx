@@ -269,7 +269,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     } else if (initialFormMode === 'edit' && initialPurchaseId) {
       startInlineForm('edit', initialPurchaseId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [initialFormMode, initialPurchaseId]);
 
   // Load draft on mount for create mode to survive refresh
@@ -311,7 +311,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         // ignore storage errors
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   // If rendered in register page, open form immediately
@@ -321,7 +321,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     } else if (initialFormMode === 'edit' && initialPurchaseId) {
       startInlineForm('edit', initialPurchaseId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [initialFormMode, initialPurchaseId]);
 
   // Filter purchases based on search and status

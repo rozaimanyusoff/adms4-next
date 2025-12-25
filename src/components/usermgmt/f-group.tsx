@@ -57,7 +57,7 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 
 	useEffect(() => {
 		// Fetch navigation structure from /api/nav and extract navTree
-		authenticatedApi.get("/api/nav").then(res => {
+		authenticatedApi.get("/api/admin/nav").then(res => {
 			const data = res.data as any;
 			if (data && data.navTree) {
 				setNavTreeStructure(data.navTree as any[]);
@@ -99,11 +99,11 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 				</div>
 				<div>
 					<label className="block text-sm font-medium mb-1">Description</label>
-					<Textarea className="w-full min-h-[80px]" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+					<Textarea className="w-full min-h-20" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
 				</div>
 				<div className="flex flex-col lg:flex-row gap-4 w-full text-sm">
 					{/* Assigned Users */}
-					<div className="w-full lg:w-1/2 border dark:border-gray-700 rounded-sm p-3 shrink-0 min-w-0 max-w-full lg:min-w-[260px] lg:max-w-[340px] bg-gray-50 dark:bg-gray-800 mb-4 lg:mb-0">
+					<div className="w-full lg:w-1/2 border dark:border-gray-700 rounded-sm p-3 shrink-0 min-w-0 max-w-full lg:min-w-65 lg:max-w-85 bg-gray-50 dark:bg-gray-800 mb-4 lg:mb-0">
 						<div className="flex items-center justify-between mb-1">
 							<span className="font-semibold underline underline-offset-4">Assigned Users</span>
 							<Button
@@ -124,9 +124,9 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 										className={`flex items-center justify-between py-1.5 text-sm ${newlyAssignedUserIds.includes(user.id) ? "bg-green-100" : ""}`}
 									>
 										<span className="flex flex-col">
-                                        <span className="capitalize">{user.username} - {user.fname || user.name}</span>
-                                        <span className="font-semibold text-xs">Current Groups: <span>{user.usergroups && user.usergroups.length > 0 ? user.usergroups.map((g: any) => g.name).join(', ') : '-'}</span></span>
-                                    </span>
+											<span className="capitalize">{user.username} - {user.fname || user.name}</span>
+											<span className="font-semibold text-xs">Current Groups: <span>{user.usergroups && user.usergroups.length > 0 ? user.usergroups.map((g: any) => g.name).join(', ') : '-'}</span></span>
+										</span>
 										<MinusCircle className="text-red-600 w-6 h-6 cursor-pointer ml-2" onClick={() => onRemoveUser(user.id)} />
 									</li>
 								))}

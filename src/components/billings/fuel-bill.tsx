@@ -104,7 +104,7 @@ const FuelBill = () => {
 
   const handleRowDoubleClick = (row: FuelBill & { rowNumber: number }) => {
     if (row.stmt_id) {
-      window.open(`/billings/fuel/form?id=${row.stmt_id}`, '_blank');
+      router.push(`/billings/fuel/bill/${row.stmt_id}`);
     }
   };
 
@@ -113,7 +113,7 @@ const FuelBill = () => {
       key: 'rowNumber',
       header: 'No',
       render: (row) => (
-        <div className="flex items-center justify-between gap-2 min-w-[60px]">
+        <div className="flex items-center justify-between gap-2 min-w-15">
           <span>{row.rowNumber}</span>
           <TooltipProvider>
             <Tooltip>
@@ -217,7 +217,7 @@ const FuelBill = () => {
           )}
           <Button
             variant={'default'}
-            onClick={() => window.open(`/billings/fuel/form`, '_blank')}
+            onClick={() => router.push('/billings/fuel/bill/new')}
           >
             <Plus size={18} />
           </Button>

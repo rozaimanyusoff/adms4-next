@@ -152,7 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
           const userId = (parsed && parsed.user && parsed.user.id) || undefined;
           if (userId) {
-            const response = await authenticatedApi.get(`/api/nav/access/${userId}`);
+            const response = await authenticatedApi.get(`/api/admin/nav/access/${userId}`);
             const navTreeRemote: NavTree[] = (response.data as { navTree: NavTree[] }).navTree;
             if (navTreeRemote) {
               setAuthData((prev) => prev ? { ...prev, navTree: navTreeRemote } : prev);
@@ -203,7 +203,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!authData) return;
     try {
       // Use correct endpoint for navTree
-      const response = await authenticatedApi.get(`/api/nav/access/${authData.user.id}`);
+      const response = await authenticatedApi.get(` /api/admin/nav/access/${authData.user.id}`);
       const navTreeRemote: NavTree[] = (response.data as { navTree: NavTree[] }).navTree;
       if (navTreeRemote) {
         setAuthData((prevAuthData) => {

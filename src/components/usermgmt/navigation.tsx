@@ -34,7 +34,7 @@ const NavigationMaintenance: React.FC = () => {
     // Fetch nav tree from backend and update local state
     const fetchNavTree = async () => {
         try {
-            const res = await authenticatedApi.get("/api/nav");
+            const res = await authenticatedApi.get("/api/admin/nav");
             const data = res.data as any;
             setNavTree(data && data.navTree ? data.navTree : []);
             if (updateNavTree) {
@@ -49,7 +49,7 @@ const NavigationMaintenance: React.FC = () => {
     useEffect(() => {
         fetchNavTree();
         // Fetch groups data
-        authenticatedApi.get("/api/groups").then(res => {
+        authenticatedApi.get("/api/admin/groups").then(res => {
             const data = res.data as any;
             if (data && data.data) {
                 setGroups(data.data as any[]);
@@ -156,7 +156,7 @@ const NavigationMaintenance: React.FC = () => {
                 if (isParent && parentChanged) {
                     // Move all children to follow the parent
                     for (const child of editingNav.children) {
-                        await authenticatedApi.put(`/api/nav/${child.navId}`, {
+                        await authenticatedApi.put(`/api/admin/nav/${child.navId}`, {
                             ...child,
                             parentNavId: formState.navId ? Number(formState.navId) : undefined,
                             sectionId: formState.sectionId ? Number(formState.sectionId) : undefined,
@@ -165,12 +165,12 @@ const NavigationMaintenance: React.FC = () => {
                 }
             }
             if (sidebarOpen === 'create') {
-                await authenticatedApi.post('/api/nav', payload);
+                await authenticatedApi.post('/api/admin/nav', payload);
                 toast.success('Navigation item created successfully!');
             } else if (sidebarOpen === 'edit' && editingNav) {
                 const navId = editingNav.navId || editingNav.id;
                 if (navId) {
-                    await authenticatedApi.put(`/api/nav/${navId}`, payload);
+                    await authenticatedApi.put(`/api/admin/nav/${navId}`, payload);
                     toast.success('Navigation item updated successfully!');
                 }
             }
@@ -198,7 +198,7 @@ const NavigationMaintenance: React.FC = () => {
     async function confirmDeleteNav() {
         if (!pendingDeleteNav || !pendingDeleteNav.navId) return;
         try {
-            await authenticatedApi.delete(`/api/nav/${pendingDeleteNav.navId}`);
+            await authenticatedApi.delete(`/api/admin/nav/${pendingDeleteNav.navId}`);
             toast.success('Navigation item deleted successfully!');
             await fetchNavTree();
             if (refreshNavTree) {
@@ -281,7 +281,7 @@ const NavigationMaintenance: React.FC = () => {
     async function reorderNavOnBackend(siblings: any[], parent: any, tree: any[]) {
         const payload = { nodes: buildReorderPayload(siblings, parent, tree) };
         try {
-            await authenticatedApi.put('/api/nav/reorder', payload);
+            await authenticatedApi.put('/api/admin/nav/reorder', payload);
             // Don't immediately fetch the tree again to avoid conflicts
             // Only refresh after a successful backend update
             if (refreshNavTree) {
@@ -303,7 +303,7 @@ const NavigationMaintenance: React.FC = () => {
             const tree = JSON.parse(JSON.stringify(prevTree));
             const found = findNodeAndParent(tree, navId);
             if (!found) return prevTree;
-            
+
             const { node, parent, index } = found;
             // Special-case: when moving a section, only consider other sections at root level
             if (!parent && node.type === 'section') {
@@ -321,7 +321,7 @@ const NavigationMaintenance: React.FC = () => {
                         // debounce and persist only sections' order
                         if (reorderTimeoutId) clearTimeout(reorderTimeoutId);
                         const newTimeoutId = setTimeout(() => {
-                            reorderNavOnBackend(sectionSiblings.sort((a:any,b:any)=> (a.position??0)-(b.position??0)), null, tree);
+                            reorderNavOnBackend(sectionSiblings.sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0)), null, tree);
                         }, 300);
                         setReorderTimeoutId(newTimeoutId);
                     }
@@ -330,12 +330,12 @@ const NavigationMaintenance: React.FC = () => {
             }
 
             let siblings = parent ? parent.children : tree;
-            
+
             if (index > 0) {
                 // Swap with previous sibling
                 [siblings[index - 1], siblings[index]] = [siblings[index], siblings[index - 1]];
                 updatePositions(siblings);
-                
+
                 // Clear existing timeout and set new one for debouncing
                 if (reorderTimeoutId) {
                     clearTimeout(reorderTimeoutId);
@@ -354,7 +354,7 @@ const NavigationMaintenance: React.FC = () => {
             const tree = JSON.parse(JSON.stringify(prevTree));
             const found = findNodeAndParent(tree, navId);
             if (!found) return prevTree;
-            
+
             const { node, parent, index } = found;
             // Special-case: when moving a section, only consider other sections at root level
             if (!parent && node.type === 'section') {
@@ -372,7 +372,7 @@ const NavigationMaintenance: React.FC = () => {
                         // debounce and persist only sections' order
                         if (reorderTimeoutId) clearTimeout(reorderTimeoutId);
                         const newTimeoutId = setTimeout(() => {
-                            reorderNavOnBackend(sectionSiblings.sort((a:any,b:any)=> (a.position??0)-(b.position??0)), null, tree);
+                            reorderNavOnBackend(sectionSiblings.sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0)), null, tree);
                         }, 300);
                         setReorderTimeoutId(newTimeoutId);
                     }
@@ -381,12 +381,12 @@ const NavigationMaintenance: React.FC = () => {
             }
 
             let siblings = parent ? parent.children : tree;
-            
+
             if (index < siblings.length - 1) {
                 // Swap with next sibling
                 [siblings[index], siblings[index + 1]] = [siblings[index + 1], siblings[index]];
                 updatePositions(siblings);
-                
+
                 // Clear existing timeout and set new one for debouncing
                 if (reorderTimeoutId) {
                     clearTimeout(reorderTimeoutId);
@@ -570,11 +570,11 @@ const NavigationMaintenance: React.FC = () => {
                                     <span className="ml-2 px-4 py-2 rounded-full bg-green-400 dark:bg-green-600 text-gray-700 dark:text-dark-light text-xs align-middle"></span>
                                 )}
                                 <span className="inline-flex items-center">
-                                    <ChevronUp 
+                                    <ChevronUp
                                         className={canMove && !isFirst ? 'cursor-pointer text-gray-700 hover:text-amber-600' : 'text-gray-300'}
                                         onClick={canMove && !isFirst ? () => handlePromoteNav(node.navId) : undefined}
                                     />
-                                    <ChevronDown 
+                                    <ChevronDown
                                         className={canMove && !isLast ? 'cursor-pointer text-gray-700 hover:text-amber-600' : 'text-gray-300'}
                                         onClick={canMove && !isLast ? () => handleDemoteNav(node.navId) : undefined}
                                     />

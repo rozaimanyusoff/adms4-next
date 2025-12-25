@@ -249,12 +249,12 @@ const Sidebar = () => {
     return (
         <div className={semidark ? 'dark' : ''}>
             <nav
-                className={`sidebar fixed bottom-0 top-0 z-50 h-full min-h-screen max-w-lg md:min-w-[260px] transition-all duration-300 ${semidark ? 'text-white-dark' : ''}`}
+                className={`sidebar fixed bottom-0 top-0 z-50 h-full min-h-screen max-w-lg md:min-w-65 transition-all duration-300 ${semidark ? 'text-white-dark' : ''}`}
             >
                 <div className="h-full bg-slate-200 dark:bg-black">
                     <div className="flex items-center justify-between px-4 py-1.5">
                         <Link href="/" className="main-logo flex shrink-0 gap-4 items-center">
-                            <img className="ml-[5px] w-8 flex-none" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
+                            <img className="ml-1.25 w-8 flex-none" src={`${themeConfig.isDarkMode ? process.env.NEXT_PUBLIC_BRAND_LOGO_DARK : process.env.NEXT_PUBLIC_BRAND_LOGO_LIGHT}`} alt="logo" />
                             <h1 className="align-middle font-extrabold text-3xl text-shadow-xs ltr:ml-5 rtl:mr-5 dark:text-white-light lg:inline">{process.env.NEXT_PUBLIC_APP_NAME}</h1>
                         </Link>
 

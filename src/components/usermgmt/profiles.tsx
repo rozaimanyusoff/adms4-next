@@ -297,12 +297,12 @@ const UserProfile: React.FC<React.PropsWithChildren> = ({ children }) => {
             setAuthData(
                 user
                     ? {
-                          ...authData,
-                          user: {
-                              ...user,
-                              contact: contactDraft,
-                          },
-                      }
+                        ...authData,
+                        user: {
+                            ...user,
+                            contact: contactDraft,
+                        },
+                    }
                     : authData
             );
             toast.success('Contact number updated.');
@@ -380,7 +380,7 @@ const UserProfile: React.FC<React.PropsWithChildren> = ({ children }) => {
                                         <Input id="avatar-upload" type="file" accept="image/*" capture="environment" onChange={handleAvatarChange} />
                                     </div>
                                     <div className="flex flex-wrap items-center justify-center gap-3">
-                                        <Button type="submit" disabled={isUploading} className="min-w-[120px]">
+                                        <Button type="submit" disabled={isUploading} className="min-w-30">
                                             {isUploading ? 'Uploading…' : 'Update Avatar'}
                                         </Button>
                                         <Button type="button" variant="outline" onClick={resetAvatarSelection} disabled={isUploading || !avatarFile}>

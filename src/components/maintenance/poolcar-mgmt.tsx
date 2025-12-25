@@ -1081,7 +1081,7 @@ const PoolcarMgmt: React.FC = () => {
     const safe = (v: any, fallback = '-') => (v === null || v === undefined || v === '' ? fallback : v);
 
     return (
-      <div className="p-4 space-y-3">
+      <div className="p-2 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-lg font-semibold">Poolcar Management</div>
           <div className="flex items-center gap-2">
@@ -1265,7 +1265,7 @@ const PoolcarMgmt: React.FC = () => {
                             </div>
                           );
                         })()}
-                        <div className="mt-1 min-w-[260px]">
+                        <div className="mt-1 min-w-65">
                           <Combobox
                             options={poolcarOptions}
                             value={formState.selectedAssetId ? String(formState.selectedAssetId) : ''}
@@ -1325,7 +1325,7 @@ const PoolcarMgmt: React.FC = () => {
                               <Label htmlFor="option-fleetcard" className="text-sm font-medium">
                                 Fleetcard
                               </Label>
-                              <div className="min-w-[200px] flex-1">
+                              <div className="min-w-50 flex-1">
                                 <Combobox
                                   options={fleetcardOptions}
                                   value={formState.fleetcardSelection}
@@ -1365,7 +1365,7 @@ const PoolcarMgmt: React.FC = () => {
                               <Label htmlFor="option-touchngo" className="text-sm font-medium">
                                 Touch n&apos; Go
                               </Label>
-                              <div className="min-w-[200px] flex-1">
+                              <div className="min-w-50 flex-1">
                                 <Combobox
                                   options={tngOptions}
                                   value={formState.touchngoSelection}
@@ -1405,7 +1405,7 @@ const PoolcarMgmt: React.FC = () => {
                               <Label htmlFor="option-smarttag" className="text-sm font-medium">
                                 Smart TAG device
                               </Label>
-                              <div className="min-w-[200px] flex-1">
+                              <div className="min-w-50 flex-1">
                                 <Input
                                   placeholder="Serial number"
                                   value={formState.smarttagSerial}
@@ -1566,7 +1566,7 @@ const PoolcarMgmt: React.FC = () => {
                           ? `for ${selectedAsset.register_number || 'selected poolcar'}`
                           : 'Select a poolcar to view its recent assignments.'}
                       </div>
-                      <div className="mt-2 flex-1 overflow-auto max-h-[700px] rounded-sm border border-border/70 bg-muted/20 p-2">
+                      <div className="mt-2 flex-1 overflow-auto max-h-175 rounded-sm border border-border/70 bg-muted/20 p-2">
                         {assetAssignmentsLoading ? (
                           <div className="p-3 text-xs text-muted-foreground">Loading...</div>
                         ) : formState.selectedAssetId ? (
@@ -1654,7 +1654,7 @@ const PoolcarMgmt: React.FC = () => {
 }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-2">
       {/* Calendar Accordion */}
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="calendar">

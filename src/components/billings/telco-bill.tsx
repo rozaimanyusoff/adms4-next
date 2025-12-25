@@ -3,13 +3,10 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreVertical, Download, ArrowLeft, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Download, Loader2, Trash2 } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import TelcoBillSummary from './telco-bill-summary';
 import { useRouter } from 'next/navigation';
-import TelcoBillForm from './telco-bill-form';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { exportTelcoBillSummaryPDF } from './pdfreport-telco-costcenter';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -43,8 +40,6 @@ const TelcoBill = () => {
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
   const router = useRouter();
-  const [showForm, setShowForm] = useState(false);
-  const [formUtilId, setFormUtilId] = useState<number>(0);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -88,8 +83,7 @@ const TelcoBill = () => {
 
   const handleRowDoubleClick = (row: TelcoBill & { rowNumber: number }) => {
     if (row.id) {
-      setFormUtilId(row.id);
-      setShowForm(true);
+      router.push(`/billings/telco/bill/${row.id}`);
     }
   };
 
@@ -98,7 +92,7 @@ const TelcoBill = () => {
       key: 'rowNumber',
       header: 'No',
       render: (row) => (
-        <div className="flex items-center min-w-[60px]">
+        <div className="flex items-center min-w-15">
           <span>{row.rowNumber}</span>
         </div>
       ),
@@ -117,100 +111,73 @@ const TelcoBill = () => {
 
   return (
     <>
-      {showForm ? (
-
-        <div>
-          <div className="flex justify-end mb-2">
-            <Button variant="ghost" className="gap-1 hover:bg-red-500 hover:text-white" onClick={() => setShowForm(false)} aria-label="Back to list">
-              <ArrowLeft size={18} />
-              Back
-            </Button>
-          </div>
-          <TelcoBillForm
-            utilId={formUtilId}
-            onClose={() => setShowForm(false)}
-            onSaved={(id?: number) => {
-              setShowForm(false);
-              fetchTelcoBills();
-              if (id) {
-                setHighlightId(id);
-                setTimeout(() => setHighlightId(null), 4000);
-              }
-            }}
-          />
-        </div>
-
-      ) : (
-        <>
-          <TelcoBillSummary />
-          <div className="flex items-center justify-between my-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold">Telco Bills Summary</h2>
-              {selectedRowIds.length > 0 && (
-                <Button
-                  variant="secondary"
-                  className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
-                  onClick={async () => {
-                    if (selectedRowIds.length > 0) {
-                      const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-telco-costcenter');
-                      exportTelcoBillSummaryPDFs(selectedRowIds);
-                    }
-                  }}
-                >
-                  <Download size={16} className="mr-1" /> Export PDF
-                </Button>
-              )}
-              {canDelete && selectedRowIds.length > 0 && (
-                <Button
-                  variant="destructive"
-                  className="ml-2"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 size={16} className="mr-1" /> Delete
-                </Button>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={'default'}
-                onClick={() => { setFormUtilId(0); setShowForm(true); }}
-                disabled={loading}
-                aria-busy={loading}
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus size={18} />
-                )}
-              </Button>
-            </div>
-          </div>
-          <div className="relative">
-            {loading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            <CustomDataGrid
-              columns={columns as ColumnDef<unknown>[]}
-              data={rows}
-              pagination={false}
-              inputFilter={false}
-              theme="sm"
-              dataExport={false}
-              onRowDoubleClick={handleRowDoubleClick}
-              rowClass={(row: any) => (highlightId && row?.id === highlightId) ? 'bg-yellow-100 animate-pulse' : ''}
-              rowSelection={{
-                enabled: true,
-                getRowId: (row: any) => row.id,
-                onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
-                  setSelectedRowIds(selectedKeys.map(Number));
-                },
+      <TelcoBillSummary />
+      <div className="flex items-center justify-between my-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold">Telco Bills Summary</h2>
+          {selectedRowIds.length > 0 && (
+            <Button
+              variant="secondary"
+              className="ml-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg"
+              onClick={async () => {
+                if (selectedRowIds.length > 0) {
+                  const { exportTelcoBillSummaryPDFs } = await import('./pdfreport-telco-costcenter');
+                  exportTelcoBillSummaryPDFs(selectedRowIds);
+                }
               }}
-            />
+            >
+              <Download size={16} className="mr-1" /> Export PDF
+            </Button>
+          )}
+          {canDelete && selectedRowIds.length > 0 && (
+            <Button
+              variant="destructive"
+              className="ml-2"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 size={16} className="mr-1" /> Delete
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={'default'}
+            onClick={() => router.push('/billings/telco/bill/new')}
+            disabled={loading}
+            aria-busy={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus size={18} />
+            )}
+          </Button>
+        </div>
+      </div>
+      <div className="relative">
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-        </>
-      )}
+        )}
+        <CustomDataGrid
+          columns={columns as ColumnDef<unknown>[]}
+          data={rows}
+          pagination={false}
+          inputFilter={false}
+          theme="sm"
+          dataExport={false}
+          onRowDoubleClick={handleRowDoubleClick}
+          rowClass={(row: any) => (highlightId && row?.id === highlightId) ? 'bg-yellow-100 animate-pulse' : ''}
+          rowSelection={{
+            enabled: true,
+            getRowId: (row: any) => row.id,
+            onSelect: (selectedKeys: (string | number)[], selectedRows: any[]) => {
+              setSelectedRowIds(selectedKeys.map(Number));
+            },
+          }}
+        />
+      </div>
 
       {/* Delete confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

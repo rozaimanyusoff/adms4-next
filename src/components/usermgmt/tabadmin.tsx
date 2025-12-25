@@ -2,10 +2,10 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import Accounts from "./user-account";
-import Groups from "./c-group";
+import Accounts from "./accounts";
+import Groups from "./groups";
 import Navigations from "./navigation";
-import Roles from "./c-role";
+import Roles from "./roles";
 import CLogs from "./c-logs";
 import Workflows from "./workflows";
 import ManagementModule from "./mgmt-module";

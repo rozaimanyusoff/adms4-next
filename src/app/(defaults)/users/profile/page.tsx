@@ -1,4 +1,4 @@
-import UserProfile from "@components/usermgmt/user-profile";
+import UserProfile from "@components/usermgmt/profiles";
 import React from "react";
 import { Metadata } from "next";
 

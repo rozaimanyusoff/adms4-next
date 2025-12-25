@@ -123,7 +123,7 @@ const UserManagement = () => {
     // Fetch all groups for dropdown (use only id & name)
     useEffect(() => {
         if (showGroupDropdown && allGroups.length === 0) {
-            authenticatedApi.get("/api/groups").then(res => {
+            authenticatedApi.get("/api/admin/groups").then(res => {
                 const data = res.data as any;
                 // Use only id & name for each group
                 if (data && Array.isArray(data.data)) {
@@ -136,7 +136,7 @@ const UserManagement = () => {
     // Fetch all roles for dropdown
     useEffect(() => {
         if (showRoleDropdown && allRoles.length === 0) {
-            authenticatedApi.get("/api/roles").then(res => {
+            authenticatedApi.get("/api/admin/roles").then(res => {
                 const data = res.data as any;
                 // Fix: roles are under data.data, not data.roles
                 if (data && Array.isArray(data.data)) setAllRoles(data.data);
@@ -147,7 +147,7 @@ const UserManagement = () => {
     // Also update sidebar-triggered fetch to use only id & name
     useEffect(() => {
         if (showSidebar && allGroups.length === 0) {
-            authenticatedApi.get('/api/groups')
+            authenticatedApi.get('/api/admin/groups')
                 .then(res => {
                     const data = res.data as any;
                     if (data && Array.isArray(data.data)) {
@@ -1081,7 +1081,7 @@ const UserManagement = () => {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="min-w-[120px] border-green-600 hover:bg-green-200"
+                                            className="min-w-30 border-green-600 hover:bg-green-200"
                                             onClick={() => setShowSuspendDropdown(true)}
                                         >
                                             Approve User
@@ -1116,7 +1116,7 @@ const UserManagement = () => {
 
                             <div className="flex items-center gap-2 mb-2">
                                 <input
-                                    className="form-input flex-grow"
+                                    className="form-input grow"
                                     placeholder="Search selected users..."
                                     value={selectedUsersSearch}
                                     onChange={e => setSelectedUsersSearch(e.target.value)}
@@ -1200,7 +1200,7 @@ const UserManagement = () => {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="min-w-[120px] border-amber-600 hover:bg-amber-300"
+                                            className="min-w-30 border-amber-600 hover:bg-amber-300"
                                             onClick={() => setShowPasswordDropdown(true)}
                                         >
                                             Reset Password
@@ -1234,7 +1234,7 @@ const UserManagement = () => {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="min-w-[120px] border-red-600 hover:bg-red-300"
+                                                    className="min-w-30 border-red-600 hover:bg-red-300"
                                                     onClick={() => { setSuspendAction('suspend'); setModalOpen('suspend'); }}
                                                 >
                                                     Suspend
@@ -1244,7 +1244,7 @@ const UserManagement = () => {
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="min-w-[120px] border-green-600 hover:bg-green-300"
+                                                    className="min-w-30 border-green-600 hover:bg-green-300"
                                                     onClick={() => { setSuspendAction('activate'); setModalOpen('suspend'); }}
                                                 >
                                                     Activate
@@ -1259,7 +1259,7 @@ const UserManagement = () => {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="min-w-[120px] border-sky-600 hover:bg-sky-300"
+                                            className="min-w-30 border-sky-600 hover:bg-sky-300"
                                             onClick={() => setShowRoleDropdown(true)}
                                         >
                                             Change Roles
@@ -1300,7 +1300,7 @@ const UserManagement = () => {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="min-w-[120px] border-sky-600 hover:bg-sky-300"
+                                            className="min-w-30 border-sky-600 hover:bg-sky-300"
                                             onClick={() => setShowGroupDropdown(true)}
                                         >
                                             Change Groups
@@ -1344,7 +1344,7 @@ const UserManagement = () => {
                             {/* Search and user list */}
                             <div className="flex items-center gap-2 mb-2">
                                 <input
-                                    className="form-input flex-grow"
+                                    className="form-input grow"
                                     placeholder="Search selected users..."
                                     value={selectedUsersSearch}
                                     onChange={e => setSelectedUsersSearch(e.target.value)}
@@ -1428,7 +1428,7 @@ const UserManagement = () => {
                                 />
                             </div>
                             {bulkError && <div className="text-xs text-red-600">{bulkError}</div>}
-                            <div className="max-h-[600px] overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-800">
+                            <div className="max-h-150 overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-800">
                                 {bulkLoading ? (
                                     <div className="text-center py-8">Loading...</div>
                                 ) : (

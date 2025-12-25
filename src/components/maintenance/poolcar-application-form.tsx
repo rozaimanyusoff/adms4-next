@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { AuthContext } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { Plus } from 'lucide-react';
@@ -80,12 +91,14 @@ function calculateDurationDetails(start: Date, end: Date) {
 const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onClose, onSubmitted }) => {
   const auth = React.useContext(AuthContext);
   const user = auth?.authData?.user;
+  const router = useRouter();
 
   const [submitting, setSubmitting] = React.useState(false);
   const [cancelSubmitting, setCancelSubmitting] = React.useState(false);
   const [agree, setAgree] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<'submitted' | 'cancelled' | 'returned'>('submitted');
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false);
   const [returnSaved, setReturnSaved] = React.useState(false);
   const [loadingExisting, setLoadingExisting] = React.useState(false);
   const [existing, setExisting] = React.useState<any>(null);
@@ -141,8 +154,92 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   // Guest / non-employee
   const [guestNotes, setGuestNotes] = React.useState<string>('');
 
+  // Draft persistence (create mode only)
+  const draftKey = React.useMemo(() => {
+    if (id) return null;
+    const suffix = user?.username ? String(user.username) : 'guest';
+    return `poolcar-application-draft-${suffix}`;
+  }, [id, user?.username]);
+  const [draftLoaded, setDraftLoaded] = React.useState(false);
+
   // Readonly mode: after submission (edit mode), disallow updating booking/cancellation blocks
   const readOnly = !!id;
+  const clearDraft = React.useCallback(() => {
+    if (!draftKey) return;
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore storage errors
+    }
+  }, [draftKey]);
+
+  // Restore draft on mount (create mode)
+  React.useEffect(() => {
+    if (id) return;
+    if (!draftKey) { setDraftLoaded(true); return; }
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.requestor) setRequestor((s: any) => ({ ...s, ...draft.requestor }));
+        if (draft.bookingOption === 'own' || draft.bookingOption === 'onbehalf') setBookingOption(draft.bookingOption);
+        if (typeof draft.onBehalf === 'string') setOnBehalf(draft.onBehalf);
+        if (typeof draft.fromDT === 'string' && draft.fromDT) setFromDT(draft.fromDT);
+        if (typeof draft.toDT === 'string' && draft.toDT) setToDT(draft.toDT);
+        if (typeof draft.poolcarType === 'string') setPoolcarType(draft.poolcarType);
+        if (typeof draft.destination === 'string') setDestination(draft.destination);
+        if (typeof draft.purpose === 'string') setPurpose(draft.purpose);
+        if (draft.requirements) setRequirements((s) => ({ ...s, ...draft.requirements }));
+        if (Array.isArray(draft.passengers)) setPassengers(draft.passengers);
+        if (typeof draft.guestNotes === 'string') setGuestNotes(draft.guestNotes);
+        if (typeof draft.agree === 'boolean') setAgree(draft.agree);
+      }
+    } catch {
+      // ignore parse/storage errors
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [draftKey, id]);
+
+  // Persist draft whenever form changes (create mode)
+  React.useEffect(() => {
+    if (id || !draftKey || !draftLoaded) return;
+    try {
+      const payload = {
+        requestor,
+        bookingOption,
+        onBehalf,
+        fromDT,
+        toDT,
+        poolcarType,
+        destination,
+        purpose,
+        requirements,
+        passengers,
+        guestNotes,
+        agree,
+      };
+      localStorage.setItem(draftKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage errors
+    }
+  }, [
+    agree,
+    bookingOption,
+    destination,
+    draftKey,
+    draftLoaded,
+    fromDT,
+    guestNotes,
+    id,
+    onBehalf,
+    passengers,
+    poolcarType,
+    purpose,
+    requestor,
+    requirements,
+    toDT,
+  ]);
 
   // Fetch existing data when editing
   React.useEffect(() => {
@@ -312,6 +409,19 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     return 0;
   }, [poolcarType]);
 
+  const hasUnsavedChanges = React.useMemo(() => {
+    const hasReq = Object.values(requirements).some(Boolean);
+    return Boolean(
+      poolcarType ||
+      destination ||
+      purpose ||
+      (bookingOption === 'onbehalf' && onBehalf) ||
+      passengers.length > 0 ||
+      guestNotes.trim() ||
+      hasReq
+    );
+  }, [bookingOption, destination, guestNotes, onBehalf, passengers.length, poolcarType, purpose, requirements]);
+
   function addPassenger() {
     if (!passengerPick) return;
     if (!poolcarType) { toast.info('Select a poolcar type first'); return; }
@@ -400,6 +510,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
         await authenticatedApi.post('/api/mtn/poolcars', payload);
         toast.success('Poolcar application created');
       }
+      clearDraft();
       setDialogMode('submitted');
       setDialogOpen(true);
     } catch (e: any) {
@@ -453,11 +564,29 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     return `${dd}/${mm}/${yyyy}`;
   }
 
+  const navigateToRecords = React.useCallback(() => {
+    onSubmitted?.();
+    if (onClose) {
+      onClose();
+    } else {
+      router.push('/mtn/poolcar/record');
+    }
+  }, [onClose, onSubmitted, router]);
+
   const handleReturnToMain = React.useCallback(() => {
     setDialogOpen(false);
-    onSubmitted?.();
-    onClose?.();
-  }, [onClose, onSubmitted]);
+    clearDraft();
+    navigateToRecords();
+  }, [clearDraft, navigateToRecords]);
+
+  const cancelWarningText = hasUnsavedChanges
+    ? 'You have unsubmitted changes. Leaving now will discard them.'
+    : 'The form is empty. Leaving now will discard this draft.';
+
+  const handleCancelConfirmed = React.useCallback(() => {
+    clearDraft();
+    navigateToRecords();
+  }, [clearDraft, navigateToRecords]);
 
   return (
     <>
@@ -469,7 +598,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
           {/* Requestor Section */}
           <div>
             <div className="font-semibold mb-2">Requestor</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div>
                 <Label>Application Date</Label>
                 <Input readOnly value={formatDMY(requestor.application_date)} />
@@ -816,13 +945,35 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 <Label htmlFor="agree">I agree to comply with the company&apos;s Terms &amp; Conditions and all rules set by the company.</Label>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" onClick={onClose} disabled={disabled}>Cancel</Button>
+                <Button variant="outline" onClick={() => setCancelDialogOpen(true)} disabled={disabled}>Cancel</Button>
                 <Button onClick={handleSubmit} disabled={disabled || !agree || loadingExisting}>{submitting ? 'Submitting...' : 'Submit'}</Button>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave application form?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelWarningText}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay on this page</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCancelDialogOpen(false);
+                handleCancelConfirmed();
+              }}
+            >
+              Discard and leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl">
@@ -839,7 +990,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:justify-end">
-            <Button onClick={handleReturnToMain}>Return to main page</Button>
+            <Button onClick={handleReturnToMain}>Back to Pool Car Records</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -358,15 +358,15 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       is_active: level.is_active,
       employees: level.employee
         ? [
-            {
-              ramco_id: level.employee.ramco_id,
-              full_name: level.employee.full_name,
-              // if API returns authorize_level, use it; otherwise default
-              authorize_level: mapAuthorizeLevelToCode((level as any).authorize_level) || '1',
-              department_id: (level as any).department_id ?? null,
-              level_name: level.level_name || 'verifier',
-            },
-          ]
+          {
+            ramco_id: level.employee.ramco_id,
+            full_name: level.employee.full_name,
+            // if API returns authorize_level, use it; otherwise default
+            authorize_level: mapAuthorizeLevelToCode((level as any).authorize_level) || '1',
+            department_id: (level as any).department_id ?? null,
+            level_name: level.level_name || 'verifier',
+          },
+        ]
         : [],
     });
 
@@ -645,21 +645,21 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             <div className="flex flex-col gap-2">
                               {/* Level name (workflow stage) */}
                               <Select
-                              value={emp.level_name}
-                              onValueChange={(val) => {
-                                // Optional: prevent duplicate workflow stages
-                                const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
-                                if (duplicateStage) {
-                                  toast.error('This level name is already used');
-                                  return;
-                                }
-                                setFormData({
-                                  ...formData,
-                                  employees: formData.employees.map((x, i) => (i === idx ? { ...x, level_name: val } : x)),
-                                });
-                              }}
+                                value={emp.level_name}
+                                onValueChange={(val) => {
+                                  // Optional: prevent duplicate workflow stages
+                                  const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
+                                  if (duplicateStage) {
+                                    toast.error('This level name is already used');
+                                    return;
+                                  }
+                                  setFormData({
+                                    ...formData,
+                                    employees: formData.employees.map((x, i) => (i === idx ? { ...x, level_name: val } : x)),
+                                  });
+                                }}
                               >
-                                <SelectTrigger className="w-[220px]">
+                                <SelectTrigger className="w-55">
                                   <SelectValue placeholder="Level" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -673,23 +673,23 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
                               {/* Authorize level (role) */}
                               <Select
-                              open={empSelectOpen[idx] || false}
-                              onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
-                              value={emp.authorize_level}
-                              onValueChange={(val) => {
-                                // Prevent duplicate level for the same employee across entries
-                                const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === val);
-                                if (duplicate) {
-                                  toast.error('This authorize level is already assigned to this employee');
-                                  return;
-                                }
-                                setFormData({
-                                  ...formData,
-                                  employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: val } : x)),
-                                });
-                              }}
+                                open={empSelectOpen[idx] || false}
+                                onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
+                                value={emp.authorize_level}
+                                onValueChange={(val) => {
+                                  // Prevent duplicate level for the same employee across entries
+                                  const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === val);
+                                  if (duplicate) {
+                                    toast.error('This authorize level is already assigned to this employee');
+                                    return;
+                                  }
+                                  setFormData({
+                                    ...formData,
+                                    employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: val } : x)),
+                                  });
+                                }}
                               >
-                                <SelectTrigger className="w-[220px]">
+                                <SelectTrigger className="w-55">
                                   <SelectValue placeholder="Authorize level" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -718,8 +718,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                   )}
                 </div>
               </div>
-
-              
 
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Description</label>

@@ -1,12 +1,14 @@
+'use client';
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, Plus } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { useRouter } from 'next/navigation';
 
 interface TelcoAccount {
     id: number;
@@ -60,9 +62,11 @@ interface TelcoBillFormProps {
     utilId: number;
     onClose?: () => void;
     onSaved?: (id?: number) => void;
+    onLeaveHandlerReady?: (fn: () => void) => void;
 }
 
-const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved }) => {
+const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved, onLeaveHandlerReady }) => {
+    const router = useRouter();
     // Track edits for details table
     const [detailsEdits, setDetailsEdits] = useState<Record<string, { usage: string; disc: string; amt: string }>>({});
     const [grandTotal, setGrandTotal] = useState('0.00');
@@ -89,6 +93,78 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     const [billDate, setBillDate] = useState('');
     // Set default status for create mode
     const [status, setStatus] = useState((!utilId || utilId <= 0) ? 'Unpaid' : '');
+    const navigateBack = React.useCallback(() => {
+        router.push('/billings/telco');
+    }, [router]);
+
+    const goBackToList = React.useCallback((opts?: { force?: boolean }) => {
+        if (opts?.force) {
+            navigateBack();
+            return;
+        }
+        if (onClose) {
+            onClose();
+        } else {
+            navigateBack();
+        }
+    }, [navigateBack, onClose]);
+
+    // Draft storage key (create mode only)
+    const draftKey = React.useMemo(() => {
+        if (utilId && utilId > 0) return null;
+        return 'telco-bill-draft';
+    }, [utilId]);
+    const [draftLoaded, setDraftLoaded] = useState(false);
+
+    const clearDraft = React.useCallback(() => {
+        if (!draftKey) return;
+        try {
+            localStorage.removeItem(draftKey);
+        } catch {
+            // ignore storage errors
+        }
+    }, [draftKey]);
+
+    useEffect(() => {
+        if (!draftKey) { setDraftLoaded(true); return; }
+        try {
+            const raw = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
+            if (raw) {
+                const draft = JSON.parse(raw);
+                if (draft.selectedAccountId) setSelectedAccountId(draft.selectedAccountId);
+                if (typeof draft.accountSearch === 'string') setAccountSearch(draft.accountSearch);
+                if (typeof draft.billNo === 'string') setBillNo(draft.billNo);
+                if (typeof draft.billDate === 'string') setBillDate(draft.billDate);
+                if (typeof draft.status === 'string') setStatus(draft.status);
+                if (typeof draft.tax === 'string') setTax(draft.tax);
+                if (typeof draft.rounding === 'string') setRounding(draft.rounding);
+                if (draft.detailsEdits && typeof draft.detailsEdits === 'object') setDetailsEdits(draft.detailsEdits);
+            }
+        } catch {
+            // ignore parse/storage errors
+        } finally {
+            setDraftLoaded(true);
+        }
+    }, [draftKey]);
+
+    useEffect(() => {
+        if (!draftKey || !draftLoaded) return;
+        try {
+            const payload = {
+                selectedAccountId,
+                accountSearch,
+                billNo,
+                billDate,
+                status,
+                tax,
+                rounding,
+                detailsEdits,
+            };
+            localStorage.setItem(draftKey, JSON.stringify(payload));
+        } catch {
+            // ignore storage errors
+        }
+    }, [accountSearch, billDate, billNo, detailsEdits, draftKey, draftLoaded, rounding, selectedAccountId, status, tax]);
 
     // Save handler for form submission
     const handleSubmit = async (e?: React.FormEvent) => {
@@ -189,11 +265,8 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
 
     const confirmCancel = () => {
         setShowCancelDialog(false);
-        if (onClose) {
-            onClose();
-        } else {
-            window.close();
-        }
+        clearDraft();
+        goBackToList({ force: true });
     };
 
     const cancelCancel = () => {
@@ -204,14 +277,8 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
         setShowSuccessDialog(false);
         const lastId = (window as any).__lastCreatedTelcoBillId ?? (utilId || undefined);
         if (onSaved) onSaved(lastId);
-        if (onClose) {
-            onClose();
-        } else {
-            if (window.opener && typeof window.opener.reloadTelcoBillGrid === 'function') {
-                window.opener.reloadTelcoBillGrid();
-            }
-            window.close();
-        }
+        clearDraft();
+        goBackToList({ force: true });
     };
 
 
@@ -268,9 +335,9 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     }, [detailsSource, detailsEdits, accountInfo, utilId, tax, data, rounding]);
 
     useEffect(() => {
-        setLoading(true);
         setError(null);
         if (utilId && utilId > 0) {
+            setLoading(true);
             authenticatedApi.get<{ data: TelcoBillDetail }>(`/api/telco/bills/${utilId}`)
                 .then(res => {
                     setData(res.data.data);
@@ -303,13 +370,12 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                     setLoading(false);
                 });
         } else {
+            // Create mode: avoid clearing draft values; just ensure loading state ends after draft restore.
+            if (!draftLoaded && draftKey) return;
             setData(null);
-            setDetailsEdits({});
-            setBillNo('');
-            setBillDate('');
             setLoading(false);
         }
-    }, [utilId]);
+    }, [draftKey, draftLoaded, utilId]);
 
     // Fetch accounts for select
     useEffect(() => {
@@ -346,7 +412,32 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                 setAccountSubs([]);
             }
         }
-    }, [selectedAccountId]);
+    }, [selectedAccountId, utilId]);
+
+    const hasFormData = React.useMemo(() => {
+        const hasDetailEdits = Object.values(detailsEdits || {}).some(entry => {
+            if (!entry) return false;
+            return (
+                (entry.usage && entry.usage.trim() !== '' && entry.usage !== '0' && entry.usage !== '0.00') ||
+                (entry.disc && entry.disc.trim() !== '' && entry.disc !== '0' && entry.disc !== '0.00') ||
+                (entry.amt && entry.amt.trim() !== '' && entry.amt !== '0' && entry.amt !== '0.00')
+            );
+        });
+        const hasMoney = (tax && tax !== '0' && tax !== '0.00') || (rounding && rounding !== '0' && rounding !== '0.00') || (subTotal && subTotal !== '0' && subTotal !== '0.00');
+        return Boolean(
+            selectedAccountId ||
+            billNo.trim() ||
+            (billDate || '').toString().trim() ||
+            hasDetailEdits ||
+            hasMoney
+        );
+    }, [billDate, billNo, detailsEdits, rounding, selectedAccountId, subTotal, tax]);
+
+    React.useEffect(() => {
+        if (typeof onLeaveHandlerReady === 'function') {
+            onLeaveHandlerReady(() => setShowCancelDialog(true));
+        }
+    }, [onLeaveHandlerReady]);
 
     if (loading) return <div className="p-4">Loading...</div>;
     if ((utilId && utilId > 0) && !data) return <div className="p-4">No data found.</div>;
@@ -360,6 +451,9 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
     );
 
     const isEditMode = !!(utilId && utilId > 0);
+    const cancelWarningText = hasFormData
+        ? 'You have unsaved changes. Leaving now will discard them.'
+        : 'The form is empty. Leave without saving?';
 
     // Selected account info for subtitle under Bill Info
     // Prefer the unified object from the accounts list (has account_master/description consistently)
@@ -555,12 +649,12 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>Cancel Changes?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        Are you sure you want to cancel? Any unsaved changes will be lost and this tab will be closed.
+                                        {cancelWarningText}
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel onClick={cancelCancel}>No, keep editing</AlertDialogCancel>
-                                    <AlertDialogAction onClick={confirmCancel}>Yes, close tab</AlertDialogAction>
+                                    <AlertDialogAction onClick={confirmCancel}>Yes, leave page</AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
                         </AlertDialog>
@@ -590,7 +684,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved 
                             className="sm:ml-4 px-2 py-1 border rounded text-sm w-full sm:w-56"
                         />
                     </div>
-                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto mb-6">
+                    <div className="overflow-x-auto max-h-125 overflow-y-auto mb-6">
                         <table className="min-w-full border text-sm">
                             <thead className="bg-gray-200 sticky -top-1 z-10">
                                 <tr>
