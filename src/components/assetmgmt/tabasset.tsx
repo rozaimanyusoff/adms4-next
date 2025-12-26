@@ -19,8 +19,7 @@ const AssetMgmtMain = () => {
         { value: "manager", label: "Asset Manager" },
         { value: "checklist", label: "Transfer Checklist" },
         { value: "types", label: "Types & Categories" },
-        { value: "brands", label: "Brands" },
-        { value: "models", label: "Models" },
+        { value: "brands", label: "Brands & Models" },
         { value: "specs", label: "Specifications" }
     ];
 
