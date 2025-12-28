@@ -71,6 +71,10 @@ interface AssetFormData {
 interface AssetItem extends AssetFormData {
   id: string;
   registered?: boolean;
+  customBrand?: boolean;
+  customModel?: boolean;
+  registry_id?: number | string;
+  model_id?: number | null;
 }
 
 interface ModelOption {
@@ -107,6 +111,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const searchParams = useSearchParams();
   const purchaseId = params?.pr as string;
   const typeId = searchParams?.get('type') || '';
+  const editMode = searchParams?.get('edit') === 'true';
 
   const [purchase, setPurchase] = useState<PurchaseData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,13 +120,23 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [visibleAssetCount, setVisibleAssetCount] = useState(2); // Initially show only 2 forms
   const [sameModel, setSameModel] = useState(true);
   const [brandOptions, setBrandOptions] = useState<BrandOption[]>([]);
+  const [modelOptionsCache, setModelOptionsCache] = useState<Record<string, ModelOption[]>>({});
   const [costCenterOptions, setCostCenterOptions] = useState<CostCenterOption[]>([]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
+  const [creatingBrand, setCreatingBrand] = useState(false);
+  const [creatingModel, setCreatingModel] = useState(false);
+  const [bulkBrandCustom, setBulkBrandCustom] = useState(false);
+  const [bulkModelCustom, setBulkModelCustom] = useState(false);
   const [loadingCostCenters, setLoadingCostCenters] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [modelMatchLoadingKey, setModelMatchLoadingKey] = useState<string | null>(null);
+  const [modelMatchResults, setModelMatchResults] = useState<Record<string, string[]>>({});
+  const [modelTooltipOpenKey, setModelTooltipOpenKey] = useState<string | null>(null);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [successSummary, setSuccessSummary] = useState('');
   const [bulkFormData, setBulkFormData] = useState<Omit<AssetFormData, 'register_number'>>({
     model: '',
     brand: '',
@@ -172,6 +187,46 @@ const PurchaseAssetRegistration: React.FC = () => {
     fetchLocationOptions();
   }, [typeId]);
 
+  useEffect(() => {
+    if (!brandOptions.length) return;
+    const names = new Set<string>();
+    if (bulkFormData.brand && !bulkBrandCustom) names.add(bulkFormData.brand);
+    assetItems.forEach(a => {
+      if (a.brand && !a.customBrand) names.add(a.brand);
+    });
+    names.forEach(name => {
+      loadModelsForBrand(name);
+    });
+  }, [brandOptions, bulkFormData.brand, bulkBrandCustom, assetItems]);
+
+  useEffect(() => {
+    if (!brandOptions.length) return;
+    if (bulkFormData.brand && !brandOptions.some(b => b.name === bulkFormData.brand)) {
+      setBulkBrandCustom(true);
+      setBulkModelCustom(true);
+    }
+    setAssetItems(prev => prev.map(item => {
+      const brandMissing = !!(item.brand && !brandOptions.some(b => b.name === item.brand));
+      if (!brandMissing || item.customBrand) return item;
+      return { ...item, customBrand: true, customModel: true };
+    }));
+  }, [brandOptions, bulkFormData.brand]);
+
+  useEffect(() => {
+    const bulkModels = modelOptionsCache[bulkFormData.brand] || [];
+    if (bulkModels.length && bulkFormData.model && !bulkModels.some(m => m.name === bulkFormData.model)) {
+      setBulkModelCustom(true);
+    }
+    setAssetItems(prev => prev.map(item => {
+      const options = modelOptionsCache[item.brand] || [];
+      if (!options.length || item.customModel) return item;
+      if (item.model && !options.some(o => o.name === item.model)) {
+        return { ...item, customModel: true };
+      }
+      return item;
+    }));
+  }, [modelOptionsCache, bulkFormData.brand, bulkFormData.model]);
+
   // Fetch registry assets for this purchase id
   useEffect(() => {
     if (!purchaseId) return;
@@ -212,7 +267,11 @@ const PurchaseAssetRegistration: React.FC = () => {
       classification: a.classification || 'Asset',
       warranty_period: '',
       notes: '',
-      registered: true
+      registered: !editMode,
+      registry_id: a.id,
+      model_id: (a as any)?.model_id ?? (typeof (a as any).model === 'object' ? (a as any).model?.id : undefined),
+      customBrand: false,
+      customModel: false
     }));
 
     // Append blank items if purchase quantity is larger than registry count
@@ -245,10 +304,12 @@ const PurchaseAssetRegistration: React.FC = () => {
           condition: 'new',
           classification: 'Asset',
           warranty_period: '',
-          notes: '',
-          registered: false
-        });
-      }
+      notes: '',
+        registered: false,
+        customBrand: false,
+        customModel: false
+      });
+    }
     }
 
     if (items.length > 0) {
@@ -431,6 +492,61 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
+  const getBrandIdByName = (name: string): number | undefined => {
+    const found = brandOptions.find(b => b.name === name);
+    return found?.id;
+  };
+
+  const getCategoryIdByName = (name: string): number | undefined => {
+    const found = categoryOptions.find(c => c.name === name);
+    return found?.id;
+  };
+
+  const getModelIdByName = (brandName: string, modelName: string): number | undefined => {
+    const models = modelOptionsCache[brandName] || [];
+    const found = models.find(m => m.name === modelName);
+    return found?.id;
+  };
+
+  // Helper: surface similar brands/models to reduce duplicates when adding new entries
+  const findBrandMatches = (term: string): string[] => {
+    const t = (term || '').trim().toLowerCase();
+    if (t.length < 2) return [];
+    return brandOptions
+      .filter(b => (b.name || '').toLowerCase().includes(t))
+      .map(b => b.name)
+      .slice(0, 5);
+  };
+
+  const findModelMatches = (brandName: string, term: string): string[] => {
+    const t = (term || '').trim().toLowerCase();
+    if (t.length < 2) return [];
+    const models = modelOptionsCache[brandName] || [];
+    return models
+      .filter(m => (m.name || '').toLowerCase().includes(t))
+      .map(m => m.name)
+      .slice(0, 5);
+  };
+
+  const loadModelsForBrand = async (brandName: string, forceReload = false) => {
+    const name = (brandName || '').trim();
+    if (!name) return;
+    if (!forceReload && modelOptionsCache[name]) return;
+    const brandId = getBrandIdByName(name);
+    if (!brandId) {
+      setModelOptionsCache(prev => ({ ...prev, [name]: [] }));
+      return;
+    }
+    try {
+      const res = await authenticatedApi.get<{ data: ModelOption[] }>(`/api/assets/models?brand=${brandId}`);
+      const data = (res as any).data?.data || res.data?.data || [];
+      setModelOptionsCache(prev => ({ ...prev, [name]: Array.isArray(data) ? data : [] }));
+    } catch (e) {
+      console.error('Failed to load models for brand', brandId, e);
+      setModelOptionsCache(prev => ({ ...prev, [name]: [] }));
+    }
+  };
+
   const fetchCostCenterOptions = async () => {
     setLoadingCostCenters(true);
     try {
@@ -528,7 +644,9 @@ const PurchaseAssetRegistration: React.FC = () => {
         classification: 'Asset',
         warranty_period: '',
         notes: '',
-        registered: false
+        registered: false,
+        customBrand: false,
+        customModel: false
       });
     }
     setAssetItems(items);
@@ -607,9 +725,276 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
+  const handleBulkBrandSelect = (value: string) => {
+    if (!value) {
+      setBulkBrandCustom(false);
+      setBulkModelCustom(false);
+      setBulkFormData(prev => ({ ...prev, brand: '' }));
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, brand: '', customBrand: false, model: '', model_id: undefined, customModel: false })));
+      }
+      return;
+    }
+    if (value === '__add_new_brand') {
+      setBulkBrandCustom(true);
+      setBulkFormData(prev => ({ ...prev, brand: '' }));
+      setBulkModelCustom(true);
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, brand: '', customBrand: true, model: '', model_id: undefined, customModel: true })));
+      }
+      return;
+    }
+    setBulkBrandCustom(false);
+    setBulkModelCustom(false);
+    setBulkFormData(prev => ({ ...prev, brand: value }));
+    loadModelsForBrand(value);
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({ ...item, brand: value, customBrand: false, model: '', model_id: undefined, customModel: false })));
+    }
+  };
+
+  const handleBulkBrandInput = (value: string) => {
+    const val = value;
+    const isEmpty = val.trim() === '';
+    setBulkBrandCustom(!isEmpty);
+    setBulkModelCustom(!isEmpty);
+    setBulkFormData(prev => ({ ...prev, brand: val, model: isEmpty ? '' : prev.model }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({
+        ...item,
+        brand: val,
+        customBrand: !isEmpty,
+        model: '',
+        model_id: undefined,
+        customModel: !isEmpty
+      })));
+    }
+  };
+
+  const handleBulkModelSelect = (value: string) => {
+    if (!value) {
+      setBulkModelCustom(false);
+      setBulkFormData(prev => ({ ...prev, model: '' }));
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, model: '', model_id: undefined, customModel: false })));
+      }
+      return;
+    }
+    if (value === '__add_new_model') {
+      setBulkModelCustom(true);
+      setBulkFormData(prev => ({ ...prev, model: '' }));
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, model: '', model_id: undefined, customModel: true })));
+      }
+      return;
+    }
+    setBulkModelCustom(false);
+    setBulkFormData(prev => ({ ...prev, model: value }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({
+        ...item,
+        model: value,
+        model_id: getModelIdByName(item.brand, value) ?? item.model_id,
+        customModel: false
+      })));
+    }
+  };
+
+  const handleBulkModelInput = (value: string) => {
+    const val = value;
+    const isEmpty = val.trim() === '';
+    setBulkModelCustom(!isEmpty);
+    setBulkFormData(prev => ({ ...prev, model: val }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({ ...item, model: val, customModel: !isEmpty })));
+    }
+  };
+
+  const handleAssetBrandSelect = (id: string, value: string) => {
+    if (!value) {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, brand: '', customBrand: false, model: '', customModel: false } : item));
+      return;
+    }
+    if (value === '__add_new_brand') {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, brand: '', customBrand: true, model: '', customModel: true } : item));
+      setActiveAssetId(id);
+      return;
+    }
+    loadModelsForBrand(value);
+    setAssetItems(prev => prev.map(item => item.id === id ? { ...item, brand: value, customBrand: false, model: '', customModel: false } : item));
+  };
+
+  const handleAssetBrandInput = (id: string, value: string) => {
+    const isEmpty = value.trim() === '';
+    setAssetItems(prev => prev.map(item => item.id === id ? { ...item, brand: value, customBrand: !isEmpty, model: '', model_id: undefined, customModel: !isEmpty } : item));
+  };
+
+  const handleAssetModelSelect = (id: string, value: string) => {
+    if (!value) {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, model: '', model_id: undefined, customModel: false } : item));
+      return;
+    }
+    if (value === '__add_new_model') {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, model: '', model_id: undefined, customModel: true } : item));
+      return;
+    }
+    setAssetItems(prev => prev.map(item => item.id === id ? {
+      ...item,
+      model: value,
+      model_id: getModelIdByName(item.brand, value) ?? item.model_id,
+      customModel: false
+    } : item));
+  };
+
+  const createBrand = async (name: string, scope: 'bulk' | 'asset', assetId?: string) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      toast.error('Enter brand name');
+      return;
+    }
+    if (!typeId) {
+      toast.error('Type is required before adding a brand');
+      return;
+    }
+    setCreatingBrand(true);
+    try {
+      await authenticatedApi.post('/api/assets/brands', { name: trimmed, type_id: Number(typeId) });
+      // Refresh brands to obtain ids
+      await fetchBrandOptions();
+      toast.success('Brand added');
+      // Update form selection
+      if (scope === 'bulk') {
+        setBulkBrandCustom(false);
+        setBulkModelCustom(false);
+        setBulkFormData(prev => ({ ...prev, brand: trimmed, model: '' }));
+        if (sameModel) {
+          setAssetItems(prev => prev.map(item => ({ ...item, brand: trimmed, customBrand: false, model: '', customModel: false })));
+        }
+      } else if (scope === 'asset' && assetId) {
+        setAssetItems(prev => prev.map(item => item.id === assetId ? { ...item, brand: trimmed, customBrand: false, model: '', customModel: false } : item));
+      }
+      // Preload models for new brand
+      setModelOptionsCache(prev => { const next = { ...prev }; delete next[trimmed]; return next; });
+      loadModelsForBrand(trimmed, true);
+    } catch (e) {
+      toast.error('Failed to add brand');
+      console.error('Create brand error', e);
+    } finally {
+      setCreatingBrand(false);
+    }
+  };
+
+  const createModel = async (modelName: string, brandName: string, categoryName: string, scope: 'bulk' | 'asset', assetId?: string) => {
+    const trimmed = (modelName || '').trim();
+    if (!trimmed) {
+      toast.error('Enter model name');
+      return;
+    }
+    const brandId = getBrandIdByName(brandName);
+    if (!brandId) {
+      toast.error('Save/select a brand first');
+      return;
+    }
+    const payload: any = { name: trimmed, brand_id: brandId };
+    const catId = getCategoryIdByName(categoryName);
+    if (catId) payload.category_id = catId;
+    if (typeId) payload.type_id = Number(typeId);
+
+    setCreatingModel(true);
+    try {
+      await authenticatedApi.post('/api/assets/models', payload);
+      toast.success('Model added');
+      // refresh models for this brand
+      setModelOptionsCache(prev => { const next = { ...prev }; delete next[brandName]; return next; });
+      await loadModelsForBrand(brandName, true);
+      if (scope === 'bulk') {
+        setBulkModelCustom(false);
+        setBulkFormData(prev => ({ ...prev, model: trimmed }));
+        if (sameModel) {
+          setAssetItems(prev => prev.map(item => ({ ...item, model: trimmed, customModel: false })));
+        }
+      } else if (scope === 'asset' && assetId) {
+        setAssetItems(prev => prev.map(item => item.id === assetId ? { ...item, model: trimmed, customModel: false } : item));
+      }
+    } catch (e) {
+      toast.error('Failed to add model');
+      console.error('Create model error', e);
+    } finally {
+      setCreatingModel(false);
+    }
+  };
+
+  const selectBulkModelSuggestion = (name: string) => {
+    setBulkModelCustom(false);
+    setBulkFormData(prev => ({ ...prev, model: name }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({
+        ...item,
+        model: name,
+        model_id: getModelIdByName(item.brand, name) ?? item.model_id,
+        customModel: false
+      })));
+    }
+  };
+
+  const selectAssetModelSuggestion = (assetId: string, name: string) => {
+    setAssetItems(prev => prev.map(item => item.id === assetId ? {
+      ...item,
+      model: name,
+      model_id: getModelIdByName(item.brand, name) ?? item.model_id,
+      customModel: false
+    } : item));
+  };
+
+  const fetchModelMatches = async (modelName: string, key: string) => {
+    const name = (modelName || '').trim();
+    if (!name) {
+      toast.error('Enter a model name to match');
+      return;
+    }
+    setModelMatchLoadingKey(key);
+    setModelTooltipOpenKey(key);
+    try {
+      const res = await authenticatedApi.post('/api/purchases/match-models', {
+        model_name: name,
+        similarity_threshold: 90
+      });
+      const data = (res as any).data;
+      const payload = data?.data || data;
+      const matches = Array.isArray(payload?.matches)
+        ? payload.matches
+        : Array.isArray(payload)
+          ? payload
+          : [];
+      const arr: string[] = matches.map((m: any) => (typeof m === 'string' ? m : (m?.name || m?.model_name || JSON.stringify(m))));
+      setModelMatchResults(prev => ({ ...prev, [key]: arr }));
+    } catch (e) {
+      console.error('Failed to match models', e);
+      toast.error('Failed to get matched models');
+    } finally {
+      setModelMatchLoadingKey(null);
+    }
+  };
+
+  const handleAssetModelInput = (id: string, value: string) => {
+    const isEmpty = value.trim() === '';
+    setAssetItems(prev => prev.map(item => item.id === id ? { ...item, model: value, customModel: !isEmpty } : item));
+  };
+
   const copyToAll = (field: keyof Omit<AssetFormData, 'register_number'>) => {
     const value = bulkFormData[field];
-    setAssetItems(prev => prev.map(item => ({ ...item, [field]: value })));
+    setAssetItems(prev => prev.map(item => {
+      const next: any = { ...item, [field]: value };
+      if (field === 'brand') {
+        next.customBrand = bulkBrandCustom;
+        next.model = '';
+        next.customModel = bulkBrandCustom ? true : false;
+      }
+      if (field === 'model') {
+        next.customModel = bulkModelCustom;
+      }
+      return next;
+    }));
     toast.success(`${field} copied to all assets`);
   };
 
@@ -679,7 +1064,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         return (t && typeof t === 'object' && typeof t.id !== 'undefined') ? Number(t.id) : null;
       })();
 
-      const payload = assetItems.filter(a => !a.registered).map(item => ({
+      const buildPayload = (item: AssetItem) => ({
         register_number: (item.register_number || '').toUpperCase(),
         classification: item.classification,
         type_id: resolvedTypeId,
@@ -688,33 +1073,53 @@ const PurchaseAssetRegistration: React.FC = () => {
           const id = brandIdByName(item.brand);
           return typeof id === 'number' ? id : (typeof id === 'string' ? Number(id) : null);
         })(),
+        model_id: getModelIdByName(item.brand, item.model) ?? item.model_id ?? null,
         model: item.model,
         warranty_period: item.warranty_period ? Number(item.warranty_period) : null,
         costcenter_id: costCenterIdByName(item.costcenter) ?? null,
         location_id: locationIdByName(item.location) ?? null,
         item_condition: item.condition,
         description: item.description,
-      }));
+      });
+
+      const itemsToProcess = assetItems.filter(a => !a.registered);
+      const toUpdate = itemsToProcess.filter(i => i.registry_id);
+      const toCreate = itemsToProcess.filter(i => !i.registry_id);
 
       // Include link to parent purchase/pr for backend association (integer purchaseId)
-      const requestBody: any = {
-        assets: payload,
-        purchase_id: Number(purchaseId),
-        request_id: (() => {
-          const rid = (purchase as any)?.request_id ?? (purchase as any)?.request?.id;
-          return typeof rid === 'number' ? rid : (rid ? Number(rid) : undefined);
-        })(),
-        created_by: (auth?.authData?.user?.username) || (() => {
-          try { return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || ''; } catch { return ''; }
-        })(),
-      };
+      let updatedCount = 0;
+      let createdCount = 0;
 
-      await authenticatedApi.post('/api/purchases/registry', requestBody);
-      toast.success(`${assetItems.length} assets registered successfully`);
-
-      if (window.opener) {
-        window.close();
+      if (toUpdate.length) {
+        await Promise.all(toUpdate.map(async (item) => {
+          await authenticatedApi.put(`/api/purchases/registry/${item.registry_id}`, buildPayload(item));
+        }));
+        updatedCount = toUpdate.length;
+        toast.success('Assets updated');
       }
+
+      if (toCreate.length) {
+        const requestBody: any = {
+          assets: toCreate.map(buildPayload),
+          purchase_id: Number(purchaseId),
+          request_id: (() => {
+            const rid = (purchase as any)?.request_id ?? (purchase as any)?.request?.id;
+            return typeof rid === 'number' ? rid : (rid ? Number(rid) : undefined);
+          })(),
+          created_by: (auth?.authData?.user?.username) || (() => {
+            try { return JSON.parse(localStorage.getItem('authData') || '{}')?.user?.username || ''; } catch { return ''; }
+          })(),
+        };
+        await authenticatedApi.post('/api/purchases/registry', requestBody);
+        createdCount = toCreate.length;
+        toast.success(`${toCreate.length} assets registered successfully`);
+      }
+
+      const parts = [];
+      if (updatedCount) parts.push(`${updatedCount} asset${updatedCount > 1 ? 's' : ''} updated`);
+      if (createdCount) parts.push(`${createdCount} asset${createdCount > 1 ? 's' : ''} registered`);
+      setSuccessSummary(parts.join(' | ') || 'Assets saved');
+      setSuccessDialogOpen(true);
     } catch (error) {
       toast.error('Failed to register assets');
       console.error('Error registering assets:', error);
@@ -839,7 +1244,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Purchase Information (Read-only) */}
-          <Card className="lg:col-span-1 bg-gradient-to-b from-sky-100 to-white">
+          <Card className="lg:col-span-1 bg-linear-to-b from-sky-100 to-white">
             <CardHeader>
               <CardTitle className="text-lg flex items-center">
                 <FileText className="mr-2 h-5 w-5" />
@@ -1085,10 +1490,55 @@ const PurchaseAssetRegistration: React.FC = () => {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        {brandOptions.length > 0 ? (
-                          <SingleSelect options={brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` }))} value={bulkFormData.brand} onValueChange={(value) => handleBulkChange('brand', value)} placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'} searchPlaceholder="Search brands..." disabled={loadingBrands} clearable className="h-10" />
+                        {brandOptions.length > 0 && !bulkBrandCustom ? (
+                          <SingleSelect
+                            options={[
+                              ...brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` })),
+                              { value: '__add_new_brand', label: 'Add new brand...' }
+                            ]}
+                            value={bulkFormData.brand}
+                            onValueChange={handleBulkBrandSelect}
+                            placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'}
+                            searchPlaceholder="Search brands..."
+                            disabled={loadingBrands}
+                            clearable
+                            className="h-10"
+                          />
                         ) : (
-                          <Input id="bulk-brand" value={bulkFormData.brand} onChange={(e) => handleBulkChange('brand', e.target.value)} placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'} disabled={loadingBrands} className="h-10" />
+                          <Input
+                            id="bulk-brand"
+                            value={bulkFormData.brand}
+                            onChange={(e) => handleBulkBrandInput(e.target.value)}
+                            placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'}
+                            disabled={loadingBrands}
+                            className="h-10"
+                          />
+                        )}
+                        {bulkBrandCustom && bulkFormData.brand.trim() && (() => {
+                          const matches = findBrandMatches(bulkFormData.brand);
+                          if (!matches.length) return null;
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-help">
+                                  <Info className="h-3.5 w-3.5" />
+                                  View similar brands
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-xs max-w-xs">
+                                  {matches.join(', ')}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })()}
+                        {bulkBrandCustom && bulkFormData.brand.trim() && (
+                          <div className="mt-2 flex justify-end">
+                            <Button size="sm" variant="outline" disabled={creatingBrand} onClick={() => createBrand(bulkFormData.brand, 'bulk')}>
+                              {creatingBrand ? 'Saving...' : 'Save brand'}
+                            </Button>
+                          </div>
                         )}
                       </div>
                       <div>
@@ -1098,7 +1548,67 @@ const PurchaseAssetRegistration: React.FC = () => {
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        <Input id="bulk-model" value={bulkFormData.model} onChange={(e) => handleBulkChange('model', e.target.value)} placeholder="Enter model" className="h-10" />
+                        {(!bulkBrandCustom && !bulkModelCustom && (modelOptionsCache[bulkFormData.brand]?.length || 0) > 0) ? (
+                          <SingleSelect
+                            options={[
+                              ...(modelOptionsCache[bulkFormData.brand] || []).map(option => ({ value: option.name, label: option.name })),
+                              { value: '__add_new_model', label: 'Add new model...' }
+                            ]}
+                            value={bulkFormData.model}
+                            onValueChange={handleBulkModelSelect}
+                            placeholder="Select model"
+                            searchPlaceholder="Search models..."
+                            clearable
+                            className="h-10"
+                          />
+                        ) : (
+                          <Input
+                            id="bulk-model"
+                            value={bulkFormData.model}
+                            onChange={(e) => handleBulkModelInput(e.target.value)}
+                            placeholder="Enter model"
+                            className="h-10"
+                          />
+                        )}
+                        {bulkModelCustom && bulkFormData.model.trim() && bulkFormData.brand && (
+                          <div className="mt-2 space-y-1">
+                            <Tooltip
+                              open={modelTooltipOpenKey === 'bulk'}
+                              onOpenChange={(open) => { if (!open && modelTooltipOpenKey === 'bulk') setModelTooltipOpenKey(null); }}
+                            >
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer"
+                                  disabled={modelMatchLoadingKey === 'bulk'}
+                                  onClick={() => fetchModelMatches(bulkFormData.model, 'bulk')}
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                  {modelMatchLoadingKey === 'bulk' ? 'Fetching...' : 'View similar models'}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-xs max-w-xs space-y-1">
+                                  {modelMatchLoadingKey === 'bulk' && <div>Fetching...</div>}
+                                  {modelMatchLoadingKey !== 'bulk' && (modelMatchResults['bulk']?.length
+                                    ? modelMatchResults['bulk'].map(m => (
+                                        <div key={m} className="flex items-center justify-between gap-2">
+                                          <span>{m}</span>
+                                          <button className="text-yellow-300 hover:underline" onClick={() => selectBulkModelSuggestion(m)}>Choose</button>
+                                        </div>
+                                      ))
+                                    : <div>No matches yet</div>
+                                  )}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                            <div className="flex justify-end">
+                              <Button size="sm" variant="outline" disabled={creatingModel} onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}>
+                                {creatingModel ? 'Saving...' : 'Save model'}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1181,7 +1691,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                     const isComplete = isAssetFormComplete(asset);
                     return (
                       <TabsTrigger key={asset.id} value={asset.id} className="mr-1">
-                        <span className="truncate max-w-[180px]">{label}</span>
+                        <span className="truncate max-w-45">{label}</span>
                         {isComplete ? (
                           <CheckCircle className="ml-1 text-green-500 data-[state=active]:text-white" />
                         ) : (
@@ -1201,6 +1711,7 @@ const PurchaseAssetRegistration: React.FC = () => {
 
                 {assetItems.map((asset, index) => {
                   const isComplete = isAssetFormComplete(asset);
+                  const modelOptionsForAsset = modelOptionsCache[asset.brand] || [];
                   return (
                     <TabsContent key={`content-${asset.id}`} value={asset.id}>
                       <Card id={`asset-card-${asset.id}`} className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}>
@@ -1327,14 +1838,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                           </div>
                           <div>
                             <Label htmlFor={`brand_${asset.id}`}>Brand</Label>
-                            {brandOptions.length > 0 ? (
+                            {brandOptions.length > 0 && !asset.customBrand ? (
                               <SingleSelect
-                                options={brandOptions.map(option => ({
-                                  value: option.name,
-                                  label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
-                                }))}
+                                options={[
+                                  ...brandOptions.map(option => ({
+                                    value: option.name,
+                                    label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
+                                  })),
+                                  { value: '__add_new_brand', label: 'Add new brand...' }
+                                ]}
                                 value={asset.brand}
-                                onValueChange={(value) => handleAssetChange(asset.id, 'brand', value)}
+                                onValueChange={(value) => handleAssetBrandSelect(asset.id, value)}
                                 placeholder="Select brand"
                                 searchPlaceholder="Search brands..."
                                 disabled={loadingBrands}
@@ -1345,22 +1859,104 @@ const PurchaseAssetRegistration: React.FC = () => {
                               <Input
                                 id={`brand_${asset.id}`}
                                 value={asset.brand}
-                                onChange={(e) => handleAssetChange(asset.id, 'brand', e.target.value)}
+                                onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
                                 placeholder="Enter brand"
                                 disabled={loadingBrands}
                                 className={`h-10 ${getFieldRingClass(asset.brand)}`}
                               />
                             )}
+                            {asset.customBrand && asset.brand.trim() && (() => {
+                              const matches = findBrandMatches(asset.brand);
+                              if (!matches.length) return null;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-help">
+                                      <Info className="h-3.5 w-3.5" />
+                                      View similar brands
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="text-xs max-w-xs">
+                                      {matches.join(', ')}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
+                            {asset.customBrand && asset.brand.trim() && (
+                              <div className="mt-2 flex justify-end">
+                                <Button size="sm" variant="outline" disabled={creatingBrand} onClick={() => createBrand(asset.brand, 'asset', asset.id)}>
+                                  {creatingBrand ? 'Saving...' : 'Save brand'}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           <div>
                             <Label htmlFor={`model_${asset.id}`}>Model</Label>
-                            <Input
-                              id={`model_${asset.id}`}
-                              value={asset.model}
-                              onChange={(e) => handleAssetChange(asset.id, 'model', e.target.value)}
-                              placeholder="Enter model"
-                              className={`h-10 ${getFieldRingClass(asset.model)}`}
-                            />
+                            {(!asset.customBrand && !asset.customModel && modelOptionsForAsset.length > 0) ? (
+                              <SingleSelect
+                                options={[
+                                  ...modelOptionsForAsset.map(option => ({ value: option.name, label: option.name })),
+                                  { value: '__add_new_model', label: 'Add new model...' }
+                                ]}
+                                value={asset.model}
+                                onValueChange={(value) => handleAssetModelSelect(asset.id, value)}
+                                placeholder="Select model"
+                                searchPlaceholder="Search models..."
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.model)}`}
+                              />
+                            ) : (
+                              <Input
+                                id={`model_${asset.id}`}
+                                value={asset.model}
+                                onChange={(e) => handleAssetModelInput(asset.id, e.target.value)}
+                                placeholder="Enter model"
+                                className={`h-10 ${getFieldRingClass(asset.model)}`}
+                              />
+                            )}
+                            {asset.model.trim() && asset.brand && (() => {
+                              return (
+                                <Tooltip
+                                  open={modelTooltipOpenKey === `asset-${asset.id}`}
+                                  onOpenChange={(open) => { if (!open && modelTooltipOpenKey === `asset-${asset.id}`) setModelTooltipOpenKey(null); }}
+                                >
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-pointer"
+                                      disabled={modelMatchLoadingKey === `asset-${asset.id}`}
+                                      onClick={() => fetchModelMatches(asset.model, `asset-${asset.id}`)}
+                                    >
+                                      <Info className="h-3.5 w-3.5" />
+                                      {modelMatchLoadingKey === `asset-${asset.id}` ? 'Fetching...' : 'View similar models'}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="text-xs max-w-xs space-y-1">
+                                      {modelMatchLoadingKey === `asset-${asset.id}` && <div>Fetching...</div>}
+                                      {modelMatchLoadingKey !== `asset-${asset.id}` && (modelMatchResults[`asset-${asset.id}`]?.length
+                                        ? modelMatchResults[`asset-${asset.id}`].map(m => (
+                                            <div key={m} className="flex items-center justify-between gap-2">
+                                              <span>{m}</span>
+                                              <button className="text-yellow-300 hover:underline" onClick={() => selectAssetModelSuggestion(asset.id, m)}>Choose</button>
+                                            </div>
+                                          ))
+                                        : <div>No matches yet</div>
+                                      )}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
+                            {asset.customModel && asset.model.trim() && asset.brand && (
+                              <div className="mt-2 flex justify-end">
+                                <Button size="sm" variant="outline" disabled={creatingModel} onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}>
+                                  {creatingModel ? 'Saving...' : 'Save model'}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1495,8 +2091,9 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </div>
                 </div>
 
+
                 {/* Register Number List (simplified) */}
-                <div className="space-y-2 max-h-[400px] auto-hide-scroll">
+                <div className="space-y-2 max-h-100 auto-hide-scroll">
                   <Label className="text-sm font-medium text-gray-600">Register Numbers</Label>
                   <ul className="space-y-1">
                     {assetItems.map((asset, index) => {
@@ -1523,6 +2120,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                   </ul>
                 </div>
 
+
                 <Separator className="my-3" />
                 <div>
                   <AlertDialog>
@@ -1536,13 +2134,15 @@ const PurchaseAssetRegistration: React.FC = () => {
                             const isSoftware = (item.category || '').toLowerCase() === 'software';
                             const missingRegister = !isSoftware && !item.register_number?.trim();
                             const missingDesc = !item.description?.trim();
-                            return missingRegister || missingDesc;
+                            const missingBrand = !item.brand?.trim();
+                            const missingModel = !item.model?.trim();
+                            return missingRegister || missingDesc || missingBrand || missingModel;
                           });
                         })()}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                        className={`w-full text-white ${editMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'}`}
                       >
                         <Save className="mr-2 h-4 w-4" />
-                        {saving ? 'Submitting...' : 'Submit'}
+                        {saving ? (editMode ? 'Updating...' : 'Submitting...') : (editMode ? 'Update' : 'Submit')}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -1580,7 +2180,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                       <AlertDialogFooter>
                         <AlertDialogCancel>Review Again</AlertDialogCancel>
                         <AlertDialogAction onClick={handleSave} disabled={saving}>
-                          Confirm & Submit
+                          {editMode ? 'Confirm & Update' : 'Confirm & Submit'}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -1588,6 +2188,14 @@ const PurchaseAssetRegistration: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Guidance */}
+            <div className="p-2 rounded-md bg-amber-50 border border-amber-200 space-y-1 text-xs text-amber-800">
+              <div className="font-semibold text-amber-900">Quick guide</div>
+              <div>1) Select <span className="font-semibold">Brand</span> first.</div>
+              <div>2) Choose an existing Model from the list, or pick <span className="font-semibold">Add new model…</span> to create one.</div>
+              <div>3) If adding new, use <span className="font-semibold">View similar models</span> to avoid duplicates, then hit <span className="font-semibold">Save model</span>.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1687,6 +2295,31 @@ const PurchaseAssetRegistration: React.FC = () => {
           </div>
         )}
       />
+      {/* Success dialog */}
+      <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Assets saved</AlertDialogTitle>
+            <AlertDialogDescription>
+              {successSummary || 'Your changes have been saved.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSuccessDialogOpen(false)}>Close</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (window.opener) {
+                  window.close();
+                } else {
+                  setSuccessDialogOpen(false);
+                }
+              }}
+            >
+              Close window
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

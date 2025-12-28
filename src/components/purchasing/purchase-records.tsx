@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 // PurchaseSummary is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
 import PurchaseRegisterForm from './purchase-register-form';
-import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle } from 'lucide-react';
+import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle, Mail, Pencil } from 'lucide-react';
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +45,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   const [viewMode, setViewMode] = useState<'grid' | 'cards'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<PurchaseFormData>({
     request_type: '',
     costcenter: '',
@@ -941,6 +942,20 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     return 'bg-amber-600 text-white text-xs';
   };
 
+  const handleResendNotification = async (purchaseId: number | string) => {
+    const id = String(purchaseId);
+    try {
+      setResendingId(id);
+      await authenticatedApi.post(`/api/purchases/${encodeURIComponent(id)}/resend-notification`, {});
+      toast.success('Notification resent');
+    } catch (err) {
+      console.error('Failed to resend notification', err);
+      toast.error('Failed to resend notification');
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   // Define columns for DataGrid
   const columns: ColumnDef<any>[] = [
     { key: 'id', header: 'No' },
@@ -956,18 +971,34 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
             <Badge variant={getStatusVariant(row) as any}>
               {getStatusText(row)}
             </Badge>
-            <Button
-              size="sm"
-              variant={isRegCompleted ? 'default' : 'outline'}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(`/purchase/asset/${row.id}?type=${typeId}`, '_blank');
-              }}
-              className={`h-6 px-2 ${isRegCompleted ? 'bg-green-600 hover:bg-green-700 text-white border-0' : 'text-blue-600 hover:text-blue-700'}`}
-              title="Open Asset Manager"
-            >
-              <PlusCircle className="h-4 w-4 mr-1" /> Assets
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={isRegCompleted ? 'default' : 'outline'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const editParam = isRegCompleted ? '&edit=true' : '';
+                  window.open(`/purchase/asset/${row.id}?type=${typeId}${editParam}`, '_blank');
+                }}
+                className={`h-6 px-2 ${isRegCompleted ? 'bg-green-600 hover:bg-green-700 text-white border-0' : 'text-blue-600 hover:text-blue-700'}`}
+                title="Open Asset Manager"
+              >
+                {isRegCompleted ? <Pencil className="h-4 w-4 mr-1" /> : <PlusCircle className="h-4 w-4 mr-1" />} Assets
+              </Button>
+              <Button
+                size="sm"
+                variant="link"
+                className="h-6 px-0 text-blue-600 hover:text-blue-700 gap-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleResendNotification(row.id);
+                }}
+                disabled={resendingId === String(row.id)}
+              >
+                <Mail className="h-4 w-4" />
+                {resendingId === String(row.id) ? 'Sending...' : 'Resend'}
+              </Button>
+            </div>
           </div>
         );
       },

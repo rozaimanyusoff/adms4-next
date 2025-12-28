@@ -4,6 +4,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import ExcelJS from 'exceljs';
 
 const reportTypes = [
@@ -24,14 +25,14 @@ const UtilityReport = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
-  const [costCenters, setCostCenters] = useState<{ id: string; name: string }[]>([]);
+  const [costCenters, setCostCenters] = useState<ComboboxOption[]>([]);
   const [selectedCostCenter, setSelectedCostCenter] = useState<string>('all');
   const [selectedService, setSelectedService] = useState<string>('all');
 
   useEffect(() => {
     authenticatedApi.get('/api/assets/costcenters').then((res: any) => {
       if (Array.isArray(res.data?.data)) {
-        setCostCenters(res.data.data.map((cc: any) => ({ id: cc.id?.toString() || '', name: cc.name || '' })));
+        setCostCenters(res.data.data.map((cc: any) => ({ value: cc.id?.toString() || '', label: cc.name || '' })));
       }
     });
   }, []);
@@ -265,7 +266,7 @@ const UtilityReport = () => {
             // Add title with filter information
             const selectedCostCenterLabel = selectedCostCenter === 'all'
               ? 'All Cost Centers'
-              : costCenters.find(cc => cc.id === selectedCostCenter)?.name || 'Unknown Cost Center';
+              : costCenters.find(cc => cc.value === selectedCostCenter)?.label || 'Unknown Cost Center';
             worksheet.addRow([`Utility Service Summary Report - Cost Center: ${selectedCostCenterLabel}`]);
             worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
             worksheet.addRow([]);
@@ -368,7 +369,7 @@ const UtilityReport = () => {
             const datetimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}T${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
             const serviceCostCenterLabel = selectedCostCenter === 'all'
               ? 'All-Cost-Centers'
-              : costCenters.find(cc => cc.id === selectedCostCenter)?.name?.replace(/\s+/g, '-') || 'Unknown-Cost-Center';
+              : costCenters.find(cc => cc.value === selectedCostCenter)?.label?.replace(/\s+/g, '-') || 'Unknown-Cost-Center';
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const url = window.URL.createObjectURL(blob);
@@ -443,19 +444,15 @@ const UtilityReport = () => {
         {reportType === 'service' && (
           <div>
             <label className="block text-sm font-medium">Cost Center</label>
-            <Select value={selectedCostCenter} onValueChange={setSelectedCostCenter}>
-              <SelectTrigger className='w-full'>
-                <SelectValue placeholder="Select cost center" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Cost Centers</SelectItem>
-                {costCenters.map(cc => (
-                  <SelectItem key={cc.id} value={cc.id}>
-                    {cc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SingleSelect
+              className="w-full"
+              options={[{ value: 'all', label: 'All Cost Centers' }, ...costCenters]}
+              value={selectedCostCenter}
+              onValueChange={(v) => setSelectedCostCenter(v || 'all')}
+              placeholder="Select cost center"
+              searchPlaceholder="Search cost center..."
+              clearable
+            />
           </div>
         )}
 

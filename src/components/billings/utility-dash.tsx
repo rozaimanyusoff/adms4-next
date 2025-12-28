@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer, Legend, LabelList } from 'recharts';
 import ExcelUtilityReport from './excel-utility-report';
 import PrintingExcelReport from './excel-printing-report';
+import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 
 interface UtilityBill {
     util_id: number;
@@ -14,6 +15,11 @@ interface UtilityBill {
         provider: string;
         service: string;
         desc: string;
+        beneficiary?: {
+            id?: number;
+            name?: string;
+            logo?: string;
+        };
     };
     costcenter: {
         id: number;
@@ -57,164 +63,369 @@ type CostCenterApiResponse = {
     data: CostCenter[];
 };
 
+type ChartPoint = { month: string; total: number; count: number; bw?: number; color?: number };
+
+const chartPalettes = [
+    { bar: '#ef4444', line: '#f59e0b' },
+    { bar: '#2563eb', line: '#14b8a6' },
+    { bar: '#16a34a', line: '#f97316' },
+    { bar: '#9333ea', line: '#facc15' },
+    { bar: '#0ea5e9', line: '#e11d48' },
+    { bar: '#f472b6', line: '#22c55e' }
+];
+
+const getPalette = (index: number) => chartPalettes[index % chartPalettes.length];
+
 const UtilityDash: React.FC = () => {
-    const [chartRows, setChartRows] = useState<{ month: string; total: number; count: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedYear, setSelectedYear] = useState<string>('');
     const [yearOptions, setYearOptions] = useState<string[]>([]);
-    const [selectedService, setSelectedService] = useState<string>('All');
     const [serviceOptions, setServiceOptions] = useState<string[]>([]);
+    const [serviceCharts, setServiceCharts] = useState<Record<string, ChartPoint[]>>({});
     const [selectedCostCenter, setSelectedCostCenter] = useState<string>('All');
-    const [costCenterOptions, setCostCenterOptions] = useState<{ id: string; name: string }[]>([]);
+    const [costCenterOptions, setCostCenterOptions] = useState<ComboboxOption[]>([]);
+    const [beneficiaryLogos, setBeneficiaryLogos] = useState<Record<string, Array<{ name: string; logo?: string }>>>({});
+    const [selectedBeneficiaries, setSelectedBeneficiaries] = useState<Record<string, string>>({});
 
     // Fetch service options and cost centers once on component mount
     useEffect(() => {
         const fetchFilterOptions = async () => {
             try {
-                console.log('Starting to fetch filter options...');
-                
-                // Fetch cost centers from dedicated API
-                console.log('Fetching cost centers from /api/assets/costcenters...');
                 const costCenterRes = await authenticatedApi.get<CostCenterApiResponse>('/api/assets/costcenters');
-                console.log('Cost center response:', costCenterRes.data);
-                
                 const costCenters: CostCenter[] = Array.isArray(costCenterRes.data.data) ? costCenterRes.data.data : [];
-                console.log('Processed cost centers:', costCenters);
-                
-                // Set cost center options with id and name
                 const costCenterOptions = [
-                    { id: 'All', name: 'All' },
-                    ...costCenters.map(cc => ({ id: cc.id.toString(), name: cc.name }))
+                    { value: 'All', label: 'All' },
+                    ...costCenters.map(cc => ({ value: cc.id.toString(), label: cc.name })) as ComboboxOption[]
                 ];
-                console.log('Cost center options:', costCenterOptions);
                 setCostCenterOptions(costCenterOptions);
-                
-                // Fetch utility bills to get service options
-                console.log('Fetching utility bills from /api/bills/util...');
-                const utilityRes = await authenticatedApi.get<UtilityApiResponse>('/api/bills/util');
-                console.log('Utility response:', utilityRes.data);
-                
-                const bills: UtilityBill[] = Array.isArray(utilityRes.data.data) ? utilityRes.data.data : [];
-                console.log('Processed bills count:', bills.length);
-                console.log('Sample bills:', bills.slice(0, 2));
-                
-                // Extract services from bills
-                const services = Array.from(new Set(bills
-                    .filter(bill => bill.account && bill.account.service)
-                    .map(bill => bill.account.service)
-                )).sort();
-                console.log('Extracted services:', services);
-                
-                // Set service options
-                const serviceOptions = ['All', ...services];
-                console.log('Service options:', serviceOptions);
-                setServiceOptions(serviceOptions);
-                
-                console.log('Filter options setup complete');
             } catch (err: any) {
                 console.error('Error fetching filter options:', err);
                 console.error('Error details:', err?.response?.data || err?.message);
                 
                 // Fallback: Set basic options if API calls fail
                 console.log('Setting fallback options...');
-                setServiceOptions(['All', 'utilities', 'printing', 'rental', 'services']);
-                setCostCenterOptions([{ id: 'All', name: 'All' }]);
+                setCostCenterOptions([{ value: 'All', label: 'All' }]);
             }
         };
         fetchFilterOptions();
     }, []);
 
-    // Fetch chart data when year, service, or cost center changes
+    // Fetch chart data when filters change
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Build API URL with service and cost center parameters
                 let apiUrl = '/api/bills/util';
                 const params = new URLSearchParams();
-                
-                if (selectedService && selectedService !== 'All') {
-                    params.append('service', selectedService);
-                }
-                
+
                 if (selectedCostCenter && selectedCostCenter !== 'All') {
                     params.append('costcenter', selectedCostCenter);
                 }
-                
+
                 if (params.toString()) {
                     apiUrl += `?${params.toString()}`;
                 }
-                
+
                 const res = await authenticatedApi.get<UtilityApiResponse>(apiUrl);
                 const bills: UtilityBill[] = Array.isArray(res.data.data) ? res.data.data : [];
-                
-                // Get all years from filtered data
+
+                // Build year options from fetched data
                 const years = Array.from(new Set(bills.map(bill => new Date(bill.ubill_date).getFullYear().toString()))).sort();
                 const yearOptions = ['All', ...years];
                 const currentYear = new Date().getFullYear().toString();
-                
+
                 if (!selectedYear && yearOptions.includes(currentYear)) {
                     setSelectedYear(currentYear);
                 } else if (!selectedYear && yearOptions.length) {
                     setSelectedYear(yearOptions[1] || 'All');
                 }
 
-                // Group by month for selected year (service and cost center already filtered by API)
-                const monthlyTotals: { [month: string]: { total: number; count: number } } = {};
+                const yearMatch = (billYear: string) => selectedYear === 'All' || !selectedYear || billYear === selectedYear;
+                const monthlyByService: Record<string, Record<string, { total: number; count: number; bw?: number; color?: number }>> = {};
+                const beneficiaryMap: Record<string, Record<string, string | undefined>> = {};
+                const servicesWithBeneficiaries = new Set<string>(['utilities', 'services', 'rental']);
+
+                const ensureServiceMonth = (service: string, monthLabel: string, isPrinting: boolean) => {
+                    if (!monthlyByService[service]) monthlyByService[service] = {};
+                    if (!monthlyByService[service][monthLabel]) {
+                        monthlyByService[service][monthLabel] = { total: 0, count: 0, bw: isPrinting ? 0 : undefined, color: isPrinting ? 0 : undefined };
+                    }
+                };
+
                 bills.forEach(bill => {
                     const date = new Date(bill.ubill_date);
                     const year = date.getFullYear().toString();
-                    
-                    // Apply year filter only (service and cost center already filtered by API)
-                    const yearMatch = selectedYear === 'All' || year === selectedYear;
-                    
-                    if (bill.ubill_gtotal && yearMatch) {
-                        const monthLabel = date.toLocaleString('en-US', { month: 'short' }) + '-' + year.slice(-2);
-                        if (!monthlyTotals[monthLabel]) monthlyTotals[monthLabel] = { total: 0, count: 0 };
-                        
-                        monthlyTotals[monthLabel].total += parseFloat(bill.ubill_gtotal);
-                        monthlyTotals[monthLabel].count += 1;
+                    if (!bill.ubill_gtotal || !yearMatch(year)) return;
+
+                    const service = bill.account?.service || 'Unknown';
+                    const serviceKey = service.toLowerCase();
+                    const isPrinting = serviceKey === 'printing';
+                    const beneficiaryName = bill.account?.beneficiary?.name;
+                    const beneficiaryLogo = bill.account?.beneficiary?.logo;
+                    if (servicesWithBeneficiaries.has(serviceKey) && beneficiaryName) {
+                        if (!beneficiaryMap[serviceKey]) beneficiaryMap[serviceKey] = {};
+                        beneficiaryMap[serviceKey][beneficiaryName] = beneficiaryLogo;
+                    }
+                    const selectedForService = selectedBeneficiaries[serviceKey] ?? 'All';
+                    const monthLabel = date.toLocaleString('en-US', { month: 'short' }) + '-' + year.slice(-2);
+
+                    ensureServiceMonth('All Services', monthLabel, false);
+
+                    monthlyByService['All Services'][monthLabel].total += parseFloat(bill.ubill_gtotal);
+                    monthlyByService['All Services'][monthLabel].count += 1;
+
+                    const passesBeneficiaryFilter =
+                        !servicesWithBeneficiaries.has(serviceKey) ||
+                        selectedForService === 'All' ||
+                        !beneficiaryName ||
+                        beneficiaryName === selectedForService;
+                    if (!passesBeneficiaryFilter) return;
+
+                    ensureServiceMonth(service, monthLabel, isPrinting);
+
+                    monthlyByService[service][monthLabel].total += parseFloat(bill.ubill_gtotal);
+                    monthlyByService[service][monthLabel].count += 1;
+
+                    if (isPrinting) {
+                        const bw = parseFloat(bill.ubill_bw || '0');
+                        const color = parseFloat(bill.ubill_color || '0');
+                        monthlyByService[service][monthLabel].bw = (monthlyByService[service][monthLabel].bw || 0) + (Number.isFinite(bw) ? bw : 0);
+                        monthlyByService[service][monthLabel].color = (monthlyByService[service][monthLabel].color || 0) + (Number.isFinite(color) ? color : 0);
                     }
                 });
 
-                const chartRows = Object.keys(monthlyTotals).sort((a, b) => {
-                    // Sort by year then month
-                    const [aMonth, aYear] = a.split('-');
-                    const [bMonth, bYear] = b.split('-');
-                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return parseInt(aYear) !== parseInt(bYear)
-                        ? parseInt(aYear) - parseInt(bYear)
-                        : months.indexOf(aMonth) - months.indexOf(bMonth);
-                }).map(month => ({ 
-                    month, 
-                    total: monthlyTotals[month].total, 
-                    count: monthlyTotals[month].count 
-                }));
+                const sortMonths = (monthMap: Record<string, { total: number; count: number; bw?: number; color?: number }>) => {
+                    const monthsOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return Object.keys(monthMap)
+                        .sort((a, b) => {
+                            const [aMonth, aYear] = a.split('-');
+                            const [bMonth, bYear] = b.split('-');
+                            return parseInt(aYear) !== parseInt(bYear)
+                                ? parseInt(aYear) - parseInt(bYear)
+                                : monthsOrder.indexOf(aMonth) - monthsOrder.indexOf(bMonth);
+                        })
+                        .map(month => ({
+                            month,
+                            total: monthMap[month].total,
+                            count: monthMap[month].count,
+                            bw: monthMap[month].bw,
+                            color: monthMap[month].color
+                        }));
+                };
 
-                // Debug logging
-                console.log('API URL:', apiUrl);
-                console.log('Bills count:', bills.length);
-                console.log('Selected filters:', { selectedYear, selectedService, selectedCostCenter });
-                console.log('Chart data:', chartRows);
+                const computedCharts: Record<string, ChartPoint[]> = {};
+                Object.entries(monthlyByService).forEach(([service, monthMap]) => {
+                    computedCharts[service] = sortMonths(monthMap);
+                });
 
-                setChartRows(chartRows);
+                const services = Object.keys(monthlyByService).filter(service => service !== 'All Services').sort();
+
+                setServiceCharts(computedCharts);
+                setServiceOptions(services);
                 setYearOptions(yearOptions);
+                const beneListByService: Record<string, Array<{ name: string; logo?: string }>> = {};
+                Object.entries(beneficiaryMap).forEach(([svc, map]) => {
+                    beneListByService[svc] = Object.entries(map).map(([name, logo]) => ({ name, logo }));
+                });
+                setBeneficiaryLogos(beneListByService);
+                setSelectedBeneficiaries(prev => {
+                    const next = { ...prev };
+                    let changed = false;
+                    Object.keys(beneListByService).forEach(svc => {
+                        const existing = next[svc];
+                        if (!existing) {
+                            next[svc] = 'All';
+                            changed = true;
+                        }
+                    });
+                    // Ensure we drop selections for services no longer present
+                    Object.keys(next).forEach(key => {
+                        if (!beneListByService[key] && key !== 'all services') {
+                            delete next[key];
+                            changed = true;
+                        }
+                    });
+                    return changed ? next : prev;
+                });
             } catch (err) {
                 console.error('Error fetching utility data:', err);
-                setChartRows([]);
+                setServiceCharts({});
+                setServiceOptions([]);
                 setYearOptions(['All']);
+                if (!selectedYear) setSelectedYear('All');
             }
             setLoading(false);
         };
         fetchData();
-    }, [selectedYear, selectedService, selectedCostCenter]);
+    }, [selectedYear, selectedCostCenter, selectedBeneficiaries]);
+
+    const renderChartCard = (service: string, paletteIndex: number) => {
+        const data = serviceCharts[service] || [];
+        const serviceKey = service.toLowerCase();
+        const isPrinting = serviceKey === 'printing';
+        const logos = beneficiaryLogos[serviceKey] || [];
+        const selectedForService = selectedBeneficiaries[serviceKey] ?? 'All';
+        const showSelect = (serviceKey === 'rental' || serviceKey === 'services') && logos.length > 0;
+        const palette = getPalette(paletteIndex);
+        const beneficiaryOptions: ComboboxOption[] = [
+            { value: 'All', label: 'All' },
+            ...logos
+                .filter(b => !!b.name)
+                .map(b => ({
+                    value: b.name as string,
+                    label: b.name as string,
+                    render: (
+                        <div className="flex items-center gap-2">
+                            {b.logo && <img src={b.logo} alt={`${b.name} logo`} className="h-5 w-5 object-contain rounded" />}
+                            <span>{b.name}</span>
+                        </div>
+                    )
+                }))
+        ];
+
+        return (
+            <div key={service} className="border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2 gap-3">
+                    <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm">{service}</span>
+                        {logos.length > 0 && showSelect && (
+                            <SingleSelect
+                                className="min-w-45"
+                                options={beneficiaryOptions}
+                                value={selectedForService}
+                                onValueChange={(val) => setSelectedBeneficiaries(prev => ({ ...prev, [serviceKey]: val || 'All' }))}
+                                placeholder="Choose beneficiary"
+                                searchPlaceholder="Search beneficiary..."
+                                clearable
+                            />
+                        )}
+                        {logos.length > 0 && !showSelect && (
+                            <div className="flex flex-wrap items-center gap-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedBeneficiaries(prev => ({ ...prev, [serviceKey]: 'All' }))}
+                                    className={`text-[11px] px-2 py-0.5 rounded border ${selectedForService === 'All' ? 'border-blue-500 text-blue-600' : 'border-gray-300 text-gray-600'}`}
+                                >
+                                    All
+                                </button>
+                                {logos.map((b) => {
+                                    const isSelected = selectedForService === b.name;
+                                    const fallback = (b.name || '?').slice(0, 2).toUpperCase();
+                                    return (
+                                        <button
+                                            key={b.name}
+                                            type="button"
+                                            onClick={() => setSelectedBeneficiaries(prev => ({ ...prev, [serviceKey]: isSelected ? 'All' : b.name }))}
+                                            title={b.name || 'Beneficiary'}
+                                            aria-label={b.name || 'Beneficiary'}
+                                            className={`h-6 w-6 rounded border flex items-center justify-center ${isSelected ? 'border-blue-500 ring-1 ring-blue-300' : 'border-gray-300'}`}
+                                        >
+                                            {b.logo ? (
+                                                <img
+                                                    src={b.logo}
+                                                    alt={`${b.name || 'Beneficiary'} logo`}
+                                                    title={b.name || 'Beneficiary'}
+                                                    className="h-full w-full object-contain rounded"
+                                                />
+                                            ) : (
+                                                <span className="text-[10px] text-gray-700">{fallback}</span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                    <span className="text-xs text-gray-500">{data.length ? `${data.length} months` : 'No data'}</span>
+                </div>
+                {data.length ? (
+                    <ResponsiveContainer width="100%" height={260}>
+                        <ComposedChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                            <XAxis dataKey="month" />
+                            <YAxis
+                                label={{ value: 'Total (RM)', angle: -90, position: 'insideLeft' }}
+                                tickFormatter={value => value.toLocaleString('en-US')}
+                            />
+                            {!isPrinting && (
+                                <YAxis
+                                    yAxisId="right"
+                                    orientation="right"
+                                    label={{ value: 'Bill Count', angle: 90, position: 'insideRight' }}
+                                    tickFormatter={value => value.toLocaleString('en-US')}
+                                />
+                            )}
+                            {isPrinting && (
+                                <YAxis
+                                    yAxisId="right"
+                                    orientation="right"
+                                    label={{ value: 'Usage', angle: 90, position: 'insideRight' }}
+                                    tickFormatter={value => value.toLocaleString('en-US')}
+                                />
+                            )}
+                            <RechartTooltip
+                                formatter={(value: number, name: string) => {
+                                    if (name === 'Total Bills (RM)') {
+                                        return `RM ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                    }
+                                    return value.toLocaleString('en-US');
+                                }}
+                            />
+                            <Legend />
+                            <Bar dataKey="total" fill={palette.bar} radius={[4, 4, 0, 0]} name="Total Bills (RM)">
+                                <LabelList
+                                    dataKey="total"
+                                    position="top"
+                                    formatter={(value: number) => `RM ${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+                                    className="fill-gray-700 text-[10px]"
+                                />
+                            </Bar>
+                            {!isPrinting && (
+                                <Line
+                                    type="monotone"
+                                    dataKey="count"
+                                    stroke={palette.line}
+                                    strokeWidth={3}
+                                    dot={{ r: 3 }}
+                                    name="Bill Count"
+                                    yAxisId="right"
+                                />
+                            )}
+                            {isPrinting && (
+                                <>
+                                    <Line
+                                        type="monotone"
+                                        dataKey="bw"
+                                        stroke="#0ea5e9"
+                                        strokeWidth={3}
+                                        dot={{ r: 3 }}
+                                        name="Black & White"
+                                        yAxisId="right"
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="color"
+                                        stroke="#f97316"
+                                        strokeWidth={3}
+                                        dot={{ r: 3 }}
+                                        name="Color"
+                                        yAxisId="right"
+                                    />
+                                </>
+                            )}
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div className="text-sm text-gray-500">No data available.</div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-6">
             <Card className="mt-4 w-full">
                 <CardHeader>
-                    <CardTitle>Utility Bills - Monthly Total</CardTitle>
-                    {/* Debug info */}
+                    <CardTitle>Utility Bills by Service</CardTitle>
                     <div className="text-xs text-gray-500 mb-2">
                         Services: {serviceOptions.length} | Cost Centers: {costCenterOptions.length}
                     </div>
@@ -232,70 +443,33 @@ const UtilityDash: React.FC = () => {
                             </select>
                         </div>
                         <div className="flex gap-2 items-center">
-                            <span className="text-sm">Service:</span>
-                            <select
-                                className="border rounded px-2 py-1 text-sm"
-                                value={selectedService}
-                                onChange={e => setSelectedService(e.target.value)}
-                            >
-                                {serviceOptions.map(service => (
-                                    <option key={service} value={service}>{service}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex gap-2 items-center">
                             <span className="text-sm">Cost Center:</span>
-                            <select
-                                className="border rounded px-2 py-1 text-sm"
+                            <SingleSelect
+                                className="min-w-55"
+                                options={costCenterOptions}
                                 value={selectedCostCenter}
-                                onChange={e => setSelectedCostCenter(e.target.value)}
-                            >
-                                {costCenterOptions.map(cc => (
-                                    <option key={cc.id} value={cc.id}>{cc.name}</option>
-                                ))}
-                            </select>
+                                onValueChange={(v) => setSelectedCostCenter(v || 'All')}
+                                placeholder="Select cost center"
+                                searchPlaceholder="Search cost center..."
+                                clearable
+                            />
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent>
                     {loading ? (
                         <div>Loading...</div>
-                    ) : chartRows.length ? (
-                        <ResponsiveContainer width="100%" height={350}>
-                            <ComposedChart data={chartRows} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="month" />
-                                <YAxis
-                                    label={{ value: 'Total (RM)', angle: -90, position: 'insideLeft' }}
-                                    tickFormatter={value => value.toLocaleString('en-US')}
-                                />
-                                <YAxis
-                                    yAxisId="right"
-                                    orientation="right"
-                                    label={{ value: 'Bill Count', angle: 90, position: 'insideRight' }}
-                                    tickFormatter={value => value.toLocaleString('en-US')}
-                                />
-                                <RechartTooltip 
-                                    formatter={(value: number, name: string) => {
-                                        if (name === 'Total Bills (RM)') {
-                                            return `RM ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                        }
-                                        return value.toLocaleString('en-US');
-                                    }}
-                                />
-                                <Legend />
-                                <Bar dataKey="total" fill="#dc2626" radius={[4, 4, 0, 0]} name="Total Bills (RM)" />
-                                <Line 
-                                    type="monotone" 
-                                    dataKey="count" 
-                                    stroke="#f59e0b" 
-                                    strokeWidth={3} 
-                                    dot={{ r: 3 }} 
-                                    name="Bill Count" 
-                                    yAxisId="right" 
-                                />
-                            </ComposedChart>
-                        </ResponsiveContainer>
+                    ) : (serviceOptions.length || (serviceCharts['All Services']?.length ?? 0)) ? (
+                        <div className="space-y-6">
+                            {renderChartCard('All Services', 0)}
+                            {serviceOptions.filter(s => s.toLowerCase() !== 'telco').length > 0 && (
+                            <div className="grid gap-6 md:grid-cols-2">
+                                {serviceOptions
+                                    .filter(s => s.toLowerCase() !== 'telco')
+                                    .map((service, index) => renderChartCard(service, index + 1))}
+                            </div>
+                            )}
+                        </div>
                     ) : (
                         <div>No data available.</div>
                     )}
