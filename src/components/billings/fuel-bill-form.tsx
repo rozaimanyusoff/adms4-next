@@ -110,6 +110,27 @@ type DetailRowProps = {
     onRemove: (detail: FuelDetail) => void;
 };
 
+type ConsumerTableProps = {
+	filteredDetails: FuelDetail[];
+	editableDetails: FuelDetail[];
+	showEmptyRowsOnly: boolean;
+	search: string;
+	onSearchChange: (value: string) => void;
+	loadingDetails: boolean;
+	filledRowsCount: number;
+	totalRowsCount: number;
+	onToggleEmptyRows: () => void;
+	onAddFleetCard: () => void;
+	onEditDetail: (idx: number) => void;
+	onRemoveDetail: (detail: FuelDetail) => void;
+	onDetailChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
+	isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
+	isRowFilled: (detail: FuelDetail) => boolean;
+	handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	validateNumericInput: (value: string) => string;
+	detailIndexMap: Map<number, number>;
+};
+
 const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
     detail,
     displayIndex,
@@ -270,6 +291,138 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 });
 FuelDetailRow.displayName = 'FuelDetailRow';
 
+const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
+	filteredDetails,
+	editableDetails,
+	showEmptyRowsOnly,
+	search,
+	onSearchChange,
+	loadingDetails,
+	filledRowsCount,
+	totalRowsCount,
+	onToggleEmptyRows,
+	onAddFleetCard,
+	onEditDetail,
+	onRemoveDetail,
+	onDetailChange,
+	isRowRequiredFieldsFilled,
+	isRowFilled,
+	handleNumericInput,
+	validateNumericInput,
+	detailIndexMap,
+}) => {
+	return (
+		<div>
+			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+				<div className="flex items-center gap-4 flex-wrap">
+					<h3 className="text-xl font-semibold flex items-center gap-2">
+						Consumer Details
+						{loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
+					</h3>
+					<div className="flex items-center gap-2 flex-wrap">
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger>
+									<span className={`text-sm px-4 py-1.5 rounded-full ${filledRowsCount === totalRowsCount
+										? 'text-green-800 dark:bg-green-900 dark:text-green-200'
+										: 'text-red-500 dark:bg-yellow-900 dark:text-yellow-200'
+										}`}>
+										{filledRowsCount} / {totalRowsCount} filled
+									</span>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>
+										{filledRowsCount === totalRowsCount
+											? 'All entries have been filled'
+											: `${totalRowsCount - filledRowsCount} entries remaining to fill`
+										}
+									</p>
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+						<Button
+							type="button"
+							variant={showEmptyRowsOnly ? "default" : "outline"}
+							size="sm"
+							onClick={onToggleEmptyRows}
+							className="text-xs bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
+						>
+							{showEmptyRowsOnly ? "Show All" : "Show Empty Rows Only"}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={onAddFleetCard}
+							className="text-xs bg-green-600 text-white hover:bg-green-700 hover:text-white flex items-center gap-1"
+						>
+							<PlusCircle className="w-4 h-4" />
+							Add Fleet Card
+						</Button>
+					</div>
+				</div>
+				<Input
+					type="text"
+					placeholder="Search Asset or Card..."
+					value={search}
+					onChange={e => onSearchChange(e.target.value)}
+					className="w-full sm:w-56"
+				/>
+			</div>
+			{(showEmptyRowsOnly || search) && (
+				<div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+					{showEmptyRowsOnly && "Showing empty rows only"}
+					{showEmptyRowsOnly && search && " • "}
+					{search && `Filtered by: "${search}"`}
+					{" • "}{filteredDetails.length} row{filteredDetails.length !== 1 ? 's' : ''} displayed
+				</div>
+			)}
+			<div className="overflow-x-auto max-h-125 overflow-y-auto mb-6">
+				<table className="min-w-full border text-sm">
+					<thead className="bg-gray-200 sticky -top-1 z-10">
+						<tr>
+							<th className="border px-2 py-1.5 w-12">#</th>
+							<th className="border px-2 py-1.5">Fleet Card</th>
+							<th className="border px-2 py-1.5">Asset</th>
+							<th className="border px-2 py-1.5">Cost Center</th>
+							<th className="border px-2 py-1.5">Fuel Type</th>
+							<th className="border px-2 py-1.5">Purpose</th>
+							<th className="border px-2 py-1.5 text-right">Start ODO</th>
+							<th className="border px-2 py-1.5 text-right">End ODO</th>
+							<th className="border px-2 py-1.5 text-right">Total KM</th>
+							<th className="border px-2 py-1.5">Litre</th>
+							<th className="border px-2 py-1.5">Efficiency (KM/L)</th>
+							<th className="border px-2 py-1.5">Amount</th>
+						</tr>
+					</thead>
+					<tbody>
+						{filteredDetails.map((detail, idx) => {
+							const originalIndex = detailIndexMap.get(detail.s_id) ?? idx;
+							const showEmptyHighlight = showEmptyRowsOnly && !isRowFilled(detail);
+							return (
+								<FuelDetailRow
+									key={detail.s_id}
+									detail={detail}
+									displayIndex={idx + 1}
+									originalIndex={originalIndex}
+									showEmptyHighlight={showEmptyHighlight}
+									isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
+									handleNumericInput={handleNumericInput}
+									validateNumericInput={validateNumericInput}
+									onChange={onDetailChange}
+									onEdit={onEditDetail}
+									onRemove={onRemoveDetail}
+								/>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	);
+});
+ConsumerDetailsTable.displayName = 'ConsumerDetailsTable';
+
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, onLeaveHandlerReady }) => {
 	const router = useRouter();
 	// Add state for current statement ID (can change after creation)
@@ -353,6 +506,15 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		stmt_date: '',
 		stmt_litre: '',
 	});
+	const [headerDraft, setHeaderDraft] = useState({
+		stmt_no: '',
+		stmt_date: '',
+		stmt_litre: '',
+	});
+	// keep local draft in sync when header changes from API/draft restore
+	useEffect(() => {
+		setHeaderDraft(header);
+	}, [header]);
 
 	// Add state for loadingDetails
 	const [loadingDetails, setLoadingDetails] = useState(false);
@@ -363,15 +525,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
     const draftKey = React.useMemo(() => {
         return currentStmtId && currentStmtId > 0 ? null : 'fuel-bill-draft';
     }, [currentStmtId]);
-    const [draftLoaded, setDraftLoaded] = useState(false);
-    const [showCancelDialog, setShowCancelDialog] = useState(false);
-    const [draftDetailsRestored, setDraftDetailsRestored] = useState(false);
-    const draftSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const [draftLoaded, setDraftLoaded] = useState(false);
+	const [showCancelDialog, setShowCancelDialog] = useState(false);
+	const [draftDetailsRestored, setDraftDetailsRestored] = useState(false);
+	const draftSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	const lastDraftStringRef = React.useRef<string | null>(null);
 
 	const clearDraft = React.useCallback(() => {
 		if (!draftKey) return;
 		try {
 			localStorage.removeItem(draftKey);
+			lastDraftStringRef.current = null;
 		} catch {
 			// ignore storage errors
 		}
@@ -416,24 +580,43 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
     useEffect(() => {
         if (currentStmtId && currentStmtId > 0) return;
         if (!draftKey || !draftLoaded) return;
+		// Build draft payload once, then schedule a deferred write during browser idle time
         if (draftSaveTimer.current) {
             clearTimeout(draftSaveTimer.current);
         }
+		const payload = {
+			header,
+			summary,
+			selectedVendor,
+			editableDetails,
+			showEmptyRowsOnly,
+			draftDetailsRestored,
+		};
+		const serialized = JSON.stringify(payload);
+		// Skip redundant saves when nothing changed
+		if (lastDraftStringRef.current === serialized) {
+			return () => {
+				if (draftSaveTimer.current) {
+					clearTimeout(draftSaveTimer.current);
+				}
+			};
+		}
         draftSaveTimer.current = setTimeout(() => {
-            try {
-                const payload = {
-                    header,
-                    summary,
-                    selectedVendor,
-                    editableDetails,
-                    showEmptyRowsOnly,
-                    draftDetailsRestored,
-                };
-                localStorage.setItem(draftKey, JSON.stringify(payload));
-            } catch {
-                // ignore storage errors
-            }
-        }, 250);
+			const writeDraft = () => {
+				try {
+					localStorage.setItem(draftKey, serialized);
+					lastDraftStringRef.current = serialized;
+				} catch {
+					// ignore storage errors
+				}
+			};
+			// Prefer idle callback to avoid blocking UI; fall back to microtask
+			if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+				(window as any).requestIdleCallback(writeDraft, { timeout: 1500 });
+			} else {
+				setTimeout(writeDraft, 0);
+			}
+        }, 1000);
         return () => {
             if (draftSaveTimer.current) {
                 clearTimeout(draftSaveTimer.current);
@@ -493,8 +676,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	// Summarize amount by cost center
 
 
-	// Split cost center summary by category (project, staffcost)
-	const costCenterSummary = React.useMemo(() => {
+	// Split cost center summary by category (project, staffcost) — manual update
+	const [costCenterSummary, setCostCenterSummary] = useState<{ [key: string]: number }>({});
+	const computeCostCenterSummary = React.useCallback(() => {
 		const summary: { [key: string]: number } = {};
 		editableDetails.forEach(detail => {
 			const ccName = detail.asset?.costcenter?.name || 'Unknown';
@@ -506,6 +690,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		});
 		return summary;
 	}, [editableDetails]);
+	const handleUpdateCostCenterSummary = React.useCallback(() => {
+		setCostCenterSummary(computeCostCenterSummary());
+	}, [computeCostCenterSummary]);
+
 
 	// Helper to build form payload for API submission
 	const buildFormPayload = () => {
@@ -784,12 +972,15 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		setSummary(prev => ({ ...prev, [field]: value }));
 	};
 
-	const handleHeaderChange = (field: keyof typeof header, value: string) => {
-		setHeader(prev => ({ ...prev, [field]: value }));
+	const handleHeaderChange = (field: keyof typeof headerDraft, value: string) => {
+		setHeaderDraft(prev => ({ ...prev, [field]: value }));
 	};
+	const commitHeaderField = React.useCallback((field: keyof typeof headerDraft, value: string) => {
+		setHeader(prev => ({ ...prev, [field]: value }));
+	}, []);
 
 	// Helper for numeric input restriction
-	const handleNumericInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
+	const handleNumericInput = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
 		const allowed = [
 			'Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End', '.', '-', // allow dot and minus for floats/negatives
 		];
@@ -805,10 +996,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		) {
 			e.preventDefault();
 		}
-	};
+	}, []);
 
 	// Helper for numeric value validation without aggressive replacement
-	const validateNumericInput = (value: string): string => {
+	const validateNumericInput = React.useCallback((value: string): string => {
 		// Allow empty string
 		if (value === '') return '';
 
@@ -826,7 +1017,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		const withoutNegative = cleaned.replace(/-/g, '');
 
 		return hasNegative ? '-' + withoutNegative : withoutNegative;
-	};
+	}, []);
 
 	// Helper function to check if a detail row is considered "filled"
 	const isRowFilled = (detail: FuelDetail): boolean => {
@@ -861,6 +1052,17 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	// Calculate entry status
 	const filledRowsCount = editableDetails.filter(isRowFilled).length;
 	const totalRowsCount = editableDetails.length;
+	const detailIndexMap = React.useMemo(() => {
+		const map = new Map<number, number>();
+		editableDetails.forEach((d, idx) => {
+			map.set(d.s_id, idx);
+		});
+		return map;
+	}, [editableDetails]);
+	const toggleEmptyRowsOnly = React.useCallback(() => {
+		setShowEmptyRowsOnly(prev => !prev);
+	}, []);
+	const handleSearchChange = React.useCallback((value: string) => setSearch(value), []);
 
 	const handleVendorChange = async (fuelId: string) => {
 		setSelectedVendor(fuelId);
@@ -899,7 +1101,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	};
 
 	// Handle opening the ActionSidebar for editing detail row
-	const handleEditDetail = (index: number) => {
+	const handleEditDetail = React.useCallback((index: number) => {
 		const detail = editableDetails[index];
 		if (detail) {
 			setEditFormData({
@@ -912,7 +1114,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		}
 		setEditingDetailIndex(index);
 		setSidebarOpen(true);
-	};
+	}, [editableDetails]);
 
 	// Load active assets when opening the asset picker in edit sidebar
 	useEffect(() => {
@@ -1038,7 +1240,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	};
 
 	// Handle opening the Add Fleet Card sidebar to pick new entry for consumer details
-	const handleOpenAddFleetCard = async () => {
+	const handleOpenAddFleetCard = React.useCallback(async () => {
 		try {
 			// Fetch all available fleet cards
 			const response = await authenticatedApi.get<{ data: FleetCardWithAsset[] }>('/api/bills/fleet');
@@ -1054,7 +1256,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			console.error('Error fetching available fleet cards:', error);
 			toast.error('Failed to load available fleet cards');
 		}
-	};
+	}, [editableDetails]);
 
 	// Handle adding a new bill entry into consumer details
 	const handleAddFleetCard = async (fleetCard: FleetCardWithAsset) => {
@@ -1143,7 +1345,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	};
 
 	// Remove an existing bill entry
-	const handleRemoveDetail = async (detail: FuelDetail) => {
+	const handleRemoveDetail = React.useCallback(async (detail: FuelDetail) => {
 		const rowSid = detail?.s_id;
 		// Create mode: just remove locally
 		if (!currentStmtId || currentStmtId === 0) {
@@ -1189,7 +1391,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		} finally {
 			if (loadingToastId) toast.dismiss(loadingToastId);
 		}
-	};
+	}, [currentStmtId, editableDetails, availableFleetCardsToAdd, header.stmt_date]);
 
 	// Get current editing detail
 	const currentEditingDetail = editingDetailIndex !== null ? editableDetails[editingDetailIndex] : null;
@@ -1248,19 +1450,15 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					<div className="border rounded p-4 bg-white dark:bg-gray-900 shadow-sm">
 						<div className="flex items-center justify-between mb-2">
 							<h1 className="text-2xl font-semibold">Statement Info</h1>
-							{selectedVendor && getVendorLogo(selectedVendor) ? (
-
-								<img src={getVendorLogo(selectedVendor)} alt="vendor logo" className="w-12 h-12 object-contain rounded" />
-							) : null}
 						</div>
 						<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
 							<div className="flex flex-col">
-								<label className={`font-medium mb-1 ${errors.vendor ? 'text-red-500' : 'text-gray-800'}`}>
-									Issuer {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
-							</label>
+								<label className="font-medium mb-1 text-gray-800">
+									Issuer
+								</label>
 								<div className="flex items-center gap-3">
 									<Select value={selectedVendor} onValueChange={handleVendorChange}>
-										<SelectTrigger className={`w-full ${(!currentStmtId || currentStmtId === 0) && !selectedVendor ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}>
+										<SelectTrigger className="w-full">
 											<SelectValue placeholder="Select Issuer" />
 										</SelectTrigger>
 										<SelectContent>
@@ -1268,13 +1466,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 												<SelectLabel>Fuel Vendor</SelectLabel>
 												{vendors.map(v => (
 													<SelectItem key={v.fuel_id} value={String(v.fuel_id)}>
-														<div className="flex items-center gap-2">
-															{v.logo ? (
-
-																<img src={v.logo} alt={v.vendor} className="w-6 h-6 object-contain rounded" />
-															) : null}
-															<span>{v.vendor}</span>
-														</div>
+														<span>{v.vendor}</span>
 													</SelectItem>
 												))}
 											</SelectGroup>
@@ -1285,36 +1477,29 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								</div>
 							</div>
 							<div className="flex flex-col">
-								<label htmlFor="stmt_no" className={`font-medium mb-1 ${errors.stmt_no ? 'text-red-500' : 'text-gray-800'}`}>
-									Statement No {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+								<label htmlFor="stmt_no" className="font-medium mb-1 text-gray-800">
+									Statement No
 								</label>
 								<Input
 									id="stmt_no"
 									type="text"
-									value={header.stmt_no}
+									value={headerDraft.stmt_no}
 									onChange={e => handleHeaderChange('stmt_no', e.target.value)}
-									className={`w-full text-right uppercase ${(!currentStmtId || currentStmtId === 0) && !header.stmt_no.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
+									onBlur={e => commitHeaderField('stmt_no', e.target.value)}
+									className="w-full text-right uppercase"
 								/>
 							</div>
 
 							<div className="flex flex-col">
-								<label htmlFor="stmt_date" className={`font-medium mb-1 ${errors.stmt_date ? 'text-red-500' : 'text-gray-800'}`}>
-									Statement Date {(!currentStmtId || currentStmtId === 0) && <span className="text-red-500">*</span>}
+								<label htmlFor="stmt_date" className="font-medium mb-1 text-gray-800">
+									Statement Date
 								</label>
 								<Input
 									id="stmt_date"
 									type="date"
-									value={header.stmt_date}
+									value={headerDraft.stmt_date}
 									onChange={e => handleHeaderChange('stmt_date', e.target.value)}
-									className={`w-full text-right ${(!currentStmtId || currentStmtId === 0) && !header.stmt_date.trim() ? 'ring-2 ring-yellow-300 ring-opacity-50' : ''}`}
-								/>
-							</div>
-							<div className="flex flex-col">
-								<span className="font-medium mb-1">Total Litre</span>
-								<Input
-									type="text"
-									value={editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
-									readOnly
+									onBlur={e => commitHeaderField('stmt_date', e.target.value)}
 									className="w-full text-right"
 								/>
 							</div>
@@ -1389,6 +1574,15 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 											className="w-full text-right bg-gray-100"
 										/>
 									</div>
+									<div className="flex flex-col">
+										<span className="font-medium mb-1">Total Litre</span>
+										<Input
+											type="text"
+											value={editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
+											readOnly
+											className="w-full text-right"
+										/>
+									</div>
 								</div>
 							</div>
 							{/* Stack for RON95, RON97, Diesel */}
@@ -1447,272 +1641,34 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						</div>
 					</div>
 					<div>
-						<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
-							<div className="flex items-center gap-4 flex-wrap">
-								<h3 className="text-xl font-semibold flex items-center gap-2">
-									Consumer Details
-									{loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
-								</h3>
-								<div className="flex items-center gap-2 flex-wrap">
-									<TooltipProvider>
-										<Tooltip>
-											<TooltipTrigger>
-												<span className={`text-sm px-4 py-1.5 rounded-full ${filledRowsCount === totalRowsCount
-													? 'text-green-800 dark:bg-green-900 dark:text-green-200'
-													: 'text-red-500 dark:bg-yellow-900 dark:text-yellow-200'
-													}`}>
-													{filledRowsCount} / {totalRowsCount} filled
-												</span>
-											</TooltipTrigger>
-											<TooltipContent>
-												<p>
-													{filledRowsCount === totalRowsCount
-														? 'All entries have been filled'
-														: `${totalRowsCount - filledRowsCount} entries remaining to fill`
-													}
-												</p>
-											</TooltipContent>
-										</Tooltip>
-									</TooltipProvider>
-									<Button
-										type="button"
-										variant={showEmptyRowsOnly ? "default" : "outline"}
-										size="sm"
-										onClick={() => setShowEmptyRowsOnly(!showEmptyRowsOnly)}
-										className="text-xs bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
-									>
-										{showEmptyRowsOnly ? "Show All" : "Show Empty Rows Only"}
-									</Button>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={handleOpenAddFleetCard}
-										className="text-xs bg-green-600 text-white hover:bg-green-700 hover:text-white flex items-center gap-1"
-									>
-										<PlusCircle className="w-4 h-4" />
-										Add Fleet Card
-									</Button>
-								</div>
-							</div>
-							<Input
-								type="text"
-								placeholder="Search Asset or Card..."
-								value={search}
-								onChange={e => setSearch(e.target.value)}
-								className="w-full sm:w-56"
-							/>
-						</div>
-						{(showEmptyRowsOnly || search) && (
-							<div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-								{showEmptyRowsOnly && "Showing empty rows only"}
-								{showEmptyRowsOnly && search && " • "}
-								{search && `Filtered by: "${search}"`}
-								{" • "}{filteredDetails.length} row{filteredDetails.length !== 1 ? 's' : ''} displayed
-							</div>
-						)}
-						<div className="overflow-x-auto max-h-125 overflow-y-auto mb-6">
-							<table className="min-w-full border text-sm">
-								<thead className="bg-gray-200 sticky -top-1 z-10">
-									<tr>
-										<th className="border px-2 py-1.5 w-12">#</th>
-										<th className="border px-2 py-1.5">Fleet Card</th>
-										<th className="border px-2 py-1.5">Asset</th>
-										<th className="border px-2 py-1.5">Cost Center</th>
-										<th className="border px-2 py-1.5">Fuel Type</th>
-										<th className="border px-2 py-1.5">Purpose</th>
-										<th className="border px-2 py-1.5 text-right">Start ODO</th>
-										<th className="border px-2 py-1.5 text-right">End ODO</th>
-										<th className="border px-2 py-1.5 text-right">Total KM</th>
-										<th className="border px-2 py-1.5">Litre</th>
-										<th className="border px-2 py-1.5">Efficiency (KM/L)</th>
-										<th className="border px-2 py-1.5">Amount</th>
-									</tr>
-								</thead>
-								<tbody>
-									{filteredDetails.map((detail, idx) => {
-										const isEmpty = !isRowFilled(detail);
-										const originalIndex = editableDetails.findIndex(d => d.s_id === detail.s_id);
-										return (
-											<tr
-												key={detail.s_id}
-												className={showEmptyRowsOnly && isEmpty ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}
-											>
-												<td className="border px-2 text-center">
-													<div className="flex items-center justify-center gap-1">
-														<span>{idx + 1}</span>
-														<TooltipProvider>
-															<Tooltip>
-																<TooltipTrigger asChild>
-																	<Button
-																		type="button"
-																		variant="ghost"
-																		size="sm"
-																		onClick={() => handleEditDetail(originalIndex)}
-																		className="p-1 h-6 w-6 hover:bg-blue-100"
-																	>
-																		<Edit3 size={12} className="text-blue-600" />
-																	</Button>
-																</TooltipTrigger>
-																<TooltipContent>
-																	<p>Edit Fleet Card, Cost Center, Fuel Type & Purpose</p>
-																</TooltipContent>
-															</Tooltip>
-														</TooltipProvider>
-														<TooltipProvider>
-															<Tooltip>
-																<TooltipTrigger asChild>
-																	<Button
-																		type="button"
-																		variant="ghost"
-																		size="sm"
-																		onClick={() => handleRemoveDetail(detail)}
-																		className="p-1 h-6 w-6 hover:bg-red-100"
-																	>
-																		<Trash2 size={12} className="text-red-600" />
-																	</Button>
-																</TooltipTrigger>
-																<TooltipContent>
-																	<p>Remove Entry</p>
-																</TooltipContent>
-															</Tooltip>
-														</TooltipProvider>
-													</div>
-												</td>
-												<td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
-												<td className="border px-2">{detail.asset?.register_number || ''}</td>
-												<td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
-												<td className="border px-2">{detail.asset?.fuel_type || ''}</td>
-												<td className="border px-2">{detail.asset?.purpose || ''}</td>
-												<td className="border text-right">
-													<TooltipProvider>
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Input
-																	type="text"
-																	value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
-																	onKeyDown={handleNumericInput}
-																	onChange={e => handleDetailChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
-																	readOnly={!isRowRequiredFieldsFilled(detail)}
-																	className={`w-full text-right border-0 rounded-none ${!isRowRequiredFieldsFilled(detail)
-																		? 'bg-gray-200 cursor-not-allowed'
-																		: 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-																		}`}
-																/>
-															</TooltipTrigger>
-															{!isRowRequiredFieldsFilled(detail) && (
-																<TooltipContent>
-																	<p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-																</TooltipContent>
-															)}
-														</Tooltip>
-													</TooltipProvider>
-												</td>
-												<td className="border text-right">
-													<TooltipProvider>
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Input
-																	type="text"
-																	value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
-																	onKeyDown={handleNumericInput}
-																	onChange={e => handleDetailChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
-																	readOnly={!isRowRequiredFieldsFilled(detail)}
-																	className={`w-full text-right border-0 rounded-none ${!isRowRequiredFieldsFilled(detail)
-																		? 'bg-gray-200 cursor-not-allowed'
-																		: 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-																		}`}
-																/>
-															</TooltipTrigger>
-															{!isRowRequiredFieldsFilled(detail) && (
-																<TooltipContent>
-																	<p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-																</TooltipContent>
-															)}
-														</Tooltip>
-													</TooltipProvider>
-												</td>
-												<td className="border text-right">
-													<Input
-														type="text"
-														value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
-														readOnly
-														tabIndex={-1}
-														className="w-full text-right border-0 rounded-none bg-gray-100"
-													/>
-												</td>
-												<td className="border text-right">
-													<TooltipProvider>
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Input
-																	type="text"
-																	value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && detail.total_litre !== '' ? detail.total_litre : 0}
-																	onKeyDown={handleNumericInput}
-																	onChange={e => handleDetailChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
-																	readOnly={!isRowRequiredFieldsFilled(detail)}
-																	className={`w-full text-right border-0 rounded-none ${!isRowRequiredFieldsFilled(detail)
-																		? 'bg-gray-200 cursor-not-allowed'
-																		: 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-																		}`}
-																/>
-															</TooltipTrigger>
-															{!isRowRequiredFieldsFilled(detail) && (
-																<TooltipContent>
-																	<p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-																</TooltipContent>
-															)}
-														</Tooltip>
-													</TooltipProvider>
-												</td>
-												<td className="border text-right">
-													<Input
-														type="text"
-														value={
-															detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) && Number(detail.total_litre) !== 0
-																? (Number(detail.total_km) / Number(detail.total_litre)).toFixed(2)
-																: '0.00'
-														}
-														readOnly
-														tabIndex={-1}
-														className="w-full text-right border-0 rounded-none bg-gray-100"
-													/>
-												</td>
-												<td className="border text-right">
-													<TooltipProvider>
-														<Tooltip>
-															<TooltipTrigger asChild>
-																<Input
-																	type="text"
-																	value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) && detail.amount !== '' ? detail.amount : 0}
-																	onKeyDown={handleNumericInput}
-																	onChange={e => handleDetailChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
-																	readOnly={!isRowRequiredFieldsFilled(detail)}
-																	className={`w-full text-right border-0 rounded-none ${!isRowRequiredFieldsFilled(detail)
-																		? 'bg-gray-200 cursor-not-allowed'
-																		: 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-																		}`}
-																/>
-															</TooltipTrigger>
-															{!isRowRequiredFieldsFilled(detail) && (
-																<TooltipContent>
-																	<p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-																</TooltipContent>
-															)}
-														</Tooltip>
-													</TooltipProvider>
-												</td>
-											</tr>
-										);
-									})}
-								</tbody>
-							</table>
-						</div>
+						<ConsumerDetailsTable
+							filteredDetails={filteredDetails}
+							editableDetails={editableDetails}
+							showEmptyRowsOnly={showEmptyRowsOnly}
+							search={search}
+							onSearchChange={handleSearchChange}
+							loadingDetails={loadingDetails}
+							filledRowsCount={filledRowsCount}
+							totalRowsCount={totalRowsCount}
+							onToggleEmptyRows={toggleEmptyRowsOnly}
+							onAddFleetCard={handleOpenAddFleetCard}
+							onEditDetail={handleEditDetail}
+							onRemoveDetail={handleRemoveDetail}
+							onDetailChange={handleDetailChange}
+							isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
+							isRowFilled={isRowFilled}
+							handleNumericInput={handleNumericInput}
+							validateNumericInput={validateNumericInput}
+							detailIndexMap={detailIndexMap}
+						/>
 					</div>
 				</div>
 				<div className="pt-4 w-full lg:max-w-sm space-y-6">
 					<div className="w-full border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
-						<h3 className="text-lg font-semibold mb-4">Amount by Cost Center</h3>
+						<div className="flex items-center justify-between mb-4 gap-2">
+							<h3 className="text-lg font-semibold">Cost Center Breakdown</h3>
+							<Button size="sm" variant="default" onClick={handleUpdateCostCenterSummary}>Update</Button>
+						</div>
 						<table className="min-w-full border text-xs">
 							<thead className="bg-gray-200">
 								<tr>
@@ -1721,12 +1677,18 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								</tr>
 							</thead>
 							<tbody>
-								{Object.entries(costCenterSummary).map(([cc, amt]) => (
-									<tr key={cc}>
-										<td className="border px-2 py-1.5">{cc}</td>
-										<td className="border px-2 py-1.5 text-right">{amt.toFixed(2)}</td>
+								{Object.entries(costCenterSummary).length === 0 ? (
+									<tr>
+										<td className="border px-2 py-3 text-center" colSpan={2}>No data. Click Update to calculate.</td>
 									</tr>
-								))}
+								) : (
+									Object.entries(costCenterSummary).map(([cc, amt]) => (
+										<tr key={cc}>
+											<td className="border px-2 py-1.5">{cc}</td>
+											<td className="border px-2 py-1.5 text-right">{amt.toFixed(2)}</td>
+										</tr>
+									))
+								)}
 								<tr>
 									<td className="border px-2 py-1.5 font-semibold">Total</td>
 									<td className="border px-2 py-1.5 text-right font-semibold">
@@ -2036,10 +1998,3 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 };
 
 export default FuelMtnDetail;
-
-/*
-ToDo:
-- implement logic that sum of amount column will be auto calculated and displayed in subtotal & total field
-- implement submit/save handler for the form: all field in 'Statement Info' to be stored on parent table fuel_stmt while details to be stored on fuel_stmt_detail (asset_id, stmt_date, start_odo, end_odo, total_km, total_litre, amount)
-
-*/
