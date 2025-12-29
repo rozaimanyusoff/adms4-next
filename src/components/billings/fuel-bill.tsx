@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Plus, Printer, Download, Trash2 } from 'lucide-react';
+import { Plus, PlusCircle, Printer, Download, Trash2 } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -220,6 +220,14 @@ const FuelBill = () => {
             onClick={() => router.push('/billings/fuel/bill/new')}
           >
             <Plus size={18} />
+          </Button>
+          <Button
+            variant={'outline'}
+            onClick={() => router.push('/billings/fuel/bill2/new')}
+            className="gap-1"
+          >
+            <PlusCircle size={18} />
+            <span className="hidden sm:inline">New v2</span>
           </Button>
           
         </div>

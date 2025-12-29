@@ -705,7 +705,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
               </Select>
             </div>
 
-            <div className="mt-3 space-y-2 max-h-[700px] overflow-y-auto">
+            <div className="mt-3 space-y-2 max-h-175 overflow-y-auto">
               {displayParts.length === 0 ? (
                 <div className="text-sm text-gray-500">No parts available</div>
               ) : (

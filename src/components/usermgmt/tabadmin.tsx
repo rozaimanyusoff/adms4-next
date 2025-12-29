@@ -10,6 +10,8 @@ import CLogs from "./logs";
 import Workflows from "./workflows";
 import ManagementModule from "./mgmt-module";
 import PermissionMgmt from "./permission";
+import AdminGuide from "./admin-guide";
+import { CircleHelp } from "lucide-react";
 
 const UserMgmtMain = () => {
     const tabTitles = [
@@ -21,6 +23,7 @@ const UserMgmtMain = () => {
         { value: "permission", label: "Permissions" },
         { value: "module", label: "Modules" },
         { value: "logs", label: "Logs" },
+        { value: "guide", label: "Admin Guide", icon: CircleHelp },
     ];
 
     const tabComponents: Record<string, React.ReactNode> = {
@@ -32,6 +35,7 @@ const UserMgmtMain = () => {
         permission: <PermissionMgmt />,
         module: <ManagementModule />,
         logs: <CLogs />,
+        guide: <AdminGuide />,
     };
 
     const validTabValues = tabTitles.map(t => t.value);
@@ -59,7 +63,10 @@ const UserMgmtMain = () => {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList>
                     {tabTitles.map(tab => (
-                        <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+                        <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-1">
+                            {tab.icon ? <tab.icon className="h-4 w-4 text-blue-600" /> : null}
+                            {tab.label}
+                        </TabsTrigger>
                     ))}
                 </TabsList>
                 {tabTitles.map(tab => (

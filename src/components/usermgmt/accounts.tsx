@@ -47,12 +47,15 @@ interface PendingUser {
     ip: string;
     user_agent: string;
     status: number;
+    method?: string;
 }
 interface PendingUsersApiResponse {
     status: string;
     message: string;
     data: PendingUser[];
 }
+
+const SUMMARY_FILTER_KEY = 'userMgmtSummaryFilter';
 
 const UserManagement = () => {
     const gridRef = useRef<any>(null);
@@ -84,7 +87,14 @@ const UserManagement = () => {
     const [modalError, setModalError] = useState<string | null>(null);
     const [toastState, setToastState] = useState<{ open: boolean, message: string, color: string } | null>(null);
     const [selectedUsersSearch, setSelectedUsersSearch] = useState("");
-    const [summaryFilter, setSummaryFilter] = useState<null | 'active' | 'inactive' | 'pending' | 'suspended'>(null);
+    const [summaryFilter, setSummaryFilter] = useState<null | 'active' | 'inactive' | 'pending' | 'suspended'>(() => {
+        if (typeof window === 'undefined') return null;
+        const stored = localStorage.getItem(SUMMARY_FILTER_KEY);
+        if (stored === 'active' || stored === 'inactive' || stored === 'pending' || stored === 'suspended') {
+            return stored;
+        }
+        return null;
+    });
     const [summaryLoading, setSummaryLoading] = useState(false);
     // Add state for pending users and loading
     const [pendingUsers, setPendingUsers] = useState<(PendingUser & { row_number: number })[]>([]);
@@ -213,6 +223,16 @@ const UserManagement = () => {
             });
          
     }, []);
+
+    // Persist summary filter selection
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (summaryFilter) {
+            localStorage.setItem(SUMMARY_FILTER_KEY, summaryFilter);
+        } else {
+            localStorage.removeItem(SUMMARY_FILTER_KEY);
+        }
+    }, [summaryFilter]);
 
     const sortedUsers = useMemo(() => {
         if (!sortConfig || !sortConfig.key) return users;
@@ -391,6 +411,7 @@ const UserManagement = () => {
     // Columns for pending approval grid
     const pendingColumns: ColumnDef<PendingUser & { row_number: number }>[] = [
         { key: "row_number", header: "#", render: row => row.row_number },
+        { key: "method", header: " Reg. Method", sortable: true, filter: "singleSelect", render: row => row.method || '-' },
         { key: "fname", header: "Full Name", sortable: true, filter: "input" },
         { key: "email", header: "Email", sortable: true, filter: "input" },
         { key: "contact", header: "Contact", sortable: true, filter: "input" },
