@@ -11,7 +11,7 @@ import { Input } from "@components/ui/input";
 // Removed Select imports (no longer needed after removing individual invite form)
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 // Removed dropdown menu imports (no longer used after simplifying Invite button)
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { format, formatDistanceToNow, formatDistance, isToday, isFuture, differenceInSeconds, differenceInMinutes, differenceInHours, differenceInDays } from 'date-fns';
 import { Loader2 } from "lucide-react";
@@ -103,6 +103,21 @@ const UserManagement = () => {
     // New states for sidebars
     // Removed showInviteSidebar (individual invite sidebar eliminated)
     const [showBulkInviteSidebar, setShowBulkInviteSidebar] = useState(false);
+    const [showInviteChooser, setShowInviteChooser] = useState(false);
+    const [showPersonalInviteSidebar, setShowPersonalInviteSidebar] = useState(false);
+    const [personalInvite, setPersonalInvite] = useState({
+        type: 'employee',
+        fullname: '',
+        email: '',
+        contact: '',
+        ramco_id: '',
+    });
+    const [personalSuggestions, setPersonalSuggestions] = useState<any[]>([]);
+    const [personalSearchLoading, setPersonalSearchLoading] = useState(false);
+    const personalSearchTimer = useRef<NodeJS.Timeout | null>(null);
+    // Delete users (active list) confirmation
+    const [showDeleteUsersDialog, setShowDeleteUsersDialog] = useState(false);
+    const [showDeleteUsersConfirmDialog, setShowDeleteUsersConfirmDialog] = useState(false);
 
     useEffect(() => {
         const fetchUsers = async () => {
@@ -917,8 +932,104 @@ const UserManagement = () => {
 
     // Handle Bulk Invite click
     const handleBulkInviteClick = () => {
-        setShowBulkInviteDialog(true);
+        setShowBulkInviteSidebar(true);
         if (bulkEmployees.length === 0) fetchEmployees();
+    };
+
+    const handlePersonalInviteClick = () => {
+        setShowPersonalInviteSidebar(true);
+    };
+
+    const handleSubmitPersonalInvite = async () => {
+        const fullname = personalInvite.fullname.trim();
+        const email = personalInvite.email.trim();
+        const contact = personalInvite.contact.trim();
+        if (!fullname || !email) {
+            toast.error('Fullname and Personal Email are required.');
+            return;
+        }
+        const user_type = personalInvite.type === 'employee' ? 1 : 2;
+        const isEmployee = personalInvite.type === 'employee';
+        const payload = [{
+            fullname,
+            email,
+            contact,
+            user_type,
+            username: isEmployee && personalInvite.ramco_id ? personalInvite.ramco_id : email,
+        }];
+        await inviteUsers(payload, () => {
+            setShowPersonalInviteSidebar(false);
+            setPersonalInvite({ type: 'employee', fullname: '', email: '', contact: '', ramco_id: '' });
+            setPersonalSuggestions([]);
+        });
+    };
+
+    const handlePersonalSearch = (value: string) => {
+        setPersonalInvite(prev => ({ ...prev, fullname: value }));
+        if (personalInvite.type !== 'employee') {
+            setPersonalSuggestions([]);
+            return;
+        }
+        if (personalSearchTimer.current) clearTimeout(personalSearchTimer.current);
+        if (!value || value.trim().length < 2) {
+            setPersonalSuggestions([]);
+            return;
+        }
+        personalSearchTimer.current = setTimeout(async () => {
+            try {
+                setPersonalSearchLoading(true);
+                const res = await authenticatedApi.get('/api/assets/employees/search', { params: { q: value.trim() } });
+                const payload = (res.data || {}) as any;
+                const data = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.result) ? payload.result : [];
+                if (Array.isArray(data)) {
+                    setPersonalSuggestions(data);
+                } else {
+                    setPersonalSuggestions([]);
+                }
+            } catch {
+                setPersonalSuggestions([]);
+            } finally {
+                setPersonalSearchLoading(false);
+            }
+        }, 250);
+    };
+
+    const handleSelectSuggestion = (item: any) => {
+        const fullname = item.full_name || item.name || '';
+        const email = item.email || '';
+        const contact = item.contact || item.phone || '';
+        const ramco_id = item.ramco_id || '';
+        setPersonalInvite(prev => ({
+            ...prev,
+            type: 'employee',
+            fullname,
+            email,
+            contact,
+            ramco_id,
+        }));
+        setPersonalSuggestions([]);
+    };
+
+    const handleRemoveUsers = async () => {
+        if (selectedUsers.length === 0) return;
+        setModalLoading(true);
+        setModalError(null);
+        try {
+            const ids = selectedUsers.map(u => u.id).join(',');
+            await authenticatedApi.delete(`/api/users/${ids}`);
+            toast.success('User(s) removed.');
+            clearUserSelection();
+            await refreshUsers();
+            setShowSidebar(false);
+            setShowDeleteUsersDialog(false);
+            setShowDeleteUsersConfirmDialog(false);
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || 'Failed to remove user(s).';
+            setModalError(msg);
+            toast.error(msg);
+        } finally {
+            setModalLoading(false);
+        }
     };
 
     // Handle inviting selected employees
@@ -1035,9 +1146,21 @@ const UserManagement = () => {
                         Show pending approval
                     </label>
                 </div>
-                <Button variant="default" type="button" onClick={() => setShowBulkInviteSidebar(true)}>
-                    <Plus /> Invite
-                </Button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="default" type="button">
+                            <Plus /> Invite
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={handleBulkInviteClick}>
+                            From Employee Records
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handlePersonalInviteClick}>
+                            Using Personal Email
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
             {(() => {
                 const isPending = summaryFilter === 'pending';
@@ -1340,6 +1463,15 @@ const UserManagement = () => {
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>
+                                {/* Remove Users with double confirmation */}
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="min-w-30"
+                                    onClick={() => { setShowDeleteUsersDialog(true); setModalError(null); }}
+                                >
+                                    Remove Users
+                                </Button>
                             </div>
                             {/* Search and user list */}
                             <div className="flex items-center gap-2 mb-2">
@@ -1405,6 +1537,111 @@ const UserManagement = () => {
                             setSelectedUsers([]);
                         }
                     }}
+                />
+            )}
+            {/* Personal Email Invite Sidebar */}
+            {showPersonalInviteSidebar && (
+                <ActionSidebar
+                    title="Invite via Personal Email"
+                    size="sm"
+                    onClose={() => {
+                        setShowPersonalInviteSidebar(false);
+                        setPersonalInvite({ type: 'employee', fullname: '', email: '', contact: '', ramco_id: '' });
+                    }}
+                    content={
+                        <div className="space-y-3">
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium">User Type</label>
+                                <div className="flex gap-4 items-center">
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="personal-invite-type"
+                                            value="employee"
+                                            checked={personalInvite.type === 'employee'}
+                                            onChange={() => setPersonalInvite(prev => ({ ...prev, type: 'employee', ramco_id: '' }))}
+                                            className="h-4 w-4"
+                                        />
+                                        <span>Employee</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="personal-invite-type"
+                                            value="non-employee"
+                                            checked={personalInvite.type === 'non-employee'}
+                                            onChange={() => setPersonalInvite(prev => ({ ...prev, type: 'non-employee', ramco_id: '', fullname: '', email: '', contact: '' }))}
+                                            className="h-4 w-4"
+                                        />
+                                        <span>Non-employee</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium">Fullname</label>
+                                <Input
+                                    value={personalInvite.fullname}
+                                    onChange={e => handlePersonalSearch(e.target.value)}
+                                    placeholder="Enter full name"
+                                />
+                                {personalInvite.type === 'employee' && (
+                                    <>
+                                        {(personalSearchLoading && personalInvite.fullname.trim().length >= 2) && (
+                                            <div className="text-xs text-gray-500">Searching...</div>
+                                        )}
+                                        {personalSuggestions.length > 0 && (
+                                            <div className="border rounded bg-white shadow max-h-48 overflow-y-auto mt-1">
+                                                {personalSuggestions.map((item: any) => (
+                                                    <div
+                                                        key={item.id || item.email || item.full_name}
+                                                        className="px-3 py-2 hover:bg-slate-100 cursor-pointer"
+                                                        onClick={() => handleSelectSuggestion(item)}
+                                                    >
+                                                        <div className="text-sm font-semibold">{item.full_name || item.name}</div>
+                                                        <div className="text-xs text-gray-600">{item.email}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                            {personalInvite.ramco_id && (
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-sm font-medium">Username (RAMCO ID)</label>
+                                    <Input value={personalInvite.ramco_id} readOnly />
+                                </div>
+                            )}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium">Personal Email</label>
+                                <Input
+                                    type="email"
+                                    value={personalInvite.email}
+                                    onChange={e => setPersonalInvite(prev => ({ ...prev, email: e.target.value }))}
+                                    placeholder="email@example.com"
+                                />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium">Contact No</label>
+                                <Input
+                                    value={personalInvite.contact}
+                                    onChange={e => setPersonalInvite(prev => ({ ...prev, contact: e.target.value }))}
+                                    placeholder="Optional"
+                                />
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <Button variant="outline" type="button" onClick={() => {
+                                    setShowPersonalInviteSidebar(false);
+                                    setPersonalInvite({ type: 'employee', fullname: '', email: '', contact: '', ramco_id: '' });
+                                }}>
+                                    Cancel
+                                </Button>
+                                <Button type="button" variant="default" onClick={handleSubmitPersonalInvite} disabled={inviteLoading}>
+                                    {inviteLoading ? 'Sending...' : 'Send Invite'}
+                                </Button>
+                            </div>
+                        </div>
+                    }
                 />
             )}
             {/* Bulk Invite Employees Sidebar */}
@@ -1504,6 +1741,48 @@ const UserManagement = () => {
                     }
                 />
             )}
+            {/* Remove Users double confirmation */}
+            <AlertDialog open={showDeleteUsersDialog} onOpenChange={(open) => { setShowDeleteUsersDialog(open); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm removal</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogDescription className="text-sm text-red-600">
+                        You are about to remove {selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''}.
+                    </AlertDialogDescription>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel asChild>
+                            <Button variant="secondary" size="sm" onClick={() => setShowDeleteUsersDialog(false)}>Cancel</Button>
+                        </AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <Button variant="destructive" size="sm" onClick={() => { setShowDeleteUsersDialog(false); setShowDeleteUsersConfirmDialog(true); }}>
+                                Continue
+                            </Button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={showDeleteUsersConfirmDialog} onOpenChange={(open) => setShowDeleteUsersConfirmDialog(open)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Final confirmation</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogDescription className="text-sm text-red-600">
+                        This action permanently removes the selected user(s) and cannot be undone.
+                    </AlertDialogDescription>
+                    {modalError && <div className="text-xs text-red-600 mb-2">{modalError}</div>}
+                    <AlertDialogFooter>
+                        <AlertDialogCancel asChild>
+                            <Button variant="secondary" size="sm" onClick={() => { setShowDeleteUsersConfirmDialog(false); setShowDeleteUsersDialog(false); }}>Cancel</Button>
+                        </AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <Button variant="destructive" size="sm" onClick={handleRemoveUsers} disabled={modalLoading}>
+                                {modalLoading ? 'Removing...' : 'Yes, remove'}
+                            </Button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             {/* Confirmation Modal for all actions */}
             {modalOpen && (
                 <AlertDialog open={!!modalOpen} onOpenChange={open => { if (!open) setModalOpen(null); }}>
