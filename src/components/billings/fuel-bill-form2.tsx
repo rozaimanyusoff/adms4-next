@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, Edit3, ArrowBigRight, ArrowBigLeft, Trash2 } from 'lucide-react';
+import { Loader2, Trash2, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import ActionSidebar from '@/components/ui/action-aside';
 
 interface Asset {
-	asset_id: number;
+	id: number;
 	register_number: string;
 	fuel_type: string;
 	costcenter?: CostCenter | null;
@@ -28,12 +27,8 @@ interface CostCenter {
 }
 interface Location {
 	id: number;
-	name: string;
-}
-
-interface District {
-	id: number;
-	code: string;
+	name?: string;
+	code?: string;
 }
 
 interface FleetCard {
@@ -80,21 +75,23 @@ interface FuelBillDetail {
 }
 
 interface FuelMtnDetailProps {
-    stmtId: number;
-    onLeaveHandlerReady?: (fn: () => void) => void;
+	stmtId: number;
+	onLeaveHandlerReady?: (fn: () => void) => void;
 }
 
 type DetailRowProps = {
-    detail: FuelDetail;
-    displayIndex: number;
-    originalIndex: number;
-    showEmptyHighlight: boolean;
-    isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
-    handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-    validateNumericInput: (value: string) => string;
-    onChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
-    onEdit: (idx: number) => void;
-    onRemove: (detail: FuelDetail) => void;
+	detail: FuelDetail;
+	displayIndex: number;
+	originalIndex: number;
+	showEmptyHighlight: boolean;
+	isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
+	handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+	validateNumericInput: (value: string) => string;
+	onChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
+	onFleetCardChange: (idx: number, cardNo: string) => void;
+	onRemove: (detail: FuelDetail) => void;
+	cardFieldsReady: boolean;
+	isDuplicateCard: (detail: FuelDetail) => boolean;
 };
 
 type ConsumerTableProps = {
@@ -103,172 +100,174 @@ type ConsumerTableProps = {
 	search: string;
 	onSearchChange: (value: string) => void;
 	loadingDetails: boolean;
-	onEditDetail: (idx: number) => void;
 	onRemoveDetail: (detail: FuelDetail) => void;
 	onDetailChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
+	onFleetCardChange: (idx: number, cardNo: string) => void;
 	isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
 	handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 	validateNumericInput: (value: string) => string;
 	detailIndexMap: Map<number, number>;
+	isRowFilled: (detail: FuelDetail) => boolean;
+	cardFieldsReady: boolean;
 };
 
 const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
-    detail,
-    displayIndex,
-    originalIndex,
-    showEmptyHighlight,
-    isRowRequiredFieldsFilled,
-    handleNumericInput,
-    validateNumericInput,
-    onChange,
-    onEdit,
-    onRemove,
+	detail,
+	displayIndex,
+	originalIndex,
+	showEmptyHighlight,
+	isRowRequiredFieldsFilled,
+	handleNumericInput,
+	validateNumericInput,
+	onChange,
+	onFleetCardChange,
+	onRemove,
+	cardFieldsReady,
+	isDuplicateCard,
 }) => {
     const isRequired = isRowRequiredFieldsFilled(detail);
-    return (
-        <tr className={showEmptyHighlight ? 'bg-yellow-50 dark:bg-yellow-900/20' : ''}>
-            <td className="border px-2 text-center">
-                <div className="flex items-center justify-center gap-1">
-                    <span>{displayIndex}</span>
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onEdit(originalIndex)}
-                                    className="p-1 h-6 w-6 hover:bg-blue-100"
-                                >
-                                    <Edit3 size={12} className="text-blue-600" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>Edit Fleet Card, Cost Center, Fuel Type & Purpose</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onRemove(detail)}
-                                    className="p-1 h-6 w-6 hover:bg-red-100"
-                                >
-                                    <Trash2 size={12} className="text-red-600" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>Remove Entry</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                </div>
-            </td>
-            <td className="border px-2">{detail.fleetcard?.card_no || ''}</td>
-            <td className="border px-2">{detail.asset?.register_number || ''}</td>
-            <td className="border px-2">{detail.asset?.costcenter?.name || ''}</td>
-            <td className="border px-2">{detail.asset?.fuel_type || ''}</td>
-            <td className="border px-2">{detail.asset?.purpose || ''}</td>
-            <td className="border text-right">
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Input
-                                type="text"
-                                value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => onChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
-                                readOnly={!isRequired}
-                                className={`w-full text-right border-0 rounded-none ${!isRequired
-                                    ? 'bg-gray-200 cursor-not-allowed'
-                                    : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-                                    }`}
-                            />
-                        </TooltipTrigger>
-                        {!isRequired && (
-                            <TooltipContent>
-                                <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-                            </TooltipContent>
-                        )}
-                    </Tooltip>
-                </TooltipProvider>
-            </td>
-            <td className="border text-right">
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Input
-                                type="text"
-                                value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
-                                onKeyDown={handleNumericInput}
-                                onChange={e => onChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
-                                readOnly={!isRequired}
-                                className={`w-full text-right border-0 rounded-none ${!isRequired
-                                    ? 'bg-gray-200 cursor-not-allowed'
-                                    : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-                                    }`}
-                            />
-                        </TooltipTrigger>
-                        {!isRequired && (
-                            <TooltipContent>
-                                <p>Please complete Asset, Cost Center, Fuel Type & Purpose first</p>
-                            </TooltipContent>
-                        )}
-                    </Tooltip>
-                </TooltipProvider>
-            </td>
-            <td className="border text-right">
-                <Input
-                    type="text"
-                    value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
-                    readOnly
-                    tabIndex={-1}
-                    className="w-full text-right border-0 rounded-none bg-gray-100"
-                />
-            </td>
-            <td className="border">
-                <Input
-                    type="text"
-                    value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) ? detail.total_litre : ''}
-                    onKeyDown={handleNumericInput}
-                    onChange={e => onChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
-                    readOnly={!isRequired}
-                    className={`w-full text-right border-0 rounded-none ${!isRequired
-                        ? 'bg-gray-200 cursor-not-allowed'
-                        : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-                        }`}
-                />
-            </td>
-            <td className="border">
-                <Input
-                    type="text"
-                    value={detail.total_litre && Number(detail.total_litre) > 0
-                        ? (Number(detail.total_km || 0) / Number(detail.total_litre)).toFixed(2)
-                        : '0.00'}
-                    readOnly
-                    tabIndex={-1}
-                    className="w-full text-right border-0 rounded-none bg-gray-100"
-                />
-            </td>
-            <td className="border">
-                <Input
-                    type="text"
-                    value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) ? detail.amount : ''}
-                    onKeyDown={handleNumericInput}
-                    onChange={e => onChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
-                    readOnly={!isRequired}
-                    className={`w-full text-right border-0 rounded-none ${!isRequired
-                        ? 'bg-gray-200 cursor-not-allowed'
-                        : 'bg-gray-100 focus:bg-blue-200 focus:ring-0'
-                        }`}
-                />
-            </td>
-        </tr>
-    );
+    const rowClass = `border-b focus:outline-none focus:ring-0 ${showEmptyHighlight ? 'bg-amber-100/70' : ''}`;
+	return (
+		<tr className={rowClass}>
+			<td className="border p-0 text-center">
+				<div className="flex items-center justify-center gap-1">
+					<span>{displayIndex}</span>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									onClick={() => onRemove(detail)}
+									tabIndex={-1}
+									className="p-1 h-6 w-6 hover:bg-red-100"
+								>
+									<Trash2 size={12} className="text-red-600" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>Remove Entry</p>
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+				</div>
+			</td>
+				<td className={`border p-0 ${isDuplicateCard(detail) ? 'bg-red-50' : ''}`}>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Input
+									type="text"
+									value={detail.fleetcard?.card_no || ''}
+									onChange={e => onFleetCardChange(originalIndex, e.target.value)}
+									placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
+									disabled={!cardFieldsReady}
+									className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
+								/>
+							</TooltipTrigger>
+							{isDuplicateCard(detail) && (
+								<TooltipContent>
+									<p>Duplicated Card No</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+					{isDuplicateCard(detail) && (
+						<p className="text-xs text-red-600 px-2 py-0.5">Duplicated</p>
+					)}
+				</td>
+			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.register_number || ''}</td>
+			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.costcenter?.name || ''}</td>
+			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.fuel_type || ''}</td>
+			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.purpose || ''}</td>
+			<td className="border p-0 text-right">
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Input
+								type="text"
+								value={detail.start_odo !== undefined && detail.start_odo !== null && !isNaN(Number(detail.start_odo)) ? detail.start_odo : 0}
+								onKeyDown={handleNumericInput}
+								onChange={e => onChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
+								readOnly={false}
+								maxLength={6}
+								className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+							/>
+						</TooltipTrigger>
+						{!isRequired && (
+							<TooltipContent>
+								<p>You can key in ODO now; asset info is still empty.</p>
+							</TooltipContent>
+						)}
+					</Tooltip>
+				</TooltipProvider>
+			</td>
+			<td className="border p-0 text-right">
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Input
+								type="text"
+								value={detail.end_odo !== undefined && detail.end_odo !== null && !isNaN(Number(detail.end_odo)) ? detail.end_odo : 0}
+								onKeyDown={handleNumericInput}
+								onChange={e => onChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
+								readOnly={false}
+								maxLength={6}
+								className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+							/>
+						</TooltipTrigger>
+						{!isRequired && (
+							<TooltipContent>
+								<p>You can key in ODO now; asset info is still empty.</p>
+							</TooltipContent>
+						)}
+					</Tooltip>
+				</TooltipProvider>
+			</td>
+			<td className="border p-0 text-right">
+				<Input
+					type="text"
+					value={detail.total_km !== undefined && detail.total_km !== null && !isNaN(Number(detail.total_km)) ? detail.total_km : 0}
+					readOnly
+					tabIndex={-1}
+					maxLength={6}
+					className="w-full text-right border-0 rounded-none bg-gray-100 text-gray-700"
+				/>
+			</td>
+			<td className="border p-0">
+				<Input
+					type="text"
+					value={detail.total_litre !== undefined && detail.total_litre !== null && !isNaN(Number(detail.total_litre)) ? detail.total_litre : ''}
+					onKeyDown={handleNumericInput}
+					onChange={e => onChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
+					readOnly={false}
+					className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+				/>
+			</td>
+			<td className="border p-0">
+				<Input
+					type="text"
+					value={detail.total_litre && Number(detail.total_litre) > 0
+						? (Number(detail.total_km || 0) / Number(detail.total_litre)).toFixed(2)
+						: '0.00'}
+					readOnly
+					tabIndex={-1}
+					className="w-full text-right border-0 rounded-none bg-gray-100 text-gray-700"
+				/>
+			</td>
+			<td className="border p-0">
+				<Input
+					type="text"
+					value={detail.amount !== undefined && detail.amount !== null && !isNaN(Number(detail.amount)) ? detail.amount : ''}
+					onKeyDown={handleNumericInput}
+					onChange={e => onChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
+					readOnly={false}
+					className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+				/>
+			</td>
+		</tr>
+	);
 });
 FuelDetailRow.displayName = 'FuelDetailRow';
 
@@ -278,50 +277,104 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 	search,
 	onSearchChange,
 	loadingDetails,
-	onEditDetail,
 	onRemoveDetail,
 	onDetailChange,
+	onFleetCardChange,
 	isRowRequiredFieldsFilled,
 	handleNumericInput,
 	validateNumericInput,
 	detailIndexMap,
+	isRowFilled,
+	cardFieldsReady,
 }) => {
+	// Track duplicates for card numbers (case-insensitive, trimmed)
+	const duplicateCardNos = React.useMemo(() => {
+		const counts = new Map<string, number>();
+		editableDetails.forEach(d => {
+			const key = (d.fleetcard?.card_no || '').trim().toLowerCase();
+			if (!key) return;
+			counts.set(key, (counts.get(key) || 0) + 1);
+		});
+		return new Set(
+			Array.from(counts.entries())
+				.filter(([, count]) => count > 1)
+				.map(([key]) => key)
+		);
+	}, [editableDetails]);
+
+	const isDuplicateCard = React.useCallback((detail: FuelDetail) => {
+		const key = (detail.fleetcard?.card_no || '').trim().toLowerCase();
+		if (!key) return false;
+		return duplicateCardNos.has(key);
+	}, [duplicateCardNos]);
+	const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+	const scrollToBottom = React.useCallback(() => {
+		const el = tableContainerRef.current;
+		if (!el) return;
+		el.scrollTop = el.scrollHeight;
+	}, []);
+
+	// Auto-scroll to bottom so the newest rows stay in view; older rows remain scrollable upward
+	React.useEffect(() => {
+		const frame = requestAnimationFrame(scrollToBottom);
+		return () => cancelAnimationFrame(frame);
+	}, [filteredDetails.length, scrollToBottom]);
+
+	const filledCount = React.useMemo(
+		() => editableDetails.filter(isRowFilled).length,
+		[editableDetails, isRowFilled]
+	);
+	const filteredFilledCount = React.useMemo(
+		() => filteredDetails.filter(isRowFilled).length,
+		[filteredDetails, isRowFilled]
+	);
+
 	return (
 		<div className="w-full">
-			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
-				<h3 className="text-xl font-semibold flex items-center gap-2">
-					Consumer Details
-					{loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
-				</h3>
-				<Input
-					type="text"
-					placeholder="Search Asset or Card..."
-					value={search}
-					onChange={e => onSearchChange(e.target.value)}
-					className="w-full sm:w-56"
-				/>
+			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-3">
+				<div className="flex items-center gap-3">
+					<h3 className="text-xl font-semibold flex items-center gap-2">
+						Consumer Details
+						{loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
+					</h3>
+					<span className="text-sm text-blue-600 bg-gray-100 rounded px-2 py-0.5">
+						Total entries: {filledCount}
+						{search ? ` • Showing ${filteredFilledCount}` : ''}
+					</span>
+					<Input
+						type="text"
+						placeholder="Search Register number or card..."
+						value={search}
+						onChange={e => onSearchChange(e.target.value)}
+						className="w-62 rounded-md"
+					/>
+				</div>
 			</div>
 			{search && (
 				<div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
 					Filtered by: "{search}" • {filteredDetails.length} row{filteredDetails.length !== 1 ? 's' : ''} displayed
 				</div>
 			)}
-			<div className="overflow-x-auto max-h-125 overflow-y-auto mb-6 w-full">
-				<table className="w-full border text-sm">
-					<thead className="bg-gray-200 sticky -top-1 z-10">
-						<tr>
-							<th className="border px-2 py-1.5 w-12">#</th>
-							<th className="border px-2 py-1.5">Fleet Card</th>
-							<th className="border px-2 py-1.5">Asset</th>
-							<th className="border px-2 py-1.5">Cost Center</th>
-							<th className="border px-2 py-1.5">Fuel Type</th>
-							<th className="border px-2 py-1.5">Purpose</th>
-							<th className="border px-2 py-1.5 text-right">Start ODO</th>
-							<th className="border px-2 py-1.5 text-right">End ODO</th>
-							<th className="border px-2 py-1.5 text-right">Total KM</th>
-							<th className="border px-2 py-1.5">Litre</th>
-							<th className="border px-2 py-1.5">Efficiency (KM/L)</th>
-							<th className="border px-2 py-1.5">Amount</th>
+			<div
+				className="overflow-x-auto overflow-y-auto mb-6 w-full max-h-80"
+				ref={tableContainerRef}
+			>
+				<table className="w-full table-auto border-collapse text-sm">
+					<thead className="bg-gray-200 sticky top-0 z-10">
+						<tr className='text-xs p-2'>
+							<th className="border p-0 w-12">#</th>
+							<th className="border p-0">Card No</th>
+							<th className="border p-0">Register Number</th>
+							<th className="border p-0">Cost Center</th>
+							<th className="border p-0">Fuel Type</th>
+							<th className="border p-0">Purpose</th>
+							<th className="border p-0 text-right w-25">Start ODO</th>
+							<th className="border p-0 text-right w-25">End ODO</th>
+							<th className="border p-0 text-right w-25">Distance (km)</th>
+							<th className="border p-0 text-right w-25">Consumption (liter)</th>
+							<th className="border p-0 text-right w-25">Efficiency (km/l)</th>
+							<th className="border p-0 text-right w-25">Amount (RM)</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -333,13 +386,15 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 									detail={detail}
 									displayIndex={idx + 1}
 									originalIndex={originalIndex}
-									showEmptyHighlight={false}
+									showEmptyHighlight={!isRowFilled(detail)}
 									isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
 									handleNumericInput={handleNumericInput}
 									validateNumericInput={validateNumericInput}
 									onChange={onDetailChange}
-									onEdit={onEditDetail}
+									onFleetCardChange={onFleetCardChange}
 									onRemove={onRemoveDetail}
+									cardFieldsReady={cardFieldsReady}
+									isDuplicateCard={isDuplicateCard}
 								/>
 							);
 						})}
@@ -362,39 +417,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	const [editableDetails, setEditableDetails] = useState<FuelDetail[]>([]);
 	const [search, setSearch] = useState('');
 
-	// ActionSidebar state
-	const [sidebarOpen, setSidebarOpen] = useState(false);
-	const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
-	const [availableFleetCards, setAvailableFleetCards] = useState<FleetCard[]>([]);
-	const [availableCostCenters, setAvailableCostCenters] = useState<CostCenter[]>([]);
-	// Asset picker for Edit Detail Row
-	const [editAssetPickerOpen, setEditAssetPickerOpen] = useState(false);
-	const [editAssetOptions, setEditAssetOptions] = useState<{
-		id: number;
-		register_number?: string;
-		costcenter?: { id: number; name: string } | null;
-		fuel_type?: string;
-		purpose?: string;
-	}[]>([]);
-	const [editAssetSearch, setEditAssetSearch] = useState('');
-
-	// Edit form state
-	const [editFormData, setEditFormData] = useState({
-		card_no: '',
-		costcenter_id: '',
-		fuel_type: '',
-		purpose: 'project',
-		asset_id: '',
-	});
-	const [editErrors, setEditErrors] = useState<{ asset_id?: string }>({});
-
-
 	// Add state for summary fields with default values for RON95, RON97, Diesel
 	const [summary, setSummary] = useState({
 		stmt_stotal: '',
 		stmt_disc: '',
 		stmt_tax: '',
 		stmt_rounding: '',
+		stmt_entry: '',
 		stmt_total: '',
 		stmt_ron95: '2.05',
 		stmt_ron97: '3.18',
@@ -441,12 +470,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	// Add state for loadingDetails
 	const [loadingDetails, setLoadingDetails] = useState(false);
 	const [saving, setSaving] = useState(false);
-	const [updatingDetail, setUpdatingDetail] = useState(false);
+	const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+	const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
+	const [submitSuccessMessage, setSubmitSuccessMessage] = useState('');
 
 	// Draft handling and leave confirmation
-    const draftKey = React.useMemo(() => {
-        return currentStmtId && currentStmtId > 0 ? null : 'fuel-bill-draft';
-    }, [currentStmtId]);
+	const draftKey = React.useMemo(() => {
+		return currentStmtId && currentStmtId > 0 ? null : 'fuel-bill-draft';
+	}, [currentStmtId]);
 	const [draftLoaded, setDraftLoaded] = useState(false);
 	const [showCancelDialog, setShowCancelDialog] = useState(false);
 	const [draftDetailsRestored, setDraftDetailsRestored] = useState(false);
@@ -469,6 +500,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		stmt_no: false,
 		stmt_date: false,
 	});
+
+	const cardFieldsReady = React.useMemo(() => {
+		return Boolean(
+			selectedVendor &&
+			headerDraft.stmt_no.trim() &&
+			headerDraft.stmt_date.trim()
+		);
+	}, [headerDraft.stmt_date, headerDraft.stmt_no, selectedVendor]);
 
 	// Draft restore (create mode only)
 	useEffect(() => {
@@ -494,13 +533,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	}, [currentStmtId, draftKey]);
 
 	// Draft persist (create mode only)
-    useEffect(() => {
-        if (currentStmtId && currentStmtId > 0) return;
-        if (!draftKey || !draftLoaded) return;
+	useEffect(() => {
+		if (currentStmtId && currentStmtId > 0) return;
+		if (!draftKey || !draftLoaded) return;
 		// Build draft payload once, then schedule a deferred write during browser idle time
-        if (draftSaveTimer.current) {
-            clearTimeout(draftSaveTimer.current);
-        }
+		if (draftSaveTimer.current) {
+			clearTimeout(draftSaveTimer.current);
+		}
 		const payload = {
 			header,
 			summary,
@@ -517,7 +556,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				}
 			};
 		}
-        draftSaveTimer.current = setTimeout(() => {
+		draftSaveTimer.current = setTimeout(() => {
 			const writeDraft = () => {
 				try {
 					localStorage.setItem(draftKey, serialized);
@@ -532,28 +571,46 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			} else {
 				setTimeout(writeDraft, 0);
 			}
-        }, 1000);
-        return () => {
-            if (draftSaveTimer.current) {
-                clearTimeout(draftSaveTimer.current);
-            }
-        };
+		}, 1000);
+		return () => {
+			if (draftSaveTimer.current) {
+				clearTimeout(draftSaveTimer.current);
+			}
+		};
 	}, [draftKey, draftLoaded, draftDetailsRestored, editableDetails, header, selectedVendor, summary, currentStmtId]);
 
-	// Save handler for form submission
+	const handleCloseSuccessDialog = React.useCallback(() => {
+		setShowSubmitSuccess(false);
+		clearDraft();
+		try {
+			if (window.opener && typeof window.opener.reloadFuelBillGrid === 'function') {
+				window.opener.reloadFuelBillGrid();
+			}
+		} catch {
+			// ignore cross-origin errors
+		}
+		// Prefer closing the popup if it was opened from a parent; otherwise navigate back to list
+		if (typeof window !== 'undefined' && window.opener) {
+			window.close();
+		} else {
+			navigateBack();
+		}
+	}, [clearDraft, navigateBack]);
+
+	// Save handler for form submission (invoked after confirmation)
 	const handleSave = async () => {
 		if (!validateForm()) {
+			setShowSubmitConfirm(false);
 			return;
 		}
 
+		setShowSubmitConfirm(false);
 		setSaving(true);
 		const payload = buildFormPayload();
 		try {
 			// POST for create, PUT for update
 			if (!currentStmtId || currentStmtId === 0) {
 				const response = await authenticatedApi.post<{ status: string; message: string; id: number }>('/api/bills/fuel', payload);
-				toast.success('Fuel statement created successfully.');
-				clearDraft();
 
 				// Check if response contains the new ID
 				if (response.data && response.data.id) {
@@ -564,23 +621,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					const currentUrl = new URL(window.location.href);
 					currentUrl.searchParams.set('id', newId.toString());
 					window.history.replaceState({}, '', currentUrl.toString());
-
-					// Reload to fetch the newly created record
-					// Commented out to allow browser inspection of network/devtools after create
-					setTimeout(() => {
-						window.location.reload();
-					}, 1000);
 				}
+
+				setSubmitSuccessMessage('Fuel statement created successfully.');
+				setShowSubmitSuccess(true);
 			} else {
 				await authenticatedApi.put(`/api/bills/fuel/${currentStmtId}`, payload);
-				toast.success('Fuel statement updated successfully.');
-				clearDraft();
-				setTimeout(() => {
-					if (window.opener && typeof window.opener.reloadFuelBillGrid === 'function') {
-						window.opener.reloadFuelBillGrid();
-					}
-					window.close();
-				}, 1000);
+				setSubmitSuccessMessage('Fuel statement updated successfully.');
+				setShowSubmitSuccess(true);
 			}
 		} catch (err: any) {
 			toast.error('Failed to save fuel statement.');
@@ -591,12 +639,61 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	// ...existing state declarations...
 	// Summarize amount by cost center
 
+	// Helper function to check if a detail row is considered "filled"
+	const isRowFilled = React.useCallback((detail: FuelDetail): boolean => {
+		const hasValidAmount = detail.amount && parseFloat(String(detail.amount)) > 0;
+		return Boolean(hasValidAmount);
+	}, []);
+
+	// Keep one blank row available for quick data entry
+	const createEmptyDetail = React.useCallback((): FuelDetail => ({
+		s_id: Date.now() + Math.floor(Math.random() * 1000),
+		stmt_id: currentStmtId || 0,
+		fleetcard: { id: 0, card_no: '' },
+		asset: {
+			id: 0,
+			register_number: '',
+			fuel_type: '',
+			costcenter: null,
+			purpose: '',
+		},
+		stmt_date: header.stmt_date || '',
+		start_odo: 0,
+		end_odo: 0,
+		total_km: 0,
+		total_litre: '',
+		amount: '',
+	}), [currentStmtId, header.stmt_date]);
+
+	useEffect(() => {
+		if (loading) return;
+		setEditableDetails(prev => {
+			// Always ensure an initial empty row when nothing exists
+			if (prev.length === 0) {
+				return [createEmptyDetail()];
+			}
+
+			const hasEmpty = prev.some(detail => !isRowFilled(detail));
+			// Only append a new empty row after at least one row has an amount keyed in
+			const anyAmountEntered = prev.some(detail => String(detail.amount ?? '').trim() !== '');
+
+			if (hasEmpty) return prev;
+			if (!anyAmountEntered) return prev;
+
+			return [...prev, createEmptyDetail()];
+		});
+	}, [createEmptyDetail, editableDetails, isRowFilled, loading]);
+
+	const activeDetails = React.useMemo(() => editableDetails.filter(isRowFilled), [editableDetails, isRowFilled]);
+
 
 	// Split cost center summary by category (project, staffcost) — manual update
 	const [costCenterSummary, setCostCenterSummary] = useState<{ [key: string]: number }>({});
+	const [updatingCostCenter, setUpdatingCostCenter] = useState(false);
+	const costCenterUpdateTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 	const computeCostCenterSummary = React.useCallback(() => {
 		const summary: { [key: string]: number } = {};
-		editableDetails.forEach(detail => {
+		activeDetails.forEach(detail => {
 			const ccName = detail.asset?.costcenter?.name || 'Unknown';
 			const category = detail.asset?.purpose || 'project';
 			const key = category === 'staff cost' ? `${ccName} (Staff Cost)` : ccName;
@@ -605,22 +702,34 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			summary[key] += amt;
 		});
 		return summary;
-	}, [editableDetails]);
+	}, [activeDetails]);
 	const handleUpdateCostCenterSummary = React.useCallback(() => {
+		if (costCenterUpdateTimer.current) {
+			clearTimeout(costCenterUpdateTimer.current);
+		}
+		setUpdatingCostCenter(true);
 		setCostCenterSummary(computeCostCenterSummary());
+		costCenterUpdateTimer.current = setTimeout(() => setUpdatingCostCenter(false), 300);
 	}, [computeCostCenterSummary]);
+	React.useEffect(() => {
+		return () => {
+			if (costCenterUpdateTimer.current) {
+				clearTimeout(costCenterUpdateTimer.current);
+			}
+		};
+	}, []);
 
 
 	// Helper to build form payload for API submission
 	const buildFormPayload = () => {
-		const petrolAmount = editableDetails
+		const petrolAmount = activeDetails
 			.filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
 			.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-		const dieselAmount = editableDetails
+		const dieselAmount = activeDetails
 			.filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
 			.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-		const totalKM = editableDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0);
-		const totalLitre = editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0);
+		const totalKM = activeDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0);
+		const totalLitre = activeDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0);
 
 		// Helper for default value formatting
 		const fmtAmount = (val: any) => {
@@ -640,32 +749,39 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			stmt_disc: fmtAmount(summary.stmt_disc),
 			stmt_total: fmtAmount(summary.stmt_total),
 			stmt_issuer: selectedVendor,
-			petrol_amount: fmtAmount(petrolAmount),
-			diesel_amount: fmtAmount(dieselAmount),
+			petrol: fmtAmount(petrolAmount),
+			diesel: fmtAmount(dieselAmount),
 			stmt_ron95: fmtAmount(summary.stmt_ron95),
 			stmt_ron97: fmtAmount(summary.stmt_ron97),
 			stmt_diesel: fmtAmount(summary.stmt_diesel),
-			stmt_count: editableDetails.length,
-			stmt_total_km: fmtNum(totalKM),
-			details: editableDetails.map(detail => {
+			stmt_rounding: fmtAmount(summary.stmt_rounding),
+			stmt_tax: fmtAmount(summary.stmt_tax),
+			stmt_entry: summary.stmt_entry || '',
+			stmt_count: activeDetails.length,
+			stmt_total_odo: fmtNum(totalKM),
+			details: activeDetails.map(detail => {
 				const asset = detail.asset || {};
 				const costcenter: CostCenter | null = asset.costcenter || null;
-				const totalKM = fmtNum(detail.total_km);
-				const litre = fmtNum(detail.total_litre);
+				const totalKMVal = fmtNum(detail.total_km);
+				const litreVal = fmtNum(detail.total_litre);
+				const locId = asset.locations?.id ?? asset.location_id ?? null;
+				const fuelType = asset.fuel_type || '';
+				const efficiency = litreVal > 0 ? fmtAmount(totalKMVal / litreVal) : '0.00';
 				return {
-					asset_id: asset.asset_id,
-					vehicle_id: asset.vehicle_id,
+					s_id: detail.s_id,
+					stmt_id: detail.stmt_id,
+					card_id: detail.fleetcard?.id ?? 0,
+					asset_id: asset.id ?? 0,
+					fuel_type: fuelType,
+					cc_id: costcenter ? costcenter.id : 0,
+					purpose: asset.purpose || '',
+					loc_id: locId ?? 0,
 					stmt_date: header.stmt_date,
-					card_id: detail.fleetcard?.id || '',
-					costcenter_id: costcenter ? costcenter.id : null,
-					entry_code: asset.entry_code ?? '',
-					location_id: asset.locations ? asset.locations.id : asset.location_id ?? null,
-					category: asset.purpose || 'project',
 					start_odo: fmtNum(detail.start_odo),
 					end_odo: fmtNum(detail.end_odo),
-					total_km: totalKM,
-					total_litre: litre,
-					efficiency: litre > 0 ? fmtAmount(totalKM / litre) : '0.00',
+					total_km: totalKMVal,
+					effct: efficiency,
+					total_litre: fmtAmount(detail.total_litre),
 					amount: fmtAmount(detail.amount)
 				};
 			})
@@ -675,8 +791,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Auto-calculate subtotal and total from details and discount (debounced)
 	useEffect(() => {
+		if (activeDetails.length === 0) return;
 		const handle = setTimeout(() => {
-			const sumAmount = editableDetails.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+			const sumAmount = activeDetails.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
 			const discount = parseFloat(summary.stmt_disc) || 0;
 			setSummary(prev => ({
 				...prev,
@@ -685,7 +802,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			}));
 		}, 120);
 		return () => clearTimeout(handle);
-	}, [editableDetails, summary.stmt_disc]);
+	}, [activeDetails, summary.stmt_disc]);
 
 
 	useEffect(() => {
@@ -701,17 +818,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				console.error('Error fetching vendors:', err);
 			});
 
-		// Fetch fleet cards and cost centers for editing
-		Promise.all([
-			authenticatedApi.get<{ data: FleetCard[] }>('/api/bills/fleet'),
-			authenticatedApi.get<{ data: CostCenter[] }>('/api/assets/costcenters')
-		]).then(([fleetRes, costRes]) => {
-			setAvailableFleetCards(fleetRes.data.data || []);
-			setAvailableCostCenters(costRes.data.data || []);
-		}).catch(err => {
-			console.error('Error fetching reference data:', err);
-		});
-
 		// Only fetch bill detail if currentStmtId is a valid positive number
 		if (currentStmtId && currentStmtId > 0) {
 			authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${currentStmtId}`)
@@ -724,6 +830,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						stmt_disc: res.data.data.stmt_disc || '',
 						stmt_tax: res.data.data.stmt_tax || '',
 						stmt_rounding: res.data.data.stmt_rounding || '',
+						stmt_entry: res.data.data.stmt_entry || '',
 						stmt_total: res.data.data.stmt_total || '',
 						stmt_ron95: res.data.data.stmt_ron95 || '2.05',
 						stmt_ron97: res.data.data.stmt_ron97 || '3.18',
@@ -757,6 +864,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					stmt_disc: '',
 					stmt_tax: '',
 					stmt_rounding: '',
+					stmt_entry: '',
 					stmt_total: '',
 					stmt_ron95: '2.05',
 					stmt_ron97: '3.18',
@@ -785,9 +893,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			summary.stmt_rounding,
 			summary.stmt_total,
 		].some((v) => v && String(v).trim() !== '' && v !== '0' && v !== '0.00');
-		const detailsFilled = editableDetails.length > 0;
+		const detailsFilled = activeDetails.length > 0;
 		return Boolean(headerFilled || summaryFilled || selectedVendor || detailsFilled);
-	}, [editableDetails.length, header.stmt_date, header.stmt_litre, header.stmt_no, selectedVendor, summary.stmt_disc, summary.stmt_rounding, summary.stmt_stotal, summary.stmt_tax, summary.stmt_total]);
+	}, [activeDetails.length, header.stmt_date, header.stmt_litre, header.stmt_no, selectedVendor, summary.stmt_disc, summary.stmt_rounding, summary.stmt_stotal, summary.stmt_tax, summary.stmt_total]);
 
 	const cancelWarningText = hasFormData
 		? 'You have unsaved changes. Leaving now will discard them.'
@@ -810,8 +918,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		const fleetcardId = item.fleetcard?.id ?? item.id ?? item.card_id ?? 0;
 		const cardNo = item.fleetcard?.card_no ?? item.card_no ?? '';
 		const assetObj = item.asset || {};
-		const assetId = assetObj.id ?? assetObj.asset_id ?? item.asset_id ?? 0;
-		const registerNumber = assetObj.register_number ?? assetObj.vehicle_regno ?? item.register_number ?? '';
+		const assetId = assetObj.asset_id ?? item.asset_id ?? 0;
+		const registerNumber = assetObj.register_number ?? item.register_number ?? '';
 		const fuelType = assetObj.fuel_type ?? assetObj.vfuelType ?? item.vfuel_type ?? '';
 		const purpose = assetObj.purpose ?? item.purpose ?? '';
 		const costcenter = assetObj.costcenter ?? null;
@@ -867,6 +975,59 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		}));
 	}, []);
 
+	const handleFleetCardChange = React.useCallback((idx: number, cardNo: string) => {
+		if (!cardFieldsReady) return;
+
+		// Duplicate check against other rows (case-insensitive, trimmed)
+		const incoming = cardNo.trim().toLowerCase();
+		// We no longer block on duplicates; visual indicator is used instead
+
+		setEditableDetails(prev => prev.map((detail, i) => {
+			if (i !== idx) return detail;
+			return {
+				...detail,
+				fleetcard: {
+					id: detail.fleetcard?.id ?? 0,
+					card_no: cardNo,
+				},
+			};
+		}));
+
+		const trimmed = cardNo.trim();
+		if (!trimmed) return;
+
+		setLoadingDetails(true);
+		authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet/card/${encodeURIComponent(trimmed)}`)
+			.then(res => {
+				const card = Array.isArray(res.data?.data) ? res.data.data[0] : null;
+				if (!card) return;
+				const asset = card.asset || {};
+
+				setEditableDetails(prev => prev.map((detail, i) => {
+					if (i !== idx) return detail;
+					return {
+						...detail,
+						fleetcard: {
+							id: card.id ?? detail.fleetcard?.id ?? 0,
+							card_no: card.card_no ?? trimmed,
+						},
+						asset: {
+							...detail.asset,
+							asset_id: asset.id ?? detail.asset?.id ?? 0,
+							register_number: asset.register_number ?? detail.asset?.register_number ?? '',
+							fuel_type: asset.fuel_type ?? detail.asset?.fuel_type ?? '',
+							costcenter: asset.costcenter ?? detail.asset?.costcenter ?? null,
+							purpose: asset.purpose ?? detail.asset?.purpose ?? '',
+						},
+					} as FuelDetail;
+				}));
+			})
+			.catch(() => {
+				toast.error('Failed to fetch fleet card info.');
+			})
+			.then(() => setLoadingDetails(false));
+	}, [cardFieldsReady, setLoadingDetails]);
+
 	const handleSummaryChange = (field: keyof typeof summary, value: string) => {
 		setSummary(prev => ({ ...prev, [field]: value }));
 	};
@@ -918,14 +1079,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		return hasNegative ? '-' + withoutNegative : withoutNegative;
 	}, []);
 
-	// Helper function to check if a detail row is considered "filled"
-	const isRowFilled = (detail: FuelDetail): boolean => {
-		const hasValidOdo = (detail.start_odo && Number(detail.start_odo) > 0) || (detail.end_odo && Number(detail.end_odo) > 0);
-		const hasValidLitre = detail.total_litre && parseFloat(String(detail.total_litre)) > 0;
-		const hasValidAmount = detail.amount && parseFloat(String(detail.amount)) > 0;
-		return Boolean(hasValidOdo || hasValidLitre || hasValidAmount);
-	};
-
 	// Check if required row fields are filled to enable numerical inputs
 	const isRowRequiredFieldsFilled = React.useCallback((detail: FuelDetail): boolean => {
 		return Boolean(
@@ -937,12 +1090,25 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	}, []);
 
 	// Filtered details based on search (asset reg no or fleet card) and empty row filter
-	const filteredDetails = React.useMemo(() => editableDetails.filter(detail => {
+	const filteredDetails = React.useMemo(() => {
 		const q = search.toLowerCase();
-		const regNo = detail.asset?.register_number?.toLowerCase() || '';
-		const cardNo = detail.fleetcard?.card_no?.toLowerCase() || '';
-		return !q || regNo.includes(q) || cardNo.includes(q);
-	}), [editableDetails, search]);
+		const emptyRows: FuelDetail[] = [];
+		const matchedRows: FuelDetail[] = [];
+
+		editableDetails.forEach(detail => {
+			if (!isRowFilled(detail)) {
+				emptyRows.push(detail);
+				return;
+			}
+			const regNo = detail.asset?.register_number?.toLowerCase() || '';
+			const cardNo = detail.fleetcard?.card_no?.toLowerCase() || '';
+			if (!q || regNo.includes(q) || cardNo.includes(q)) {
+				matchedRows.push(detail);
+			}
+		});
+
+		return [...matchedRows, ...emptyRows];
+	}, [editableDetails, isRowFilled, search]);
 	const detailIndexMap = React.useMemo(() => {
 		const map = new Map<number, number>();
 		editableDetails.forEach((d, idx) => {
@@ -969,145 +1135,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		};
 		setErrors(newErrors);
 		return !Object.values(newErrors).includes(true);
-	};
-
-	// Handle opening the ActionSidebar for editing detail row
-	const handleEditDetail = React.useCallback((index: number) => {
-		const detail = editableDetails[index];
-		if (detail) {
-			setEditFormData({
-				card_no: detail.fleetcard?.card_no || '',
-				costcenter_id: String(detail.asset?.costcenter?.id || ''),
-				fuel_type: detail.asset?.fuel_type || '',
-				purpose: detail.asset?.purpose || 'project',
-				asset_id: String(detail.asset?.asset_id || ''),
-			});
-		}
-		setEditingDetailIndex(index);
-		setSidebarOpen(true);
-	}, [editableDetails]);
-
-	// Load active assets when opening the asset picker in edit sidebar
-	useEffect(() => {
-		if (!editAssetPickerOpen) return;
-		if (editAssetOptions.length > 0) return;
-		authenticatedApi
-			.get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string } | null; fuel_type?: string; purpose?: string }[] }>(
-				'/api/assets',
-				{ params: { type: 2, status: 'active' } }
-			)
-			.then(res => setEditAssetOptions(res.data?.data || []))
-			.catch(() => {
-				toast.error('Failed to load assets');
-				setEditAssetOptions([]);
-			});
-	}, [editAssetPickerOpen, editAssetOptions.length]);
-
-	// Handle updating the detail row from ActionSidebar
-	/**
-	 * Edit Detail Row — Save handler
-	 * Endpoint: PUT `/api/bills/fleet/:card_id/billing`
-	 * Payload fields:
-	 * - card_id: number | undefined (fleet card id of the row)
-	 * - asset_id: number | null (selected asset id)
-	 * - costcenter_id: number | null (selected cost center id)
-	 * - purpose: string ('project' | 'staff cost' | 'pool')
-	 * - stmt_id: number (current statement id)
-	 * - card_no: string (kept for compatibility)
-	 */
-	const handleUpdateDetail = async () => {
-		if (editingDetailIndex === null) return;
-
-		const detail = editableDetails[editingDetailIndex];
-		if (!detail) return;
-
-		// validation: asset is required
-		if (!editFormData.asset_id) {
-			setEditErrors(prev => ({ ...prev, asset_id: 'Asset is required' }));
-			toast.error('Please select an asset');
-			return;
-		}
-		setEditErrors(prev => ({ ...prev, asset_id: undefined }));
-
-		setUpdatingDetail(true);
-		try {
-			// Prepare payload
-			// Payload sent to backend to update fleet + statement linkage
-			const payload = {
-				card_id: detail.fleetcard?.id,
-				asset_id: editFormData.asset_id ? parseInt(editFormData.asset_id) : detail.asset?.asset_id,
-				costcenter_id: editFormData.costcenter_id ? parseInt(editFormData.costcenter_id) : null,
-				purpose: editFormData.purpose,
-				stmt_id: currentStmtId,
-				// keep card_no for compatibility if backend uses it
-				card_no: editFormData.card_no.trim(),
-			};
-
-			// Make PUT request to update the fleet card
-			let response;
-			if (detail.fleetcard?.id) {
-				// Endpoint used to update: PUT /api/bills/fleet/:card_id/billing
-				response = await authenticatedApi.put<{ status: string; message: string }>(`/api/bills/fleet/${detail.fleetcard.id}/billing`, payload);
-			}
-
-			// Check if the response indicates success
-			if (response && response.data && response.data.status === 'success') {
-				// Update local state immediately
-				setEditableDetails(prev => prev.map((item, i) => {
-					if (i !== editingDetailIndex) return item;
-
-					const updated = { ...item };
-
-					// Update fleet card number
-					if (updated.fleetcard) {
-						updated.fleetcard = { ...updated.fleetcard, card_no: payload.card_no };
-					}
-
-					// Update cost center
-					if (payload.costcenter_id) {
-						const costcenter = availableCostCenters.find(cc => cc.id === payload.costcenter_id);
-						if (costcenter && updated.asset) {
-							updated.asset = { ...updated.asset, costcenter };
-						}
-					} else {
-						// Clear cost center if none selected
-						if (updated.asset) {
-							updated.asset = { ...updated.asset, costcenter: null };
-						}
-					}
-
-					// Update purpose and fuel type
-					if (updated.asset) {
-						updated.asset = { ...updated.asset, purpose: payload.purpose, fuel_type: editFormData.fuel_type };
-					}
-
-					// Update asset selection (id + register_number)
-					if (updated.asset) {
-						const selected = editAssetOptions.find(a => a.id === payload.asset_id);
-						const regNo = selected?.register_number || updated.asset.register_number;
-						updated.asset = {
-							...updated.asset,
-							asset_id: payload.asset_id ?? updated.asset.asset_id,
-							register_number: regNo,
-						} as Asset;
-					}
-
-					return updated;
-				}));
-
-				setSidebarOpen(false);
-				setEditingDetailIndex(null);
-				toast.success(response.data.message || 'Detail updated successfully');
-			} else {
-				throw new Error('Update failed: Invalid response from server');
-			}
-		} catch (error: any) {
-			console.error('Error updating detail:', error);
-			const errorMessage = error.response?.data?.message || error.message || 'Failed to update detail';
-			toast.error(errorMessage);
-		} finally {
-			setUpdatingDetail(false);
-		}
 	};
 
 	// Remove an existing bill entry
@@ -1146,9 +1173,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		}
 	}, [currentStmtId, editableDetails, header.stmt_date]);
 
-	// Get current editing detail
-	const currentEditingDetail = editingDetailIndex !== null ? editableDetails[editingDetailIndex] : null;
-
 	if (loading) return <div className="p-4">Loading...</div>;
 	// Only show No data found if in edit mode and no data
 	if ((currentStmtId && currentStmtId > 0) && !data) return <div className="p-4">No data found.</div>;
@@ -1164,6 +1188,37 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					<AlertDialogFooter>
 						<AlertDialogCancel>Stay</AlertDialogCancel>
 						<AlertDialogAction onClick={handleConfirmLeave}>Discard and leave</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+			<AlertDialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Submit application?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Please confirm you want to submit this fuel statement. You can still edit after saving.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+						<AlertDialogAction onClick={handleSave} disabled={saving}>
+							{saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+							Confirm
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+			<AlertDialog open={showSubmitSuccess} onOpenChange={(open) => {
+				if (!open) handleCloseSuccessDialog();
+				else setShowSubmitSuccess(true);
+			}}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Submission Successful</AlertDialogTitle>
+						<AlertDialogDescription>{submitSuccessMessage || 'Fuel statement saved successfully.'}</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogAction onClick={handleCloseSuccessDialog}>Close</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
@@ -1197,6 +1252,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 									{/* selected vendor inline preview removed per request */}
 								</div>
+								{!cardFieldsReady && (
+									<p className="text-xs text-red-500 mt-1">Select issuer and fill Statement No & Date to enable Card No entry.</p>
+								)}
 							</div>
 							<div className="flex flex-col">
 								<label htmlFor="stmt_no" className="font-medium mb-1 text-gray-800">
@@ -1210,6 +1268,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									onBlur={e => commitHeaderField('stmt_no', e.target.value)}
 									className="w-full text-right uppercase"
 								/>
+								{!cardFieldsReady && (
+									<p className="text-xs text-red-500 mt-1">Required to enable Card No entry.</p>
+								)}
 							</div>
 
 							<div className="flex flex-col">
@@ -1224,47 +1285,21 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									onBlur={e => commitHeaderField('stmt_date', e.target.value)}
 									className="w-full text-right"
 								/>
+								{!cardFieldsReady && (
+									<p className="text-xs text-red-500 mt-1">Required to enable Card No entry.</p>
+								)}
 							</div>
 						</div>
 
-						<div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mt-4">
+						<div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-4">
 							<div className="flex-1">
-								<div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 mb-4">
+								<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 md:gap-4 mb-4">
 									<div className="flex flex-col">
-										<span className="font-medium mb-1">Sub-Total</span>
-										<Input
-											type="text"
-											value={summary.stmt_stotal !== undefined && summary.stmt_stotal !== null && summary.stmt_stotal !== '' && !isNaN(Number(summary.stmt_stotal)) ? Number(summary.stmt_stotal).toFixed(2) : '0.00'}
-											readOnly
-											className="w-full text-right bg-gray-100"
-										/>
-									</div>
-
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Discount/Rebate</span>
-										<Input
-											type="text"
-											value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
-											onKeyDown={handleNumericInput}
-											onChange={e => handleSummaryChange('stmt_disc', validateNumericInput(e.target.value))}
-											className="w-full text-right"
-										/>
-									</div>
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Grand-Total</span>
-										<Input
-											type="text"
-											value={summary.stmt_total !== undefined && summary.stmt_total !== null && summary.stmt_total !== '' && !isNaN(Number(summary.stmt_total)) ? Number(summary.stmt_total).toFixed(2) : '0.00'}
-											readOnly
-											className="w-full text-right bg-gray-100"
-										/>
-									</div>
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Petrol Amount</span>
+										<span className="font-medium mb-1">Petrol Amount (RM)</span>
 										<Input
 											type="text"
 											value={(() => {
-												return editableDetails
+												return activeDetails
 													.filter(d => d.asset?.fuel_type?.toLowerCase() === 'petrol')
 													.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
 													.toFixed(2);
@@ -1274,11 +1309,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 										/>
 									</div>
 									<div className="flex flex-col">
-										<span className="font-medium mb-1">Diesel Amount</span>
+										<span className="font-medium mb-1">Diesel Amount (RM)</span>
 										<Input
 											type="text"
 											value={(() => {
-												return editableDetails
+												return activeDetails
 													.filter(d => d.asset?.fuel_type?.toLowerCase() === 'diesel')
 													.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
 													.toFixed(2);
@@ -1288,10 +1323,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 										/>
 									</div>
 									<div className="flex flex-col">
-										<span className="font-medium mb-1">Total KM</span>
+										<span className="font-medium mb-1">Overall Distance (KM)</span>
 										<Input
 											type="text"
-											value={editableDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0)}
+											value={activeDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0)}
 											readOnly
 											className="w-full text-right bg-gray-100"
 										/>
@@ -1300,41 +1335,74 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 										<span className="font-medium mb-1">Total Litre</span>
 										<Input
 											type="text"
-											value={editableDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
+											value={activeDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
 											readOnly
-											className="w-full text-right"
+											className="w-full text-right bg-gray-100"
 										/>
 									</div>
 								</div>
 							</div>
-							{/* Stack for RON95, RON97, Diesel */}
-							<div className="flex-col space-y-2 w-full md:w-auto md:min-w-70 mt-4 md:mt-0">
-								<div className="flex items-center gap-2">
-									<label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
-									<Input
-										type="text"
-										value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
-										onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
-										className="w-full text-right bg-gray-100"
-									/>
+							<div className="flex flex-col md:flex-row gap-4 w-full md:w-auto md:min-w-max">
+								{/* Stack for Sub-Total, Discount/Rebate, Grand-Total */}
+								<div className="flex flex-col space-y-2 w-full md:w-60">
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Sub-Total (RM)</label>
+										<Input
+											type="text"
+											value={summary.stmt_stotal !== undefined && summary.stmt_stotal !== null && summary.stmt_stotal !== '' && !isNaN(Number(summary.stmt_stotal)) ? Number(summary.stmt_stotal).toFixed(2) : '0.00'}
+											readOnly
+											className="w-full text-right bg-gray-100"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Discount/Rebate (RM)</label>
+										<Input
+											type="text"
+											value={summary.stmt_disc !== undefined && summary.stmt_disc !== null && summary.stmt_disc !== '' && !isNaN(Number(summary.stmt_disc)) ? Number(summary.stmt_disc).toFixed(2) : '0.00'}
+											onKeyDown={handleNumericInput}
+											onChange={e => handleSummaryChange('stmt_disc', validateNumericInput(e.target.value))}
+											className="w-full text-right"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Grand-Total (RM)</label>
+										<Input
+											type="text"
+											value={summary.stmt_total !== undefined && summary.stmt_total !== null && summary.stmt_total !== '' && !isNaN(Number(summary.stmt_total)) ? Number(summary.stmt_total).toFixed(2) : '0.00'}
+											readOnly
+											className="w-full text-right bg-gray-100"
+										/>
+									</div>
 								</div>
-								<div className="flex items-center gap-2">
-									<label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
-									<Input
-										type="text"
-										value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
-										onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
-										className="w-full text-right bg-gray-100"
-									/>
-								</div>
-								<div className="flex items-center gap-2">
-									<label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
-									<Input
-										type="text"
-										value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
-										onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
-										className="w-full text-right bg-gray-100"
-									/>
+								{/* Stack for RON95, RON97, Diesel */}
+								<div className="flex flex-col space-y-2 w-full md:w-60">
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
+											onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
+											className="w-full text-right bg-gray-100"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
+											onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
+											className="w-full text-right bg-gray-100"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
+											onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
+											className="w-full text-right bg-gray-100"
+										/>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -1343,7 +1411,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 							{(!currentStmtId || currentStmtId === 0) ? (
 								<Button
 									type="button"
-									onClick={handleSave}
+									onClick={() => setShowSubmitConfirm(true)}
 									disabled={saving}
 									variant="default"
 								>
@@ -1354,7 +1422,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									}
 								</Button>
 							) : (
-								<Button type="button" variant="default" onClick={handleSave} disabled={saving}>
+								<Button type="button" variant="default" onClick={() => setShowSubmitConfirm(true)} disabled={saving}>
 									{saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
 									{saving ? "Saving..." : "Save Changes"}
 								</Button>
@@ -1367,7 +1435,20 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					<div className="w-full border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
 						<div className="flex items-center justify-between mb-4 gap-2">
 							<h3 className="text-lg font-semibold">Cost Center Breakdown</h3>
-							<Button size="sm" variant="default" onClick={handleUpdateCostCenterSummary}>Update</Button>
+							<Button
+								size="sm"
+								variant="default"
+								onClick={handleUpdateCostCenterSummary}
+								disabled={updatingCostCenter}
+								className="flex items-center gap-2"
+							>
+								{updatingCostCenter ? (
+									<Loader2 className="w-4 h-4 animate-spin" />
+								) : (
+									<RefreshCw className="w-4 h-4" />
+								)}
+								Update
+							</Button>
 						</div>
 						<table className="min-w-full border text-xs">
 							<thead className="bg-gray-200">
@@ -1401,205 +1482,23 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				</div>
 			</div>
 			<div className="mt-4 w-full">
-				<ConsumerDetailsTable
-					filteredDetails={filteredDetails}
-					editableDetails={editableDetails}
-					search={search}
-					onSearchChange={handleSearchChange}
-					loadingDetails={loadingDetails}
-					onEditDetail={handleEditDetail}
-					onRemoveDetail={handleRemoveDetail}
+					<ConsumerDetailsTable
+						filteredDetails={filteredDetails}
+						editableDetails={editableDetails}
+						search={search}
+						onSearchChange={handleSearchChange}
+						loadingDetails={loadingDetails}
+						onRemoveDetail={handleRemoveDetail}
 					onDetailChange={handleDetailChange}
+					onFleetCardChange={handleFleetCardChange}
 					isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
 					handleNumericInput={handleNumericInput}
 					validateNumericInput={validateNumericInput}
 					detailIndexMap={detailIndexMap}
+					isRowFilled={isRowFilled}
+					cardFieldsReady={cardFieldsReady}
 				/>
 			</div>
-
-			{/* ActionSidebar for editing detail row */}
-			{sidebarOpen && (
-				<ActionSidebar
-					title="Edit Detail Row"
-					onClose={() => {
-						setSidebarOpen(false);
-						setEditingDetailIndex(null);
-						setEditAssetPickerOpen(false);
-					}}
-					size={editAssetPickerOpen ? 'md' : 'sm'}
-					content={
-						currentEditingDetail ? (
-							<div className={editAssetPickerOpen ? 'flex gap-4' : 'space-y-4'}>
-								<div className={editAssetPickerOpen ? 'space-y-4 flex-1' : ''}>
-									<div>
-										<label className="block text-sm font-medium mb-2">Fleet Card</label>
-										<Input
-											type="text"
-											value={editFormData.card_no}
-											onChange={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value }))}
-											placeholder="Enter fleet card number"
-											className="w-full"
-											onBlur={(e) => setEditFormData(prev => ({ ...prev, card_no: e.target.value.trim() }))}
-										/>
-									</div>
-									<div>
-										<label className="block text-sm font-medium mb-2">Asset</label>
-										<div className="relative">
-											<Input
-												readOnly
-												placeholder="No asset selected"
-												className={`pr-10 cursor-pointer ${editErrors.asset_id ? 'border-red-500 focus:ring-red-500' : ''}`}
-												onClick={() => setEditAssetPickerOpen(true)}
-												value={(() => {
-													const id = editFormData.asset_id;
-													if (!id) return '';
-													const fromOptions = editAssetOptions.find(a => String(a.id) === String(id));
-													if (fromOptions) return fromOptions.register_number || `#${fromOptions.id}`;
-													// fallback to current row asset
-													if (currentEditingDetail?.asset?.asset_id && String(currentEditingDetail.asset.asset_id) === String(id)) {
-														return currentEditingDetail.asset.register_number || `#${id}`;
-													}
-													return `#${id}`;
-												})()}
-											/>
-											<button
-												type="button"
-												className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
-												title="Choose from assets"
-												onClick={() => setEditAssetPickerOpen(true)}
-												aria-label="Open asset picker"
-											>
-												<ArrowBigRight />
-											</button>
-											{editErrors.asset_id && (
-												<p className="mt-1 text-sm text-red-600">{editErrors.asset_id}</p>
-											)}
-										</div>
-									</div>
-									<div>
-										<label className="block text-sm font-medium mb-2">Cost Center</label>
-										<Select
-											value={editFormData.costcenter_id}
-											onValueChange={(value) => setEditFormData(prev => ({ ...prev, costcenter_id: value }))}
-										>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select Cost Center" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectGroup>
-													<SelectLabel>Cost Centers</SelectLabel>
-													{availableCostCenters.map(cc => (
-														<SelectItem key={cc.id} value={String(cc.id)}>
-															{cc.name}
-														</SelectItem>
-													))}
-												</SelectGroup>
-											</SelectContent>
-										</Select>
-									</div>
-
-									<div>
-										<label className="block text-sm font-medium mb-2">Fuel Type</label>
-										<Select
-											value={editFormData.fuel_type}
-											onValueChange={(value) => setEditFormData(prev => ({ ...prev, fuel_type: value }))}
-										>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select Fuel Type" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectGroup>
-													<SelectLabel>Fuel Type</SelectLabel>
-													<SelectItem value="petrol">Petrol</SelectItem>
-													<SelectItem value="diesel">Diesel</SelectItem>
-												</SelectGroup>
-											</SelectContent>
-										</Select>
-									</div>
-
-									<div>
-										<label className="block text-sm font-medium mb-2">Purpose</label>
-										<Select
-											value={editFormData.purpose}
-											onValueChange={(value) => setEditFormData(prev => ({ ...prev, purpose: value }))}
-										>
-											<SelectTrigger className="w-full">
-												<SelectValue placeholder="Select Purpose" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectGroup>
-													<SelectLabel>Purpose</SelectLabel>
-													<SelectItem value="project">Project</SelectItem>
-													<SelectItem value="staff cost">Staff Cost</SelectItem>
-													<SelectItem value="pool">Poolcar</SelectItem>
-												</SelectGroup>
-											</SelectContent>
-										</Select>
-									</div>
-
-									<div className="flex gap-2 pt-4">
-										<Button onClick={handleUpdateDetail} className="flex-1" disabled={updatingDetail}>
-											{updatingDetail && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
-											{updatingDetail ? "Saving..." : "Save Changes"}
-										</Button>
-										<Button
-											variant="outline"
-											onClick={() => {
-												setSidebarOpen(false);
-												setEditingDetailIndex(null);
-												setEditAssetPickerOpen(false);
-											}}
-											className="flex-1"
-										>
-											Cancel
-										</Button>
-									</div>
-								</div>
-								{editAssetPickerOpen && (
-									<div className="w-96 border-l pl-4">
-										<div className="flex items-center justify-between mb-2">
-											<h3 className="font-semibold">Select Asset</h3>
-											<Button size="sm" variant="default" onClick={() => setEditAssetPickerOpen(false)}>Hide List</Button>
-										</div>
-										<Input placeholder="Search..." value={editAssetSearch} onChange={e => setEditAssetSearch(e.target.value)} className="mb-3" />
-										<div className="max-h-150 overflow-y-auto space-y-2">
-											{editAssetOptions
-												.filter(a => (a.register_number || '').toLowerCase().includes(editAssetSearch.toLowerCase()))
-												.map(a => (
-													<div key={a.id} className="p-2 border rounded hover:bg-amber-50 flex items-center justify-between">
-														<div>
-															<div className="font-medium">{a.register_number || `#${a.id}`}</div>
-															<div className="text-xs text-gray-500">Cost Ctr: {a.costcenter?.name || '-'}</div>
-															<div className="text-xs text-gray-500">Fuel: {a.fuel_type || '-'}</div>
-															<div className="text-xs text-gray-500">Purpose: {a.purpose || '-'}</div>
-														</div>
-														<span
-															className="text-green-500 cursor-pointer"
-															onClick={() => {
-																setEditFormData(prev => ({
-																	...prev,
-																	asset_id: String(a.id),
-																	costcenter_id: a.costcenter?.id ? String(a.costcenter.id) : '',
-																	fuel_type: a.fuel_type || '',
-																	purpose: a.purpose || 'project',
-																}));
-																setEditAssetPickerOpen(false);
-															}}
-															title="Select this asset"
-														>
-															<ArrowBigLeft />
-														</span>
-													</div>
-												))}
-										</div>
-									</div>
-								)}
-							</div>
-						) : null
-					}
-				/>
-			)}
-
 		</div>
 
 	);
