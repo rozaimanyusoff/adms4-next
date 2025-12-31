@@ -12,6 +12,7 @@ import { downloadServiceFormPdf } from './pdf/service-form';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import VehicleMtnSummary from './vehicle-mtn-summary';
 import { useRouter } from 'next/navigation';
+import { can } from '@/utils/permissions';
 
 // Exclusion list: users in this list will retrieve all data (no ?ramco= filter)
 const exclusionUser: string[] = ['username1', 'username2'];
@@ -55,13 +56,14 @@ function StatusBadge({ status }: { status: string }) {
 const VehicleMtnRecord: React.FC = () => {
   const auth = React.useContext(AuthContext);
   const username = auth?.authData?.user?.username || '';
+  const authData = auth?.authData;
   const router = useRouter();
 
   const [rows, setRows] = React.useState<MtnRecordRow[]>([]);
   const [loading, setLoading] = React.useState(false);
 
   const loadData = async () => {
-    if (!username) return;
+    if (!username || !can('view', authData)) return;
     setLoading(true);
     try {
       const url = exclusionUser.includes(String(username))
@@ -140,7 +142,7 @@ const VehicleMtnRecord: React.FC = () => {
   React.useEffect(() => {
     loadData();
      
-  }, [username]);
+  }, [username, authData]);
 
   const canDownloadPdf = (status?: string) => {
     const normalized = String(status || '').toLowerCase().trim().replace(/\s+/g, ' ');
@@ -198,9 +200,12 @@ const VehicleMtnRecord: React.FC = () => {
   const handleRowDoubleClick = (row: any) => {
     if (!row) return;
     const id = row.id;
-    if (id !== undefined) {
-      router.push(`/mtn/vehicle/form/${id}`);
+    if (id === undefined) return;
+    if (!can('update', authData)) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
     }
+    router.push(`/mtn/vehicle/form/${id}`);
   };
 
   return (
@@ -218,13 +223,22 @@ const VehicleMtnRecord: React.FC = () => {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold">My Vehicle Maintenance Requests</div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => { router.push('/mtn/vehicle/form/new'); }}>
+          <Button
+            size="sm"
+            onClick={() => { router.push('/mtn/vehicle/form/new'); }}
+            disabled={!can('create', authData)}
+            title={!can('create', authData) ? 'You do not have permission to create a request' : undefined}
+          >
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
           </Button>
         </div>
       </div>
 
-      {loading ? (
+      {!can('view', authData) ? (
+        <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded">
+          You do not have permission to view maintenance requests.
+        </div>
+      ) : loading ? (
         <div className="p-2 text-sm text-muted-foreground">Loading...</div>
       ) : (
         <div className="min-w-full">

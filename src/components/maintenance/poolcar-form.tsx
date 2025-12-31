@@ -32,6 +32,7 @@ import { AuthContext } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { can } from '@/utils/permissions';
 
 interface PoolcarApplicationFormProps {
   id?: number | string | null;
@@ -91,6 +92,7 @@ function calculateDurationDetails(start: Date, end: Date) {
 const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onClose, onSubmitted }) => {
   const auth = React.useContext(AuthContext);
   const user = auth?.authData?.user;
+  const authData = auth?.authData;
   const router = useRouter();
 
   const [submitting, setSubmitting] = React.useState(false);
@@ -355,6 +357,22 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     if (id) setAgree(true);
   }, [id]);
 
+  if (isCreateMode && !canCreate) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to create poolcar applications.
+      </div>
+    );
+  }
+
+  if (!isCreateMode && !canView && !canUpdate) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to view this poolcar application.
+      </div>
+    );
+  }
+
   // Fetch requestor details (department, location, etc.)
   React.useEffect(() => {
     if (id) return; // do not override prefilled data in edit mode
@@ -438,8 +456,20 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   }
 
   const disabled = submitting;
+  const canCreate = can('create', authData);
+  const canUpdate = can('update', authData);
+  const canView = can('view', authData);
+  const isCreateMode = !id;
 
   const handleSubmit = async () => {
+    if (isCreateMode && !canCreate) {
+      toast.error('You do not have permission to create poolcar applications.');
+      return;
+    }
+    if (!isCreateMode && !canUpdate) {
+      toast.error('You do not have permission to update poolcar applications.');
+      return;
+    }
     if (!agree) { toast.error('You must agree to the terms before submitting.'); return; }
     const start = parseLocalDateTime(fromDT); const end = parseLocalDateTime(toDT);
     if (!(start < end)) { toast.error('Trip end must be after start.'); return; }
@@ -845,7 +875,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
           )}
 
           {/* Status & Assignment - only after approved */}
-          {id && existing?.approval_stat === 1 && (
+          {id && existing?.approval_stat === 1 && canUpdate && (
             <div>
               <Card>
                 <CardHeader>
@@ -924,7 +954,8 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                             toast.error('Failed to save return details');
                           }
                         }}
-                        disabled={!returnDT || !returnOdoEnd || returnSaved}
+                        disabled={!returnDT || !returnOdoEnd || returnSaved || !canUpdate}
+                        title={!canUpdate ? 'You do not have permission to update poolcar applications' : undefined}
                       >
                         Save Return
                       </Button>
@@ -946,7 +977,18 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setCancelDialogOpen(true)} disabled={disabled}>Cancel</Button>
-                <Button onClick={handleSubmit} disabled={disabled || !agree || loadingExisting}>{submitting ? 'Submitting...' : 'Submit'}</Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={
+                    disabled ||
+                    !agree ||
+                    loadingExisting ||
+                    !canCreate
+                  }
+                  title={!canCreate ? 'You do not have permission to create poolcar applications' : undefined}
+                >
+                  {submitting ? 'Submitting...' : 'Submit'}
+                </Button>
               </div>
             </div>
           )}

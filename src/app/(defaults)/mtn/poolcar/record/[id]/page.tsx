@@ -3,7 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import PoolcarApplicationForm from '@/components/maintenance/poolcar-application-form';
+import PoolcarApplicationForm from '@components/maintenance/poolcar-form';
 
 export default function PoolcarRecordApplicationPage({ params }: { params: { id: string } }) {
   const router = useRouter();

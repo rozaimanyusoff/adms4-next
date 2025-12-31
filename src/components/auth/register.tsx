@@ -37,9 +37,10 @@ const ComponentRegister = () => {
 
     const handleChange = (e: { target: { id: string; value: string } }) => {
         const { id, value } = e.target;
+        const sanitizedValue = id === 'contact' ? value.replace(/\D/g, '') : value;
         setFormData((prevData) => ({
             ...prevData,
-            [id]: value,
+            [id]: sanitizedValue,
         }));
     };
 
@@ -60,7 +61,7 @@ const ComponentRegister = () => {
         if (userType === '1' && !isCompanyEmail(email)) errors.email = 'Please use your company email for Employee registration.';
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'Enter a valid email address.';
         if (!contact.trim()) errors.contact = 'Please enter your contact number.';
-        if (!/^[0-9]{8,12}$/.test(contact)) errors.contact = 'Contact must be 8-12 digits.';
+        if (!/^[0-9]{10,11}$/.test(contact)) errors.contact = 'Contact must be 10-11 digits.';
         setFieldErrors(errors);
         if (Object.keys(errors).length > 0) return;
 
@@ -161,7 +162,7 @@ const ComponentRegister = () => {
                         <SelectTrigger
                             id="userType"
                             name="userType"
-                            className="w-full border-white/40 bg-white/10 text-white focus-visible:ring-white/45 focus-visible:border-white/70 data-[placeholder]:text-white/70"
+                            className="w-full border-white/40 bg-white/10 text-white focus-visible:ring-white/45 focus-visible:border-white/70 data-placeholder:text-white/70"
                         >
                             <SelectValue placeholder="Select user type" />
                         </SelectTrigger>
@@ -216,7 +217,7 @@ const ComponentRegister = () => {
                         required
                         placeholder="Enter your contact"
                         pattern="[0-9]*"
-                        maxLength={12}
+                        maxLength={11}
                         value={formData.contact}
                         onChange={handleChange}
                         onKeyPress={handleKeyPress}

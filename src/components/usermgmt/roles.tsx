@@ -5,6 +5,16 @@ import { Plus, Pencil, Trash2, MinusCircle } from "lucide-react";
 import { Button } from "@components/ui/button";
 import FRoleForm from "./f-role";
 import { toast } from "sonner";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Role {
     id: number;
@@ -40,6 +50,7 @@ const RoleManagement = () => {
     const [userSearch, setUserSearch] = useState("");
     const userListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
     const [newlyAssignedUserIds, setNewlyAssignedUserIds] = useState<number[]>([]);
+    const [pendingDeleteIds, setPendingDeleteIds] = useState<number[] | null>(null);
 
     useEffect(() => {
         authenticatedApi.get<RolesApiResponse>("/api/admin/roles").then(res => {
@@ -131,6 +142,32 @@ const RoleManagement = () => {
         setFormUserObjs(users => users.some(u => u.id === user.id) ? users : [...users, user]);
         setNewlyAssignedUserIds(ids => [...ids, user.id]);
         setTimeout(() => setNewlyAssignedUserIds(ids => ids.filter(id => id !== user.id)), 1200);
+    };
+
+    const handleDeleteRole = async (roleIds?: number | number[]) => {
+        const idsArray = Array.isArray(roleIds) ? roleIds : roleIds ? [roleIds] : [];
+        if (idsArray.length === 0) return;
+        try {
+            const res: any = await authenticatedApi.request({
+                method: 'DELETE',
+                url: `/api/admin/roles`,
+                data: { roleIds: idsArray },
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const deletedIds: number[] = res?.data?.data?.roleIds || idsArray;
+            const message = res?.data?.message || 'Role deleted successfully!';
+            setRoles(prev => prev.filter(r => !deletedIds.includes(r.id)));
+            toast.success(message);
+            setPendingDeleteIds(null);
+        } catch (err: any) {
+            const apiMessage = err?.response?.data?.message;
+            const affectedUsers: any[] = err?.response?.data?.data?.affectedUsers || [];
+            const userNames = affectedUsers.slice(0, 3).map(u => u.name).join(', ');
+            const suffix = affectedUsers.length > 3 ? ` and ${affectedUsers.length - 3} more` : '';
+            const detail = userNames ? ` Users still assigned: ${userNames}${suffix}.` : '';
+            toast.error((apiMessage || 'Failed to delete role') + detail);
+            setPendingDeleteIds(null);
+        }
     };
 
     const sortedRoles = useMemo(() => {
@@ -296,7 +333,10 @@ const RoleManagement = () => {
                             (col.key as string) === "action" ? {
                                 ...col,
                                 render: (row: Role) => (
-                                    <Pencil className="w-5 h-5 text-amber-500 hover:text-amber-600" onClick={() => setEditRole(row)} />
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Pencil className="w-5 h-5 text-amber-500 hover:text-amber-600 cursor-pointer" onClick={() => setEditRole(row)} />
+                                        <Trash2 className="w-5 h-5 text-red-500 hover:text-red-600 cursor-pointer" onClick={() => setPendingDeleteIds([row.id])} />
+                                    </div>
                                 )
                             } : col
                         )}
@@ -306,6 +346,23 @@ const RoleManagement = () => {
                         theme={gridTheme}
                     />
                 )}
+
+            <AlertDialog open={!!pendingDeleteIds && pendingDeleteIds.length > 0} onOpenChange={(open) => { if (!open) setPendingDeleteIds(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Role{pendingDeleteIds && pendingDeleteIds.length > 1 ? 's' : ''}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. The selected role{pendingDeleteIds && pendingDeleteIds.length > 1 ? 's' : ''} will be permanently removed if there are no assigned users blocking deletion.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setPendingDeleteIds(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => handleDeleteRole(pendingDeleteIds || [])}>
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
         </div>
     );

@@ -29,6 +29,10 @@ interface LoginResponse {
             role: {
                 id: number;
                 name: string;
+                view?: boolean;
+                create?: boolean;
+                update?: boolean;
+                delete?: boolean;
             };
             profile: {
                 user_id: number;
@@ -308,10 +312,24 @@ const ComponentLogin = () => {
                     localStorage.removeItem('rememberedCredentials');
                 }
 
+                // Fetch latest account info (including role) with the freshly issued token
+                let mergedUser = response.data.data.user;
+                try {
+                    const accountRes = await api.get('/api/auth/account', {
+                        headers: { Authorization: `Bearer ${response.data.token}` }
+                    });
+                    const accountUser = accountRes.data?.data?.user || accountRes.data?.user || accountRes.data?.data || null;
+                    if (accountUser) {
+                        mergedUser = { ...mergedUser, ...accountUser };
+                    }
+                } catch (err) {
+                    console.warn('Could not refresh account info after login', err);
+                }
+
                 if (authContext && authContext.setAuthData) {
                     authContext.setAuthData({
                         token: response.data.token,
-                        user: response.data.data.user,
+                        user: mergedUser,
                         usergroups: response.data.data.usergroups,
                         navTree: response.data.data.navTree,
                     });

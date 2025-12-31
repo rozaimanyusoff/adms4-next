@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { can } from '@/utils/permissions';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -475,6 +476,7 @@ const columns: ColumnDef<PoolcarRecord>[] = [
 
 const PoolcarMgmt: React.FC = () => {
   const auth = React.useContext(AuthContext);
+  const authData = auth?.authData;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [rows, setRows] = React.useState<PoolcarRecord[]>([]);
@@ -501,6 +503,9 @@ const PoolcarMgmt: React.FC = () => {
   const [assetAssignments, setAssetAssignments] = React.useState<any[]>([]);
   const [assetAssignmentsLoading, setAssetAssignmentsLoading] = React.useState(false);
   const optionTokens = React.useMemo(() => extractPoolcarOptions(detail?.pcar_opt), [detail?.pcar_opt]);
+  const canView = can('view', authData);
+  const canUpdate = can('update', authData);
+  const canCreate = can('create', authData);
   const isRequestorCancelled = React.useMemo(() => {
     const st = typeof detail?.status === 'string' ? detail.status.toLowerCase().trim() : '';
     const flag = (detail as any)?.pcar_cancel;
@@ -528,6 +533,7 @@ const PoolcarMgmt: React.FC = () => {
   }, [formState]);
 
   const loadData = async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       // For admins, load all poolcar requests (endpoint to be confirmed)
@@ -571,7 +577,7 @@ const PoolcarMgmt: React.FC = () => {
   React.useEffect(() => {
     loadData();
      
-  }, [statusFilter]);
+  }, [statusFilter, canView]);
 
   // Sync selectedId from query param
   React.useEffect(() => {
@@ -602,6 +608,7 @@ const PoolcarMgmt: React.FC = () => {
 
   // Load poolcar fleet (active assets with purpose=pool)
   const loadFleet = React.useCallback(async () => {
+    if (!canView) return;
     setFleetLoading(true);
     try {
       const res = await authenticatedApi.get(`/api/assets?status=active&purpose=pool`);
@@ -809,12 +816,12 @@ const PoolcarMgmt: React.FC = () => {
       setTngOptions([]);
       return;
     }
-    if (showFleetcardRow) {
+    if (showFleetcardRow && canView) {
       fetchFleetcardOptionList();
     } else {
       setFleetcardOptions([]);
     }
-    if (showTouchngoRow) {
+    if (showTouchngoRow && canView) {
       fetchTngOptionList();
     } else {
       setTngOptions([]);
@@ -1011,6 +1018,11 @@ const PoolcarMgmt: React.FC = () => {
       pcar_canrem: isAdminRejected ? (formState.cancelReason?.trim() || null) : null,
     };
 
+    if (!canUpdate) {
+      toast.error('You do not have permission to update poolcar assignments.');
+      return;
+    }
+
     setSaving(true);
     try {
       await authenticatedApi.put(`/api/mtn/poolcars/${selectedId}/admin`, payload);
@@ -1035,6 +1047,10 @@ const PoolcarMgmt: React.FC = () => {
   ]);
 
   const handleReturnUpdate = React.useCallback(async () => {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update poolcar returns.');
+      return;
+    }
     if (!selectedId) {
       toast.error('No poolcar request selected');
       return;
@@ -1501,7 +1517,8 @@ const PoolcarMgmt: React.FC = () => {
                                 size="sm"
                                 variant="default"
                                 onClick={handleReturnUpdate}
-                                disabled={returnSaving || isFormLocked}
+                                disabled={returnSaving || isFormLocked || !canUpdate}
+                                title={!canUpdate ? 'You do not have permission to update poolcar returns' : undefined}
                               >
                                 {returnSaving ? (
                                   <>

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import PoolcarCalendar from './poolcar-calendar';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useRouter } from 'next/navigation';
+import { can } from '@/utils/permissions';
 
 // Users who can view all poolcar requests without filtering by ramco
 const poolcarAdmin: string[] = ['003456'];
@@ -197,10 +198,11 @@ const PoolcarRecord: React.FC = () => {
   const router = useRouter();
   const [rows, setRows] = React.useState<PoolcarRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const username = auth?.authData?.user?.username || '';
+  const authData = auth?.authData;
+  const username = authData?.user?.username || '';
 
   const loadData = async () => {
-    if (!username) return;
+    if (!username || !can('view', authData)) return;
     setLoading(true);
     try {
       const url = poolcarAdmin.includes(String(username))
@@ -251,7 +253,7 @@ const PoolcarRecord: React.FC = () => {
   React.useEffect(() => {
     loadData();
      
-  }, [username]);
+  }, [username, authData]);
 
   // Build calendar bookings for current month only
   const calendarBookings = React.useMemo(() => {
@@ -283,9 +285,12 @@ const PoolcarRecord: React.FC = () => {
   const handleRowDoubleClick = (row: any) => {
     if (!row) return;
     const id = row.id;
-    if (id !== undefined) {
-      router.push(`/mtn/poolcar/record/${id}`);
+    if (id === undefined) return;
+    if (!can('update', authData)) {
+      toast.error('You do not have permission to update poolcar requests.');
+      return;
     }
+    router.push(`/mtn/poolcar/record/${id}`);
   };
 
   return (
@@ -303,13 +308,22 @@ const PoolcarRecord: React.FC = () => {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold">My Poolcar Requests</div>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => router.push('/mtn/poolcar/record/new')}>
+          <Button
+            size="sm"
+            onClick={() => router.push('/mtn/poolcar/record/new')}
+            disabled={!can('create', authData)}
+            title={!can('create', authData) ? 'You do not have permission to create a request' : undefined}
+          >
             {loading ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={24} />}
           </Button>
         </div>
       </div>
 
-      {loading ? (
+      {!can('view', authData) ? (
+        <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded">
+          You do not have permission to view poolcar requests.
+        </div>
+      ) : loading ? (
         <div className="p-2 text-sm text-muted-foreground">Loading...</div>
       ) : (
         <div className="min-w-full">

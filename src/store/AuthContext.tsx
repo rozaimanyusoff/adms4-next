@@ -1,10 +1,14 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { authenticatedApi } from '@/config/api';
 
-// User role type
+// User role type with permissions
 interface UserRole {
   id: number;
   name: string;
+  view?: boolean;
+  create?: boolean;
+  update?: boolean;
+  delete?: boolean;
 }
 
 // User group type
@@ -33,10 +37,7 @@ interface User {
   userType: number;
   status: number;
   lastNav: string;
-  role: {
-    id: number;
-    name: string;
-  };
+  role: UserRole;
   profile?: UserProfileInfo | null;
 }
 
@@ -88,7 +89,16 @@ const normalizeUser = (user: any): User => {
     }
   }
 
+  const role: UserRole = {
+    ...(normalizedUser.role || {}),
+    view: Boolean(normalizedUser.role?.view),
+    create: Boolean(normalizedUser.role?.create),
+    update: Boolean(normalizedUser.role?.update),
+    delete: Boolean(normalizedUser.role?.delete),
+  };
+
   normalizedUser.profile = profile;
+  normalizedUser.role = role;
 
   return normalizedUser;
 };
@@ -132,6 +142,7 @@ interface AuthContextProps {
 }
 
 export const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+export type { AuthData };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [authData, setAuthData] = useState<AuthData | null>(null);

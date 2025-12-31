@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useContext } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import ServiceTypes, { ServiceType } from '@/components/maintenance/service-types';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 import {
   ArrowLeft,
   ArrowRight,
@@ -170,6 +172,11 @@ interface VehicleMaintenanceDetailProps {
 }
 
 const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ requestId }) => {
+  const auth = useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can('view', authData);
+  const canUpdate = can('update', authData);
+  const canCreate = can('create', authData);
   const [request, setRequest] = useState<MaintenanceRequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [resendingRecommendation, setResendingRecommendation] = useState(false);
@@ -193,6 +200,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   const [adminFinalized, setAdminFinalized] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const router = useRouter();
+  const unauthorizedView = !canView;
   const isApproved = (request?.status || '').toLowerCase() === 'approved' || Boolean(request?.approval_date);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [pendingUnverifiedIds, setPendingUnverifiedIds] = useState<number[]>([]);
@@ -326,6 +334,7 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   }, [currentYear]);
 
   const fetchMaintenanceDetail = async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       const response = await authenticatedApi.get(`/api/mtn/request/${requestId}`);
@@ -371,6 +380,10 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   };
 
   const resendRecommendationRequest = async () => {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
     setResendingRecommendation(true);
     try {
       await authenticatedApi.post(`/api/mtn/request/${requestId}/resend/recommend`);
@@ -384,6 +397,10 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   };
 
   const resendApprovalRequest = async () => {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
     setResendingApproval(true);
     try {
       await authenticatedApi.post(`/api/mtn/request/${requestId}/resend/approval`);
@@ -397,6 +414,11 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   };
 
   const handleProceedForInvoicing = async () => {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
+    // Optionally handle confirmation via UI dialog if needed; keep native confirm for now
     if (!confirm('Are you sure you want to proceed with invoicing for this maintenance request? This action will initiate the invoicing process.')) {
       return;
     }
@@ -416,6 +438,10 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   };
 
   const handleAdminSave = async () => {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
     try {
       setAdminSaving(true);
       setAdminSectionSaved(false);
@@ -480,7 +506,15 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
     if (requestId) {
       fetchMaintenanceDetail();
     }
-  }, [requestId]);
+  }, [requestId, canView]);
+
+  if (!canView) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to view this vehicle maintenance request.
+      </div>
+    );
+  }
 
   // Update browser tab title to reflect the current maintenance request
   useEffect(() => {

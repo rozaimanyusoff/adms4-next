@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Camera, Download, Loader2, X } from 'lucide-react';
+import { can } from '@/utils/permissions';
 
 // Users in this list will not be filtered by ?ramco
 const exclusionUser: string[] = ['000277', 'username2'];
@@ -124,6 +125,7 @@ function extractServiceTypeId(value: unknown): number | null {
 const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitted }) => {
   const auth = React.useContext(AuthContext);
   const user = auth?.authData?.user;
+  const authData = auth?.authData;
 
   const [loading, setLoading] = React.useState<boolean>(false);
   const [existing, setExisting] = React.useState<any>(null);
@@ -173,6 +175,10 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const [assessmentError, setAssessmentError] = React.useState<string | null>(null);
   const currentYear = React.useMemo(() => new Date().getFullYear(), []);
   const isReadOnly = Boolean(id);
+  const canCreate = can('create', authData);
+  const canUpdate = can('update', authData);
+  const canView = can('view', authData);
+  const isCreateMode = !id;
   const [ncrDialogOpen, setNcrDialogOpen] = React.useState(false);
   const [ncrAgreedForAsset, setNcrAgreedForAsset] = React.useState<string | null>(null);
   const [ncrPromptedAsset, setNcrPromptedAsset] = React.useState<string | null>(null);
@@ -247,8 +253,11 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   // Open terms dialog when form mounts
   React.useEffect(() => {
+    if ((isCreateMode && !canCreate) || (!isCreateMode && !canView && !canUpdate)) {
+      return;
+    }
     setTermsOpen(true);
-  }, []);
+  }, [canCreate, canUpdate, canView, isCreateMode]);
 
   const handleTermsDecline = React.useCallback(() => {
     setTermsOpen(false);
@@ -339,6 +348,14 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   }, [compressImage, filterAttachmentFiles]);
 
   const attemptSubmit = React.useCallback(async () => {
+    if (isCreateMode && !canCreate) {
+      toast.error('You do not have permission to create maintenance requests.');
+      return;
+    }
+    if (!isCreateMode && !canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
     if (submitting) return;
     setShowErrors(true);
     const newErrors: typeof errors = {};
@@ -1325,6 +1342,22 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       setFormUploadDate(null);
     }
   }, [isServiceRequest]);
+
+  if (isCreateMode && !canCreate) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to create vehicle maintenance requests.
+      </div>
+    );
+  }
+
+  if (!isCreateMode && !canView && !canUpdate) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to view this vehicle maintenance request.
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

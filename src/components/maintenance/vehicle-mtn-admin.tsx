@@ -8,6 +8,8 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 interface ServiceType {
   id: number;
@@ -90,6 +92,11 @@ const cardQuery: Record<Exclude<SummaryCardKey, 'total'>, { type: 'pendingstatus
 };
 
 const VehicleMaintenanceAdmin = () => {
+  const auth = React.useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can('view', authData);
+  const canUpdate = can('update', authData);
+  const canCreate = can('create', authData);
   const [rows, setRows] = useState<MaintenanceRequest[]>([]);
   // Summary counts by card
   const [counts, setCounts] = useState<Record<SummaryCardKey, number>>({
@@ -203,6 +210,10 @@ const VehicleMaintenanceAdmin = () => {
 
   const handleRowDoubleClick = (request: MaintenanceRequest) => {
     // Navigate within the same tab to the detail view
+    if (!canUpdate) {
+      toast.error('You do not have permission to update maintenance requests.');
+      return;
+    }
     const url = `/mtn/vehicle/${request.req_id}`;
     router.push(url);
   };
@@ -239,6 +250,7 @@ const VehicleMaintenanceAdmin = () => {
   const getStatusCount = (key: SummaryCardKey) => counts[key] || 0;
 
   useEffect(() => {
+    if (!canView) return;
     // On mount, try to discover available years from backend using total fetch without year
     // Also set initial rows and summary counts
     const init = async () => {
@@ -264,17 +276,19 @@ const VehicleMaintenanceAdmin = () => {
     };
     init();
      
-  }, []);
+  }, [canView]);
 
   // Refresh grid rows and counts when year or card changes
   useEffect(() => {
+    if (!canView) return;
     fetchSummaryCounts(yearFilter);
     fetchGridRows(yearFilter, activeCard);
      
-  }, [yearFilter, activeCard]);
+  }, [yearFilter, activeCard, canView]);
 
   // If returning from detail with ?refresh=1, reload data once and clean the URL
   useEffect(() => {
+    if (!canView) return;
     const shouldRefresh = searchParams?.get('refresh') === '1';
     if (shouldRefresh) {
       fetchSummaryCounts(yearFilter);
@@ -289,7 +303,7 @@ const VehicleMaintenanceAdmin = () => {
       } catch (_) { /* no-op */ }
     }
      
-  }, [searchParams]);
+  }, [searchParams, canView]);
 
   const columns: ColumnDef<MaintenanceRequest>[] = [
     {
