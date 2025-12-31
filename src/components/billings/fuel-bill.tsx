@@ -104,7 +104,7 @@ const FuelBill = () => {
 
   const handleRowDoubleClick = (row: FuelBill & { rowNumber: number }) => {
     if (row.stmt_id) {
-      router.push(`/billings/fuel/bill/${row.stmt_id}`);
+      router.push(`/billings/fuel/bill2/${row.stmt_id}`);
     }
   };
 
@@ -217,7 +217,9 @@ const FuelBill = () => {
           )}
           <Button
             variant={'default'}
-            onClick={() => router.push('/billings/fuel/bill/new')}
+            disabled
+            title="Old form creation disabled – use New v2"
+            className="cursor-not-allowed opacity-60"
           >
             <Plus size={18} />
           </Button>

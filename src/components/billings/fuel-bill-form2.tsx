@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface Asset {
 	id: number;
+	asset_id?: number;
 	register_number: string;
 	fuel_type: string;
 	costcenter?: CostCenter | null;
@@ -153,29 +154,31 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					</TooltipProvider>
 				</div>
 			</td>
-				<td className={`border p-0 ${isDuplicateCard(detail) ? 'bg-red-50' : ''}`}>
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Input
-									type="text"
-									value={detail.fleetcard?.card_no || ''}
-									onChange={e => onFleetCardChange(originalIndex, e.target.value)}
-									placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
-									disabled={!cardFieldsReady}
-									className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
-								/>
-							</TooltipTrigger>
-							{isDuplicateCard(detail) && (
-								<TooltipContent>
-									<p>Duplicated Card No</p>
-								</TooltipContent>
-							)}
-						</Tooltip>
-					</TooltipProvider>
-					{isDuplicateCard(detail) && (
-						<p className="text-xs text-red-600 px-2 py-0.5">Duplicated</p>
-					)}
+			<td className={`border p-0 ${isDuplicateCard(detail) ? 'bg-red-50' : ''}`}>
+					<div className="flex items-center gap-2 px-1">
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Input
+										type="text"
+										value={detail.fleetcard?.card_no || ''}
+										onChange={e => onFleetCardChange(originalIndex, e.target.value)}
+										placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
+										disabled={!cardFieldsReady}
+										className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
+									/>
+								</TooltipTrigger>
+								{isDuplicateCard(detail) && (
+									<TooltipContent>
+										<p>Duplicated Card No</p>
+									</TooltipContent>
+								)}
+							</Tooltip>
+						</TooltipProvider>
+						{isDuplicateCard(detail) && (
+							<span className="text-xs text-red-600 whitespace-nowrap">(Duplicated)</span>
+						)}
+					</div>
 				</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.register_number || ''}</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.costcenter?.name || ''}</td>
@@ -302,6 +305,21 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 		);
 	}, [editableDetails]);
 
+	// Track duplicates for register numbers (case-insensitive, trimmed)
+	const duplicateRegisterNos = React.useMemo(() => {
+		const counts = new Map<string, number>();
+		editableDetails.forEach(d => {
+			const key = (d.asset?.register_number || '').trim().toLowerCase();
+			if (!key) return;
+			counts.set(key, (counts.get(key) || 0) + 1);
+		});
+		return new Set(
+			Array.from(counts.entries())
+				.filter(([, count]) => count > 1)
+				.map(([key]) => key)
+		);
+	}, [editableDetails]);
+
 	const isDuplicateCard = React.useCallback((detail: FuelDetail) => {
 		const key = (detail.fleetcard?.card_no || '').trim().toLowerCase();
 		if (!key) return false;
@@ -329,19 +347,19 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 		() => filteredDetails.filter(isRowFilled).length,
 		[filteredDetails, isRowFilled]
 	);
+	const duplicateCardCount = duplicateCardNos.size;
+	const duplicateRegisterCount = duplicateRegisterNos.size;
 
 	return (
 		<div className="w-full">
-			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-3">
-				<div className="flex items-center gap-3">
+			<div className="flex flex-col gap-2 mb-2">
+				<div className="flex items-center gap-2">
 					<h3 className="text-xl font-semibold flex items-center gap-2">
-						Consumer Details
+						Consumption Details
 						{loadingDetails && <Loader2 className="animate-spin text-primary w-5 h-5" />}
 					</h3>
-					<span className="text-sm text-blue-600 bg-gray-100 rounded px-2 py-0.5">
-						Total entries: {filledCount}
-						{search ? ` • Showing ${filteredFilledCount}` : ''}
-					</span>
+				</div>
+				<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
 					<Input
 						type="text"
 						placeholder="Search Register number or card..."
@@ -349,6 +367,17 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 						onChange={e => onSearchChange(e.target.value)}
 						className="w-62 rounded-md"
 					/>
+					<div className="flex flex-wrap items-center gap-2 text-sm">
+						<span className="text-blue-600 bg-gray-100 rounded px-2 py-0.5">
+							Total entries: {filledCount}{search ? ` • Showing ${filteredFilledCount}` : ''}
+						</span>
+						<span className={`rounded px-2 py-0.5 ${duplicateCardCount > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+							Duplicate card nos: {duplicateCardCount}
+						</span>
+						<span className={`rounded px-2 py-0.5 ${duplicateRegisterCount > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+							Duplicate register nos: {duplicateRegisterCount}
+						</span>
+					</div>
 				</div>
 			</div>
 			{search && (
@@ -360,21 +389,21 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 				className="overflow-x-auto overflow-y-auto mb-6 w-full max-h-80"
 				ref={tableContainerRef}
 			>
-				<table className="w-full table-auto border-collapse text-sm">
+				<table className="min-w-275 table-auto border-collapse text-sm">
 					<thead className="bg-gray-200 sticky top-0 z-10">
-						<tr className='text-xs p-2'>
-							<th className="border p-0 w-12">#</th>
-							<th className="border p-0">Card No</th>
-							<th className="border p-0">Register Number</th>
-							<th className="border p-0">Cost Center</th>
-							<th className="border p-0">Fuel Type</th>
-							<th className="border p-0">Purpose</th>
-							<th className="border p-0 text-right w-25">Start ODO</th>
-							<th className="border p-0 text-right w-25">End ODO</th>
-							<th className="border p-0 text-right w-25">Distance (km)</th>
-							<th className="border p-0 text-right w-25">Consumption (liter)</th>
-							<th className="border p-0 text-right w-25">Efficiency (km/l)</th>
-							<th className="border p-0 text-right w-25">Amount (RM)</th>
+						<tr className='text-xs'>
+							<th className="border px-2 py-3 w-12">#</th>
+							<th className="border px-2 py-3">Card No</th>
+							<th className="border px-2 py-3">Register Number</th>
+							<th className="border px-2 py-3">Cost Center</th>
+							<th className="border px-2 py-3">Fuel Type</th>
+							<th className="border px-2 py-3">Purpose</th>
+							<th className="border px-2 py-3 text-right w-25">Start ODO</th>
+							<th className="border px-2 py-3 text-right w-25">End ODO</th>
+							<th className="border px-2 py-3 text-right w-25">Distance (km)</th>
+							<th className="border px-2 py-3 text-right w-25">Fuel (ltr)</th>
+							<th className="border px-2 py-3 text-right w-25">Efficiency (km/l)</th>
+							<th className="border px-2 py-3 text-right w-25">Amount (RM)</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -475,8 +504,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	const [submitSuccessMessage, setSubmitSuccessMessage] = useState('');
 
 	// Draft handling and leave confirmation
+	// Draft key per statement (including edit mode)
 	const draftKey = React.useMemo(() => {
-		return currentStmtId && currentStmtId > 0 ? null : 'fuel-bill-draft';
+		const suffix = currentStmtId && currentStmtId > 0 ? String(currentStmtId) : 'new';
+		return `fuel-bill-draft-${suffix}`;
 	}, [currentStmtId]);
 	const [draftLoaded, setDraftLoaded] = useState(false);
 	const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -509,9 +540,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		);
 	}, [headerDraft.stmt_date, headerDraft.stmt_no, selectedVendor]);
 
-	// Draft restore (create mode only)
+	// Draft restore (create + edit mode)
 	useEffect(() => {
-		if (currentStmtId && currentStmtId > 0) { setDraftLoaded(true); return; }
 		if (!draftKey) { setDraftLoaded(true); return; }
 		try {
 			const raw = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
@@ -530,11 +560,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		} finally {
 			setDraftLoaded(true);
 		}
-	}, [currentStmtId, draftKey]);
+	}, [draftKey]);
 
-	// Draft persist (create mode only)
+	// Draft persist (create + edit mode)
 	useEffect(() => {
-		if (currentStmtId && currentStmtId > 0) return;
 		if (!draftKey || !draftLoaded) return;
 		// Build draft payload once, then schedule a deferred write during browser idle time
 		if (draftSaveTimer.current) {
@@ -556,15 +585,16 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				}
 			};
 		}
+		const writeDraft = () => {
+			try {
+				localStorage.setItem(draftKey, serialized);
+				lastDraftStringRef.current = serialized;
+			} catch {
+				// ignore storage errors
+			}
+		};
+
 		draftSaveTimer.current = setTimeout(() => {
-			const writeDraft = () => {
-				try {
-					localStorage.setItem(draftKey, serialized);
-					lastDraftStringRef.current = serialized;
-				} catch {
-					// ignore storage errors
-				}
-			};
 			// Prefer idle callback to avoid blocking UI; fall back to microtask
 			if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
 				(window as any).requestIdleCallback(writeDraft, { timeout: 1500 });
@@ -572,9 +602,20 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				setTimeout(writeDraft, 0);
 			}
 		}, 1000);
+
+		const handleBeforeUnload = () => writeDraft();
+		if (typeof window !== 'undefined') {
+			window.addEventListener('beforeunload', handleBeforeUnload);
+		}
+
 		return () => {
 			if (draftSaveTimer.current) {
 				clearTimeout(draftSaveTimer.current);
+			}
+			// Ensure last changes are flushed on unmount/refresh
+			writeDraft();
+			if (typeof window !== 'undefined') {
+				window.removeEventListener('beforeunload', handleBeforeUnload);
 			}
 		};
 	}, [draftKey, draftLoaded, draftDetailsRestored, editableDetails, header, selectedVendor, summary, currentStmtId]);
@@ -711,6 +752,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		setCostCenterSummary(computeCostCenterSummary());
 		costCenterUpdateTimer.current = setTimeout(() => setUpdatingCostCenter(false), 300);
 	}, [computeCostCenterSummary]);
+	// Keep breakdown in sync automatically (including edit mode load)
+	React.useEffect(() => {
+		setCostCenterSummary(computeCostCenterSummary());
+	}, [computeCostCenterSummary]);
 	React.useEffect(() => {
 		return () => {
 			if (costCenterUpdateTimer.current) {
@@ -749,8 +794,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			stmt_disc: fmtAmount(summary.stmt_disc),
 			stmt_total: fmtAmount(summary.stmt_total),
 			stmt_issuer: selectedVendor,
-			petrol: fmtAmount(petrolAmount),
-			diesel: fmtAmount(dieselAmount),
+			petrol_amount: fmtAmount(petrolAmount),
+			diesel_amount: fmtAmount(dieselAmount),
 			stmt_ron95: fmtAmount(summary.stmt_ron95),
 			stmt_ron97: fmtAmount(summary.stmt_ron97),
 			stmt_diesel: fmtAmount(summary.stmt_diesel),
@@ -759,30 +804,30 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			stmt_entry: summary.stmt_entry || '',
 			stmt_count: activeDetails.length,
 			stmt_total_odo: fmtNum(totalKM),
+			stmt_total_km: fmtNum(totalKM),
 			details: activeDetails.map(detail => {
 				const asset = detail.asset || {};
 				const costcenter: CostCenter | null = asset.costcenter || null;
 				const totalKMVal = fmtNum(detail.total_km);
 				const litreVal = fmtNum(detail.total_litre);
 				const locId = asset.locations?.id ?? asset.location_id ?? null;
-				const fuelType = asset.fuel_type || '';
 				const efficiency = litreVal > 0 ? fmtAmount(totalKMVal / litreVal) : '0.00';
 				return {
-					s_id: detail.s_id,
-					stmt_id: detail.stmt_id,
+					amount: fmtAmount(detail.amount),
+					asset_id: asset.id ?? asset.asset_id ?? (detail as any).asset_id ?? 0,
 					card_id: detail.fleetcard?.id ?? 0,
-					asset_id: asset.id ?? 0,
-					fuel_type: fuelType,
+					category: asset.purpose || '',
 					cc_id: costcenter ? costcenter.id : 0,
-					purpose: asset.purpose || '',
-					loc_id: locId ?? 0,
-					stmt_date: header.stmt_date,
-					start_odo: fmtNum(detail.start_odo),
+					costcenter_id: costcenter ? costcenter.id : 0,
+					efficiency,
 					end_odo: fmtNum(detail.end_odo),
+					entry_code: asset.entry_code || null,
+					loc_id: locId ?? 0,
+					location_id: asset.location_id ?? null,
+					start_odo: fmtNum(detail.start_odo),
+					stmt_date: header.stmt_date,
 					total_km: totalKMVal,
-					effct: efficiency,
 					total_litre: fmtAmount(detail.total_litre),
-					amount: fmtAmount(detail.amount)
 				};
 			})
 		};
@@ -806,7 +851,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 
 	useEffect(() => {
+		if (!draftLoaded) return;
+
 		setLoading(true);
+		setLoadingDetails(true);
 		setError(null);
 		// Fetch vendors (new backend shape: { data: [{ id, name, logo, image2 }] })
 		authenticatedApi.get<{ status: string; message: string; data: { id: number; name: string; logo?: string; image2?: string }[] }>(`/api/bills/fuel/vendor`)
@@ -820,38 +868,53 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 		// Only fetch bill detail if currentStmtId is a valid positive number
 		if (currentStmtId && currentStmtId > 0) {
+			if (draftDetailsRestored) {
+				// ensure we don't render "No data found" when a draft exists
+				setData(prev => prev || { stmt_id: currentStmtId, details: [] } as any);
+				setLoading(false);
+				setLoadingDetails(false);
+				return;
+			}
 			authenticatedApi.get<{ data: FuelBillDetail }>(`/api/bills/fuel/${currentStmtId}`)
 				.then(res => {
-					setData(res.data.data);
-					// Skip fetching consumer detail rows; keep header/summary only
-					setEditableDetails([]);
+					const bill = res.data.data;
+					setData(bill);
+					const normalizedDetails = (bill.details || []).map((d: any) => normalizeIncomingDetail(d));
+					if (draftDetailsRestored) {
+						setLoading(false);
+						setLoadingDetails(false);
+						return;
+					}
+					setEditableDetails(normalizedDetails);
 					setSummary({
-						stmt_stotal: res.data.data.stmt_stotal || '',
-						stmt_disc: res.data.data.stmt_disc || '',
-						stmt_tax: res.data.data.stmt_tax || '',
-						stmt_rounding: res.data.data.stmt_rounding || '',
-						stmt_entry: res.data.data.stmt_entry || '',
-						stmt_total: res.data.data.stmt_total || '',
-						stmt_ron95: res.data.data.stmt_ron95 || '2.05',
-						stmt_ron97: res.data.data.stmt_ron97 || '3.18',
-						stmt_diesel: res.data.data.stmt_diesel || '2.88',
+						stmt_stotal: bill.stmt_stotal || '',
+						stmt_disc: bill.stmt_disc || '',
+						stmt_tax: bill.stmt_tax || '',
+						stmt_rounding: bill.stmt_rounding || '',
+						stmt_entry: bill.stmt_entry || '',
+						stmt_total: bill.stmt_total || '',
+						stmt_ron95: bill.stmt_ron95 || '2.05',
+						stmt_ron97: bill.stmt_ron97 || '3.18',
+						stmt_diesel: bill.stmt_diesel || '2.88',
 					});
 					setHeader({
-						stmt_no: res.data.data.stmt_no || '',
-						stmt_date: res.data.data.stmt_date ? res.data.data.stmt_date.slice(0, 10) : '',
-						stmt_litre: res.data.data.stmt_litre || '',
+						stmt_no: bill.stmt_no || '',
+						stmt_date: bill.stmt_date ? bill.stmt_date.slice(0, 10) : '',
+						stmt_litre: bill.stmt_litre || '',
 					});
 					// Prefer new `fuel_vendor` field from API; fall back to legacy `fuel_issuer` if present
 					setSelectedVendor(
-						res.data.data.fuel_vendor?.id ? String(res.data.data.fuel_vendor.id) : (
-							res.data.data.fuel_issuer?.fuel_id ? String(res.data.data.fuel_issuer.fuel_id) : ''
+						bill.fuel_vendor?.id ? String(bill.fuel_vendor.id) : (
+							bill.fuel_issuer?.fuel_id ? String(bill.fuel_issuer.fuel_id) : ''
 						)
 					);
 					setLoading(false);
+					setLoadingDetails(false);
 				})
 				.catch(() => {
 					setError('Failed to load bill details.');
 					setLoading(false);
+					setLoadingDetails(false);
 				});
 		} else {
 			// Create mode: avoid wiping draft before it restores
@@ -878,8 +941,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				setSelectedVendor('');
 			}
 			setLoading(false);
+			setLoadingDetails(false);
 		}
-	}, [currentStmtId, draftKey, draftLoaded]);
+	}, [currentStmtId, draftKey, draftLoaded, draftDetailsRestored]);
 
 	// When an Issuer (vendor) is selected in create mode, preload fleet cards for that vendor
 	// Removed auto-preload of fleet entries on issuer select to avoid coupling to /api/bills/fleet?vendor=...
@@ -918,7 +982,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		const fleetcardId = item.fleetcard?.id ?? item.id ?? item.card_id ?? 0;
 		const cardNo = item.fleetcard?.card_no ?? item.card_no ?? '';
 		const assetObj = item.asset || {};
-		const assetId = assetObj.asset_id ?? item.asset_id ?? 0;
+		const assetId = assetObj.id ?? assetObj.asset_id ?? item.asset_id ?? 0;
 		const registerNumber = assetObj.register_number ?? item.register_number ?? '';
 		const fuelType = assetObj.fuel_type ?? assetObj.vfuelType ?? item.vfuel_type ?? '';
 		const purpose = assetObj.purpose ?? item.purpose ?? '';
@@ -1013,7 +1077,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						},
 						asset: {
 							...detail.asset,
-							asset_id: asset.id ?? detail.asset?.id ?? 0,
+							id: asset.id ?? detail.asset?.id ?? 0,
+							asset_id: asset.id ?? detail.asset?.asset_id ?? detail.asset?.id ?? 0,
 							register_number: asset.register_number ?? detail.asset?.register_number ?? '',
 							fuel_type: asset.fuel_type ?? detail.asset?.fuel_type ?? '',
 							costcenter: asset.costcenter ?? detail.asset?.costcenter ?? null,
@@ -1091,23 +1156,37 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Filtered details based on search (asset reg no or fleet card) and empty row filter
 	const filteredDetails = React.useMemo(() => {
-		const q = search.toLowerCase();
+		const q = search.toLowerCase().trim();
+		const qCompact = q.replace(/\s+/g, '');
 		const emptyRows: FuelDetail[] = [];
 		const matchedRows: FuelDetail[] = [];
 
 		editableDetails.forEach(detail => {
-			if (!isRowFilled(detail)) {
-				emptyRows.push(detail);
+			const regNoRaw = detail.asset?.register_number || '';
+			const regNo = regNoRaw.toString().toLowerCase();
+			const regNoCompact = regNo.replace(/\s+/g, '');
+			const cardNoRaw = detail.fleetcard?.card_no || '';
+			const cardNo = cardNoRaw.toString().toLowerCase();
+			const cardNoCompact = cardNo.replace(/\s+/g, '');
+
+			const matches = !q
+				|| regNo.includes(q)
+				|| cardNo.includes(q)
+				|| (qCompact && (regNoCompact.includes(qCompact) || cardNoCompact.includes(qCompact)));
+
+			if (matches) {
+				matchedRows.push(detail);
 				return;
 			}
-			const regNo = detail.asset?.register_number?.toLowerCase() || '';
-			const cardNo = detail.fleetcard?.card_no?.toLowerCase() || '';
-			if (!q || regNo.includes(q) || cardNo.includes(q)) {
-				matchedRows.push(detail);
+
+			// Only carry empty rows when there is no search and they are currently unfilled
+			if (!q && !isRowFilled(detail)) {
+				emptyRows.push(detail);
 			}
 		});
 
-		return [...matchedRows, ...emptyRows];
+		// When searching, show only matched rows; otherwise keep empty rows at bottom
+		return q ? matchedRows : [...matchedRows, ...emptyRows];
 	}, [editableDetails, isRowFilled, search]);
 	const detailIndexMap = React.useMemo(() => {
 		const map = new Map<number, number>();
@@ -1174,8 +1253,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	}, [currentStmtId, editableDetails, header.stmt_date]);
 
 	if (loading) return <div className="p-4">Loading...</div>;
-	// Only show No data found if in edit mode and no data
-	if ((currentStmtId && currentStmtId > 0) && !data) return <div className="p-4">No data found.</div>;
+	// Only show No data found if in edit mode, no data, and no draft was restored
+	if ((currentStmtId && currentStmtId > 0) && !data && !draftDetailsRestored) return <div className="p-4">No data found.</div>;
 
 	return (
 		<div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
@@ -1253,7 +1332,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									{/* selected vendor inline preview removed per request */}
 								</div>
 								{!cardFieldsReady && (
-									<p className="text-xs text-red-500 mt-1">Select issuer and fill Statement No & Date to enable Card No entry.</p>
+									<p className="text-xs text-red-500 mt-1">Required to enable Card No entry.</p>
 								)}
 							</div>
 							<div className="flex flex-col">
@@ -1291,11 +1370,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 							</div>
 						</div>
 
-						<div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-4">
-							<div className="flex-1">
-								<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 md:gap-4 mb-4">
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Petrol Amount (RM)</span>
+						<div className="flex flex-col lg:flex-row lg:items-start justify-start gap-8 mt-4">
+							<div className="flex flex-col md:flex-row gap-4 w-full md:w-auto md:min-w-max">
+								<div className="flex flex-col space-y-2 w-full md:w-60">
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Petrol Amount (RM)</label>
 										<Input
 											type="text"
 											value={(() => {
@@ -1308,8 +1387,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 											className="w-full text-right bg-gray-100"
 										/>
 									</div>
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Diesel Amount (RM)</span>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Diesel Amount (RM)</label>
 										<Input
 											type="text"
 											value={(() => {
@@ -1322,8 +1401,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 											className="w-full text-right bg-gray-100"
 										/>
 									</div>
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Overall Distance (KM)</span>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Overall Distance (KM)</label>
 										<Input
 											type="text"
 											value={activeDetails.reduce((sum, d) => sum + (Number(d.total_km) || 0), 0)}
@@ -1331,8 +1410,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 											className="w-full text-right bg-gray-100"
 										/>
 									</div>
-									<div className="flex flex-col">
-										<span className="font-medium mb-1">Total Litre</span>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Fuel Consumption (Ltr)</label>
 										<Input
 											type="text"
 											value={activeDetails.reduce((sum, d) => sum + (parseFloat(d.total_litre) || 0), 0).toFixed(2)}
@@ -1432,12 +1511,12 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					</div>
 				</div>
 				<div className="pt-4 w-full lg:max-w-sm space-y-6">
-					<div className="w-full border rounded p-4 bg-indigo-50 dark:bg-gray-900 shadow-sm h-fit">
+					<div className="w-full border rounded p-2 bg-gray-100/50 dark:bg-gray-900 shadow-sm h-fit">
 						<div className="flex items-center justify-between mb-4 gap-2">
 							<h3 className="text-lg font-semibold">Cost Center Breakdown</h3>
 							<Button
 								size="sm"
-								variant="default"
+								variant="ghost"
 								onClick={handleUpdateCostCenterSummary}
 								disabled={updatingCostCenter}
 								className="flex items-center gap-2"
@@ -1447,7 +1526,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								) : (
 									<RefreshCw className="w-4 h-4" />
 								)}
-								Update
 							</Button>
 						</div>
 						<table className="min-w-full border text-xs">

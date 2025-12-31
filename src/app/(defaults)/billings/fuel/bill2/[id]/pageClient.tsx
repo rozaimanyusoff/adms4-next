@@ -21,7 +21,7 @@ export default function FuelBillFormPageClient({ idParam }: { idParam?: string }
   return (
     <div className="py-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Fuel Bill v2 (Copy+Paste Entry) {isNew ? 'Form' : `#${idParam}`}<p className="text-sm text-muted-foreground">Use this form to enter fuel bill details by copying and pasting data - In-progress (Use old form).</p></h2>
+        <h2 className="text-2xl font-bold">Fuel Bill v2 (Copy+Paste Entry) {isNew ? 'Form' : `#${idParam}`}<p className="text-sm text-muted-foreground">Use this form to enter fuel bill details by copying and pasting data.</p></h2>
         {/* Description */}
         
         <Button
