@@ -20,9 +20,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
 import { useSearchParams, useRouter } from "next/navigation";
+import { Camera, Image as ImageIcon } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -30,6 +32,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+const DRAFT_STORAGE_PREFIX = "pc-assessment-draft";
+const attachmentLimits = { min: 1, max: 3 };
+const attachmentCompressOpts = { maxDimension: 1400, quality: 0.72 };
 
 type DeviceType = "laptop" | "desktop" | "tablet";
 type ChecklistStatus = "pass" | "issue" | "na";
@@ -320,10 +326,70 @@ const buildChecklist = (items: ChecklistItem[]): ChecklistMap =>
 const today = new Date();
 const todayStr = today.toISOString().slice(0, 10);
 
+const compressImageFile = async (file: File, opts: { maxDimension?: number; quality?: number } = {}) => {
+  const { maxDimension = attachmentCompressOpts.maxDimension, quality = attachmentCompressOpts.quality } = opts;
+  if (!file.type.startsWith("image/")) return file;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = objectUrl;
+    });
+    const maxSide = Math.max(img.width, img.height);
+    if (maxSide <= maxDimension && file.size <= 600 * 1024) return file;
+    const scale = maxSide > maxDimension ? maxDimension / maxSide : 1;
+    const targetWidth = Math.round(img.width * scale);
+    const targetHeight = Math.round(img.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    if (!blob) return file;
+    const safeName = (file.name.replace(/\s+/g, "_").replace(/\.[^.]+$/, "")) || "attachment";
+    return new File([blob], `${safeName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
+
+const prepareAttachmentImage = async (file: File) => {
+  const compressed = await compressImageFile(file);
+  const safeName = compressed.name.replace(/\s+/g, "_");
+  if (safeName === compressed.name) return compressed;
+  return new File([compressed], safeName, { type: compressed.type, lastModified: compressed.lastModified });
+};
+
+type AttachmentDraft = { name: string; type: string; lastModified?: number; dataUrl: string };
+
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToFile = async ({ dataUrl, name, type, lastModified }: AttachmentDraft) => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], name, { type: type || blob.type, lastModified: lastModified ?? Date.now() });
+};
+
 const PcAssessmentForm: React.FC = () => {
   const currentYear = String(today.getFullYear());
   const searchParams = useSearchParams();
   const router = useRouter();
+  const draftKey = useMemo(
+    () => `${DRAFT_STORAGE_PREFIX}-${searchParams.get("id") ?? "new"}`,
+    [searchParams]
+  );
 
   const [form, setForm] = useState<FormState>({
     assessmentYear: currentYear,
@@ -408,6 +474,39 @@ const PcAssessmentForm: React.FC = () => {
   const [officeAccount, setOfficeAccount] = useState("");
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
+  const [brandOptions, setBrandOptions] = useState<ComboboxOption[]>([]);
+  const [modelOptions, setModelOptions] = useState<ComboboxOption[]>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [modelMatchLoading, setModelMatchLoading] = useState(false);
+  const [modelMatchResults, setModelMatchResults] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentPreviews, setAttachmentPreviews] = useState<string[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentCameraRef = useRef<HTMLInputElement | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const hasDraftRef = useRef(false);
+  const suppressDraftSaveRef = useRef(false);
+  const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const modelOptionsWithCustom = useMemo(() => {
+    const opts = [...modelOptions];
+    if (form.model && !opts.some((o) => o.label.toLowerCase() === form.model.toLowerCase())) {
+      opts.unshift({ value: `custom-${form.model}`, label: form.model });
+    }
+    return opts;
+  }, [form.model, modelOptions]);
+  const brandOptionsWithCustom = useMemo(() => {
+    const opts = [...brandOptions];
+    if (form.manufacturer && !opts.some((o) => o.label.toLowerCase() === form.manufacturer.toLowerCase())) {
+      opts.unshift({ value: `custom-${form.manufacturer}`, label: form.manufacturer });
+    }
+    return opts;
+  }, [brandOptions, form.manufacturer]);
+  const modelNotInOptions = Boolean(
+    form.model &&
+      !modelOptions.some((o) => o.label.toLowerCase() === form.model.toLowerCase())
+  );
 
   const displaySizeChoices = useMemo(() => {
     const opts = [...displaySizeOptions];
@@ -416,6 +515,69 @@ const PcAssessmentForm: React.FC = () => {
     }
     return opts;
   }, [displaySize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = localStorage.getItem(draftKey);
+    if (!raw) {
+      setDraftLoaded(true);
+      return;
+    }
+    const restore = async () => {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.form) setForm((prev) => ({ ...prev, ...parsed.form }));
+        if (parsed.hardwareChecklist) setHardwareChecklist(parsed.hardwareChecklist);
+        if (parsed.softwareChecklist) setSoftwareChecklist(parsed.softwareChecklist);
+        if (parsed.portChecks) setPortChecks(parsed.portChecks);
+        if (parsed.portCounts) setPortCounts(parsed.portCounts);
+        if (parsed.batteryEquipped != null) setBatteryEquipped(Boolean(parsed.batteryEquipped));
+        if (parsed.batteryCapacity != null) setBatteryCapacity(String(parsed.batteryCapacity));
+        if (parsed.adapterEquipped != null) setAdapterEquipped(Boolean(parsed.adapterEquipped));
+        if (parsed.adapterOutput != null) setAdapterOutput(String(parsed.adapterOutput));
+        if (parsed.cpuManufacturer != null) setCpuManufacturer(parsed.cpuManufacturer);
+        if (parsed.cpuModel != null) setCpuModel(parsed.cpuModel);
+        if (parsed.cpuGeneration != null) setCpuGeneration(parsed.cpuGeneration);
+        if (parsed.memoryType != null) setMemoryType(parsed.memoryType);
+        if (parsed.memorySize != null) setMemorySize(String(parsed.memorySize));
+        if (parsed.memoryManufacturer != null) setMemoryManufacturer(parsed.memoryManufacturer);
+        if (parsed.storageType != null) setStorageType(parsed.storageType);
+        if (parsed.storageSize != null) setStorageSize(String(parsed.storageSize));
+        if (parsed.storageManufacturer != null) setStorageManufacturer(parsed.storageManufacturer);
+        if (parsed.graphicsType != null) setGraphicsType(parsed.graphicsType);
+        if (parsed.graphicsManufacturer != null) setGraphicsManufacturer(parsed.graphicsManufacturer);
+        if (parsed.graphicsSpecs != null) setGraphicsSpecs(parsed.graphicsSpecs);
+        if (parsed.displayManufacturer != null) setDisplayManufacturer(parsed.displayManufacturer);
+        if (parsed.displaySize != null) setDisplaySize(parsed.displaySize);
+        if (parsed.displayResolution != null) setDisplayResolution(parsed.displayResolution);
+        if (parsed.displayInterfaces) setDisplayInterfaces(parsed.displayInterfaces);
+        if (parsed.displayFormFactor != null) setDisplayFormFactor(parsed.displayFormFactor);
+        if (parsed.osPatchStatus != null) setOsPatchStatus(parsed.osPatchStatus);
+        if (parsed.avActiveStatus != null) setAvActiveStatus(parsed.avActiveStatus);
+        if (parsed.avLicenseStatus != null) setAvLicenseStatus(parsed.avLicenseStatus);
+        if (parsed.vpnInstalledStatus != null) setVpnInstalledStatus(parsed.vpnInstalledStatus);
+        if (parsed.avInstalledStatus != null) setAvInstalledStatus(parsed.avInstalledStatus);
+        if (parsed.avVendor != null) setAvVendor(parsed.avVendor);
+        if (parsed.vpnSetupType != null) setVpnSetupType(parsed.vpnSetupType);
+        if (parsed.vpnUsername != null) setVpnUsername(parsed.vpnUsername);
+        if (parsed.productivitySuites) setProductivitySuites(parsed.productivitySuites);
+        if (parsed.specificSoftware) setSpecificSoftware(parsed.specificSoftware);
+        if (parsed.officeAccount != null) setOfficeAccount(parsed.officeAccount);
+        if (parsed.selectedBrandId != null) setSelectedBrandId(String(parsed.selectedBrandId));
+        if (parsed.selectedModelId != null) setSelectedModelId(String(parsed.selectedModelId));
+        if (Array.isArray(parsed.attachments) && parsed.attachments.length) {
+          const files = await Promise.all(parsed.attachments.map((a: AttachmentDraft) => dataUrlToFile(a)));
+          setAttachments(files);
+        }
+        hasDraftRef.current = true;
+      } catch {
+        // ignore malformed draft
+      } finally {
+        setDraftLoaded(true);
+      }
+    };
+    restore();
+  }, [draftKey]);
 
   const progressPercent = useMemo(() => {
     const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
@@ -440,6 +602,7 @@ const PcAssessmentForm: React.FC = () => {
       displayResolution,
       String(form.overallScore),
       form.notes,
+      attachments.length >= attachmentLimits.min ? "attachments" : "",
     ];
     if (needsPower) {
       fields.push(batteryEquipped ? "battery-equipped" : "");
@@ -474,6 +637,7 @@ const PcAssessmentForm: React.FC = () => {
     batteryCapacity,
     adapterEquipped,
     adapterOutput,
+    attachments,
   ]);
 
   useEffect(() => {
@@ -542,6 +706,207 @@ const PcAssessmentForm: React.FC = () => {
     updateForm("serialNumber", asset?.register_number || "");
   };
 
+  const handleBrandChange = (value: string) => {
+    setSelectedBrandId(value || "");
+    const label =
+      brandOptionsWithCustom.find((o) => o.value === value)?.label ||
+      brandOptionsWithCustom.find((o) => o.label === value)?.label ||
+      "";
+    updateForm("manufacturer", label);
+    if (value !== selectedBrandId) {
+      updateForm("model", "");
+      setModelMatchResults([]);
+      setSelectedModelId("");
+    }
+  };
+
+  const handleModelSelect = (value: string) => {
+    const label =
+      modelOptionsWithCustom.find((o) => o.value === value)?.label ||
+      modelOptionsWithCustom.find((o) => o.label === value)?.label ||
+      value ||
+      "";
+    updateForm("model", label);
+    setSelectedModelId(value && !Number.isNaN(Number(value)) ? value : "");
+    setModelMatchResults([]);
+  };
+
+  const fetchModelMatches = async () => {
+    const term = (form.model || "").trim();
+    if (!term) {
+      toast.error("Enter a model to match first.");
+      return;
+    }
+    setModelMatchLoading(true);
+    try {
+      const res = await authenticatedApi.post("/api/purchases/match-models", {
+        model_name: term,
+        similarity_threshold: 85,
+      });
+      const data = (res as any).data?.data || (res as any).data || {};
+      const matches = Array.isArray(data?.matches) ? data.matches : Array.isArray(data) ? data : [];
+      const cleaned = matches
+        .map((m: any) => (typeof m === "string" ? m : m?.name || m?.model_name || ""))
+        .filter(Boolean);
+      setModelMatchResults(cleaned);
+      if (!cleaned.length) toast.info("No close matches found.");
+    } catch (err) {
+      toast.error("Failed to fetch matched models");
+    } finally {
+      setModelMatchLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const urls = attachments.map((file) => URL.createObjectURL(file));
+    setAttachmentPreviews(urls);
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [attachments]);
+
+  useEffect(() => {
+    if (!draftLoaded || suppressDraftSaveRef.current || typeof window === "undefined") return;
+    let cancelled = false;
+    const persistDraft = async () => {
+      try {
+        const attachmentDrafts: AttachmentDraft[] = await Promise.all(
+          attachments.map(async (file) => ({
+            name: file.name,
+            type: file.type,
+            lastModified: file.lastModified,
+            dataUrl: await fileToDataUrl(file),
+          }))
+        );
+        if (cancelled) return;
+        const draft = {
+          form,
+          hardwareChecklist,
+          softwareChecklist,
+          portChecks,
+          portCounts,
+          batteryEquipped,
+          batteryCapacity,
+          adapterEquipped,
+          adapterOutput,
+          cpuManufacturer,
+      cpuModel,
+      cpuGeneration,
+      memoryType,
+      memorySize,
+      memoryManufacturer,
+          storageType,
+          storageSize,
+          storageManufacturer,
+          graphicsType,
+          graphicsManufacturer,
+          graphicsSpecs,
+          displayManufacturer,
+          displaySize,
+          displayResolution,
+          displayInterfaces,
+          displayFormFactor,
+          osPatchStatus,
+          avActiveStatus,
+          avLicenseStatus,
+          vpnInstalledStatus,
+          avInstalledStatus,
+          avVendor,
+          vpnSetupType,
+          vpnUsername,
+          productivitySuites,
+          specificSoftware,
+          officeAccount,
+          selectedBrandId,
+          selectedModelId,
+          attachments: attachmentDrafts,
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        // ignore write errors
+      }
+    };
+    persistDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    adapterEquipped,
+    adapterOutput,
+    attachments,
+    avActiveStatus,
+    avInstalledStatus,
+    avLicenseStatus,
+    avVendor,
+    batteryCapacity,
+    batteryEquipped,
+    cpuGeneration,
+    cpuManufacturer,
+    cpuModel,
+    displayFormFactor,
+    displayInterfaces,
+    displayManufacturer,
+    displayResolution,
+    displaySize,
+    draftKey,
+    draftLoaded,
+    form,
+    graphicsManufacturer,
+    graphicsSpecs,
+    graphicsType,
+    hardwareChecklist,
+    memoryManufacturer,
+    memorySize,
+    memoryType,
+    officeAccount,
+    portChecks,
+    portCounts,
+    productivitySuites,
+    softwareChecklist,
+    specificSoftware,
+    storageManufacturer,
+    storageSize,
+    storageType,
+    osPatchStatus,
+    vpnInstalledStatus,
+    vpnSetupType,
+    vpnUsername,
+  ]);
+
+  const handleAttachmentFiles = async (fileList: FileList | null) => {
+    if (!fileList) return;
+    if (attachments.length >= attachmentLimits.max) {
+      toast.error(`Maximum ${attachmentLimits.max} images allowed.`);
+      return;
+    }
+    const incomingImages = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+    if (!incomingImages.length) {
+      toast.error("Only image attachments are allowed.");
+      return;
+    }
+    const availableSlots = attachmentLimits.max - attachments.length;
+    const selected = incomingImages.slice(0, availableSlots);
+    const prepared = await Promise.all(
+      selected.map(async (file) => {
+        try {
+          return await prepareAttachmentImage(file);
+        } catch {
+          return file;
+        }
+      })
+    );
+    setAttachments((prev) => [...prev, ...prepared].slice(0, attachmentLimits.max));
+  };
+
+  const handleAttachmentChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    await handleAttachmentFiles(e.target.files);
+    if (e.target) e.target.value = "";
+  };
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   useEffect(() => {
     const loadOptions = async () => {
       try {
@@ -573,8 +938,73 @@ const PcAssessmentForm: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const res = await authenticatedApi.get("/api/assets/brands");
+        const resData = (res as any)?.data;
+        const arr = Array.isArray(resData?.data) ? resData.data : Array.isArray(resData) ? resData : [];
+        const opts = arr
+          .map((b: any) => ({
+            value: String(b.id ?? b.brand_id ?? b.code ?? b.name ?? ""),
+            label: String(b.name ?? b.brand ?? b.label ?? "").trim(),
+          }))
+          .filter((o: ComboboxOption) => o.value && o.label);
+        setBrandOptions(opts);
+      } catch {
+        setBrandOptions([]);
+      }
+    };
+    fetchBrands();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBrandId || Number.isNaN(Number(selectedBrandId))) {
+      setModelOptions([]);
+      return;
+    }
+    const fetchModels = async () => {
+      try {
+        const res = await authenticatedApi.get(`/api/assets/models?brand=${selectedBrandId}`);
+        const arr = Array.isArray((res as any)?.data?.data) ? (res as any).data.data : Array.isArray((res as any)?.data) ? (res as any).data : [];
+        const opts = arr
+          .map((m: any) => ({
+            value: String(m.id ?? m.model_id ?? m.code ?? m.name ?? ""),
+            label: String(m.name ?? m.model ?? m.label ?? "").trim(),
+          }))
+          .filter((o: ComboboxOption) => o.value && o.label);
+        setModelOptions(opts);
+      } catch {
+        setModelOptions([]);
+      }
+    };
+    fetchModels();
+  }, [selectedBrandId]);
+
+  useEffect(() => {
+    if (!form.manufacturer || !brandOptions.length || selectedBrandId) return;
+    const found = brandOptions.find(
+      (o) => o.label.toLowerCase() === form.manufacturer.toLowerCase()
+    );
+    if (found) {
+      setSelectedBrandId(found.value);
+    }
+  }, [brandOptions, form.manufacturer, selectedBrandId]);
+
+  useEffect(() => {
+    if (!form.model || !modelOptions.length) return;
+    if (selectedModelId) return;
+    const found = modelOptions.find(
+      (o) => o.label.toLowerCase() === form.model.toLowerCase()
+    );
+    if (found) {
+      setSelectedModelId(found.value);
+    }
+  }, [form.model, modelOptions, selectedModelId]);
+
+  useEffect(() => {
     const id = searchParams.get("id");
     if (!id) return;
+    if (hasDraftRef.current) return;
     const loadAsset = async () => {
       try {
         const res: any = await authenticatedApi.get(`/api/compliance/it-assets-status/${id}`);
@@ -637,6 +1067,12 @@ const PcAssessmentForm: React.FC = () => {
           notes: assessment?.remarks ?? prev.notes,
           technician: assessment?.technician_name ?? prev.technician,
         }));
+        if (asset?.brand?.id != null) {
+          setSelectedBrandId(String(asset.brand.id));
+        }
+        if (asset?.model?.id != null) {
+          setSelectedModelId(String(asset.model.id));
+        }
 
         const cpuSource = assessment?.cpu_model ?? cpuString;
         if (cpuSource) {
@@ -830,11 +1266,21 @@ const PcAssessmentForm: React.FC = () => {
       toast.error("Please complete OS and technician fields.");
       return;
     }
+    if (attachments.length < attachmentLimits.min) {
+      toast.error(`Please attach at least ${attachmentLimits.min} image${attachmentLimits.min > 1 ? "s" : ""}.`);
+      return;
+    }
     const assetId = searchParams.get("id");
     const toNum = (v: string | number | null | undefined) => {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
+    const toId = (v: string) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const brandValue = toId(selectedBrandId) ?? (form.manufacturer || null);
+    const modelValue = toId(selectedModelId) ?? (form.model || null);
     const payload = {
       assessment_year: form.assessmentYear,
       assessment_date: form.assessmentDate,
@@ -844,8 +1290,8 @@ const PcAssessmentForm: React.FC = () => {
       asset_id: assetId ? Number(assetId) : null,
       register_number: form.serialNumber || null,
       category: form.deviceType || null,
-      brand: form.manufacturer || null,
-      model: form.model || null,
+      brand: brandValue,
+      model: modelValue,
       purchase_date: form.purchaseDate || null,
       costcenter_id: toNum(form.costCenter),
       department_id: toNum(form.department),
@@ -906,7 +1352,29 @@ const PcAssessmentForm: React.FC = () => {
       office_account: officeAccount || null,
     };
     try {
-      const res: any = await authenticatedApi.post("/api/compliance/it-assess", payload);
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        const normalized =
+          typeof value === "boolean"
+            ? value
+              ? "1"
+              : "0"
+            : value == null
+              ? ""
+              : String(value);
+        formData.append(key, normalized);
+      });
+      attachments.forEach((file, idx) => {
+        formData.append(`attachments[${idx}]`, file);
+      });
+      const res: any = await authenticatedApi.post("/api/compliance/it-assess", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      suppressDraftSaveRef.current = true;
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(draftKey);
+      }
+      hasDraftRef.current = false;
       setSubmitStatus(res?.data?.status || "Submitted");
       setSubmitDialogOpen(true);
     } catch (err: any) {
@@ -960,6 +1428,9 @@ const PcAssessmentForm: React.FC = () => {
     setProductivitySuites([]);
     setSpecificSoftware([]);
     setOfficeAccount("");
+    setSelectedBrandId("");
+    setSelectedModelId("");
+    setAttachments([]);
     setPortChecks(
       portOptions.reduce(
         (acc, opt) => {
@@ -984,6 +1455,11 @@ const PcAssessmentForm: React.FC = () => {
     );
     setHardwareChecklist(buildChecklist(hardwareItems));
     setSoftwareChecklist(buildChecklist(softwareItems));
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(draftKey);
+    }
+    suppressDraftSaveRef.current = false;
+    hasDraftRef.current = false;
   };
 
   const renderStatusAndNotes = (
@@ -1684,9 +2160,13 @@ const PcAssessmentForm: React.FC = () => {
             Annual IT hardware assessment for laptops, desktops, and tablets.
           </p>
         </div>
-        <Link href="/compliance/pc-assessment" className="text-sm text-blue-600 hover:underline">
+        <button
+          type="button"
+          className="text-sm text-blue-600 hover:underline"
+          onClick={() => setBackConfirmOpen(true)}
+        >
           ← Back to records
-        </Link>
+        </button>
       </div>
 
       <Card className="border-primary/30">
@@ -1773,21 +2253,53 @@ const PcAssessmentForm: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <Label htmlFor="manufacturer">Manufacturer</Label>
-                <Input
-                  id="manufacturer"
-                  value={form.manufacturer}
-                  onChange={(e) => updateForm("manufacturer", e.target.value)}
-                  placeholder="e.g., Lenovo, Dell, Apple"
+                <SingleSelect
+                  options={brandOptionsWithCustom}
+                  value={selectedBrandId || (brandOptionsWithCustom.find((o) => o.label === form.manufacturer)?.value ?? "")}
+                  onValueChange={handleBrandChange}
+                  placeholder="Select manufacturer"
+                  searchPlaceholder="Search manufacturer..."
+                  clearable
                 />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="model">Model</Label>
-                <Input
-                  id="model"
-                  value={form.model}
-                  onChange={(e) => updateForm("model", e.target.value)}
+                <SingleSelect
+                  options={modelOptionsWithCustom}
+                  value={selectedModelId || (modelOptionsWithCustom.find((o) => o.label === form.model)?.value ?? "")}
+                  onValueChange={handleModelSelect}
                   placeholder="Model name/number"
+                  searchPlaceholder="Search model..."
+                  clearable
                 />
+                {modelNotInOptions && form.model ? (
+                  <div className="space-y-1 pt-1">
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={fetchModelMatches}
+                      disabled={modelMatchLoading}
+                    >
+                      {modelMatchLoading ? "Finding similar models..." : "Show matched models"}
+                    </button>
+                    {modelMatchResults.length > 0 && (
+                      <div className="space-y-1 rounded-md border bg-muted/50 p-2 text-xs">
+                        {modelMatchResults.map((m) => (
+                          <div key={m} className="flex items-center justify-between gap-2">
+                            <span className="truncate">{m}</span>
+                            <button
+                              type="button"
+                              className="text-primary hover:underline"
+                              onClick={() => handleModelSelect(m)}
+                            >
+                              Use
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -1910,20 +2422,105 @@ const PcAssessmentForm: React.FC = () => {
                 <h2 className="text-lg font-semibold">Software & Security Checklist</h2>
                 <Badge variant="outline">OS & apps</Badge>
               </div>
-              {renderChecklist(
-                softwareItems,
-                softwareChecklist,
-                setSoftwareChecklist,
-                softwareCustomRenderers,
-                "md:grid-cols-2"
-              )}
-            </div>
+            {renderChecklist(
+              softwareItems,
+              softwareChecklist,
+              setSoftwareChecklist,
+              softwareCustomRenderers,
+              "md:grid-cols-2"
+            )}
+          </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="overallScore" className="mb-4">Overall score</Label>
-                <RadioGroup
-                  id="overallScore"
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="space-y-1">
+                <Label>Attachments (images)</Label>
+                <p className="text-sm text-muted-foreground">
+                  Upload supporting photos (min {attachmentLimits.min}, max {attachmentLimits.max}). Images are compressed to speed up slow connections.
+                </p>
+              </div>
+              <Badge variant="outline">
+                {attachments.length}/{attachmentLimits.max}
+              </Badge>
+            </div>
+            <Input
+              ref={attachmentInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleAttachmentChange}
+            />
+            <Input
+              ref={attachmentCameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleAttachmentChange}
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => attachmentInputRef.current?.click()}
+                aria-label="Upload from gallery"
+              >
+                <ImageIcon className="h-5 w-5" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                onClick={() => attachmentCameraRef.current?.click()}
+                aria-label="Use mobile camera"
+              >
+                <Camera className="h-5 w-5" />
+              </Button>
+              <p className="text-xs text-muted-foreground">JPEG/PNG only. Up to {attachmentLimits.max} files will be kept.</p>
+            </div>
+            {attachmentPreviews.length ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {attachments.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${idx}`}
+                    className="relative overflow-hidden rounded-lg border bg-background"
+                  >
+                    {attachmentPreviews[idx] ? (
+                      <img
+                        src={attachmentPreviews[idx]}
+                        alt={`Attachment ${idx + 1}`}
+                        className="h-32 w-full object-cover"
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute right-2 top-2 h-8 w-8 rounded-full"
+                      onClick={() => removeAttachment(idx)}
+                    >
+                      X
+                    </Button>
+                    <div className="border-t px-3 py-2 text-xs">
+                      <p className="truncate font-medium">{file.name}</p>
+                      <p className="text-muted-foreground">{Math.round(file.size / 1024)} KB</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground">
+                No attachments yet. Add at least one image before submitting.
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="overallScore" className="mb-4">Overall score</Label>
+              <RadioGroup
+                id="overallScore"
                   value={String(form.overallScore)}
                   onValueChange={(v) => updateForm("overallScore", Number(v))}
                 >
@@ -1953,7 +2550,7 @@ const PcAssessmentForm: React.FC = () => {
               <Button type="submit" disabled={progressPercent < 100}>
                 Save Assessment
               </Button>
-              <Button type="button" variant="secondary" onClick={handleReset}>
+              <Button type="button" variant="secondary" onClick={() => setResetConfirmOpen(true)}>
                 Reset Form
               </Button>
               <p className="text-sm text-muted-foreground">
@@ -1975,6 +2572,55 @@ const PcAssessmentForm: React.FC = () => {
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => router.push("/compliance/pc-assessment")}>
               Back to records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset this form?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear all fields and remove your saved draft. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setResetConfirmOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleReset();
+                setResetConfirmOpen(false);
+              }}
+            >
+              Confirm reset
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={backConfirmOpen} onOpenChange={setBackConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your draft will be cleared. Are you sure you want to go back to the records list?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBackConfirmOpen(false)}>
+              Stay on page
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                suppressDraftSaveRef.current = true;
+                if (typeof window !== "undefined") {
+                  localStorage.removeItem(draftKey);
+                }
+                hasDraftRef.current = false;
+                setBackConfirmOpen(false);
+                router.push("/compliance/pc-assessment");
+              }}
+            >
+              Confirm and leave
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
