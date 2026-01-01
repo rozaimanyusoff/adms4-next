@@ -17,6 +17,7 @@ import { downloadMaintenanceReportBulk } from './pdfreport-mtn-bulk';
 import MtnBillSummary from './mtn-bill-summary';
 import { AuthContext } from '@/store/AuthContext';
 import MaintenanceBillExcelButton from './excel-mtnbill-report';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Interface for the maintenance bill data based on the provided structure
 interface MaintenanceBill {
@@ -113,6 +114,21 @@ const MaintenanceBill: React.FC = () => {
 
 	// showLatest controls whether we fetch only the current year's records
 	const [showLatest, setShowLatest] = useState(true);
+	const [yearFilter, setYearFilter] = useState<string>(() => {
+		if (typeof window !== 'undefined') {
+			const saved = localStorage.getItem('mtn-bill-year-filter');
+			if (saved) return saved;
+		}
+		return 'current';
+	});
+	const [yearInitialized, setYearInitialized] = useState(false);
+	const YEAR_FILTER_KEY = 'mtn-bill-year-filter';
+
+	useEffect(() => {
+		if (typeof window === 'undefined') return;
+		localStorage.setItem(YEAR_FILTER_KEY, yearFilter);
+		setYearInitialized(true);
+	}, [yearFilter]);
 	const router = useRouter();
 
 	// Format currency
@@ -141,9 +157,13 @@ const MaintenanceBill: React.FC = () => {
 		setLoading(true);
 		setRows([]);
 		try {
-			// backend supports optional year filter when showLatest is true
-			const yearParam = showLatest ? `?year=${new Date().getFullYear()}` : '';
-			const res = await authenticatedApi.get(`/api/bills/mtn${yearParam}`);
+			const nowYear = new Date().getFullYear();
+			let params = '';
+			if (yearFilter !== 'all') {
+				const year = yearFilter === 'current' ? nowYear : Number(yearFilter);
+				if (!Number.isNaN(year)) params = `?year=${year}`;
+			}
+			const res = await authenticatedApi.get(`/api/bills/mtn${params}`);
 			const data = (res.data as { data?: MaintenanceBill[] })?.data || [];
 			setRows(data.map((item, idx) => ({
 				...item,
@@ -170,8 +190,9 @@ const MaintenanceBill: React.FC = () => {
 
 
 	useEffect(() => {
+		if (!yearInitialized) return;
 		fetchMaintenanceBills();
-	}, []);
+	}, [yearFilter, yearInitialized]);
 
 	useEffect(() => {
 		window.reloadMaintenanceBillGrid = () => {
@@ -679,6 +700,24 @@ const MaintenanceBill: React.FC = () => {
 									</>
 								)}
 							</Button>
+							<Select
+								value={yearFilter}
+								onValueChange={(v) => setYearFilter(v)}
+							>
+								<SelectTrigger className="w-32">
+									<SelectValue placeholder="Year" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="current">Current Year</SelectItem>
+									<SelectItem value="all">All</SelectItem>
+									<SelectItem value={(new Date().getFullYear()).toString()}>{new Date().getFullYear()}</SelectItem>
+									<SelectItem value={(new Date().getFullYear() - 1).toString()}>{new Date().getFullYear() - 1}</SelectItem>
+									<SelectItem value={(new Date().getFullYear() - 2).toString()}>{new Date().getFullYear() - 2}</SelectItem>
+									<SelectItem value={(new Date().getFullYear() - 3).toString()}>{new Date().getFullYear() - 3}</SelectItem>
+									<SelectItem value={(new Date().getFullYear() - 4).toString()}>{new Date().getFullYear() - 4}</SelectItem>
+									<SelectItem value={(new Date().getFullYear() - 5).toString()}>{new Date().getFullYear() - 5}</SelectItem>
+								</SelectContent>
+							</Select>
 						</div>
 					</div>
 					{loading ? (
