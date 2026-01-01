@@ -16,6 +16,7 @@ import { downloadMaintenanceReport } from './pdfreport-mtn';
 import { downloadMaintenanceReportBulk } from './pdfreport-mtn-bulk';
 import MtnBillSummary from './mtn-bill-summary';
 import { AuthContext } from '@/store/AuthContext';
+import MaintenanceBillExcelButton from './excel-mtnbill-report';
 
 // Interface for the maintenance bill data based on the provided structure
 interface MaintenanceBill {
@@ -188,7 +189,7 @@ const MaintenanceBill: React.FC = () => {
 			header: 'No',
 			filter: 'input',
 			render: (row) => (
-				<div className="flex items-center justify-between gap-2 min-w-[60px]">
+				<div className="flex items-center justify-between gap-2 min-w-15">
 					<div className='flex flex-col'>
 						<p>{row.rowNumber}</p>
 					<span className="text-xs text-gray-500">({row.inv_id})</span>
@@ -644,6 +645,7 @@ const MaintenanceBill: React.FC = () => {
 							<span className="text-xs text-blue-600">Double-click a row to update maintenance invoice</span>
 						</div>
 						<div className="flex items-center gap-2">
+							<MaintenanceBillExcelButton />
 							{selectedRowKeys.size > 1 && (() => {
 								const selected = rows.filter(r => selectedRowKeys.has(r.inv_id));
 								const workshopSet = new Set(selected.map(r => r.workshop?.id || r.workshop?.name || '').filter(Boolean));

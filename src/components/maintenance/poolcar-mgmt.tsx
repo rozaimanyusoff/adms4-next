@@ -30,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import PoolcarRequestExcelButton from './excel-poolcarrequest';
 
 type PoolcarRecord = {
   id: number | string;
@@ -1691,6 +1692,7 @@ const PoolcarMgmt: React.FC = () => {
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </Button>
+          <PoolcarRequestExcelButton />
         </div>
       </div>
 

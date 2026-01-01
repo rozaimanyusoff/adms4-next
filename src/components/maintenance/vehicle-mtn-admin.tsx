@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { AuthContext } from '@/store/AuthContext';
 import { can } from '@/utils/permissions';
+import MaintenanceRequestExcelButton from './excel-maintenancerequest-report';
 
 interface ServiceType {
   id: number;
@@ -479,6 +480,7 @@ const VehicleMaintenanceAdmin = () => {
             {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
             Refresh
           </Button>
+          <MaintenanceRequestExcelButton />
         </div>
       </div>
 
