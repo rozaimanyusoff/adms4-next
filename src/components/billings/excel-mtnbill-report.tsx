@@ -158,12 +158,12 @@ export async function downloadMaintenanceBillReport() {
       year,
       totalBills,
       invoicedBills.length,
-      formatNumber(invoicedAmount),
+      invoicedAmount,
       nonInvoicedBills.length,
-      formatNumber(nonInvoicedAmount),
+      nonInvoicedAmount,
       accruedBills.length,
-      formatNumber(accruedAmount),
-      formatNumber(totalBillings),
+      accruedAmount,
+      totalBillings,
     ]);
     row.eachCell((cell) => {
       cell.border = {
@@ -172,6 +172,10 @@ export async function downloadMaintenanceBillReport() {
         bottom: { style: 'thin' },
         right: { style: 'thin' },
       };
+    });
+    // Apply numeric formatting to monetary columns
+    [4, 6, 8, 9].forEach((colIdx) => {
+      row.getCell(colIdx).numFmt = '#,##0.00';
     });
   });
 
@@ -213,8 +217,8 @@ export async function downloadMaintenanceBillReport() {
     const yearlyTotal = monthTotals.reduce((s, v) => s + v, 0);
     const row = summary.addRow([
       year,
-      ...monthTotals.map((v) => formatNumber(v)),
-      formatNumber(yearlyTotal),
+      ...monthTotals,
+      yearlyTotal,
     ]);
     row.eachCell((cell) => {
       cell.border = {
@@ -224,6 +228,10 @@ export async function downloadMaintenanceBillReport() {
         right: { style: 'thin' },
       };
     });
+    // Month columns are monetary values
+    for (let c = 2; c <= 14; c++) {
+      row.getCell(c).numFmt = '#,##0.00';
+    }
   });
 
   autoFitColumns(summary, 10, 24);

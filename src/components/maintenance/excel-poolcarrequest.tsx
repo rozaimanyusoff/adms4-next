@@ -224,7 +224,7 @@ export async function downloadPoolcarRequestReport() {
   const url = window.URL.createObjectURL(blob);
   const now = new Date();
   const pad = (v: number) => v.toString().padStart(2, '0');
-  const filename = `exce-poolcarrequest-${pad(now.getDate())}${pad(now.getMonth() + 1)}${now.getFullYear()}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`;
+  const filename = `excel-poolcarrequest-${pad(now.getDate())}${pad(now.getMonth() + 1)}${now.getFullYear()}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`;
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
