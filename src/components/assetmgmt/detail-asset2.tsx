@@ -68,6 +68,9 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
             const assetRes = await authenticatedApi.get(`/api/assets/${id}`) as any;
             const assetData = assetRes.data?.data || null;
             setAsset(assetData);
+            if (assetData?.purchase_details) {
+               setPurchaseData(assetData.purchase_details);
+            }
 
             if (assetData) {
                // Fetch lifecycle data in parallel
@@ -95,6 +98,8 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
          const res = await authenticatedApi.get(`/api/purchase/records?asset_id=${asset.id}`).catch(() => ({ data: { data: null } }));
          if (res && res.data?.data) {
             setPurchaseData(res.data.data[0] || null);
+         } else if (asset.purchase_details) {
+            setPurchaseData(asset.purchase_details);
          }
       } catch (e) {
          console.error("Failed to fetch purchase data:", e);
@@ -280,11 +285,10 @@ const DetailAsset: React.FC<DetailAssetProps> = ({ id }) => {
                asset={asset}
                currentOwner={currentOwner}
                formatDate={formatDate}
-               getAssetIcon={getAssetIcon}
             />
 
             {/* Asset Lifecycle Workflow */}
-            <div className="rounded-2xl bg-stone-100/60 border border-gray-200 overflow-hidden backdrop-blur-sm">
+            <div className="rounded-2xl bg-lime-800/20 border border-gray-200 overflow-hidden backdrop-blur-sm">
                <div className="px-6 py-5 border-b border-gray-100">
                   <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                      <Activity className="w-5 h-5 text-blue-600" />
@@ -384,23 +388,22 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
             {/* Title row with close button */}
             <div className="flex items-center justify-between">
                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                  <div className="w-9 h-9 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
                      {React.cloneElement(assetIcon, { className: "w-5 h-5 text-white" })}
                   </div>
                   <span className="text-base font-bold text-gray-900">Asset Details</span>
                </div>
                <Button
-                  type="button"
-                  variant="ghost"
+                  variant="default"
                   size="icon"
-                  className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-600"
+                  className="h-9 w-9 rounded-lg bg-red-500 text-white"
                   title="Close"
                   onClick={() => window.close()}
                >
                   <X size={18} />
                </Button>
             </div>
-            
+
             {/* Search and navigation buttons row */}
             <div className="flex items-center gap-2">
                <div className="relative flex-1">
@@ -433,7 +436,7 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
                      </ul>
                   )}
                </div>
-               
+
                <div className="flex items-center gap-1">
                   <Button
                      type="button"
@@ -474,7 +477,7 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
          {/* Desktop Layout (unchanged) */}
          <div className="hidden sm:flex sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-               <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+               <div className="w-9 h-9 bg-linear-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
                   {React.cloneElement(assetIcon, { className: "w-5 h-5 text-white" })}
                </div>
                <span className="text-lg font-bold text-gray-900">Asset Details</span>
@@ -510,7 +513,7 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
                      </ul>
                   )}
                </div>
-               
+
                <div className="flex items-center gap-1">
                   <Button
                      type="button"
@@ -548,7 +551,7 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
                      type="button"
                      variant="ghost"
                      size="icon"
-                     className="h-9 w-9 rounded-lg hover:bg-red-50 hover:text-red-600"
+                     className="h-9 w-9 rounded-lg bg-red-500 hover:bg-red-100 text-white hover:text-red-700"
                      title="Close"
                      onClick={() => window.close()}
                   >
@@ -559,29 +562,29 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
          </div>
       </div>
    </div>
-);const AssetHeader = ({ asset, currentOwner, formatDate, getAssetIcon }: any) => (
-   <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-50 to-white border border-gray-200">
-      <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl -z-0" />
+); const AssetHeader = ({ asset, currentOwner, formatDate }: any) => (
+   <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-50 to-white border border-gray-200">
+      <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl z-0" />
 
-      <div className="relative z-10 p-6 lg:p-8 bg-stone-100/60 backdrop-blur-sm">
+      <div className="relative z-10 p-6 lg:p-8 bg-lime-800/20 backdrop-blur-sm">
          <div className="flex flex-col lg:flex-row gap-6 items-start">
-            <div className="flex-shrink-0">
-               <div className="w-20 h-20 lg:w-24 lg:h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-xl shadow-blue-500/30 flex items-center justify-center">
-                  {React.cloneElement(getAssetIcon(), { className: "w-10 h-10 lg:w-12 lg:h-12 text-white" })}
-               </div>
-            </div>
-
             <div className="flex-1 space-y-5">
                <div>
                   <div className="flex items-center gap-3 mb-2">
-                     <Badge variant="outline" className="text-xs px-2 py-0.5 font-medium">
+                     <Badge className="text-sm px-2 py-0.5 font-medium bg-gray-500">
                         {(asset?.type?.name ?? asset?.types?.name) || 'Unknown Type'}
                      </Badge>
+                     <Badge className="text-sm px-2 py-0.5 capitalize font-medium bg-gray-500">
+                        {asset?.classification}
+                     </Badge>
                      <Badge
-                        variant={asset?.status === 'active' || asset?.status === 'Active' ? 'default' : 'destructive'}
-                        className="text-xs px-2 py-0.5 flex items-center gap-1"
+                        variant={asset?.status?.toLowerCase() === 'active' ? 'outline' : 'destructive'}
+                        className={`text-sm px-2 py-0.5 flex items-center gap-1 ${asset?.status?.toLowerCase() === 'active'
+                              ? 'bg-emerald-600 text-white'
+                              : ''
+                           }`}
                      >
-                        {asset?.status === 'active' || asset?.status === 'Active' ? (
+                        {asset?.status?.toLowerCase() === 'active' ? (
                            <>
                               <CheckCircle className="w-3 h-3" />
                               <span>Active</span>
@@ -593,11 +596,14 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
                            </>
                         )}
                      </Badge>
-                     <Badge className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                        {asset?.classification}
-                     </Badge>
                   </div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{asset?.register_number}</h1>
+                  <div className="flex justify-between items-center">
+                     <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Register Number: {asset?.register_number}</h1>
+                     <div className="text-2xl lg:text-3xl font-bold text-gray-900">
+                        {asset?.age ? `${asset.age} year${Number(asset.age) === 1 ? '' : 's'}` : '-'}
+                     </div>
+                  </div>
+
                </div>
 
                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -621,13 +627,13 @@ const InfoCard = ({ icon: Icon, label, value, color }: any) => {
    };
 
    return (
-      <div className="bg-white rounded-xl p-3 border border-gray-100 hover:shadow-md transition-shadow">
+      <div className="bg-stone-50/50 rounded-xl p-3 hover:shadow-md transition-shadow">
          <div className="flex items-center gap-2.5">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
                <Icon className="w-4 h-4" />
             </div>
             <div className="flex-1 min-w-0">
-               <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+               <p className="text-xs text-gray-700 mb-0.5">{label}</p>
                <p className="text-sm font-semibold text-gray-900 truncate">{value}</p>
             </div>
          </div>
@@ -647,10 +653,10 @@ const InfoCard = ({ icon: Icon, label, value, color }: any) => {
             </CardHeader>
             <CardContent>
                <div className="space-y-3">
-                  <DataRow label="Purchase Date" value={formatDate(asset?.purchase_date || asset?.purchasedate)} />
-                  <DataRow label="Purchase Year" value={asset?.purchase_year || '-'} />
-                  <DataRow label="Purchase Price" value={formatCurrency(asset?.purchaseprice || asset?.purchase_price)} />
-                  <DataRow label="Supplier" value={asset?.supplier?.name || '-'} />
+                  <DataRow label="Purchase Date" value={formatDate(asset?.purchase_date || purchaseData?.purchase_date || asset?.purchasedate)} />
+                  <DataRow label="Purchase Year" value={asset?.purchase_year || purchaseData?.purchase_year || '-'} />
+                  <DataRow label="Purchase Price" value={formatCurrency(asset?.unit_price || asset?.purchaseprice || asset?.purchase_price)} />
+                  <DataRow label="Supplier" value={(purchaseData?.supplier?.name || purchaseData?.supplier_name || asset?.supplier?.name || '-')} />
                </div>
             </CardContent>
          </Card>
@@ -667,10 +673,31 @@ const InfoCard = ({ icon: Icon, label, value, color }: any) => {
             <CardContent>
                {purchaseData ? (
                   <div className="space-y-3">
-                     <DataRow label="PO Number" value={purchaseData.po_no || '-'} />
-                     <DataRow label="PR Number" value={purchaseData.pr_no || '-'} />
-                     <DataRow label="DO Number" value={purchaseData.do_no || '-'} />
-                     <DataRow label="GRN Status" value={purchaseData.grn_no ? 'Received' : 'Pending'} />
+                     {[
+                        {
+                           numberLabel: "PO Number",
+                           numberValue: purchaseData.po?.number || purchaseData.po_no || '-',
+                           dateLabel: "PO Date",
+                           dateValue: formatDate(purchaseData.po?.date || (purchaseData as any).po_date),
+                        },
+                        {
+                           numberLabel: "DO Number",
+                           numberValue: purchaseData.do?.number || purchaseData.do_no || '-',
+                           dateLabel: "DO Date",
+                           dateValue: formatDate(purchaseData.do?.date || (purchaseData as any).do_date),
+                        },
+                        {
+                           numberLabel: "GRN Number",
+                           numberValue: purchaseData.grn?.number || purchaseData.grn_no || '-',
+                           dateLabel: "GRN Date",
+                           dateValue: formatDate(purchaseData.grn?.date || (purchaseData as any).grn_date),
+                        }
+                     ].map((row, idx) => (
+                        <div key={row.numberLabel} className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${idx < 2 ? 'border-b border-gray-100 pb-2' : ''}`}>
+                           <DataRow label={row.numberLabel} value={row.numberValue} />
+                           <DataRow label={row.dateLabel} value={row.dateValue || '-'} />
+                        </div>
+                     ))}
                   </div>
                ) : (
                   <div className="text-center py-8 text-gray-400">
@@ -689,7 +716,11 @@ const InfoCard = ({ icon: Icon, label, value, color }: any) => {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                <div>
                   <p className="text-xs text-gray-500 mb-1">Warranty Period</p>
-                  <p className="text-sm font-semibold">{asset?.warranty ? `${asset.warranty} months` : '-'}</p>
+                  <p className="text-sm font-semibold">
+                     {purchaseData?.warranty_period
+                        ? `${purchaseData.warranty_period} ${purchaseData.warranty_period === 1 ? 'year' : 'years'}`
+                        : '-'}
+                  </p>
                </div>
                <div>
                   <p className="text-xs text-gray-500 mb-1">Depreciation</p>
@@ -709,10 +740,10 @@ const InfoCard = ({ icon: Icon, label, value, color }: any) => {
    </div>
 );
 
-const DataRow = ({ label, value }: { label: string; value: string }) => (
-   <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-sm font-semibold text-gray-900">{value}</span>
+const DataRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+   <div className="flex justify-between items-center border-b border-gray-100 last:border-0">
+      <span className="text-sm">{label}</span>
+      <span className="text-sm font-semibold">{value}</span>
    </div>
 );
 
@@ -729,26 +760,26 @@ const SpecsSection = ({ asset, renderTypeSpecificSpecs }: any) => (
          </CardHeader>
          <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-               <p className="text-xs text-gray-500 mb-1">Brand</p>
-               <p className="text-sm font-semibold text-gray-900">{asset?.brand?.name || asset?.brands?.name || '-'}</p>
-            </div>
-            <div>
-               <p className="text-xs text-gray-500 mb-1">Model</p>
-               <p className="text-sm font-semibold text-gray-900">{asset?.model?.name || asset?.models?.name || '-'}</p>
-            </div>
-            <div>
-               <p className="text-xs text-gray-500 mb-1">Category</p>
-               <p className="text-sm font-semibold text-gray-900">{asset?.category?.name || asset?.categories?.name || '-'}</p>
-            </div>
-            <div>
-               <p className="text-xs text-gray-500 mb-1">Serial Number</p>
-               <p className="text-sm font-semibold text-gray-900">{asset?.serial || asset?.serial_number || '-'}</p>
-            </div>
-            <div>
-               <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
-               <p className="text-sm font-semibold text-gray-900">{asset?.tag || asset?.asset_tag || '-'}</p>
-            </div>
+               <div>
+                  <p className="text-xs text-gray-500 mb-1">Brand</p>
+                  <p className="text-sm font-semibold text-gray-900">{asset?.brand?.name || asset?.brands?.name || '-'}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-gray-500 mb-1">Model</p>
+                  <p className="text-sm font-semibold text-gray-900">{asset?.model?.name || asset?.models?.name || '-'}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-gray-500 mb-1">Category</p>
+                  <p className="text-sm font-semibold text-gray-900">{asset?.category?.name || asset?.categories?.name || '-'}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-gray-500 mb-1">Serial Number</p>
+                  <p className="text-sm font-semibold text-gray-900">{asset?.serial || asset?.serial_number || '-'}</p>
+               </div>
+               <div>
+                  <p className="text-xs text-gray-500 mb-1">Asset Tag</p>
+                  <p className="text-sm font-semibold text-gray-900">{asset?.tag || asset?.asset_tag || '-'}</p>
+               </div>
             </div>
          </CardContent>
       </Card>
@@ -770,29 +801,29 @@ const OwnershipSection = ({ asset, ownerHistory, formatDate }: any) => (
          </CardHeader>
          <CardContent>
             {ownerHistory && ownerHistory.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               <div>
-                  <p className="text-xs text-gray-500 mb-1">Owner</p>
-                  <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.name || ownerHistory[ownerHistory.length - 1]?.employee?.name || '-'}</p>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                     <p className="text-xs text-gray-500 mb-1">Owner</p>
+                     <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.name || ownerHistory[ownerHistory.length - 1]?.employee?.name || '-'}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-gray-500 mb-1">Department</p>
+                     <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.department?.name || ownerHistory[ownerHistory.length - 1]?.department || '-'}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-gray-500 mb-1">Cost Center</p>
+                     <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.costcenter?.name || ownerHistory[ownerHistory.length - 1]?.costcenter || '-'}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-gray-500 mb-1">Assigned Date</p>
+                     <p className="text-sm font-semibold text-gray-900">{formatDate(ownerHistory[ownerHistory.length - 1]?.effective_date || ownerHistory[ownerHistory.length - 1]?.assign_date)}</p>
+                  </div>
                </div>
-               <div>
-                  <p className="text-xs text-gray-500 mb-1">Department</p>
-                  <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.department?.name || ownerHistory[ownerHistory.length - 1]?.department || '-'}</p>
+            ) : (
+               <div className="text-center py-6 text-gray-400">
+                  <p className="text-sm">No ownership data available</p>
                </div>
-               <div>
-                  <p className="text-xs text-gray-500 mb-1">Cost Center</p>
-                  <p className="text-sm font-semibold text-gray-900">{ownerHistory[ownerHistory.length - 1]?.costcenter?.name || ownerHistory[ownerHistory.length - 1]?.costcenter || '-'}</p>
-               </div>
-               <div>
-                  <p className="text-xs text-gray-500 mb-1">Assigned Date</p>
-                  <p className="text-sm font-semibold text-gray-900">{formatDate(ownerHistory[ownerHistory.length - 1]?.effective_date || ownerHistory[ownerHistory.length - 1]?.assign_date)}</p>
-               </div>
-            </div>
-         ) : (
-            <div className="text-center py-6 text-gray-400">
-               <p className="text-sm">No ownership data available</p>
-            </div>
-         )}
+            )}
          </CardContent>
       </Card>
 
@@ -805,33 +836,33 @@ const OwnershipSection = ({ asset, ownerHistory, formatDate }: any) => (
          </CardHeader>
          <CardContent>
             {ownerHistory && ownerHistory.length > 0 ? (
-            <div className="relative border-l-2 border-gray-200 pl-6 space-y-6">
-               {ownerHistory.map((record: any, idx: number) => {
-                  const isCurrent = idx === ownerHistory.length - 1;
-                  return (
-                     <div key={idx} className="relative">
-                        <div className={`absolute -left-8 w-4 h-4 rounded-full ${isCurrent ? 'bg-green-500' : 'bg-gray-300'} border-4 border-white shadow-sm`} />
-                        <div className="flex justify-between items-start">
-                           <div>
-                              <p className="text-sm font-semibold text-gray-900">{record?.name || record?.employee?.name || '-'}</p>
-                              <p className="text-xs text-gray-600">{record?.department?.name || record?.department || '-'}</p>
-                              <p className="text-xs text-gray-500">{record?.location?.name || record?.location || '-'}</p>
-                           </div>
-                           <div className="text-right">
-                              <p className="text-xs text-gray-600">{formatDate(record?.effective_date || record?.assign_date)}</p>
-                              {isCurrent && <Badge variant="default" className="mt-1 text-xs">Current</Badge>}
+               <div className="relative border-l-2 border-gray-200 pl-6 space-y-6">
+                  {ownerHistory.map((record: any, idx: number) => {
+                     const isCurrent = idx === ownerHistory.length - 1;
+                     return (
+                        <div key={idx} className="relative">
+                           <div className={`absolute -left-8 w-4 h-4 rounded-full ${isCurrent ? 'bg-green-500' : 'bg-gray-300'} border-4 border-white shadow-sm`} />
+                           <div className="flex justify-between items-start">
+                              <div>
+                                 <p className="text-sm font-semibold text-gray-900">{record?.name || record?.employee?.name || '-'}</p>
+                                 <p className="text-xs text-gray-600">{record?.department?.name || record?.department || '-'}</p>
+                                 <p className="text-xs text-gray-500">{record?.location?.name || record?.location || '-'}</p>
+                              </div>
+                              <div className="text-right">
+                                 <p className="text-xs text-gray-600">{formatDate(record?.effective_date || record?.assign_date)}</p>
+                                 {isCurrent && <Badge variant="default" className="mt-1 text-xs">Current</Badge>}
+                              </div>
                            </div>
                         </div>
-                     </div>
-                  );
-               })}
-            </div>
-         ) : (
-            <div className="text-center py-8 text-gray-400">
-               <History className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-               <p className="text-sm">No movement history available</p>
-            </div>
-         )}
+                     );
+                  })}
+               </div>
+            ) : (
+               <div className="text-center py-8 text-gray-400">
+                  <History className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm">No movement history available</p>
+               </div>
+            )}
          </CardContent>
       </Card>
    </div>

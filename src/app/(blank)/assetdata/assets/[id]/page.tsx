@@ -1,5 +1,5 @@
 import React from "react";
-import DetailAsset from "@/components/assetmgmt/detail-asset-revised";
+import DetailAsset from "@components/assetmgmt/detail-asset2";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
