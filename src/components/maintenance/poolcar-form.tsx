@@ -109,6 +109,11 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   const [cancelRemarks, setCancelRemarks] = React.useState<string>('');
   const [cancelChecked, setCancelChecked] = React.useState<boolean>(false);
 
+  const canCreate = can('create', authData);
+  const canUpdate = can('update', authData);
+  const canView = can('view', authData);
+  const isCreateMode = !id;
+
   // Requestor
   const [requestor, setRequestor] = React.useState<any>({
     application_date: new Date().toISOString(),
@@ -456,10 +461,7 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
   }
 
   const disabled = submitting;
-  const canCreate = can('create', authData);
-  const canUpdate = can('update', authData);
-  const canView = can('view', authData);
-  const isCreateMode = !id;
+
 
   const handleSubmit = async () => {
     if (isCreateMode && !canCreate) {
@@ -883,42 +885,42 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label>Approval Status</Label>
-                    <div className="text-sm mt-1">
-                      {(existing?.pcar_cancel === '1' || existing?.pcar_cancel === 1)
-                        ? 'Canceled'
-                        : existing?.approval_stat === 1
-                          ? 'Approved'
-                          : existing?.approval_stat === 0
-                            ? 'Pending'
-                            : (existing?.approval_stat == null ? '-' : 'Rejected')}
+                    <div>
+                      <Label>Approval Status</Label>
+                      <div className="text-sm mt-1">
+                        {(existing?.pcar_cancel === '1' || existing?.pcar_cancel === 1)
+                          ? 'Canceled'
+                          : existing?.approval_stat === 1
+                            ? 'Approved'
+                            : existing?.approval_stat === 0
+                              ? 'Pending'
+                              : (existing?.approval_stat == null ? '-' : 'Rejected')}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <Label>Approved By</Label>
-                    <div className="text-sm mt-1">{existing?.approval?.full_name || '-'}</div>
-                  </div>
-                  <div>
-                    <Label>Approval Date</Label>
-                    <div className="text-sm mt-1">{existing?.approval_date ? formatDMY(existing.approval_date) : '-'}</div>
-                  </div>
-                  <div>
-                    <Label>Assigned Poolcar</Label>
-                    <div className="text-sm mt-1">{existing?.asset?.register_number || (existing?.asset_id ? String(existing.asset_id) : '-')}</div>
-                  </div>
-                  <div>
-                    <Label>Fleet Card</Label>
-                    <div className="text-sm mt-1">{existing?.fleetcard?.card_no || (existing?.fleetcard_id ? String(existing.fleetcard_id) : '-')}</div>
-                  </div>
-                  <div>
-                    <Label>TnG Card</Label>
-                    <div className="text-sm mt-1">{existing?.tng?.tng_sn || (existing?.tng_id ? String(existing.tng_id) : '-')}</div>
-                  </div>
-                  <div>
-                    <Label>TnG Balance</Label>
-                    <div className="text-sm mt-1">{existing?.tng_usage ? String(existing.tng_usage) : '-'}</div>
-                  </div>
+                    <div>
+                      <Label>Approved By</Label>
+                      <div className="text-sm mt-1">{existing?.approval?.full_name || '-'}</div>
+                    </div>
+                    <div>
+                      <Label>Approval Date</Label>
+                      <div className="text-sm mt-1">{existing?.approval_date ? formatDMY(existing.approval_date) : '-'}</div>
+                    </div>
+                    <div>
+                      <Label>Assigned Poolcar</Label>
+                      <div className="text-sm mt-1">{existing?.asset?.register_number || (existing?.asset_id ? String(existing.asset_id) : '-')}</div>
+                    </div>
+                    <div>
+                      <Label>Fleet Card</Label>
+                      <div className="text-sm mt-1">{existing?.fleetcard?.card_no || (existing?.fleetcard_id ? String(existing.fleetcard_id) : '-')}</div>
+                    </div>
+                    <div>
+                      <Label>TnG Card</Label>
+                      <div className="text-sm mt-1">{existing?.tng?.tng_sn || (existing?.tng_id ? String(existing.tng_id) : '-')}</div>
+                    </div>
+                    <div>
+                      <Label>TnG Balance</Label>
+                      <div className="text-sm mt-1">{existing?.tng_usage ? String(existing.tng_usage) : '-'}</div>
+                    </div>
                   </div>
 
                   <Separator className="my-2" />

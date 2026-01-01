@@ -60,6 +60,15 @@ interface LoginResponse {
     };
 }
 
+type AccountResponse = {
+    data?: {
+        user?: Partial<LoginResponse['data']['user']>;
+        [key: string]: unknown;
+    } | Partial<LoginResponse['data']['user']>;
+    user?: Partial<LoginResponse['data']['user']>;
+    [key: string]: unknown;
+};
+
 const ComponentLogin = () => {
     const router = useRouter();
     const [showPassword, setShowPassword] = useState(false);
@@ -315,10 +324,14 @@ const ComponentLogin = () => {
                 // Fetch latest account info (including role) with the freshly issued token
                 let mergedUser = response.data.data.user;
                 try {
-                    const accountRes = await api.get('/api/auth/account', {
+                    const accountRes = await api.get<AccountResponse>('/api/auth/account', {
                         headers: { Authorization: `Bearer ${response.data.token}` }
                     });
-                    const accountUser = accountRes.data?.data?.user || accountRes.data?.user || accountRes.data?.data || null;
+                    const accountData = accountRes.data;
+                    const nestedUser = typeof accountData.data === 'object' && accountData.data !== null && 'user' in accountData.data
+                        ? (accountData.data as { user?: Partial<LoginResponse['data']['user']> }).user
+                        : undefined;
+                    const accountUser = nestedUser ?? accountData.user ?? accountData.data ?? null;
                     if (accountUser) {
                         mergedUser = { ...mergedUser, ...accountUser };
                     }
