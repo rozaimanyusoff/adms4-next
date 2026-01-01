@@ -107,6 +107,11 @@ export async function downloadMaintenanceBillReport() {
   summaryTitle.value = 'Maintenance Bill Summary';
   summaryTitle.font = { bold: true, size: 24, underline: true };
   summaryTitle.alignment = { horizontal: 'center' };
+  summary.mergeCells(2, 1, 2, headers.length);
+  const summaryDisclaimer = summary.getCell(2, 1);
+  summaryDisclaimer.value = 'This data was exported from ADMS4. Confidential: This information is for the intended recipient only; any unauthorized use, disclosure, or distribution is strictly prohibited and may be unlawful.';
+  summaryDisclaimer.font = { italic: true, color: { argb: 'FF555555' } };
+  summaryDisclaimer.alignment = { horizontal: 'center', wrapText: true };
   summary.addRow([]);
 
   const yearlyHeaders = [
