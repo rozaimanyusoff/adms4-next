@@ -224,6 +224,15 @@ const normalizeDisplayInterfaceList = (values: string[]) =>
     new Set(values.map(normalizeDisplayInterfaceLabel).filter(Boolean))
   );
 
+const normalizeDisplaySize = (value: unknown): string => {
+  if (value == null) return "";
+  const str = String(value).trim();
+  if (!str) return "";
+  if (/inch/i.test(str)) return str;
+  if (/^[0-9]+(\.[0-9]+)?$/.test(str)) return `${str} inch`;
+  return str;
+};
+
 const parseDisplayInterfaces = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return normalizeDisplayInterfaceList(
@@ -422,6 +431,29 @@ const dataUrlToFile = async ({ dataUrl, name, type, lastModified }: AttachmentDr
   const res = await fetch(dataUrl);
   const blob = await res.blob();
   return new File([blob], name, { type: type || blob.type, lastModified: lastModified ?? Date.now() });
+};
+
+const makeAttachmentUrl = (path?: string | null) => {
+  const cleaned = (path ?? "").trim();
+  if (!cleaned) return "";
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+  if (!base) return cleaned.replace(/^\/+/, "");
+  return `${base}/${cleaned.replace(/^\/+/, "")}`;
+};
+
+const fetchAttachmentFile = async (path?: string | null) => {
+  const url = makeAttachmentUrl(path);
+  if (!url) return null;
+  try {
+    const res = await authenticatedApi.get<Blob>(url, { responseType: "blob" });
+    const blob = res?.data;
+    if (!blob) return null;
+    const name = url.split("/").pop() || "attachment.jpg";
+    return new File([blob], name, { type: blob.type || "image/jpeg" });
+  } catch {
+    return null;
+  }
 };
 
 const PcAssessmentForm: React.FC = () => {
@@ -1244,11 +1276,10 @@ const PcAssessmentForm: React.FC = () => {
           setGraphicsSpecs(assessment.graphics_specs);
         }
 
-        if (typeof displaySpec === "string") {
-          setDisplaySize(displaySpec);
-        }
-        if (typeof assessment?.display_size === "string") {
-          setDisplaySize(assessment.display_size);
+        const rawDisplaySize = assessment?.display_size ?? displaySpec;
+        const normalizedDisplaySize = normalizeDisplaySize(rawDisplaySize);
+        if (normalizedDisplaySize) {
+          setDisplaySize(normalizedDisplaySize);
         }
         if (typeof displayRes === "string" || typeof assessment?.display_resolution === "string") {
           setDisplayResolution(assessment?.display_resolution ?? displayRes ?? "");
@@ -1366,6 +1397,22 @@ const PcAssessmentForm: React.FC = () => {
         }
         if (assessment?.office_account) {
           setOfficeAccount(String(assessment.office_account));
+        }
+
+        const attachmentPaths = ["attachment_1", "attachment_2", "attachment_3"]
+          .map((key) => (assessment as any)?.[key])
+          .filter((v): v is string => typeof v === "string" && v.trim() !== "");
+        if (attachmentPaths.length) {
+          try {
+            const files = (
+              await Promise.all(attachmentPaths.map((path) => fetchAttachmentFile(path)))
+            ).filter((f): f is File => Boolean(f));
+            if (files.length) {
+              setAttachments(files.slice(0, attachmentLimits.max));
+            }
+          } catch {
+            // ignore attachment prefill errors
+          }
         }
 
         if (assessmentOwner) {

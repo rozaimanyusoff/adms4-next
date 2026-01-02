@@ -85,6 +85,7 @@ const PcAssessmentRecord: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
   const [selectedCostcenter, setSelectedCostcenter] = useState<string[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string[]>([]);
+  const [selectedAssessmentYears, setSelectedAssessmentYears] = useState<string[]>([]);
   const [onlyDeviceCategories, setOnlyDeviceCategories] = useState(true);
 
   const fetchAssets = useCallback(async () => {
@@ -195,6 +196,9 @@ const PcAssessmentRecord: React.FC = () => {
         const categoryLabel = displayName(row.category);
         const costcenterLabel = displayName(row.costcenter);
         const locationLabel = displayName(row.location);
+        const assessmentLabel = row.last_assessment?.assessment_year
+          ? String(row.last_assessment.assessment_year)
+          : "Not Assessed";
         const isDeviceCategory = ["laptop", "desktop", "tablet"].includes(
           categoryLabel?.toString().toLowerCase()
         );
@@ -205,10 +209,19 @@ const PcAssessmentRecord: React.FC = () => {
           selectedCostcenter.length === 0 || selectedCostcenter.includes(costcenterLabel);
         const locationMatch =
           selectedLocation.length === 0 || selectedLocation.includes(locationLabel);
+        const assessmentMatch =
+          selectedAssessmentYears.length === 0 || selectedAssessmentYears.includes(assessmentLabel);
         const deviceGate = !onlyDeviceCategories || isDeviceCategory;
-        return categoryMatch && costcenterMatch && locationMatch && deviceGate;
+        return categoryMatch && costcenterMatch && locationMatch && assessmentMatch && deviceGate;
       }),
-    [data, selectedCategory, selectedCostcenter, selectedLocation, onlyDeviceCategories]
+    [
+      data,
+      selectedCategory,
+      selectedCostcenter,
+      selectedLocation,
+      selectedAssessmentYears,
+      onlyDeviceCategories,
+    ]
   );
 
   const handleCreate = useCallback(() => {
@@ -445,17 +458,39 @@ const PcAssessmentRecord: React.FC = () => {
       </div>
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last Assessment</p>
-        <div className="flex flex-wrap items-stretch gap-2">
-          {lastAssessmentSummary.map((item) => (
-            <Card key={item.label} className="border-fuchsia-200 bg-fuchsia-50/50">
-              <CardContent className="flex items-center justify-between px-3 py-2">
-                <span className="truncate font-medium">{item.label}</span>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                  {item.count}
-                </Badge>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {lastAssessmentSummary.map((item) => {
+            const active = selectedAssessmentYears.includes(item.label);
+            return (
+              <Card
+                key={item.label}
+                role="button"
+                tabIndex={0}
+                onClick={() =>
+                  setSelectedAssessmentYears((prev) =>
+                    prev.includes(item.label)
+                      ? prev.filter((yr) => yr !== item.label)
+                      : [...prev, item.label]
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") e.currentTarget.click();
+                }}
+                className={`cursor-pointer transition-colors ${
+                  active
+                    ? "border-blue-300 bg-blue-50/70"
+                    : "border-fuchsia-200 bg-fuchsia-50/50 hover:border-fuchsia-300"
+                }`}
+              >
+                <CardContent className="flex items-center gap-2 px-3 py-2">
+                  <span className="truncate font-medium">{item.label}</span>
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                    {item.count}
+                  </Badge>
+                </CardContent>
+              </Card>
+            );
+          })}
           <div className="flex items-stretch ml-auto">
             <Button onClick={handleCreate} className="gap-2 w-full sm:w-auto" disabled={loading}>
               <Plus className="h-4 w-4" />
