@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useMemo } from "react";
 import { Plus, PlusCircle, Trash2, MinusCircle } from "lucide-react";
 import { Button } from "@components/ui/button";
 import { Input } from "@components/ui/input";
@@ -28,6 +28,7 @@ interface FGroupFormProps {
 	onRemoveNav: (navId: number) => void;
 	newlyAssignedUserIds: number[];
 	newlyAssignedNavIds: number[];
+	assignedUserError?: boolean;
 }
 
 const FGroupForm: React.FC<FGroupFormProps> = ({
@@ -49,11 +50,52 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 	onRemoveNav,
 	newlyAssignedUserIds,
 	newlyAssignedNavIds,
+	assignedUserError = false,
 }) => {
 	const userListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
 	const navListRef = useRef<{ [key: number]: HTMLLIElement | null }>({});
 	const [navTreeStructure, setNavTreeStructure] = useState<any[]>([]);
 	const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+	const [assignedUserSearch, setAssignedUserSearch] = useState("");
+	const navLookup = useMemo(() => {
+		const idToNode = new Map<string, any>();
+		const parentMap = new Map<string, string | null>();
+		const walk = (nodes: any[], parentId: string | null) => {
+			for (const n of nodes || []) {
+				const id = String(n.navId);
+				idToNode.set(id, n);
+				parentMap.set(id, parentId);
+				if (n.children && n.children.length > 0) {
+					walk(n.children, id);
+				}
+			}
+		};
+		walk(navTreeStructure, null);
+		return { idToNode, parentMap };
+	}, [navTreeStructure]);
+	const getDescendants = React.useCallback((id: string): Set<string> => {
+		const result = new Set<string>();
+		const node = navLookup.idToNode.get(String(id));
+		const walk = (nodes: any[]) => {
+			for (const child of nodes || []) {
+				result.add(String(child.navId));
+				if (child.children && child.children.length > 0) {
+					walk(child.children);
+				}
+			}
+		};
+		if (node?.children) {
+			walk(node.children);
+		}
+		return result;
+	}, [navLookup.idToNode]);
+	const hasSelectedDescendants = React.useCallback((id: string, selectedIds: Set<string>) => {
+		const desc = getDescendants(id);
+		for (const d of desc) {
+			if (selectedIds.has(d)) return true;
+		}
+		return false;
+	}, [getDescendants]);
 
 	useEffect(() => {
 		// Fetch navigation structure from /api/nav and extract navTree
@@ -69,12 +111,26 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 		});
 	}, []);
 
+	const filteredAssignedUsers = useMemo(() => {
+		if (!group.users) return [];
+		const term = assignedUserSearch.trim().toLowerCase();
+		if (!term) return group.users;
+		return group.users.filter((user: any) =>
+			(user.username || "").toLowerCase().includes(term) ||
+			(user.fname || user.name || "").toLowerCase().includes(term)
+		);
+	}, [assignedUserSearch, group.users]);
+
 	return (
 		<div className="bg-white dark:bg-gray-900 p-4 rounded shadow mx-auto">
 			<h2 className="text-xl font-bold mb-4 text-center">{group.id ? `Group ${group.name} Update` : 'Group Assignment'} Form</h2>
 			<form
 				onSubmit={e => {
 					e.preventDefault();
+					if (!group.users || group.users.length === 0) {
+						onSubmit(e);
+						return;
+					}
 					setShowConfirmDialog(true);
 				}}
 				className="space-y-4"
@@ -103,7 +159,7 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 				</div>
 				<div className="flex flex-col lg:flex-row gap-4 w-full text-sm">
 					{/* Assigned Users */}
-					<div className="w-full lg:w-1/2 border dark:border-gray-700 rounded-sm p-3 shrink-0 min-w-0 max-w-full lg:min-w-65 lg:max-w-85 bg-gray-50 dark:bg-gray-800 mb-4 lg:mb-0">
+					<div className={`w-full lg:w-1/2 border rounded-sm p-3 shrink-0 min-w-0 max-w-full lg:min-w-65 lg:max-w-85 bg-gray-50 dark:bg-gray-800 mb-4 lg:mb-0 ${assignedUserError ? 'border-red-500 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`}>
 						<div className="flex items-center justify-between mb-1">
 							<span className="font-semibold underline underline-offset-4">Assigned Users</span>
 							<Button
@@ -115,9 +171,20 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 								<Plus className="w-5 h-5" />
 							</Button>
 						</div>
+						<div className="flex items-center gap-2 mb-2">
+							<Input
+								placeholder="Search assigned users..."
+								value={assignedUserSearch}
+								onChange={e => setAssignedUserSearch(e.target.value)}
+								className="w-full h-9"
+							/>
+						</div>
+						{assignedUserError && (!group.users || group.users.length === 0) && (
+							<div className="text-xs text-red-600 mb-2">Please assign at least one user before saving.</div>
+						)}
 						{group.users && group.users.length > 0 ? (
 							<ul className="divide-y divide-gray-200 dark:divide-gray-600 mt-2">
-								{group.users.map((user: any) => (
+								{filteredAssignedUsers.map((user: any) => (
 									<li
 										key={user.id}
 										ref={el => { userListRef.current[user.id] = el; }}
@@ -130,6 +197,9 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 										<MinusCircle className="text-red-600 w-6 h-6 cursor-pointer ml-2" onClick={() => onRemoveUser(user.id)} />
 									</li>
 								))}
+								{filteredAssignedUsers.length === 0 && (
+									<li className="py-2 text-xs text-gray-500 italic">No users match this search.</li>
+								)}
 							</ul>
 						) : (
 							<div className="text-gray-500 italic text-sm">No users</div>
@@ -155,23 +225,36 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 								})()}
 								onToggleNav={(navId, checked) => {
 									let updatedNavs = group.navTree ? [...group.navTree] : [];
-									const findNav = (nodes: any[]): any | null => {
-										for (const n of nodes) {
-											if (String(n.navId) === String(navId)) return n;
-											if (n.children) {
-												const found = findNav(n.children);
-												if (found) return found;
-											}
-										}
-										return null;
-									};
-									const navNode = findNav(navTreeStructure);
-									if (checked) {
-										if (navNode && !updatedNavs.some((n: any) => String(n.navId) === String(navId))) {
+									const ensureNav = (id: string) => {
+										const navNode = navLookup.idToNode.get(String(id));
+										if (!navNode) return;
+										if (!updatedNavs.some((n: any) => String(n.navId) === String(id))) {
 											updatedNavs.push({ navId: navNode.navId, title: navNode.title, path: navNode.path });
 										}
+									};
+									if (checked) {
+										const descendants = Array.from(getDescendants(navId));
+										ensureNav(navId);
+										descendants.forEach(d => ensureNav(d));
+										let parent = navLookup.parentMap.get(String(navId));
+										while (parent) {
+											ensureNav(parent);
+											parent = navLookup.parentMap.get(String(parent));
+										}
 									} else {
-										updatedNavs = updatedNavs.filter((n: any) => String(n.navId) !== String(navId));
+										const toRemove = new Set<string>([String(navId), ...Array.from(getDescendants(navId))]);
+										updatedNavs = updatedNavs.filter((n: any) => !toRemove.has(String(n.navId)));
+										let parent = navLookup.parentMap.get(String(navId));
+										const selectedIds = new Set(updatedNavs.map((n: any) => String(n.navId)));
+										while (parent) {
+											if (!hasSelectedDescendants(parent, selectedIds)) {
+												updatedNavs = updatedNavs.filter((n: any) => String(n.navId) !== String(parent));
+												selectedIds.delete(String(parent));
+												parent = navLookup.parentMap.get(String(parent));
+											} else {
+												parent = null;
+											}
+										}
 									}
 									setGroup({ ...group, navTree: updatedNavs });
 								}}
@@ -182,10 +265,10 @@ const FGroupForm: React.FC<FGroupFormProps> = ({
 					</div>
 				</div>
 				<div className="flex items-center justify-center sm:flex-row gap-2 mt-4">
-					<Button type="button" variant={'destructive'} onClick={onCancel}>
+					<Button variant={'outline'} onClick={onCancel}>
 						Cancel
 					</Button>
-					<Button type="submit" variant={'default'} className="btn bg-green-600 text-white hover:bg-green-700 shadow-none w-full sm:w-auto">
+					<Button variant={'default'} >
 						Save
 					</Button>
 				</div>

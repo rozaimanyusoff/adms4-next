@@ -39,17 +39,21 @@ const GroupManagement = () => {
                 el.classList.remove("animate-blinkFast", "bg-red-500", "text-white");
                 el.classList.add("animate-fadeOut");
                 setTimeout(() => {
+                    const updated = (editGroup.users || []).filter((user) => user.id !== userId);
                     setEditGroup({
                         ...editGroup,
-                        users: (editGroup.users || []).filter((user) => user.id !== userId),
+                        users: updated,
                     });
+                    if (updated.length === 0) setAssignedUserError(true);
                 }, 300); // fadeOut duration
             }, 300); // blinkFast duration
         } else {
+            const updated = (editGroup.users || []).filter((user) => user.id !== userId);
             setEditGroup({
                 ...editGroup,
-                users: (editGroup.users || []).filter((user) => user.id !== userId),
+                users: updated,
             });
+            if (updated.length === 0) setAssignedUserError(true);
         }
     };
 
@@ -218,6 +222,7 @@ const GroupManagement = () => {
     const [userSearch, setUserSearch] = useState("");
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
+    const [assignedUserError, setAssignedUserError] = useState(false);
 
     // Add state to track newly assigned user/nav IDs
     const [newlyAssignedUserIds, setNewlyAssignedUserIds] = useState<number[]>([]);
@@ -236,6 +241,12 @@ const GroupManagement = () => {
             setEditStatus(editGroup.status || 1);
         }
     }, [editGroup]);
+
+    useEffect(() => {
+        if (editGroup?.users && editGroup.users.length > 0) {
+            setAssignedUserError(false);
+        }
+    }, [editGroup?.users?.length]);
 
     // Fetch both users and nav when sidebar opens (either tab)
     useEffect(() => {
@@ -262,6 +273,7 @@ const GroupManagement = () => {
         if (!editGroup) return;
         setEditGroup({ ...editGroup, users: [...(editGroup.users || []), user] });
         setNewlyAssignedUserIds(ids => [...ids, user.id]);
+        setAssignedUserError(false);
         setTimeout(() => {
             setNewlyAssignedUserIds(ids => ids.filter(id => id !== user.id));
         }, 1200);
@@ -270,6 +282,11 @@ const GroupManagement = () => {
     const handleEditSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editGroup) return;
+        if (!editGroup.users || editGroup.users.length === 0) {
+            setAssignedUserError(true);
+            toast.error('Please assign at least one user before saving.');
+            return;
+        }
         const payload = {
             id: editGroup.id,
             name: editName,
@@ -328,6 +345,7 @@ const GroupManagement = () => {
                     onRemoveNav={handleRemoveNav}
                     newlyAssignedUserIds={newlyAssignedUserIds}
                     newlyAssignedNavIds={newlyAssignedNavIds}
+                    assignedUserError={assignedUserError}
                 />
             ) : (
                 <CustomDataGrid
@@ -336,7 +354,7 @@ const GroupManagement = () => {
                     data={filteredGroups}
                     columns={columns}
                     pageSize={10}
-                    pagination={true}
+                    pagination={false}
                     inputFilter={false}
                     rowExpandable={rowExpandable}
                     onRowDoubleClick={undefined}
@@ -379,4 +397,3 @@ const GroupManagement = () => {
 };
 
 export default GroupManagement;
-
