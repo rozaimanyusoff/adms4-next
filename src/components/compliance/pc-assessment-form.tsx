@@ -215,9 +215,19 @@ const displayInterfaceOptions = [
   "DVI",
 ];
 
+const normalizeDisplayInterfaceLabel = (value: string) =>
+  value.replace(/^\[+|\]+$/g, "").replace(/^"+|"+$/g, "").trim();
+
+const normalizeDisplayInterfaceList = (values: string[]) =>
+  Array.from(
+    new Set(values.map(normalizeDisplayInterfaceLabel).filter(Boolean))
+  );
+
 const parseDisplayInterfaces = (value: unknown): string[] => {
   if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+    return normalizeDisplayInterfaceList(
+      value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
+    );
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -225,15 +235,19 @@ const parseDisplayInterfaces = (value: unknown): string[] => {
     try {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        return parsed.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+        return normalizeDisplayInterfaceList(
+          parsed.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
+        );
       }
     } catch {
       // fall through to comma parsing
     }
-    return trimmed
-      .split(",")
-      .map((v) => v.trim().replace(/^"+|"+$/g, ""))
-      .filter(Boolean);
+    return normalizeDisplayInterfaceList(
+      trimmed
+        .split(",")
+        .map((v) => v.trim().replace(/^"+|"+$/g, ""))
+        .filter(Boolean)
+    );
   }
   return [];
 };
@@ -1344,7 +1358,7 @@ const PcAssessmentForm: React.FC = () => {
       display_size: toNum(parseFloat(displaySize)) ?? null,
       display_resolution: displayResolution || null,
       display_form_factor: displayFormFactor || null,
-      display_interfaces: displayInterfaces.join(", ") || null,
+      display_interfaces: normalizeDisplayInterfaceList(displayInterfaces).join(", ") || null,
 
       ports_usb_a: toNum(portCounts.usbA) ?? 0,
       ports_usb_c: toNum(portCounts.usbC) ?? 0,
