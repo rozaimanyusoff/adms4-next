@@ -152,6 +152,8 @@ declare global {
   }
 }
 
+const YEAR_FILTER_STORAGE_KEY = 'utility-bills-year-filter';
+
 const UtilityBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -165,7 +167,11 @@ const UtilityBill = () => {
   const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [beneficiaryFilter, setBeneficiaryFilter] = useState<string>('');
-  const [yearFilter, setYearFilter] = useState<string>(String(new Date().getFullYear()));
+  const [yearFilter, setYearFilter] = useState<string>(() => {
+    const current = String(new Date().getFullYear());
+    if (typeof window === 'undefined') return current;
+    return localStorage.getItem(YEAR_FILTER_STORAGE_KEY) || current;
+  });
   const [selectedAccount, setSelectedAccount] = useState<BillingAccount | null>(null);
   const [sidebarSize, setSidebarSize] = useState<'sm' | 'lg'>('sm');
   const [paymentRefFile, setPaymentRefFile] = useState<File | null>(null);
@@ -831,6 +837,11 @@ const UtilityBill = () => {
   }, [yearFilter]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(YEAR_FILTER_STORAGE_KEY, yearFilter);
+  }, [yearFilter]);
+
+  useEffect(() => {
     window.reloadUtilityBillGrid = () => {
       fetchUtilityBills();
     };
@@ -850,7 +861,7 @@ const UtilityBill = () => {
       key: 'rowNumber',
       header: 'No',
       render: (row) => (
-        <div className="flex items-center min-w-[60px]">
+        <div className="flex items-center min-w-15">
           <span>{row.rowNumber}</span>
         </div>
       ),
@@ -1133,7 +1144,7 @@ const UtilityBill = () => {
                   </div>
                 )}
 
-                <div className="max-h-[600px] overflow-y-auto space-y-2 px-2">
+                <div className="max-h-150 overflow-y-auto space-y-2 px-2">
                   {filteredAccountsWithLogos.map((account) => (
                     <div
                       key={account.bill_id}
@@ -1145,7 +1156,7 @@ const UtilityBill = () => {
                     >
                       <div className="flex items-center space-x-3">
                         {/* Logo on the left */}
-                        <div className="flex-shrink-0">
+                        <div className="shrink-0">
                           <img
                             src={
                               ((account as any).beneficiary?.logo) ? getLogoUrl((account as any).beneficiary.logo) : (account.logoUrl || getLogoUrl(account.beneficiary?.logo || null))
@@ -1187,7 +1198,7 @@ const UtilityBill = () => {
 
                         {/* Selected indicator */}
                         {selectedAccount?.bill_id === account.bill_id && (
-                          <div className="flex-shrink-0">
+                          <div className="shrink-0">
                             <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
                               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
