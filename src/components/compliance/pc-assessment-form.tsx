@@ -37,7 +37,7 @@ const DRAFT_STORAGE_PREFIX = "pc-assessment-draft";
 const attachmentLimits = { min: 1, max: 3 };
 const attachmentCompressOpts = { maxDimension: 1400, quality: 0.72 };
 
-type DeviceType = "laptop" | "desktop" | "tablet";
+type DeviceType = "laptop" | "desktop" | "tablet" | "server" | "appliance";
 type ChecklistStatus = "pass" | "issue" | "na";
 
 interface ChecklistItem {
@@ -189,6 +189,7 @@ const displayResolutionOptions = [
 ];
 
 const displaySizeOptions = [
+  "8 inch",
   "10 inch",
   "11 inch",
   "12 inch",
@@ -261,7 +262,7 @@ const displayFormFactorOptions = [
   "Other",
 ];
 
-const osOptions = ["Windows", "macOS", "Ubuntu", "Fedora", "Debian", "Other"];
+const osOptions = ["Windows", "macOS", "iPadOS", "iOS", "Linux", "Android", "Other"];
 
 const osVersionOptions = [
   "11 Pro",
@@ -273,8 +274,11 @@ const osVersionOptions = [
   "Ventura 13",
   "Monterey 12",
   "Big Sur 11",
-  "22.04",
-  "24.04",
+  "Ubuntu 22.04",
+  "Ubuntu 24.04",
+  "Android 15",
+  "Android 14",
+  "Android 13 & below",
   "Other",
 ];
 
@@ -295,9 +299,10 @@ const specificSoftwareOptions = [
   "PDF editor (Adobe/others)",
   "AutoCAD LT 2025",
   "AutoCAD 2025",
-  "MS Project 2013",
   "MS Project Plan 3",
+  "MS Project 2013",
   "ArcGIS Pro",
+  "WaterGEMS",
   "Other",
 ];
 
@@ -508,6 +513,7 @@ const PcAssessmentForm: React.FC = () => {
   const [vpnUsername, setVpnUsername] = useState("");
   const [productivitySuites, setProductivitySuites] = useState<string[]>([]);
   const [specificSoftware, setSpecificSoftware] = useState<string[]>([]);
+  const [specificSoftwareDetails, setSpecificSoftwareDetails] = useState<Record<string, string>>({});
   const [officeAccount, setOfficeAccount] = useState("");
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
@@ -599,6 +605,7 @@ const PcAssessmentForm: React.FC = () => {
         if (parsed.vpnUsername != null) setVpnUsername(parsed.vpnUsername);
         if (parsed.productivitySuites) setProductivitySuites(parsed.productivitySuites);
         if (parsed.specificSoftware) setSpecificSoftware(parsed.specificSoftware);
+        if (parsed.specificSoftwareDetails) setSpecificSoftwareDetails(parsed.specificSoftwareDetails);
         if (parsed.officeAccount != null) setOfficeAccount(parsed.officeAccount);
         if (parsed.selectedBrandId != null) setSelectedBrandId(String(parsed.selectedBrandId));
         if (parsed.selectedModelId != null) setSelectedModelId(String(parsed.selectedModelId));
@@ -616,8 +623,12 @@ const PcAssessmentForm: React.FC = () => {
     restore();
   }, [draftKey]);
 
+  const needsPower = useMemo(
+    () => form.deviceType === "laptop" || form.deviceType === "tablet",
+    [form.deviceType]
+  );
+
   const progressPercent = useMemo(() => {
-    const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
     const fields = [
       form.serialNumber,
       form.deviceType,
@@ -677,8 +688,66 @@ const PcAssessmentForm: React.FC = () => {
     attachments,
   ]);
 
+  const isEmpty = (value: any) => value === undefined || value === null || String(value).trim() === "";
+
+  const missingFields = useMemo(
+    () => ({
+      serialNumber: isEmpty(form.serialNumber),
+      deviceType: isEmpty(form.deviceType),
+      manufacturer: isEmpty(form.manufacturer),
+      model: isEmpty(form.model),
+      purchaseDate: isEmpty(form.purchaseDate),
+      costCenter: isEmpty(form.costCenter),
+      department: isEmpty(form.department),
+      location: isEmpty(form.location),
+      owner: isEmpty(form.owner),
+      osName: isEmpty(form.osName),
+      osVersion: isEmpty(form.osVersion),
+      cpuManufacturer: isEmpty(cpuManufacturer),
+      cpuModel: isEmpty(cpuModel),
+      memorySize: isEmpty(memorySize),
+      storageSize: isEmpty(storageSize),
+      graphicsType: isEmpty(graphicsType),
+      displaySize: isEmpty(displaySize),
+      displayResolution: isEmpty(displayResolution),
+      notes: isEmpty(form.notes),
+      attachments: attachments.length < attachmentLimits.min,
+      batteryCapacity: needsPower && batteryEquipped && isEmpty(batteryCapacity),
+      adapterOutput: needsPower && adapterEquipped && isEmpty(adapterOutput),
+    }),
+    [
+      adapterEquipped,
+      adapterOutput,
+      attachments.length,
+      batteryCapacity,
+      batteryEquipped,
+      cpuManufacturer,
+      cpuModel,
+      displayResolution,
+      displaySize,
+      form.costCenter,
+      form.deviceType,
+      form.location,
+      form.manufacturer,
+      form.model,
+      form.notes,
+      form.osName,
+      form.osVersion,
+      form.owner,
+      form.purchaseDate,
+      form.serialNumber,
+      form.department,
+      graphicsType,
+      memorySize,
+      needsPower,
+      storageSize,
+    ]
+  );
+
+  const highlightClass = (pending?: boolean) =>
+    pending ? "rounded-md ring-2 ring-amber-400 ring-offset-2 ring-offset-background" : "";
+
   useEffect(() => {
-    const needsPower = form.deviceType === "laptop" || form.deviceType === "tablet";
     if (needsPower) {
       setBatteryEquipped(true);
       setAdapterEquipped(true);
@@ -853,6 +922,7 @@ const PcAssessmentForm: React.FC = () => {
           vpnUsername,
           productivitySuites,
           specificSoftware,
+          specificSoftwareDetails,
           officeAccount,
           selectedBrandId,
           selectedModelId,
@@ -901,6 +971,7 @@ const PcAssessmentForm: React.FC = () => {
     productivitySuites,
     softwareChecklist,
     specificSoftware,
+    specificSoftwareDetails,
     storageManufacturer,
     storageSize,
     storageType,
@@ -1257,14 +1328,41 @@ const PcAssessmentForm: React.FC = () => {
         if (Array.isArray(installedRaw) || typeof installedRaw === "string") {
           const installed = (Array.isArray(installedRaw)
             ? installedRaw
-            : installedRaw.split(",").map((s) => s.trim())
-          ).filter((s: any) => typeof s === "string" && s);
-          const suites = installed.filter((s) => productivitySuiteOptions.includes(s));
-          const others = installed.filter((s) => !productivitySuiteOptions.includes(s));
-          const specific = others.filter((s) => specificSoftwareOptions.includes(s));
-          const remaining = others.filter((s) => !specificSoftwareOptions.includes(s));
+            : installedRaw.split(",")
+          )
+            .map((s: any) => (typeof s === "string" ? s.trim() : ""))
+            .filter((s: string) => s);
+
+          const parsedInstalled = installed.map((entry) => {
+            const [namePart, ...rest] = entry.split(":");
+            const name = namePart?.trim() ?? "";
+            const detail = rest.join(":").trim();
+            return { name, detail };
+          });
+
+          const suites = parsedInstalled
+            .filter((item) => productivitySuiteOptions.includes(item.name))
+            .map((item) => item.name);
+
+          const specificEntries = parsedInstalled.filter((item) =>
+            specificSoftwareOptions.includes(item.name)
+          );
+          const specificNames = specificEntries.map((item) => item.name);
+          const specificDetails = specificEntries.reduce<Record<string, string>>((acc, item) => {
+            if (item.detail) acc[item.name] = item.detail;
+            return acc;
+          }, {});
+
+          const remaining = parsedInstalled
+            .map((item) => item.name)
+            .filter(
+              (name) =>
+                !productivitySuiteOptions.includes(name) && !specificSoftwareOptions.includes(name)
+            );
+
           setProductivitySuites(Array.from(new Set(suites)));
-          setSpecificSoftware(Array.from(new Set([...specific, ...remaining])));
+          setSpecificSoftware(Array.from(new Set([...specificNames, ...remaining])));
+          setSpecificSoftwareDetails(specificDetails);
         }
         if (assessment?.office_account) {
           setOfficeAccount(String(assessment.office_account));
@@ -1317,6 +1415,12 @@ const PcAssessmentForm: React.FC = () => {
     };
     const brandValue = toId(selectedBrandId) ?? (form.manufacturer || null);
     const modelValue = toId(selectedModelId) ?? (form.model || null);
+    const specificSoftwareEntries = specificSoftware.map((name) => {
+      const detail = specificSoftwareDetails[name]?.trim();
+      return detail ? `${name}: ${detail}` : name;
+    });
+    const installedSoftwareList = [...productivitySuites, ...specificSoftwareEntries];
+
     const payload = {
       assessment_year: form.assessmentYear,
       assessment_date: form.assessmentDate,
@@ -1384,7 +1488,7 @@ const PcAssessmentForm: React.FC = () => {
       vpn_setup_type: vpnSetupType || null,
       vpn_username: vpnUsername || null,
 
-      installed_software: [...productivitySuites, ...specificSoftware].join(", ") || null,
+      installed_software: installedSoftwareList.join(", ") || null,
       office_account: officeAccount || null,
     };
     try {
@@ -1463,6 +1567,7 @@ const PcAssessmentForm: React.FC = () => {
     setVpnUsername("");
     setProductivitySuites([]);
     setSpecificSoftware([]);
+    setSpecificSoftwareDetails({});
     setOfficeAccount("");
     setSelectedBrandId("");
     setSelectedModelId("");
@@ -1572,7 +1677,7 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.cpuManufacturer)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Manufacturer</Label>
             <Select
               value={cpuManufacturer || undefined}
@@ -1590,7 +1695,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.cpuModel)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">CPU Model</Label>
             <Input
               value={cpuModel}
@@ -1652,7 +1757,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.memorySize)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
             <Input
               type="number"
@@ -1709,7 +1814,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.storageSize)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
             <Input
               type="number"
@@ -1781,7 +1886,7 @@ const PcAssessmentForm: React.FC = () => {
               />
               <Label htmlFor="batteryEquipped">Battery equipped</Label>
             </div>
-            <div className="space-y-1">
+            <div className={`space-y-1 ${highlightClass(missingFields.batteryCapacity)}`}>
               <Label htmlFor="batteryCapacity">Capacity</Label>
               <Input
                 id="batteryCapacity"
@@ -1801,7 +1906,7 @@ const PcAssessmentForm: React.FC = () => {
               />
               <Label htmlFor="adapterEquipped">Adapter equipped</Label>
             </div>
-            <div className="space-y-1">
+            <div className={`space-y-1 ${highlightClass(missingFields.adapterOutput)}`}>
               <Label htmlFor="adapterOutput">Output</Label>
               <Input
                 id="adapterOutput"
@@ -1822,7 +1927,7 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="space-y-2">
+          <div className={`space-y-2 ${highlightClass(missingFields.graphicsType)}`}>
             <Label className="text-xs text-muted-foreground">Type</Label>
             <RadioGroup value={graphicsType} onValueChange={(v) => setGraphicsType(v)}>
               <div className="flex flex-wrap gap-3">
@@ -1893,7 +1998,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.displaySize)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Size</Label>
               <Select
                 value={displaySize || undefined}
@@ -1911,7 +2016,7 @@ const PcAssessmentForm: React.FC = () => {
                 </SelectContent>
               </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.displayResolution)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Resolution</Label>
             <Select
               value={displayResolution || undefined}
@@ -2161,9 +2266,9 @@ const PcAssessmentForm: React.FC = () => {
               {specificSoftwareOptions.map((opt) => {
                 const checked = specificSoftware.includes(opt);
                 return (
-                  <label
+                  <div
                     key={opt}
-                    className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
+                    className="flex flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
                   >
                     <Checkbox
                       checked={checked}
@@ -2172,11 +2277,29 @@ const PcAssessmentForm: React.FC = () => {
                           setSpecificSoftware((prev) => Array.from(new Set([...prev, opt])));
                         } else {
                           setSpecificSoftware((prev) => prev.filter((p) => p !== opt));
+                          setSpecificSoftwareDetails((prev) => {
+                            const next = { ...prev };
+                            delete next[opt];
+                            return next;
+                          });
                         }
                       }}
                     />
-                    <span className="leading-tight">{opt}</span>
-                  </label>
+                    <span className="leading-tight whitespace-nowrap">{opt}</span>
+                    {checked && (
+                      <Input
+                        className="ml-2 h-8 min-w-45"
+                        value={specificSoftwareDetails[opt] ?? ""}
+                        onChange={(e) =>
+                          setSpecificSoftwareDetails((prev) => ({
+                            ...prev,
+                            [opt]: e.target.value,
+                          }))
+                        }
+                        placeholder="Enter details or license info"
+                      />
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -2261,7 +2384,7 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.serialNumber)}`}>
                 <Label htmlFor="serialNumber">Serial Number</Label>
                 <Input
                   id="serialNumber"
@@ -2271,7 +2394,7 @@ const PcAssessmentForm: React.FC = () => {
                   autoComplete="off"
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.deviceType)}`}>
                 <Label htmlFor="deviceType">Device Type</Label>
                 <Select
                   value={form.deviceType}
@@ -2287,7 +2410,7 @@ const PcAssessmentForm: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.manufacturer)}`}>
                 <Label htmlFor="manufacturer">Manufacturer</Label>
                 <SingleSelect
                   options={brandOptionsWithCustom}
@@ -2298,7 +2421,7 @@ const PcAssessmentForm: React.FC = () => {
                   clearable
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.model)}`}>
                 <Label htmlFor="model">Model</Label>
                 <SingleSelect
                   options={modelOptionsWithCustom}
@@ -2340,7 +2463,7 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.purchaseDate)}`}>
                 <Label htmlFor="purchaseDate">Purchase Date</Label>
                 <Input
                   id="purchaseDate"
@@ -2349,7 +2472,7 @@ const PcAssessmentForm: React.FC = () => {
                   onChange={(e) => updateForm("purchaseDate", e.target.value)}
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.costCenter)}`}>
                 <Label htmlFor="costCenter">Cost Center</Label>
                 <SingleSelect
                   options={costCenterOptions}
@@ -2360,7 +2483,7 @@ const PcAssessmentForm: React.FC = () => {
                   clearable
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.department)}`}>
                 <Label htmlFor="department">Department</Label>
                 <SingleSelect
                   options={departmentOptions}
@@ -2371,7 +2494,7 @@ const PcAssessmentForm: React.FC = () => {
                   clearable
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.location)}`}>
                 <Label htmlFor="location">Location</Label>
                 <SingleSelect
                   options={locationOptions}
@@ -2385,7 +2508,7 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.owner)}`}>
                 <Label htmlFor="owner">Owner</Label>
                 <SingleSelect
                   options={ownerOptions}
@@ -2401,7 +2524,7 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.osName)}`}>
                 <Label htmlFor="osName">Operating System</Label>
                 <Select
                   value={form.osName}
@@ -2419,7 +2542,7 @@ const PcAssessmentForm: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.osVersion)}`}>
                 <Label htmlFor="osVersion">OS Version</Label>
                 <Select
                   value={form.osVersion}
@@ -2467,7 +2590,7 @@ const PcAssessmentForm: React.FC = () => {
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 ${highlightClass(missingFields.attachments)}`}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="space-y-1">
                 <Label>Attachments (images)</Label>
@@ -2570,7 +2693,7 @@ const PcAssessmentForm: React.FC = () => {
                   </div>
                 </RadioGroup>
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.notes)}`}>
                 <Label htmlFor="notes">Overall remarks</Label>
                 <Textarea
                   id="notes"
@@ -2661,7 +2784,7 @@ const PcAssessmentForm: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <div className="fixed bottom-4 right-4 z-50 rounded-full bg-primary px-4 py-2 text-primary-foreground shadow-lg">
+      <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 transform rounded-full bg-primary px-4 py-2 text-primary-foreground shadow-lg">
         Progress: {progressPercent}%
       </div>
     </div>
