@@ -215,6 +215,29 @@ const displayInterfaceOptions = [
   "DVI",
 ];
 
+const parseDisplayInterfaces = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+      }
+    } catch {
+      // fall through to comma parsing
+    }
+    return trimmed
+      .split(",")
+      .map((v) => v.trim().replace(/^"+|"+$/g, ""))
+      .filter(Boolean);
+  }
+  return [];
+};
+
 const displayFormFactorOptions = [
   "Standard",
   "Ultrawide",
@@ -1145,12 +1168,11 @@ const PcAssessmentForm: React.FC = () => {
         if (typeof displayRes === "string" || typeof assessment?.display_resolution === "string") {
           setDisplayResolution(assessment?.display_resolution ?? displayRes ?? "");
         }
-        if (Array.isArray(asset?.specs?.display_interfaces) || Array.isArray(assessment?.display_interfaces)) {
-          setDisplayInterfaces(
-            (assessment?.display_interfaces ?? asset?.specs?.display_interfaces ?? []).filter(
-              (v: any) => typeof v === "string"
-            )
-          );
+        const parsedDisplayInterfaces = parseDisplayInterfaces(
+          assessment?.display_interfaces ?? asset?.specs?.display_interfaces
+        );
+        if (parsedDisplayInterfaces.length) {
+          setDisplayInterfaces(parsedDisplayInterfaces);
         }
         if (
           typeof assessment?.display_form_factor === "string" ||
@@ -1322,7 +1344,7 @@ const PcAssessmentForm: React.FC = () => {
       display_size: toNum(parseFloat(displaySize)) ?? null,
       display_resolution: displayResolution || null,
       display_form_factor: displayFormFactor || null,
-      display_interfaces: displayInterfaces.length ? JSON.stringify(displayInterfaces) : "[]",
+      display_interfaces: displayInterfaces.join(", ") || null,
 
       ports_usb_a: toNum(portCounts.usbA) ?? 0,
       ports_usb_c: toNum(portCounts.usbC) ?? 0,
