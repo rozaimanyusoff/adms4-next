@@ -90,9 +90,11 @@ type DetailRowProps = {
 	validateNumericInput: (value: string) => string;
 	onChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
 	onFleetCardChange: (idx: number, cardNo: string) => void;
+	onRegisterChange: (idx: number, registerNo: string) => void;
 	onRemove: (detail: FuelDetail) => void;
 	cardFieldsReady: boolean;
 	isDuplicateCard: (detail: FuelDetail) => boolean;
+	isDuplicateRegister: (detail: FuelDetail) => boolean;
 };
 
 type ConsumerTableProps = {
@@ -104,6 +106,7 @@ type ConsumerTableProps = {
 	onRemoveDetail: (detail: FuelDetail) => void;
 	onDetailChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
 	onFleetCardChange: (idx: number, cardNo: string) => void;
+	onRegisterChange: (idx: number, registerNo: string) => void;
 	isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
 	handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 	validateNumericInput: (value: string) => string;
@@ -122,9 +125,11 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 	validateNumericInput,
 	onChange,
 	onFleetCardChange,
+	onRegisterChange,
 	onRemove,
 	cardFieldsReady,
 	isDuplicateCard,
+	isDuplicateRegister,
 }) => {
     const isRequired = isRowRequiredFieldsFilled(detail);
     const rowClass = `border-b focus:outline-none focus:ring-0 ${showEmptyHighlight ? 'bg-amber-100/70' : ''}`;
@@ -154,6 +159,32 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					</TooltipProvider>
 				</div>
 			</td>
+			<td className={`border p-0 ${isDuplicateRegister(detail) ? 'bg-red-50' : ''}`}>
+				<div className="flex items-center gap-2 px-1">
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Input
+									type="text"
+									value={detail.asset?.register_number || ''}
+									onChange={e => onRegisterChange(originalIndex, e.target.value)}
+									placeholder={cardFieldsReady ? 'Copy & paste register no here' : 'Fill Issuer, Statement No & Date first'}
+									disabled={!cardFieldsReady}
+									className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateRegister(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
+								/>
+							</TooltipTrigger>
+							{isDuplicateRegister(detail) && (
+								<TooltipContent>
+									<p>Duplicated Register No</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+					{isDuplicateRegister(detail) && (
+						<span className="text-xs text-red-600 whitespace-nowrap">(Duplicated)</span>
+					)}
+				</div>
+			</td>
 			<td className={`border p-0 ${isDuplicateCard(detail) ? 'bg-red-50' : ''}`}>
 					<div className="flex items-center gap-2 px-1">
 						<TooltipProvider>
@@ -180,7 +211,6 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 						)}
 					</div>
 				</td>
-			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.register_number || ''}</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.costcenter?.name || ''}</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.fuel_type || ''}</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.purpose || ''}</td>
@@ -283,6 +313,7 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 	onRemoveDetail,
 	onDetailChange,
 	onFleetCardChange,
+	onRegisterChange,
 	isRowRequiredFieldsFilled,
 	handleNumericInput,
 	validateNumericInput,
@@ -350,6 +381,12 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 	const duplicateCardCount = duplicateCardNos.size;
 	const duplicateRegisterCount = duplicateRegisterNos.size;
 
+	const isDuplicateRegister = React.useCallback((detail: FuelDetail) => {
+		const key = (detail.asset?.register_number || '').trim().toLowerCase();
+		if (!key) return false;
+		return duplicateRegisterNos.has(key);
+	}, [duplicateRegisterNos]);
+
 	return (
 		<div className="w-full">
 			<div className="flex flex-col gap-2 mb-2">
@@ -393,8 +430,8 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 					<thead className="bg-gray-200 sticky top-0 z-10">
 						<tr className='text-xs'>
 							<th className="border px-2 py-3 w-12">#</th>
-							<th className="border px-2 py-3">Card No</th>
 							<th className="border px-2 py-3">Register Number</th>
+							<th className="border px-2 py-3">Card No</th>
 							<th className="border px-2 py-3">Cost Center</th>
 							<th className="border px-2 py-3">Fuel Type</th>
 							<th className="border px-2 py-3">Purpose</th>
@@ -421,9 +458,11 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 									validateNumericInput={validateNumericInput}
 									onChange={onDetailChange}
 									onFleetCardChange={onFleetCardChange}
+									onRegisterChange={onRegisterChange}
 									onRemove={onRemoveDetail}
 									cardFieldsReady={cardFieldsReady}
 									isDuplicateCard={isDuplicateCard}
+									isDuplicateRegister={isDuplicateRegister}
 								/>
 							);
 						})}
@@ -514,12 +553,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	const [draftDetailsRestored, setDraftDetailsRestored] = useState(false);
 	const draftSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastDraftStringRef = React.useRef<string | null>(null);
+	const draftDisabledRef = React.useRef(false);
 
 	const clearDraft = React.useCallback(() => {
 		if (!draftKey) return;
 		try {
 			localStorage.removeItem(draftKey);
 			lastDraftStringRef.current = null;
+			draftDisabledRef.current = true; // prevent cleanup from re-saving on unmount
 		} catch {
 			// ignore storage errors
 		}
@@ -565,6 +606,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	// Draft persist (create + edit mode)
 	useEffect(() => {
 		if (!draftKey || !draftLoaded) return;
+		if (draftDisabledRef.current) return;
 		// Build draft payload once, then schedule a deferred write during browser idle time
 		if (draftSaveTimer.current) {
 			clearTimeout(draftSaveTimer.current);
@@ -586,6 +628,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			};
 		}
 		const writeDraft = () => {
+			if (draftDisabledRef.current) return;
 			try {
 				localStorage.setItem(draftKey, serialized);
 				lastDraftStringRef.current = serialized;
@@ -603,7 +646,10 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			}
 		}, 1000);
 
-		const handleBeforeUnload = () => writeDraft();
+		const handleBeforeUnload = () => {
+			if (draftDisabledRef.current) return;
+			writeDraft();
+		};
 		if (typeof window !== 'undefined') {
 			window.addEventListener('beforeunload', handleBeforeUnload);
 		}
@@ -613,7 +659,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				clearTimeout(draftSaveTimer.current);
 			}
 			// Ensure last changes are flushed on unmount/refresh
-			writeDraft();
+			if (!draftDisabledRef.current) {
+				writeDraft();
+			}
 			if (typeof window !== 'undefined') {
 				window.removeEventListener('beforeunload', handleBeforeUnload);
 			}
@@ -1093,6 +1141,62 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			.then(() => setLoadingDetails(false));
 	}, [cardFieldsReady, setLoadingDetails]);
 
+	const handleRegisterNumberChange = React.useCallback((idx: number, registerNo: string) => {
+		if (!cardFieldsReady) return;
+
+		// Update typed value immediately so users see what they pasted
+		setEditableDetails(prev => prev.map((detail, i) => {
+			if (i !== idx) return detail;
+			return {
+				...detail,
+				asset: {
+					...detail.asset,
+					register_number: registerNo,
+				},
+			};
+		}));
+
+		const trimmed = registerNo.trim();
+		if (!trimmed) return;
+
+		setLoadingDetails(true);
+		authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet/register/${encodeURIComponent(trimmed)}`)
+			.then(res => {
+				const record = Array.isArray(res.data?.data) ? res.data.data[0] : null;
+				if (!record) return;
+				const asset = record.asset || {};
+				setEditableDetails(prev => prev.map((detail, i) => {
+					if (i !== idx) return detail;
+					const assetId = asset.id ?? asset.asset_id ?? record.asset_id ?? detail.asset?.id ?? 0;
+					const locId = asset.location_id ?? asset.locations?.id ?? record.location_id ?? record.loc_id ?? detail.asset?.location_id;
+					return {
+						...detail,
+						fleetcard: {
+							id: record.id ?? record.card_id ?? detail.fleetcard?.id ?? 0,
+							card_no: record.card_no ?? detail.fleetcard?.card_no ?? '',
+						},
+						asset: {
+							...detail.asset,
+							id: assetId,
+							asset_id: assetId,
+							register_number: asset.register_number ?? trimmed,
+							fuel_type: asset.fuel_type ?? detail.asset?.fuel_type ?? '',
+							costcenter: asset.costcenter ?? detail.asset?.costcenter ?? null,
+							locations: asset.locations ?? detail.asset?.locations ?? undefined,
+							location_id: locId ?? undefined,
+							purpose: asset.purpose ?? detail.asset?.purpose ?? '',
+							vehicle_id: asset.vehicle_id ?? detail.asset?.vehicle_id,
+							entry_code: asset.entry_code ?? detail.asset?.entry_code,
+						},
+					} as FuelDetail;
+				}));
+			})
+			.catch(() => {
+				toast.error('Failed to fetch register info.');
+			})
+			.then(() => setLoadingDetails(false));
+	}, [cardFieldsReady]);
+
 	const handleSummaryChange = (field: keyof typeof summary, value: string) => {
 		setSummary(prev => ({ ...prev, [field]: value }));
 	};
@@ -1569,6 +1673,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						onRemoveDetail={handleRemoveDetail}
 					onDetailChange={handleDetailChange}
 					onFleetCardChange={handleFleetCardChange}
+					onRegisterChange={handleRegisterNumberChange}
 					isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
 					handleNumericInput={handleNumericInput}
 					validateNumericInput={validateNumericInput}
