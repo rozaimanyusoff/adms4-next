@@ -12,6 +12,7 @@ import ManagementModule from "./mgmt-module";
 import PermissionMgmt from "./permission";
 import AdminGuide from "./admin-guide";
 import { CircleHelp } from "lucide-react";
+import MaintenanceControl from "./maintenance-control";
 
 const UserMgmtMain = () => {
     const tabTitles = [
@@ -22,6 +23,7 @@ const UserMgmtMain = () => {
         { value: "workflow", label: "Workflows" },
         { value: "permission", label: "Permissions" },
         { value: "module", label: "Modules" },
+        { value: "maintenance", label: "Maintenance" },
         { value: "logs", label: "Logs" },
         { value: "guide", label: "Admin Guide", icon: CircleHelp },
     ];
@@ -34,6 +36,7 @@ const UserMgmtMain = () => {
         workflow: <Workflows />,
         permission: <PermissionMgmt />,
         module: <ManagementModule />,
+        maintenance: <MaintenanceControl />,
         logs: <CLogs />,
         guide: <AdminGuide />,
     };

@@ -20,6 +20,7 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
             '/pages/error500',
             '/pages/error503',
             '/pages/maintenence',
+            '/admin/mgmt',
             // Public, tokenized portals accessible from email links
             '/mtn/vehicle/portal',
             '/assets/transfer/portal'
