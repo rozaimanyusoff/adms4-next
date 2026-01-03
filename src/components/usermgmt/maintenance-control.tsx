@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useContext } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import useMaintenanceMode from "@/hooks/useMaintenanceMode";
+import { AuthContext } from "@/store/AuthContext";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
 import { Loader2, WifiOff } from "lucide-react";
-import { AuthContext } from "@/store/AuthContext";
 import { io, Socket } from "socket.io-client";
 
 type HealthStatus = {
@@ -24,9 +24,7 @@ type HealthStatus = {
 };
 
 const MaintenanceControl = () => {
-    const { maintenance, isActive, setMaintenance, clearMaintenance } = useMaintenanceMode();
-    const authContext = useContext(AuthContext);
-    const token = authContext?.authData?.token;
+    const { maintenance, isActive, saveMaintenance, clearMaintenance, loading, saving, lastSocketAt, refreshMaintenance } = useMaintenanceMode();
     const [active, setActive] = useState(isActive);
     const [message, setMessage] = useState(maintenance.message ?? "");
     const [until, setUntil] = useState(maintenance.until ?? "");
@@ -35,6 +33,8 @@ const MaintenanceControl = () => {
     const [healthLoading, setHealthLoading] = useState(false);
     const [healthError, setHealthError] = useState<string | null>(null);
     const [lastSocketTs, setLastSocketTs] = useState<string | null>(null);
+    const authContext = useContext(AuthContext);
+    const token = authContext?.authData?.token;
 
     useEffect(() => {
         setActive(isActive);
@@ -122,22 +122,30 @@ const MaintenanceControl = () => {
         return `${label}: ${state} · ${latency}`;
     };
 
-    const handleSave = () => {
-        const payload = {
-            active,
-            message: message || "We're performing planned maintenance.",
-            until,
-            updatedBy: updatedBy || "System Admin",
-            updatedAt: new Date().toISOString(),
-        };
-        setMaintenance(payload);
-        toast.success(active ? "Maintenance mode enabled." : "Maintenance settings saved.");
+    const handleSave = async () => {
+        try {
+            const payload = {
+                active,
+                message: message || "We're performing planned maintenance.",
+                until,
+                updatedBy: updatedBy || "System Admin",
+                updatedAt: new Date().toISOString(),
+            };
+            await saveMaintenance(payload);
+            toast.success(active ? "Maintenance mode enabled." : "Maintenance settings saved.");
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed to save maintenance status.");
+        }
     };
 
-    const handleDisable = () => {
-        clearMaintenance();
-        setActive(false);
-        toast.success("Maintenance mode disabled.");
+    const handleDisable = async () => {
+        try {
+            await clearMaintenance();
+            setActive(false);
+            toast.success("Maintenance mode disabled.");
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || "Failed to disable maintenance.");
+        }
     };
 
     return (
@@ -193,6 +201,7 @@ const MaintenanceControl = () => {
                         </Badge>
                         {formattedUpdatedAt && <span>Updated {formattedUpdatedAt}</span>}
                         {maintenance.updatedBy && <span>• by {maintenance.updatedBy}</span>}
+                        {lastSocketAt && <span className="text-emerald-700">Live {new Date(lastSocketAt).toLocaleTimeString()}</span>}
                     </div>
                 </div>
 
@@ -235,12 +244,12 @@ const MaintenanceControl = () => {
 
                 <div className="flex flex-wrap justify-end gap-3">
                     {isActive && (
-                        <Button type="button" variant="outline" onClick={handleDisable}>
-                            Disable maintenance
+                        <Button type="button" variant="outline" onClick={handleDisable} disabled={saving}>
+                            {saving ? "Saving..." : "Disable maintenance"}
                         </Button>
                     )}
-                    <Button type="button" onClick={handleSave}>
-                        {active ? "Enable & save" : "Save"}
+                    <Button type="button" onClick={handleSave} disabled={saving}>
+                        {saving ? "Saving..." : active ? "Enable & save" : "Save"}
                     </Button>
                 </div>
             </CardContent>

@@ -124,7 +124,7 @@ const AuthTemplate = ({ children, title, description, allowDuringMaintenance = f
     const maintenanceBlocked = isActive && !allowDuringMaintenance;
 
     return (
-        <div className="relative min-h-screen flex items-stretch">
+        <div className="relative min-h-screen h-screen flex items-stretch overflow-hidden">
             {/* Background Image */}
             <div className="absolute inset-0 z-0">
                 <img src="/assets/images/map-dark.svg" alt="Background" className="object-cover w-full h-full" />
@@ -209,7 +209,7 @@ const AuthTemplate = ({ children, title, description, allowDuringMaintenance = f
                     </div>
                 </div>
                 {isActive && maintenanceBlocked && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center px-6">
+                    <div className="absolute inset-0 z-20 flex items-start justify-start px-6 pt-10">
                         <div className="w-full max-w-xl rounded-3xl border border-orange-200/30 bg-black/70 p-8 text-white shadow-2xl backdrop-blur-lg">
                             <div className="flex items-center gap-3">
                                 <Badge className="bg-orange-500/30 text-orange-100 border border-orange-200/30">Maintenance mode</Badge>
