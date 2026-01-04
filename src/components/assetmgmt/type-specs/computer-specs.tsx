@@ -12,7 +12,7 @@ interface ComputerSpecsProps {
 }
 
 const ComputerSpecs: React.FC<ComputerSpecsProps> = ({ asset, onUpdate }) => {
-    const specs = asset?.extra_specs || {};
+    const specs = asset?.specs || asset?.extra_specs || {};
     const [editingField, setEditingField] = useState<string | null>(null);
     const [editValue, setEditValue] = useState<string>("");
     const [saving, setSaving] = useState(false);
@@ -32,6 +32,7 @@ const ComputerSpecs: React.FC<ComputerSpecsProps> = ({ asset, onUpdate }) => {
         try {
             const updatedSpecs = { ...specs, [fieldName]: editValue };
             await authenticatedApi.put(`/api/assets/${asset.id}`, {
+                specs: updatedSpecs,
                 extra_specs: updatedSpecs
             });
             setEditingField(null);
@@ -47,7 +48,14 @@ const ComputerSpecs: React.FC<ComputerSpecsProps> = ({ asset, onUpdate }) => {
 
     const renderEditableField = (label: string, fieldName: string, currentValue: any, icon?: React.ReactNode) => {
         const isEditing = editingField === fieldName;
-        const displayValue = currentValue || '-';
+        let displayValue: React.ReactNode = currentValue ?? '-';
+
+        if (fieldName === "memory_size_gb" && currentValue !== undefined && currentValue !== null && currentValue !== '') {
+            displayValue = `${currentValue} GB`;
+        }
+        if (fieldName === "storage_size_gb" && currentValue !== undefined && currentValue !== null && currentValue !== '') {
+            displayValue = `${currentValue} GB`;
+        }
 
         return (
             <div className={icon ? "flex items-start gap-3" : ""}>
@@ -115,63 +123,68 @@ const ComputerSpecs: React.FC<ComputerSpecsProps> = ({ asset, onUpdate }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {renderEditableField(
                             "Processor",
-                            "processor",
-                            specs?.processor || specs?.cpu,
+                            "cpu_model",
+                            specs?.cpu_model || specs?.processor || specs?.cpu,
                             <Cpu className="w-5 h-5 text-blue-500" />
                         )}
                         {renderEditableField(
-                            "RAM",
-                            "ram",
-                            specs?.ram || specs?.memory,
+                            "RAM (GB)",
+                            "memory_size_gb",
+                            specs?.memory_size_gb ?? specs?.ram ?? specs?.memory,
                             <MemoryStick className="w-5 h-5 text-green-500" />
                         )}
                         {renderEditableField(
-                            "Storage",
-                            "storage",
-                            specs?.storage || specs?.hdd,
+                            "Storage (GB)",
+                            "storage_size_gb",
+                            specs?.storage_size_gb ?? specs?.storage ?? specs?.hdd,
                             <HardDrive className="w-5 h-5 text-orange-500" />
                         )}
                         {renderEditableField(
                             "Graphics",
-                            "graphics",
-                            specs?.graphics || specs?.gpu
+                            "graphics_specs",
+                            specs?.graphics_specs ?? specs?.graphics_type ?? specs?.graphics ?? specs?.gpu
                         )}
                         {renderEditableField(
                             "Operating System",
-                            "os",
-                            specs?.os || specs?.operating_system
+                            "os_version",
+                            specs?.os_version || specs?.os_name || specs?.os || specs?.operating_system
                         )}
                         {renderEditableField(
                             "Screen Size",
-                            "screen_size",
-                            specs?.screen_size || specs?.display
+                            "display_size",
+                            specs?.display_size || specs?.display
                         )}
                         {renderEditableField(
                             "Network Card",
-                            "network_card",
-                            specs?.network_card || specs?.nic
+                            "ports_ethernet",
+                            specs?.ports_ethernet ?? specs?.network_card ?? specs?.nic
                         )}
                         {renderEditableField(
                             "Battery",
-                            "battery",
-                            specs?.battery
+                            "battery_capacity",
+                            specs?.battery_capacity ?? specs?.battery
                         )}
                         {renderEditableField(
                             "Hostname",
                             "hostname",
                             specs?.hostname || specs?.computer_name
                         )}
+                        {renderEditableField(
+                            "Serial Number",
+                            "serial_number",
+                            specs?.serial_number || asset?.serial_number
+                        )}
                     </div>
                 </CardContent>
             </Card>
 
-            {specs?.software && (
+            {(specs?.software || specs?.installed_software) && (
                 <Card className="bg-stone-50/50">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-semibold text-gray-700">Installed Software</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {renderEditableField("Software", "software", specs.software)}
+                        {renderEditableField("Software", "installed_software", specs.installed_software || specs.software)}
                     </CardContent>
                 </Card>
             )}
