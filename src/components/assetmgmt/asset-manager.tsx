@@ -87,9 +87,9 @@ const AssetManager: React.FC = () => {
 
     const [loadingByType, setLoadingByType] = React.useState<Record<number, boolean>>({});
 
-    async function fetchManagersForType(typeId: number) {
-        // Use cache if present
-        if (managersByType[typeId]) return;
+    async function fetchManagersForType(typeId: number, force = false) {
+        // Use cache if present unless force refresh requested
+        if (managersByType[typeId] && !force) return;
         setLoadingByType(prev => ({ ...prev, [typeId]: true }));
         try {
             const res: any = await authenticatedApi.get(`/api/assets/managers?manager_id=${typeId}`);
@@ -109,6 +109,14 @@ const AssetManager: React.FC = () => {
             return;
         }
         try {
+            if (!editingEntry) {
+                const empLabel = employees.find(e => e.ramco_id === selectedEmployeeRamco)?.full_name || selectedEmployeeRamco;
+                const typeLabel = types.find(t => t.id === selectedTypeId)?.name || `Type ${selectedTypeId}`;
+                const ok = typeof window !== 'undefined'
+                    ? window.confirm(`Add ${empLabel} as manager for ${typeLabel}?`)
+                    : true;
+                if (!ok) return;
+            }
             if (editingEntry) {
                 // Update
                 await authenticatedApi.put(`/api/assets/managers/${editingEntry.id}`, {
@@ -125,7 +133,7 @@ const AssetManager: React.FC = () => {
                 toast.success('Manager added');
             }
             // refresh list for the type
-            await fetchManagersForType(selectedTypeId);
+            await fetchManagersForType(selectedTypeId, true);
             // reset form
             setSelectedEmployeeRamco('');
             setEditingEntry(null);
@@ -140,7 +148,7 @@ const AssetManager: React.FC = () => {
         try {
             await authenticatedApi.delete(`/api/assets/managers/${entry.id}`);
             toast.success('Manager deleted');
-            await fetchManagersForType(entry.manager_id);
+            await fetchManagersForType(entry.manager_id, true);
         } catch (err) {
             console.error(err);
             toast.error('Failed to delete manager');

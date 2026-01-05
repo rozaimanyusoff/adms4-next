@@ -1,29 +1,57 @@
-'use client';
-import React, { useState, useEffect } from "react";
+"use client";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashAsset from "./dash-asset";
 import CoreAsset from "./asset-record";
+import AssetRecordVehicle from "./asset-record-vehicle";
+import AssetRecordComputer from "./asset-record-computer";
 import AssetManager from "./asset-manager";
 import AssetTransferChecklist from "./asset-transfer-checklist";
 import CoreType from "./assetdata-types";
-import CoreCategory from "./assetdata-categories";
 import BrandsView from "./assetdata-brands";
 import CoreModel from "./assetdata-models";
 import SpecPropertiesManager from "./spec-properties";
+import { authenticatedApi } from "@/config/api";
+import { AuthContext } from "@store/AuthContext";
+
+interface ManagerEntry {
+    id: number;
+    ramco_id?: string;
+    manager_id: number;
+    employee?: { ramco_id?: string; full_name?: string };
+}
+
+interface ManagedTab {
+    value: string;
+    label: string;
+    component: React.ReactNode;
+}
 
 const AssetMgmtMain = () => {
-    const tabTitles = [
-        { value: "dash", label: "Dashboard" },
-        { value: "records", label: "Asset Records" },
-        { value: "manager", label: "Asset Manager" },
-        { value: "checklist", label: "Transfer Checklist" },
-        { value: "types", label: "Types & Categories" },
-        { value: "brands", label: "Brands & Models" },
-        { value: "specs", label: "Specifications" }
-    ];
+    const auth = React.useContext(AuthContext);
+    const user = auth?.authData?.user;
+    const [managedTabs, setManagedTabs] = useState<ManagedTab[]>([]);
+    const [hideGeneralRecords, setHideGeneralRecords] = useState(false);
 
-    const tabComponents: Record<string, React.ReactNode> = {
+    const baseTabTitles = useMemo(() => {
+        const tabs = [
+            { value: "dash", label: "Dashboard" },
+        ];
+        if (!hideGeneralRecords) {
+            tabs.push({ value: "records", label: "Asset Records" });
+        }
+        tabs.push(
+            { value: "manager", label: "Asset Manager" },
+            { value: "checklist", label: "Transfer Checklist" },
+            { value: "types", label: "Types & Categories" },
+            { value: "brands", label: "Brands & Models" },
+            { value: "specs", label: "Specifications" }
+        );
+        return tabs;
+    }, [hideGeneralRecords]);
+
+    const baseTabComponents: Record<string, React.ReactNode> = useMemo(() => ({
         dash: <DashAsset />,
         records: <CoreAsset />,
         manager: <AssetManager />,
@@ -32,13 +60,84 @@ const AssetMgmtMain = () => {
         brands: <BrandsView />,
         models: <CoreModel />,
         specs: <SpecPropertiesManager />
-    };
+    }), []);
 
-    const validTabValues = tabTitles.map(t => t.value);
+    // Fetch asset manager assignments and build per-type tabs (vehicle/computer) for current user
+    useEffect(() => {
+        const fetchManagedTabs = async () => {
+            if (!user?.username) {
+                setManagedTabs([]);
+                return;
+            }
+            try {
+                const [managersRes, typesRes] = await Promise.all([
+                    authenticatedApi.get<any>("/api/assets/managers"),
+                    authenticatedApi.get<any>("/api/assets/types")
+                ]);
+                const managers: ManagerEntry[] = (managersRes.data && managersRes.data.data) || managersRes.data || [];
+                const typesData = Array.isArray(typesRes.data) ? typesRes.data : (typesRes.data && typesRes.data.data ? typesRes.data.data : []);
+
+                const managedTypeIds = managers
+                    .filter(entry => {
+                        const ramcoId = entry.employee?.ramco_id || entry.ramco_id;
+                        return ramcoId && ramcoId === user.username;
+                    })
+                    .map(entry => Number(entry.manager_id));
+
+                const uniqueTypeIds = Array.from(new Set(managedTypeIds));
+                const tabs: ManagedTab[] = [];
+
+                uniqueTypeIds.forEach(typeId => {
+                    const matchedType = typesData.find((t: any) => Number(t.id) === typeId);
+                    const typeName = matchedType?.name || `Type ${typeId}`;
+                    const typeLabel = typeName.toLowerCase();
+                    if (typeLabel.includes("vehicle")) {
+                        tabs.push({
+                            value: `vehicle-${typeId}`,
+                            label: `${typeName} Records`,
+                            component: <AssetRecordVehicle typeId={typeId} />
+                        });
+                    } else if (typeLabel.includes("computer")) {
+                        tabs.push({
+                            value: `computer-${typeId}`,
+                            label: `${typeName} Records`,
+                            component: <AssetRecordComputer typeId={typeId} />
+                        });
+                    }
+                });
+
+                setManagedTabs(tabs);
+                setHideGeneralRecords(tabs.length > 0);
+            } catch (err) {
+                setManagedTabs([]);
+                setHideGeneralRecords(false);
+            }
+        };
+
+        fetchManagedTabs();
+    }, [user?.username]);
+
+    const tabTitles = useMemo(() => [...baseTabTitles, ...managedTabs], [baseTabTitles, managedTabs]);
+
+    const tabComponents = useMemo(() => {
+        const components: Record<string, React.ReactNode> = { ...baseTabComponents };
+        managedTabs.forEach(tab => {
+            components[tab.value] = tab.component;
+        });
+        return components;
+    }, [baseTabComponents, managedTabs]);
+
     const [activeTab, setActiveTab] = useState<string>(() => {
-        const stored = localStorage.getItem("assetmgmtTabs");
-        return stored && validTabValues.includes(stored) ? stored : "dash";
+        const stored = typeof window !== "undefined" ? localStorage.getItem("assetmgmtTabs") : null;
+        return stored || "dash";
     });
+
+    useEffect(() => {
+        const validTabValues = tabTitles.map(t => t.value);
+        if (!validTabValues.includes(activeTab)) {
+            setActiveTab("dash");
+        }
+    }, [tabTitles, activeTab]);
 
     useEffect(() => {
         localStorage.setItem("assetmgmtTabs", activeTab);

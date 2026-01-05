@@ -4,11 +4,9 @@ import React, { useEffect, useState, useMemo } from "react";
 import { AuthContext } from "@store/AuthContext";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
-import { Plus, InfoIcon, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
 import { Switch } from "@components/ui/switch";
-import { Checkbox } from "@components/ui/checkbox";
 
 interface Brand { id: number; name: string; }
 interface Category { id: number; name: string; }
@@ -20,6 +18,14 @@ interface Location { id: number; name: string; }
 interface Owner {
     ramco_id: string;
     full_name: string;
+}
+
+interface Specs {
+    fuel_type?: string;
+    transmission?: string;
+    cubic_meter?: string;
+    roadtax_expiry?: string;
+    insurance_expiry?: string;
 }
 
 interface Asset {
@@ -41,6 +47,7 @@ interface Asset {
     categories?: Category;
     brands?: Brand;
     owner: Owner;
+    specs?: Specs;
     // Derived fields for DataGrid
     age?: number;
     owner_name?: string;
@@ -51,6 +58,18 @@ interface Asset {
     category_name?: string;
     brand_name?: string;
     model?: string;
+    fuel_type?: string;
+    transmission?: string;
+    cubic_meter?: string;
+    roadtax_expiry_formatted?: string;
+    insurance_expiry_formatted?: string;
+}
+
+interface AssetRecordProps {
+    typeId?: number;
+    title?: string;
+    showTypeCards?: boolean;
+    showAssetOnlyToggle?: boolean;
 }
 
 /* 
@@ -79,8 +98,12 @@ here the types backend data:
 
 */
 
-const CoreAsset: React.FC = () => {
-    const router = useRouter();
+const CoreAsset: React.FC<AssetRecordProps> = ({
+    typeId,
+    title,
+    showTypeCards = !typeId,
+    showAssetOnlyToggle = !typeId
+}) => {
     const auth = React.useContext(AuthContext);
     const user = auth?.authData?.user;
     const [data, setData] = useState<Asset[]>([]);
@@ -89,7 +112,7 @@ const CoreAsset: React.FC = () => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [types, setTypes] = useState<Type[]>([]);
     const [hideDisposed, setHideDisposed] = useState(true); // Default checked (active only)
-    const [hideNonAsset, setHideNonAsset] = useState(true); // Default checked (asset only)
+    const [hideNonAsset, setHideNonAsset] = useState(showAssetOnlyToggle); // Default checked (asset only) unless suppressed
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null); // For type card filtering
 
     const fetchData = async () => {
@@ -100,8 +123,11 @@ const CoreAsset: React.FC = () => {
             setTypes(typesData);
 
             let assetsRes;
-            // Only asset managers (role.id === 7 and username matches manager.ramco_id) use type param
-            if (user?.role?.id === 7) {
+            if (typeId) {
+                // Dedicated view for a specific type (e.g. vehicle/computer manager)
+                assetsRes = await authenticatedApi.get<any>(`/api/assets?type=${typeId}`);
+            } else if (user?.role?.id === 7) {
+                // Only asset managers (role.id === 7 and username matches manager.ramco_id) use type param
                 const managedTypeIds = typesData
                     .filter((type: any) => type.manager && user?.username === type.manager.ramco_id)
                     .map((type: any) => type.id);
@@ -139,15 +165,22 @@ const CoreAsset: React.FC = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(); }, [typeId]);
 
     const currentYear = new Date().getFullYear();
+    const selectedTypeName = useMemo(() => {
+        if (!typeId) return null;
+        const match = types.find(t => Number(t.id) === Number(typeId));
+        return match?.name || null;
+    }, [types, typeId]);
 
     // Transform data to match the new backend structure
     const transformedData = data.map(asset => {
         // Calculate age from purchase_year
         const age = asset.purchase_year ? currentYear - asset.purchase_year : 0;
-        
+        const specs = asset.specs || {};
+        const formatDate = (val?: string) => val ? new Date(val).toLocaleDateString() : '-';
+
         return {
             ...asset,
             // Normalize singular/plural API shapes
@@ -160,6 +193,12 @@ const CoreAsset: React.FC = () => {
             costcenter_name: asset.costcenter?.name || '-',
             location_name: asset.location?.name || '-',
             purchase_date_formatted: asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : '-',
+            // Vehicle spec fields (used when available)
+            fuel_type: specs.fuel_type || '-',
+            transmission: specs.transmission || '-',
+            cubic_meter: specs.cubic_meter || '-',
+            roadtax_expiry_formatted: formatDate(specs.roadtax_expiry),
+            insurance_expiry_formatted: formatDate(specs.insurance_expiry),
         };
     });
 
@@ -168,7 +207,8 @@ const CoreAsset: React.FC = () => {
         const contextData = hideDisposed
             ? transformedData.filter(asset => asset.record_status?.toLowerCase() !== 'disposed')
             : transformedData;
-        return [
+
+        const baseColumns: ColumnDef<any>[] = [
             { key: "id", header: "ID", sortable: true },
             { 
                 key: "classification", 
@@ -234,13 +274,26 @@ const CoreAsset: React.FC = () => {
                 }
             },
         ];
-    }, [transformedData, hideDisposed]);
+
+        const isVehicleView = typeId && (selectedTypeName || '').toLowerCase().includes('vehicle');
+        if (isVehicleView) {
+            baseColumns.push(
+                { key: "fuel_type", header: "Fuel Type", filter: 'singleSelect', filterParams: { options: Array.from(new Set(contextData.map(f => f.fuel_type).filter(Boolean))) as (string | number)[] } },
+                { key: "transmission", header: "Transmission", filter: 'singleSelect', filterParams: { options: Array.from(new Set(contextData.map(f => f.transmission).filter(Boolean))) as (string | number)[] } },
+                { key: "cubic_meter", header: "Cubic Meter", filter: 'input' },
+                { key: "roadtax_expiry_formatted", header: "Roadtax Expiry", sortable: true, filter: 'input' },
+                { key: "insurance_expiry_formatted", header: "Insurance Expiry", sortable: true, filter: 'input' },
+            );
+        }
+
+        return baseColumns;
+    }, [transformedData, hideDisposed, typeId, selectedTypeName]);
 
     // Filtered data for DataGrid
     const contextData = hideDisposed
         ? transformedData.filter(asset => asset.record_status?.toLowerCase() === 'active')
         : transformedData;
-    const filteredData = hideNonAsset
+    const filteredData = showAssetOnlyToggle && hideNonAsset
         ? contextData.filter(asset => asset.classification === 'asset')
         : contextData;
 
@@ -276,58 +329,64 @@ const CoreAsset: React.FC = () => {
             .filter(typeName => typeName && String(typeName).toLowerCase() !== 'personal')
     )).sort();
 
+    const heading = title || (selectedTypeName ? `${selectedTypeName} Assets` : "Assets");
+
     const handleRowDoubleClick = (row: any) => {
         window.open(`/assetdata/assets/${row.id}`, '_blank');
     };
 
+    const shouldShowTypeCards = showTypeCards && availableTypes.length > 0;
+
     return (
         <div className="mt-4">
             {/* Summary Cards by Type */}
-            <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-                {availableTypes.map(typeName => {
-                    const counts = getCountsByClassification(typeName);
-                    const isSelected = selectedTypeFilter === typeName;
-                    return (
-                        <Card 
-                            key={typeName}
-                            className={`cursor-pointer transition-all hover:shadow-md ${
-                                isSelected ? 'border-blue-500 bg-blue-50' : ''
-                            }`}
-                            onClick={() => handleTypeCardClick(typeName)}
-                        >
-                            <CardHeader>
-                                <CardTitle className="flex items-center justify-between">
-                                    <span className="truncate" title={typeName}>{typeName}</span>
-                                    {isSelected && (
-                                        <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">
-                                            Filtered
-                                        </span>
-                                    )}
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-bold text-blue-600 mb-3">{counts.total}</div>
-                                <div className="space-y-1 text-sm text-gray-600">
-                                    <div className="flex justify-between">
-                                        <span>Asset:</span>
-                                        <span className="font-semibold">{counts.asset}</span>
+            {shouldShowTypeCards && (
+                <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                    {availableTypes.map(typeName => {
+                        const counts = getCountsByClassification(typeName);
+                        const isSelected = selectedTypeFilter === typeName;
+                        return (
+                            <Card 
+                                key={typeName}
+                                className={`cursor-pointer transition-all hover:shadow-md ${
+                                    isSelected ? 'border-blue-500 bg-blue-50' : ''
+                                }`}
+                                onClick={() => handleTypeCardClick(typeName)}
+                            >
+                                <CardHeader>
+                                    <CardTitle className="flex items-center justify-between">
+                                        <span className="truncate" title={typeName}>{typeName}</span>
+                                        {isSelected && (
+                                            <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded">
+                                                Filtered
+                                            </span>
+                                        )}
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-3xl font-bold text-blue-600 mb-3">{counts.total}</div>
+                                    <div className="space-y-1 text-sm text-gray-600">
+                                        <div className="flex justify-between">
+                                            <span>Asset:</span>
+                                            <span className="font-semibold">{counts.asset}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Rental:</span>
+                                            <span className="font-semibold">{counts.rental}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Consumable:</span>
+                                            <span className="font-semibold">{counts.consumable}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span>Rental:</span>
-                                        <span className="font-semibold">{counts.rental}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>Consumable:</span>
-                                        <span className="font-semibold">{counts.consumable}</span>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    );
-                })}
-            </div>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            )}
             <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-bold">Assets</h2>
+                <h2 className="text-xl font-bold">{heading}</h2>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                         <label htmlFor="active-switch" className="text-sm select-none cursor-pointer my-1">
@@ -339,16 +398,18 @@ const CoreAsset: React.FC = () => {
                             id="active-switch"
                         />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="asset-switch" className="text-sm select-none cursor-pointer my-1">
-                            Asset Only
-                        </label>
-                        <Switch
-                            checked={hideNonAsset}
-                            onCheckedChange={setHideNonAsset}
-                            id="asset-switch"
-                        />
-                    </div>
+                    {showAssetOnlyToggle && (
+                        <div className="flex items-center gap-2">
+                            <label htmlFor="asset-switch" className="text-sm select-none cursor-pointer my-1">
+                                Asset Only
+                            </label>
+                            <Switch
+                                checked={hideNonAsset}
+                                onCheckedChange={setHideNonAsset}
+                                id="asset-switch"
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
             {loading ? (
