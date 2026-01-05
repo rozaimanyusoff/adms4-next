@@ -47,7 +47,13 @@ const AssessmentRecord: React.FC = () => {
 
     const [data, setData] = useState<Assessment[]>([]);
     const [loading, setLoading] = useState(false);
-    const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()));
+    const [selectedYear, setSelectedYear] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            const stored = window.localStorage.getItem('assessment-record-year');
+            if (stored) return stored;
+        }
+        return String(new Date().getFullYear());
+    });
     // Dialog state for delete confirmation
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
@@ -102,15 +108,24 @@ const AssessmentRecord: React.FC = () => {
 
     useEffect(() => {
         fetchData();
-        // Listen for reload event from assessment form submission
-        const reloadHandler = () => fetchData();
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'assessment-record-reload') reloadHandler();
-        });
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === 'assessment-record-reload') {
+                fetchData();
+            }
+            if (e.key === 'assessment-record-year' && e.newValue) {
+                setSelectedYear(e.newValue);
+            }
+        };
+        window.addEventListener('storage', handleStorage);
         return () => {
-            window.removeEventListener('storage', reloadHandler);
+            window.removeEventListener('storage', handleStorage);
         };
     }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem('assessment-record-year', selectedYear);
+    }, [selectedYear]);
 
     const columns: ColumnDef<Assessment>[] = [
         { key: 'assess_id' as any, header: 'ID', sortable: true },

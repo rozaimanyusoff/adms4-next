@@ -37,7 +37,7 @@ const DRAFT_STORAGE_PREFIX = "pc-assessment-draft";
 const attachmentLimits = { min: 1, max: 3 };
 const attachmentCompressOpts = { maxDimension: 1400, quality: 0.72 };
 
-type DeviceType = "laptop" | "desktop" | "tablet" | "server" | "appliance";
+type DeviceType = "1" | "2" | "3" | "4" | "46" | "47";
 type ChecklistStatus = "pass" | "issue" | "na";
 
 interface ChecklistItem {
@@ -56,6 +56,7 @@ type PortKey =
   | "usbA"
   | "usbC"
   | "thunderbolt"
+  | "lightning"
   | "ethernet"
   | "hdmi"
   | "displayPort"
@@ -67,6 +68,7 @@ const portOptions: { key: PortKey; label: string }[] = [
   { key: "usbA", label: "USB-A" },
   { key: "usbC", label: "USB-C" },
   { key: "thunderbolt", label: "Thunderbolt" },
+  { key: "lightning", label: "Lightning" },
   { key: "ethernet", label: "Ethernet" },
   { key: "hdmi", label: "HDMI" },
   { key: "displayPort", label: "DisplayPort" },
@@ -216,6 +218,15 @@ const displayInterfaceOptions = [
   "DVI",
 ];
 
+const deviceTypeOptions: { value: DeviceType; label: string; portable?: boolean }[] = [
+  { value: "1", label: "Laptop", portable: true },
+  { value: "2", label: "Desktop" },
+  { value: "3", label: "Tablet", portable: true },
+  { value: "4", label: "Smartphone", portable: true },
+  { value: "46", label: "Server" },
+  { value: "47", label: "Appliance" },
+];
+
 const normalizeDisplayInterfaceLabel = (value: string) =>
   value.replace(/^\[+|\]+$/g, "").replace(/^"+|"+$/g, "").trim();
 
@@ -291,16 +302,17 @@ const osVersionOptions = [
   "Other",
 ];
 
-const osPatchOptions = ["Updated", "Not updated", "Failed"];
-const avActiveOptions = ["Active", "Not active"];
-const avLicenseOptions = ["Valid", "Expired"];
-const installStatusOptions = ["Installed", "Not installed"];
+const osPatchOptions = ["Updated", "Not updated", "Failed", "N/A"];
+const avActiveOptions = ["Active", "Not active", "N/A"];
+const avLicenseOptions = ["Valid", "Expired", "N/A"];
+const installStatusOptions = ["Installed", "Not installed", "N/A"];
 const avVendors = ["ESET", "Sophos", "CrowdStrike", "Microsoft Defender", "Other"];
 const vpnSetupTypes = ["SSL", "IPSec", "Other"];
 const productivitySuiteOptions = [
   "Office 365",
   "MS Office 2013 Std",
   "MS Office 2010 Std",
+  "N/A",
   "Other",
 ];
 
@@ -468,7 +480,7 @@ const PcAssessmentForm: React.FC = () => {
   const [form, setForm] = useState<FormState>({
     assessmentYear: currentYear,
     assessmentDate: todayStr,
-    deviceType: "laptop",
+    deviceType: "1",
     manufacturer: "",
     model: "",
     serialNumber: "",
@@ -535,6 +547,9 @@ const PcAssessmentForm: React.FC = () => {
   const [displayResolution, setDisplayResolution] = useState("");
   const [displayInterfaces, setDisplayInterfaces] = useState<string[]>([]);
   const [displayFormFactor, setDisplayFormFactor] = useState("");
+  const [secondDisplay, setSecondDisplay] = useState("no");
+  const [secondDisplaySn, setSecondDisplaySn] = useState("");
+  const [secondDisplaySize, setSecondDisplaySize] = useState("");
   const [osPatchStatus, setOsPatchStatus] = useState("");
   const [avActiveStatus, setAvActiveStatus] = useState("");
   const [avLicenseStatus, setAvLicenseStatus] = useState("");
@@ -627,6 +642,9 @@ const PcAssessmentForm: React.FC = () => {
         if (parsed.displayResolution != null) setDisplayResolution(parsed.displayResolution);
         if (parsed.displayInterfaces) setDisplayInterfaces(parsed.displayInterfaces);
         if (parsed.displayFormFactor != null) setDisplayFormFactor(parsed.displayFormFactor);
+        if (parsed.secondDisplay != null) setSecondDisplay(parsed.secondDisplay);
+        if (parsed.secondDisplaySn != null) setSecondDisplaySn(parsed.secondDisplaySn);
+        if (parsed.secondDisplaySize != null) setSecondDisplaySize(String(parsed.secondDisplaySize));
         if (parsed.osPatchStatus != null) setOsPatchStatus(parsed.osPatchStatus);
         if (parsed.avActiveStatus != null) setAvActiveStatus(parsed.avActiveStatus);
         if (parsed.avLicenseStatus != null) setAvLicenseStatus(parsed.avLicenseStatus);
@@ -655,72 +673,16 @@ const PcAssessmentForm: React.FC = () => {
     restore();
   }, [draftKey]);
 
-  const needsPower = useMemo(
-    () => form.deviceType === "laptop" || form.deviceType === "tablet",
-    [form.deviceType]
-  );
-
-  const progressPercent = useMemo(() => {
-    const fields = [
-      form.serialNumber,
-      form.deviceType,
-      form.manufacturer,
-      form.model,
-      form.purchaseDate,
-      form.costCenter,
-      form.department,
-      form.location,
-      form.owner,
-      form.osName,
-      form.osVersion,
-      cpuManufacturer,
-      cpuModel,
-      memorySize,
-      storageSize,
-      graphicsType,
-      displaySize,
-      displayResolution,
-      String(form.overallScore),
-      form.notes,
-      attachments.length >= attachmentLimits.min ? "attachments" : "",
-    ];
-    if (needsPower) {
-      fields.push(batteryEquipped ? "battery-equipped" : "");
-      fields.push(batteryEquipped ? batteryCapacity : "");
-      fields.push(adapterEquipped ? "adapter-equipped" : "");
-      fields.push(adapterEquipped ? adapterOutput : "");
-    }
-    const filled = fields.filter((v) => v !== undefined && v !== null && String(v).trim() !== "").length;
-    return Math.round((filled / fields.length) * 100);
-  }, [
-    cpuManufacturer,
-    cpuModel,
-    displayResolution,
-    displaySize,
-    form.costCenter,
-    form.department,
-    form.deviceType,
-    form.location,
-    form.manufacturer,
-    form.model,
-    form.notes,
-    form.osName,
-    form.osVersion,
-    form.overallScore,
-    form.owner,
-    form.purchaseDate,
-    form.serialNumber,
-    graphicsType,
-    memorySize,
-    storageSize,
-    batteryEquipped,
-    batteryCapacity,
-    adapterEquipped,
-    adapterOutput,
-    attachments,
-  ]);
+  const needsPower = useMemo(() => {
+    const option = deviceTypeOptions.find((opt) => opt.value === form.deviceType);
+    return Boolean(option?.portable);
+  }, [form.deviceType]);
 
   const isEmpty = (value: any) => value === undefined || value === null || String(value).trim() === "";
+  const isMissingNumber = (value: any) => {
+    const num = Number(value);
+    return !Number.isFinite(num) || num <= 0;
+  };
 
   const missingFields = useMemo(
     () => ({
@@ -735,13 +697,32 @@ const PcAssessmentForm: React.FC = () => {
       owner: isEmpty(form.owner),
       osName: isEmpty(form.osName),
       osVersion: isEmpty(form.osVersion),
+      technician: isEmpty(form.technician),
       cpuManufacturer: isEmpty(cpuManufacturer),
       cpuModel: isEmpty(cpuModel),
-      memorySize: isEmpty(memorySize),
-      storageSize: isEmpty(storageSize),
+      memorySize: isMissingNumber(memorySize),
+      memoryManufacturer: isEmpty(memoryManufacturer),
+      memoryType: isEmpty(memoryType),
+      storageSize: isMissingNumber(storageSize),
+      storageManufacturer: isEmpty(storageManufacturer),
+      storageType: isEmpty(storageType),
       graphicsType: isEmpty(graphicsType),
+      displayManufacturer: isEmpty(displayManufacturer),
       displaySize: isEmpty(displaySize),
       displayResolution: isEmpty(displayResolution),
+      displayFormFactor: isEmpty(displayFormFactor),
+      secondDisplay: isEmpty(secondDisplay),
+      secondDisplaySn: secondDisplay === "yes" && isEmpty(secondDisplaySn),
+      secondDisplaySize: secondDisplay === "yes" && isMissingNumber(secondDisplaySize),
+      osPatchStatus: isEmpty(osPatchStatus),
+      avInstalled: isEmpty(avInstalledStatus),
+      avStatus: isEmpty(avActiveStatus),
+      avLicense: isEmpty(avLicenseStatus),
+      vpnInstalled: isEmpty(vpnInstalledStatus),
+      vpnSetup: vpnInstalledStatus === "Installed" && isEmpty(vpnSetupType),
+      vpnUsername: vpnInstalledStatus === "Installed" && isEmpty(vpnUsername),
+      productivitySuites: productivitySuites.length === 0,
+      ports: !Object.values(portChecks).some(Boolean),
       notes: isEmpty(form.notes),
       attachments: attachments.length < attachmentLimits.min,
       batteryCapacity: needsPower && batteryEquipped && isEmpty(batteryCapacity),
@@ -757,6 +738,8 @@ const PcAssessmentForm: React.FC = () => {
       cpuModel,
       displayResolution,
       displaySize,
+      displayManufacturer,
+      displayFormFactor,
       form.costCenter,
       form.deviceType,
       form.location,
@@ -768,13 +751,37 @@ const PcAssessmentForm: React.FC = () => {
       form.owner,
       form.purchaseDate,
       form.serialNumber,
+      form.technician,
       form.department,
       graphicsType,
+      memoryManufacturer,
       memorySize,
       needsPower,
+      memoryType,
       storageSize,
+      storageManufacturer,
+      storageType,
+      secondDisplay,
+      secondDisplaySize,
+      secondDisplaySn,
+      osPatchStatus,
+      avInstalledStatus,
+      avActiveStatus,
+      avLicenseStatus,
+      vpnInstalledStatus,
+      vpnSetupType,
+      vpnUsername,
+      productivitySuites,
+      portChecks,
     ]
   );
+
+  const progressPercent = useMemo(() => {
+    const entries = Object.entries(missingFields);
+    if (!entries.length) return 0;
+    const filled = entries.filter(([, missing]) => !missing).length;
+    return Math.round((filled / entries.length) * 100);
+  }, [missingFields]);
 
   const highlightClass = (pending?: boolean) =>
     pending ? "rounded-md ring-2 ring-amber-400 ring-offset-2 ring-offset-background" : "";
@@ -810,12 +817,32 @@ const PcAssessmentForm: React.FC = () => {
     setPortChecks((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleAvInstalledChange = (value: string) => {
+    setAvInstalledStatus(value);
+    if (value === "N/A") {
+      setAvActiveStatus("N/A");
+      setAvLicenseStatus("N/A");
+    } else {
+      if (avActiveStatus === "N/A") setAvActiveStatus("");
+      if (avLicenseStatus === "N/A") setAvLicenseStatus("");
+    }
+  };
+
   const mapDeviceType = React.useCallback(
     (input?: string | null): DeviceType => {
-      const normalized = (input ?? "").toLowerCase();
-      if (normalized.includes("laptop") || normalized.includes("notebook")) return "laptop";
-      if (normalized.includes("desktop") || normalized.includes("pc")) return "desktop";
-      if (normalized.includes("tablet") || normalized.includes("pad")) return "tablet";
+      const raw = (input ?? "").toString().trim();
+      if (!raw) return form.deviceType;
+      const numericMatch = deviceTypeOptions.find((opt) => opt.value === raw);
+      if (numericMatch) return numericMatch.value;
+      const normalized = raw.toLowerCase();
+      const byLabel = deviceTypeOptions.find((opt) => opt.label.toLowerCase() === normalized);
+      if (byLabel) return byLabel.value;
+      if (normalized.includes("laptop") || normalized.includes("notebook")) return "1";
+      if (normalized.includes("desktop") || normalized.includes("pc")) return "2";
+      if (normalized.includes("tablet") || normalized.includes("pad")) return "3";
+      if (normalized.includes("phone") || normalized.includes("mobile") || normalized.includes("smart")) return "4";
+      if (normalized.includes("server")) return "46";
+      if (normalized.includes("appliance")) return "47";
       return form.deviceType;
     },
     [form.deviceType]
@@ -944,6 +971,9 @@ const PcAssessmentForm: React.FC = () => {
           displayResolution,
           displayInterfaces,
           displayFormFactor,
+          secondDisplay,
+          secondDisplaySn,
+          secondDisplaySize,
           osPatchStatus,
           avActiveStatus,
           avLicenseStatus,
@@ -987,6 +1017,9 @@ const PcAssessmentForm: React.FC = () => {
     displayManufacturer,
     displayResolution,
     displaySize,
+    secondDisplay,
+    secondDisplaySn,
+    secondDisplaySize,
     draftKey,
     draftLoaded,
     form,
@@ -999,7 +1032,8 @@ const PcAssessmentForm: React.FC = () => {
     memoryType,
     officeAccount,
     portChecks,
-    portCounts,
+      portCounts,
+      portChecks,
     productivitySuites,
     softwareChecklist,
     specificSoftware,
@@ -1301,6 +1335,16 @@ const PcAssessmentForm: React.FC = () => {
         } else if (asset?.specs?.display_manufacturer) {
           setDisplayManufacturer(asset.specs.display_manufacturer);
         }
+        if (assessment?.second_display != null) {
+          const val = String(assessment.second_display).toLowerCase();
+          setSecondDisplay(val === "yes" || val === "1" || val === "true" ? "yes" : "no");
+        }
+        if (assessment?.second_display_sn) {
+          setSecondDisplaySn(String(assessment.second_display_sn));
+        }
+        if (assessment?.second_display_size != null) {
+          setSecondDisplaySize(String(assessment.second_display_size));
+        }
 
         if (assessment?.os_patch_status) {
           setOsPatchStatus(assessment.os_patch_status);
@@ -1335,6 +1379,7 @@ const PcAssessmentForm: React.FC = () => {
         setPortState("usbA", assessment?.ports_usb_a);
         setPortState("usbC", assessment?.ports_usb_c);
         setPortState("thunderbolt", assessment?.ports_thunderbolt);
+        setPortState("lightning", (assessment as any)?.ports_lightning);
         setPortState("ethernet", assessment?.ports_ethernet);
         setPortState("hdmi", assessment?.ports_hdmi);
         setPortState("displayPort", assessment?.ports_displayport);
@@ -1476,7 +1521,7 @@ const PcAssessmentForm: React.FC = () => {
       remarks: form.notes,
       asset_id: assetId ? Number(assetId) : null,
       register_number: form.serialNumber || null,
-      category: form.deviceType || null,
+      category: toNum(form.deviceType) ?? form.deviceType ?? null,
       brand: brandValue,
       model: modelValue,
       purchase_date: form.purchaseDate || null,
@@ -1510,6 +1555,9 @@ const PcAssessmentForm: React.FC = () => {
       display_resolution: displayResolution || null,
       display_form_factor: displayFormFactor || null,
       display_interfaces: normalizeDisplayInterfaceList(displayInterfaces).join(", ") || null,
+      second_display: secondDisplay || null,
+      second_display_sn: secondDisplaySn || null,
+      second_display_size: secondDisplay ? toNum(secondDisplaySize) : null,
 
       ports_usb_a: toNum(portCounts.usbA) ?? 0,
       ports_usb_c: toNum(portCounts.usbC) ?? 0,
@@ -1573,6 +1621,7 @@ const PcAssessmentForm: React.FC = () => {
   const handleReset = () => {
     setForm((prev) => ({
       ...prev,
+      deviceType: "1",
       manufacturer: "",
       model: "",
       serialNumber: "",
@@ -1604,6 +1653,9 @@ const PcAssessmentForm: React.FC = () => {
     setDisplayResolution("");
     setDisplayInterfaces([]);
     setDisplayFormFactor("");
+    setSecondDisplay("no");
+    setSecondDisplaySn("");
+    setSecondDisplaySize("");
     setOsPatchStatus("");
     setAvActiveStatus("");
     setAvLicenseStatus("");
@@ -1768,7 +1820,7 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.memoryManufacturer)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Manufacturer</Label>
             <Select
               value={memoryManufacturer || undefined}
@@ -1786,7 +1838,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.memoryType)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Type</Label>
             <Select
               value={memoryType || undefined}
@@ -1825,7 +1877,7 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.storageManufacturer)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Manufacturer</Label>
             <Select
               value={storageManufacturer || undefined}
@@ -1843,7 +1895,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.storageType)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Type</Label>
             <Select
               value={storageType || undefined}
@@ -1876,7 +1928,7 @@ const PcAssessmentForm: React.FC = () => {
       </div>
     ),
     ports: (item, checklist, setter) => (
-      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+      <div className={`rounded-lg border bg-muted/40 p-3 space-y-3 ${highlightClass(missingFields.ports)}`}>
         <div className="space-y-1">
           <p className="font-medium leading-tight">{item.label}</p>
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
@@ -2027,7 +2079,7 @@ const PcAssessmentForm: React.FC = () => {
           {item.helper ? <p className="text-sm text-muted-foreground">{item.helper}</p> : null}
         </div>
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.displayManufacturer)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Manufacturer</Label>
             <Select
               value={displayManufacturer || undefined}
@@ -2081,7 +2133,7 @@ const PcAssessmentForm: React.FC = () => {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.displayFormFactor)}`}>
             <Label className="text-xs text-muted-foreground md:w-40">Form Factor</Label>
             <Select
               value={displayFormFactor || undefined}
@@ -2125,6 +2177,41 @@ const PcAssessmentForm: React.FC = () => {
               })}
             </div>
           </div>
+          <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.secondDisplay)}`}>
+            <Label className="text-xs text-muted-foreground md:w-40">Second Display</Label>
+            <Select value={secondDisplay || undefined} onValueChange={(v) => setSecondDisplay(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select option" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">Yes</SelectItem>
+                <SelectItem value="no">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {secondDisplay === "yes" && (
+            <>
+              <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.secondDisplaySn)}`}>
+                <Label className="text-xs text-muted-foreground md:w-40">Second Display S/N</Label>
+                <Input
+                  value={secondDisplaySn}
+                  onChange={(e) => setSecondDisplaySn(e.target.value)}
+                  placeholder="Serial number"
+                />
+              </div>
+              <div className={`flex flex-col gap-1 md:flex-row md:items-center md:gap-3 ${highlightClass(missingFields.secondDisplaySize)}`}>
+                <Label className="text-xs text-muted-foreground md:w-40">Second Display Size</Label>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  value={secondDisplaySize}
+                  onChange={(e) => setSecondDisplaySize(e.target.value)}
+                  placeholder="e.g., 24"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     ),
@@ -2137,14 +2224,14 @@ const PcAssessmentForm: React.FC = () => {
           <p className="font-medium leading-tight">OS patched</p>
           <p className="text-sm text-muted-foreground">Windows Update / system updates status</p>
         </div>
-        <div className="flex flex-col gap-2">
+        <div className={`flex flex-col gap-2 ${highlightClass(missingFields.osPatchStatus)}`}>
           <Label className="text-xs text-muted-foreground">Status</Label>
           <RadioGroup value={osPatchStatus} onValueChange={(v) => setOsPatchStatus(v)}>
             <div className="flex flex-wrap gap-3">
               {osPatchOptions.map((opt) => (
                 <label key={opt} className="inline-flex items-center gap-2">
                   <RadioGroupItem value={opt} id={`ospatch-${opt}`} className="h-5 w-5" />
-                  <span>{opt}</span>
+                  <span className={opt === "N/A" ? "text-blue-600" : ""}>{opt}</span>
                 </label>
               ))}
             </div>
@@ -2159,19 +2246,19 @@ const PcAssessmentForm: React.FC = () => {
           <p className="text-sm text-muted-foreground">Definitions up to date; service healthy</p>
         </div>
         <div className="space-y-3">
-          <div className="space-y-2">
+          <div className={`space-y-2 ${highlightClass(missingFields.avInstalled)}`}>
             <Label className="text-xs text-muted-foreground">Installed</Label>
-            <RadioGroup value={avInstalledStatus} onValueChange={(v) => setAvInstalledStatus(v)}>
+            <RadioGroup value={avInstalledStatus} onValueChange={handleAvInstalledChange}>
               <div className="flex flex-wrap gap-3">
                 {installStatusOptions.map((opt) => (
                   <label key={opt} className="inline-flex items-center gap-2">
-                    <RadioGroupItem value={opt} id={`avinstall-${opt}`} className="h-5 w-5" />
-                    <span>{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </RadioGroup>
-          </div>
+                  <RadioGroupItem value={opt} id={`avinstall-${opt}`} className="h-5 w-5" />
+                  <span className={opt === "N/A" ? "text-blue-600" : ""}>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </RadioGroup>
+        </div>
           {avInstalledStatus === "Installed" && (
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Vendor</Label>
@@ -2187,37 +2274,37 @@ const PcAssessmentForm: React.FC = () => {
               </RadioGroup>
             </div>
           )}
-          <div className="space-y-2">
+          <div className={`space-y-2 ${highlightClass(missingFields.avStatus)}`}>
             <Label className="text-xs text-muted-foreground">Status</Label>
             <RadioGroup value={avActiveStatus} onValueChange={(v) => setAvActiveStatus(v)}>
               <div className="flex flex-wrap gap-3">
                 {avActiveOptions.map((opt) => (
                   <label key={opt} className="inline-flex items-center gap-2">
-                    <RadioGroupItem value={opt} id={`avstatus-${opt}`} className="h-5 w-5" />
-                    <span>{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </RadioGroup>
-          </div>
-          <div className="space-y-2">
+                  <RadioGroupItem value={opt} id={`avstatus-${opt}`} className="h-5 w-5" />
+                  <span className={opt === "N/A" ? "text-blue-600" : ""}>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </RadioGroup>
+        </div>
+          <div className={`space-y-2 ${highlightClass(missingFields.avLicense)}`}>
             <Label className="text-xs text-muted-foreground">License</Label>
             <RadioGroup value={avLicenseStatus} onValueChange={(v) => setAvLicenseStatus(v)}>
               <div className="flex flex-wrap gap-3">
                 {avLicenseOptions.map((opt) => (
                   <label key={opt} className="inline-flex items-center gap-2">
-                    <RadioGroupItem value={opt} id={`avlicense-${opt}`} className="h-5 w-5" />
-                    <span>{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </RadioGroup>
-          </div>
+                  <RadioGroupItem value={opt} id={`avlicense-${opt}`} className="h-5 w-5" />
+                  <span className={opt === "N/A" ? "text-blue-600" : ""}>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </RadioGroup>
+        </div>
         </div>
       </div>
     ),
     vpn: () => (
-      <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+      <div className={`rounded-lg border bg-muted/40 p-3 space-y-3 ${highlightClass(missingFields.vpnInstalled)}`}>
         <div className="space-y-1">
           <p className="font-medium leading-tight">VPN/Remote access</p>
           <p className="text-sm text-muted-foreground">Client installed and tested</p>
@@ -2230,14 +2317,14 @@ const PcAssessmentForm: React.FC = () => {
                 {installStatusOptions.map((opt) => (
                   <label key={opt} className="inline-flex items-center gap-2">
                     <RadioGroupItem value={opt} id={`vpnstatus-${opt}`} className="h-5 w-5" />
-                    <span>{opt}</span>
-                  </label>
-                ))}
-              </div>
-            </RadioGroup>
-          </div>
+                    <span className={opt === "N/A" ? "text-blue-600" : ""}>{opt}</span>
+                </label>
+              ))}
+            </div>
+          </RadioGroup>
+        </div>
           {vpnInstalledStatus === "Installed" && (
-            <div className="space-y-3">
+            <div className={`space-y-3 ${highlightClass(missingFields.vpnSetup || missingFields.vpnUsername)}`}>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Setup Type</Label>
                 <RadioGroup value={vpnSetupType} onValueChange={(v) => setVpnSetupType(v)}>
@@ -2271,29 +2358,30 @@ const PcAssessmentForm: React.FC = () => {
           <p className="text-sm text-muted-foreground">License status recorded</p>
         </div>
         <div className="flex flex-col gap-4">
-          <div className="space-y-2">
+          <div className={`space-y-2 ${highlightClass(missingFields.productivitySuites)}`}>
             <Label className="text-xs text-muted-foreground">Suites</Label>
             <div className="flex flex-wrap gap-2">
               {productivitySuiteOptions.map((opt) => {
                 const checked = productivitySuites.includes(opt);
                 const isOffice = opt === "Office 365";
+                const isNA = opt === "N/A";
                 return (
                   <div
                     key={opt}
                     className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm"
                   >
                     <Checkbox
-                      checked={checked}
-                      onCheckedChange={(v) => {
-                        if (v) {
-                          setProductivitySuites((prev) => Array.from(new Set([...prev, opt])));
-                        } else {
-                          setProductivitySuites((prev) => prev.filter((p) => p !== opt));
+                    checked={checked}
+                    onCheckedChange={(v) => {
+                      if (v) {
+                        setProductivitySuites((prev) => Array.from(new Set([...prev, opt])));
+                      } else {
+                        setProductivitySuites((prev) => prev.filter((p) => p !== opt));
                           if (isOffice) setOfficeAccount("");
                         }
                       }}
                     />
-                    <span className="leading-tight whitespace-nowrap">{opt}</span>
+                    <span className={`leading-tight whitespace-nowrap ${isNA ? "text-blue-600" : ""}`}>{opt}</span>
                     {isOffice && checked && (
                       <Input
                         className="ml-2 h-8"
@@ -2410,7 +2498,7 @@ const PcAssessmentForm: React.FC = () => {
                   onChange={(e) => updateForm("assessmentDate", e.target.value)}
                 />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${highlightClass(missingFields.technician)}`}>
                 <Label htmlFor="technician">Technician</Label>
                 <Select
                   value={form.technician}
@@ -2451,9 +2539,11 @@ const PcAssessmentForm: React.FC = () => {
                     <SelectValue placeholder="Select device" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="laptop">Laptop</SelectItem>
-                    <SelectItem value="desktop">Desktop</SelectItem>
-                    <SelectItem value="tablet">Tablet</SelectItem>
+                    {deviceTypeOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
