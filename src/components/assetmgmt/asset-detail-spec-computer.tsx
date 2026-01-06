@@ -16,11 +16,140 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 interface AssetDetailSpecComputerProps {
     asset: any;
     onUpdate?: () => void;
 }
+
+const cpuManufacturers = [
+    "Intel",
+    "AMD",
+    "Apple",
+    "Qualcomm",
+    "MediaTek",
+    "Samsung",
+    "HiSilicon",
+    "IBM",
+    "Other",
+];
+
+const memoryTypeOptions = [
+    "DDR3",
+    "DDR4",
+    "DDR4X",
+    "DDR5",
+    "DDR5X",
+    "LPDDR4",
+    "LPDDR4X",
+    "LPDDR5",
+    "LPDDR5X",
+    "HBM",
+    "GDDR6",
+    "Other",
+];
+
+const memoryManufacturerOptions = [
+    "Samsung",
+    "SK hynix",
+    "Micron / Crucial",
+    "Kingston",
+    "Corsair",
+    "G.Skill",
+    "TeamGroup",
+    "ADATA",
+    "Patriot",
+    "PNY",
+    "KLEVV",
+    "Other",
+];
+
+const storageTypeOptions = [
+    "SSD NVMe",
+    "SSD SATA",
+    "SSD M.2 NVMe",
+    "SSD M.2 SATA",
+    "HDD 2.5 inch",
+    "HDD 3.5 inch",
+    "eMMC",
+    "UFS",
+    "Other",
+];
+
+const storageManufacturerOptions = [
+    "Samsung",
+    "Western Digital",
+    "Seagate",
+    "Toshiba",
+    "Kioxia",
+    "Crucial / Micron",
+    "SK hynix",
+    "Kingston",
+    "SanDisk",
+    "Intel",
+    "Sabrent",
+    "ADATA",
+    "PNY",
+    "Transcend",
+    "Other",
+];
+
+const graphicsTypeOptions = ["Integrated/Built-in", "Add-on"];
+
+const graphicsManufacturerOptions = [
+    "Intel",
+    "NVIDIA",
+    "AMD",
+    "Apple",
+    "Qualcomm",
+    "Imagination",
+    "ARM Mali",
+    "Other",
+];
+
+const displayManufacturerOptions = [
+    "LG",
+    "AUO",
+    "BOE",
+    "Samsung",
+    "Sharp",
+    "Innolux",
+    "CSOT",
+    "Sony",
+    "Prism",
+    "Dell",
+    "Other",
+];
+
+const displayResolutionOptions = [
+    "1366x768",
+    "1920x1080",
+    "2560x1440",
+    "2560x1600",
+    "2880x1800",
+    "3000x2000",
+    "3072x1920",
+    "3200x1800",
+    "3840x2160",
+    "5120x2880",
+    "Other",
+];
+
+const displayFormFactorOptions = [
+    "Standard",
+    "Ultrawide",
+    "Curved",
+    "Touch",
+    "Portable",
+    "Other",
+];
 
 const AssetDetailSpecComputer: React.FC<AssetDetailSpecComputerProps> = ({ asset, onUpdate }) => {
     const [editing, setEditing] = React.useState(false);
@@ -52,56 +181,65 @@ const AssetDetailSpecComputer: React.FC<AssetDetailSpecComputerProps> = ({ asset
         }
     };
 
+    const buildFormSpecs = React.useCallback(
+        () => ({
+            cpu_model: rawSpecs?.cpu_model || rawSpecs?.processor || rawSpecs?.cpu || "",
+            cpu_manufacturer: rawSpecs?.cpu_manufacturer || "",
+            cpu_generation: rawSpecs?.cpu_generation || "",
+            memory_size_gb: rawSpecs?.memory_size_gb ?? rawSpecs?.ram ?? rawSpecs?.memory ?? "",
+            memory_type: rawSpecs?.memory_type || "",
+            memory_manufacturer: rawSpecs?.memory_manufacturer || "",
+            storage_size_gb: rawSpecs?.storage_size_gb ?? rawSpecs?.storage ?? rawSpecs?.hdd ?? "",
+            storage_type: rawSpecs?.storage_type || "",
+            storage_manufacturer: rawSpecs?.storage_manufacturer || "",
+            graphics_specs: rawSpecs?.graphics_specs ?? rawSpecs?.graphics ?? rawSpecs?.gpu ?? "",
+            graphics_type: rawSpecs?.graphics_type || "",
+            graphics_manufacturer: rawSpecs?.graphics_manufacturer || "",
+            os_version: rawSpecs?.os_version || rawSpecs?.os_name || rawSpecs?.os || "",
+            display_size: rawSpecs?.display_size || rawSpecs?.display || "",
+            display_resolution: rawSpecs?.display_resolution || "",
+            display_form_factor: rawSpecs?.display_form_factor || "",
+            display_interfaces: rawSpecs?.display_interfaces || "",
+            display_manufacturer: rawSpecs?.display_manufacturer || "",
+            ports_ethernet: rawSpecs?.ports_ethernet ?? rawSpecs?.network_card ?? rawSpecs?.nic ?? "",
+            ports_usb_a: rawSpecs?.ports_usb_a ?? "",
+            ports_usb_c: rawSpecs?.ports_usb_c ?? "",
+            ports_thunderbolt: rawSpecs?.ports_thunderbolt ?? "",
+            ports_hdmi: rawSpecs?.ports_hdmi ?? "",
+            ports_displayport: rawSpecs?.ports_displayport ?? "",
+            ports_vga: rawSpecs?.ports_vga ?? "",
+            ports_sdcard: rawSpecs?.ports_sdcard ?? "",
+            ports_audiojack: rawSpecs?.ports_audiojack ?? "",
+            battery_capacity: rawSpecs?.battery_capacity ?? rawSpecs?.battery ?? "",
+            battery_equipped: rawSpecs?.battery_equipped ?? "",
+            adapter_equipped: rawSpecs?.adapter_equipped ?? "",
+            adapter_output: rawSpecs?.adapter_output ?? "",
+            av_vendor: rawSpecs?.av_vendor ?? "",
+            av_status: rawSpecs?.av_status ?? "",
+            av_license: rawSpecs?.av_license ?? "",
+            vpn_installed: rawSpecs?.vpn_installed ?? "",
+            vpn_setup_type: rawSpecs?.vpn_setup_type ?? "",
+            vpn_username: rawSpecs?.vpn_username ?? "",
+            hostname: rawSpecs?.hostname || rawSpecs?.computer_name || "",
+            installed_software: rawSpecs?.installed_software || rawSpecs?.software || "",
+            office_account: rawSpecs?.office_account ?? "",
+        }),
+        [rawSpecs]
+    );
+
+    React.useEffect(() => {
+        setFormSpecs(buildFormSpecs());
+    }, [buildFormSpecs]);
+
     React.useEffect(() => {
         if (editing) {
             loadOptions();
             setSelectedBrand(asset?.brand?.id ? String(asset.brand.id) : "");
             setSelectedModel(asset?.model?.id ? String(asset.model.id) : "");
             setSelectedCategory(asset?.category?.id ? String(asset.category.id) : "");
-            setFormSpecs({
-                cpu_model: rawSpecs?.cpu_model || rawSpecs?.processor || rawSpecs?.cpu || "",
-                cpu_manufacturer: rawSpecs?.cpu_manufacturer || "",
-                cpu_generation: rawSpecs?.cpu_generation || "",
-                memory_size_gb: rawSpecs?.memory_size_gb ?? rawSpecs?.ram ?? rawSpecs?.memory ?? "",
-                memory_type: rawSpecs?.memory_type || "",
-                memory_manufacturer: rawSpecs?.memory_manufacturer || "",
-                storage_size_gb: rawSpecs?.storage_size_gb ?? rawSpecs?.storage ?? rawSpecs?.hdd ?? "",
-                storage_type: rawSpecs?.storage_type || "",
-                storage_manufacturer: rawSpecs?.storage_manufacturer || "",
-                graphics_specs: rawSpecs?.graphics_specs ?? rawSpecs?.graphics ?? rawSpecs?.gpu ?? "",
-                graphics_type: rawSpecs?.graphics_type || "",
-                graphics_manufacturer: rawSpecs?.graphics_manufacturer || "",
-                os_version: rawSpecs?.os_version || rawSpecs?.os_name || rawSpecs?.os || "",
-                display_size: rawSpecs?.display_size || rawSpecs?.display || "",
-                display_resolution: rawSpecs?.display_resolution || "",
-                display_form_factor: rawSpecs?.display_form_factor || "",
-                display_interfaces: rawSpecs?.display_interfaces || "",
-                display_manufacturer: rawSpecs?.display_manufacturer || "",
-                ports_ethernet: rawSpecs?.ports_ethernet ?? rawSpecs?.network_card ?? rawSpecs?.nic ?? "",
-                ports_usb_a: rawSpecs?.ports_usb_a ?? "",
-                ports_usb_c: rawSpecs?.ports_usb_c ?? "",
-                ports_thunderbolt: rawSpecs?.ports_thunderbolt ?? "",
-                ports_hdmi: rawSpecs?.ports_hdmi ?? "",
-                ports_displayport: rawSpecs?.ports_displayport ?? "",
-                ports_vga: rawSpecs?.ports_vga ?? "",
-                ports_sdcard: rawSpecs?.ports_sdcard ?? "",
-                ports_audiojack: rawSpecs?.ports_audiojack ?? "",
-                battery_capacity: rawSpecs?.battery_capacity ?? rawSpecs?.battery ?? "",
-                battery_equipped: rawSpecs?.battery_equipped ?? "",
-                adapter_equipped: rawSpecs?.adapter_equipped ?? "",
-                adapter_output: rawSpecs?.adapter_output ?? "",
-                av_vendor: rawSpecs?.av_vendor ?? "",
-                av_status: rawSpecs?.av_status ?? "",
-                av_license: rawSpecs?.av_license ?? "",
-                vpn_installed: rawSpecs?.vpn_installed ?? "",
-                vpn_setup_type: rawSpecs?.vpn_setup_type ?? "",
-                vpn_username: rawSpecs?.vpn_username ?? "",
-                hostname: rawSpecs?.hostname || rawSpecs?.computer_name || "",
-                installed_software: rawSpecs?.installed_software || rawSpecs?.software || "",
-                office_account: rawSpecs?.office_account ?? "",
-            });
+            setFormSpecs(buildFormSpecs());
         }
-    }, [editing, asset, rawSpecs]);
+    }, [editing, asset, buildFormSpecs]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -165,17 +303,36 @@ const AssetDetailSpecComputer: React.FC<AssetDetailSpecComputerProps> = ({ asset
         }
     };
 
-    const renderField = (label: string, value: any, onChange?: (v: string) => void, suffix?: string) => {
+    const renderField = (label: string, value: any, onChange?: (v: string) => void, suffix?: string, options?: string[]) => {
         const display = value ?? "-";
+        const safeValue = value == null ? "" : String(value);
         if (editing && onChange) {
             return (
                 <div className="space-y-1">
                     <p className="text-xs text-gray-500 mb-1">{label}</p>
-                    <Input
-                        value={value ?? ""}
-                        onChange={(e) => onChange(e.target.value)}
-                        className="h-9 text-sm"
-                    />
+                    {options?.length ? (
+                        <Select
+                            value={safeValue || undefined}
+                            onValueChange={(v) => onChange(v)}
+                        >
+                            <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {options.map((opt) => (
+                                    <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <Input
+                            value={safeValue}
+                            onChange={(e) => onChange(e.target.value)}
+                            className="h-9 text-sm"
+                        />
+                    )}
                 </div>
             );
         }
@@ -277,23 +434,23 @@ const AssetDetailSpecComputer: React.FC<AssetDetailSpecComputerProps> = ({ asset
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {renderField("Processor", formSpecs.cpu_model, (v) => setFormSpecs((p: any) => ({ ...p, cpu_model: v })))}
-                        {renderField("CPU Manufacturer", formSpecs.cpu_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, cpu_manufacturer: v })))}
+                        {renderField("CPU Manufacturer", formSpecs.cpu_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, cpu_manufacturer: v })), undefined, cpuManufacturers)}
                         {renderField("CPU Generation", formSpecs.cpu_generation, (v) => setFormSpecs((p: any) => ({ ...p, cpu_generation: v })))}
                         {renderField("RAM", formSpecs.memory_size_gb, (v) => setFormSpecs((p: any) => ({ ...p, memory_size_gb: v })), "GB")}
-                        {renderField("Memory Type", formSpecs.memory_type, (v) => setFormSpecs((p: any) => ({ ...p, memory_type: v })))}
-                        {renderField("Memory Manufacturer", formSpecs.memory_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, memory_manufacturer: v })))}
+                        {renderField("Memory Type", formSpecs.memory_type, (v) => setFormSpecs((p: any) => ({ ...p, memory_type: v })), undefined, memoryTypeOptions)}
+                        {renderField("Memory Manufacturer", formSpecs.memory_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, memory_manufacturer: v })), undefined, memoryManufacturerOptions)}
                         {renderField("Storage", formSpecs.storage_size_gb, (v) => setFormSpecs((p: any) => ({ ...p, storage_size_gb: v })), "GB")}
-                        {renderField("Storage Type", formSpecs.storage_type, (v) => setFormSpecs((p: any) => ({ ...p, storage_type: v })))}
-                        {renderField("Storage Manufacturer", formSpecs.storage_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, storage_manufacturer: v })))}
+                        {renderField("Storage Type", formSpecs.storage_type, (v) => setFormSpecs((p: any) => ({ ...p, storage_type: v })), undefined, storageTypeOptions)}
+                        {renderField("Storage Manufacturer", formSpecs.storage_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, storage_manufacturer: v })), undefined, storageManufacturerOptions)}
                         {renderField("Graphics", formSpecs.graphics_specs, (v) => setFormSpecs((p: any) => ({ ...p, graphics_specs: v })))}
-                        {renderField("Graphics Type", formSpecs.graphics_type, (v) => setFormSpecs((p: any) => ({ ...p, graphics_type: v })))}
-                        {renderField("Graphics Manufacturer", formSpecs.graphics_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, graphics_manufacturer: v })))}
+                        {renderField("Graphics Type", formSpecs.graphics_type, (v) => setFormSpecs((p: any) => ({ ...p, graphics_type: v })), undefined, graphicsTypeOptions)}
+                        {renderField("Graphics Manufacturer", formSpecs.graphics_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, graphics_manufacturer: v })), undefined, graphicsManufacturerOptions)}
                         {renderField("Operating System", formSpecs.os_version, (v) => setFormSpecs((p: any) => ({ ...p, os_version: v })))}
                         {renderField("Display Size", formSpecs.display_size, (v) => setFormSpecs((p: any) => ({ ...p, display_size: v })))}
-                        {renderField("Display Resolution", formSpecs.display_resolution, (v) => setFormSpecs((p: any) => ({ ...p, display_resolution: v })))}
-                        {renderField("Display Form Factor", formSpecs.display_form_factor, (v) => setFormSpecs((p: any) => ({ ...p, display_form_factor: v })))}
+                        {renderField("Display Resolution", formSpecs.display_resolution, (v) => setFormSpecs((p: any) => ({ ...p, display_resolution: v })), undefined, displayResolutionOptions)}
+                        {renderField("Display Form Factor", formSpecs.display_form_factor, (v) => setFormSpecs((p: any) => ({ ...p, display_form_factor: v })), undefined, displayFormFactorOptions)}
                         {renderField("Display Interfaces", formSpecs.display_interfaces, (v) => setFormSpecs((p: any) => ({ ...p, display_interfaces: v })))}
-                        {renderField("Display Manufacturer", formSpecs.display_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, display_manufacturer: v })))}
+                        {renderField("Display Manufacturer", formSpecs.display_manufacturer, (v) => setFormSpecs((p: any) => ({ ...p, display_manufacturer: v })), undefined, displayManufacturerOptions)}
                         {renderField("Ethernet Ports", formSpecs.ports_ethernet, (v) => setFormSpecs((p: any) => ({ ...p, ports_ethernet: v })))}
                         {renderField("USB-A Ports", formSpecs.ports_usb_a, (v) => setFormSpecs((p: any) => ({ ...p, ports_usb_a: v })))}
                         {renderField("USB-C Ports", formSpecs.ports_usb_c, (v) => setFormSpecs((p: any) => ({ ...p, ports_usb_c: v })))}
