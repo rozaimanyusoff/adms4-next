@@ -26,6 +26,7 @@ interface Specs {
     cubic_meter?: string;
     roadtax_expiry?: string;
     insurance_expiry?: string;
+    [key: string]: any;
 }
 
 interface Asset {
@@ -70,6 +71,7 @@ interface AssetRecordProps {
     title?: string;
     showTypeCards?: boolean;
     showAssetOnlyToggle?: boolean;
+    managerId?: number;
 }
 
 /* 
@@ -102,7 +104,8 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
     typeId,
     title,
     showTypeCards = !typeId,
-    showAssetOnlyToggle = !typeId
+    showAssetOnlyToggle = !typeId,
+    managerId
 }) => {
     const auth = React.useContext(AuthContext);
     const user = auth?.authData?.user;
@@ -123,7 +126,10 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
             setTypes(typesData);
 
             let assetsRes;
-            if (typeId) {
+            if (managerId) {
+                // Dedicated manager view fetches by manager id
+                assetsRes = await authenticatedApi.get<any>(`/api/assets?manager=${managerId}`);
+            } else if (typeId) {
                 // Dedicated view for a specific type (e.g. vehicle/computer manager)
                 assetsRes = await authenticatedApi.get<any>(`/api/assets?type=${typeId}`);
             } else if (user?.role?.id === 7) {
@@ -155,7 +161,10 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
             ]);
 
             // Map API data to grid data - no need to transform since backend provides structured data
-            setData(assetsRes.data.data || []);
+            const assetsPayload = Array.isArray(assetsRes.data)
+                ? assetsRes.data
+                : (assetsRes.data && assetsRes.data.data ? assetsRes.data.data : []);
+            setData(assetsPayload);
             setBrands(Array.isArray(brandsRes.data) ? brandsRes.data : (brandsRes.data && brandsRes.data.data ? brandsRes.data.data : []));
             setCategories(Array.isArray(categoriesRes.data) ? categoriesRes.data : (categoriesRes.data && categoriesRes.data.data ? categoriesRes.data.data : []));
         } catch (error) {
@@ -165,7 +174,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         }
     };
 
-    useEffect(() => { fetchData(); }, [typeId]);
+    useEffect(() => { fetchData(); }, [typeId, managerId]);
 
     const currentYear = new Date().getFullYear();
     const selectedTypeName = useMemo(() => {
@@ -174,11 +183,35 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         return match?.name || null;
     }, [types, typeId]);
 
+    // Pick the most relevant specs entry (handles array payloads and field/value fragments)
+    const getSpecs = (asset: Asset) => {
+        if (!asset?.specs) return {};
+        if (Array.isArray(asset.specs)) {
+            const specsArr = asset.specs as any[];
+            const mainSpec =
+                specsArr.find(s => s && typeof s === 'object' && Number(s.type_id) === Number(typeId)) ||
+                specsArr.find(s => s && typeof s === 'object' && s.type_id) ||
+                specsArr.find(s => s && typeof s === 'object' && !('field' in s)) ||
+                specsArr[0] ||
+                {};
+
+            const fieldFragments = specsArr
+                .filter(s => s && typeof s === 'object' && 'field' in s && 'value' in s)
+                .reduce((acc: Record<string, any>, entry: any) => {
+                    acc[entry.field] = entry.value;
+                    return acc;
+                }, {});
+
+            return { ...mainSpec, ...fieldFragments };
+        }
+        return asset.specs;
+    };
+
     // Transform data to match the new backend structure
     const transformedData = data.map(asset => {
         // Calculate age from purchase_year
         const age = asset.purchase_year ? currentYear - asset.purchase_year : 0;
-        const specs = asset.specs || {};
+        const specs = getSpecs(asset);
         const formatDate = (val?: string) => val ? new Date(val).toLocaleDateString() : '-';
 
         return {

@@ -14,6 +14,7 @@ const AssetRecordComputer: React.FC<AssetRecordComputerProps> = ({ typeId }) => 
             title="Computer Assets"
             showTypeCards={false}
             showAssetOnlyToggle={false}
+            managerId={1}
         />
     );
 };

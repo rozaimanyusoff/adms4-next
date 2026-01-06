@@ -14,6 +14,7 @@ const AssetRecordVehicle: React.FC<AssetRecordVehicleProps> = ({ typeId }) => {
             title="Vehicle Assets"
             showTypeCards={false}
             showAssetOnlyToggle={false}
+            managerId={2}
         />
     );
 };
