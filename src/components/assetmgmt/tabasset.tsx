@@ -33,6 +33,7 @@ const AssetMgmtMain = () => {
     const user = auth?.authData?.user;
     const [managedTabs, setManagedTabs] = useState<ManagedTab[]>([]);
     const [hideGeneralRecords, setHideGeneralRecords] = useState(false);
+    const [managedLoaded, setManagedLoaded] = useState(false);
 
     const baseTabTitles = useMemo(() => {
         const tabs = [
@@ -111,6 +112,8 @@ const AssetMgmtMain = () => {
             } catch (err) {
                 setManagedTabs([]);
                 setHideGeneralRecords(false);
+            } finally {
+                setManagedLoaded(true);
             }
         };
 
@@ -133,11 +136,17 @@ const AssetMgmtMain = () => {
     });
 
     useEffect(() => {
+        if (!managedLoaded) return;
         const validTabValues = tabTitles.map(t => t.value);
         if (!validTabValues.includes(activeTab)) {
+            const stored = typeof window !== "undefined" ? localStorage.getItem("assetmgmtTabs") : null;
+            if (stored && validTabValues.includes(stored)) {
+                setActiveTab(stored);
+                return;
+            }
             setActiveTab("dash");
         }
-    }, [tabTitles, activeTab]);
+    }, [tabTitles, activeTab, managedLoaded]);
 
     useEffect(() => {
         localStorage.setItem("assetmgmtTabs", activeTab);

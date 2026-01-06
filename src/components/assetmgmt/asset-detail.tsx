@@ -1,16 +1,37 @@
 'use client';
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AuthContext } from "@store/AuthContext";
 import { authenticatedApi } from "@/config/api";
 import {
    ChevronLeft, ChevronRight, X, Monitor, Car, Wrench, Calendar,
    MapPin, Building, Users, ShoppingCart, FileText,
    AlertTriangle, CheckCircle, Activity,
-   Package, ClipboardCheck, UserCheck, Trash2
+   Package, ClipboardCheck, UserCheck, Pencil, Save
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+   AlertDialog,
+   AlertDialogAction,
+   AlertDialogCancel,
+   AlertDialogContent,
+   AlertDialogDescription,
+   AlertDialogFooter,
+   AlertDialogHeader,
+   AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+
+const formatTimestamp = () => {
+   const d = new Date();
+   const pad = (n: number) => n.toString().padStart(2, '0');
+   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -47,8 +68,6 @@ const AssetDetail: React.FC<AssetDetailProps> = ({ id }) => {
    const [ownerHistory, setOwnerHistory] = useState<any[]>([]);
    const [maintenanceRecords, setMaintenanceRecords] = useState<any[]>([]);
    const [assessmentRecords, setAssessmentRecords] = useState<any[]>([]);
-   const [disposalData, setDisposalData] = useState<any>(null);
-
    // Fetch all asset ids for navigation
    useEffect(() => {
       const fetchItems = async () => {
@@ -76,7 +95,6 @@ const AssetDetail: React.FC<AssetDetailProps> = ({ id }) => {
             if (assetData?.purchase_details) {
                setPurchaseData(assetData.purchase_details);
             }
-            setDisposalData(null);
 
             if (assetData) {
                // Fetch lifecycle data in parallel
@@ -344,10 +362,6 @@ const AssetDetail: React.FC<AssetDetailProps> = ({ id }) => {
                            <ClipboardCheck className="w-4 h-4" />
                            <span>Assessment</span>
                         </TabsTrigger>
-                        <TabsTrigger value="disposal">
-                           <Trash2 className="w-4 h-4" />
-                           <span>Disposal</span>
-                        </TabsTrigger>
                      </TabsList>
 
                      <TabsContent value="purchasing" className="mt-6">
@@ -369,10 +383,6 @@ const AssetDetail: React.FC<AssetDetailProps> = ({ id }) => {
                      <TabsContent value="assessment" className="mt-6">
                         <AssetDetailAssessment assessmentRecords={assessmentRecords} formatDate={formatDate} />
                      </TabsContent>
-
-                     <TabsContent value="disposal" className="mt-6">
-                        <DisposalSection asset={asset} disposalData={disposalData} formatDate={formatDate} />
-                     </TabsContent>
                   </Tabs>
                </div>
             </div>
@@ -388,7 +398,6 @@ const AssetDetail: React.FC<AssetDetailProps> = ({ id }) => {
             const assetData = assetRes.data?.data || null;
             setAsset(assetData);
             setPurchaseData(assetData?.purchase_details || null);
-            setDisposalData(null);
             if (assetData) {
                await Promise.all([
                   fetchOwnerHistory(assetData),
@@ -592,61 +601,320 @@ const NavigationBar = ({ searchValue, setSearchValue, searchResults, showDropdow
          </div>
       </div>
    </div>
-); const AssetHeader = ({ asset, currentOwner, formatDate }: any) => (
-   <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-50 to-white border border-gray-200">
-      <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl z-0" />
+);
 
-      <div className="relative z-10 p-6 lg:p-8 bg-lime-800/20 backdrop-blur-sm">
-         <div className="flex flex-col lg:flex-row gap-6 items-start">
-            <div className="flex-1 space-y-5">
-               <div>
-                  <div className="flex items-center gap-3 mb-2">
-                     <Badge className="text-sm px-2 py-0.5 font-medium bg-gray-500">
-                        {(asset?.type?.name ?? asset?.types?.name) || 'Unknown Type'}
-                     </Badge>
-                     <Badge className="text-sm px-2 py-0.5 capitalize font-medium bg-gray-500">
-                        {asset?.classification}
-                     </Badge>
-                     <Badge
-                        variant={asset?.status?.toLowerCase() === 'active' ? 'outline' : 'destructive'}
-                        className={`text-sm px-2 py-0.5 flex items-center gap-1 ${asset?.status?.toLowerCase() === 'active'
-                              ? 'bg-emerald-600 text-white'
-                              : ''
-                           }`}
-                     >
-                        {asset?.status?.toLowerCase() === 'active' ? (
-                           <>
-                              <CheckCircle className="w-3 h-3" />
-                              <span>Active</span>
-                           </>
-                        ) : (
-                           <>
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>{asset?.status || 'Unknown'}</span>
-                           </>
-                        )}
-                     </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                     <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Register Number: {asset?.register_number}</h1>
-                     <div className="text-2xl lg:text-3xl font-bold text-gray-900">
-                        {asset?.age ? `${asset.age} year${Number(asset.age) === 1 ? '' : 's'}` : '-'}
+const AssetHeader = ({ asset, currentOwner, formatDate }: any) => {
+   const auth = React.useContext(AuthContext);
+   const router = useRouter();
+   const [editingStatus, setEditingStatus] = useState(false);
+   const [warningOpen, setWarningOpen] = useState(false);
+   const [confirmOpen, setConfirmOpen] = useState(false);
+   const [saving, setSaving] = useState(false);
+   const [classification, setClassification] = useState<string>(() => (asset?.classification ?? '').toLowerCase());
+   const [recordStatus, setRecordStatus] = useState<string>(() => (asset?.record_status ?? asset?.status ?? '').toLowerCase());
+   const [conditionStatus, setConditionStatus] = useState<string>(() => (asset?.condition_status ?? '').toLowerCase());
+   const user = auth?.authData?.user;
+   const [managerList, setManagerList] = useState<any[]>([]);
+
+   useEffect(() => {
+      if (!user?.username) {
+         setManagerList([]);
+         return;
+      }
+      let cancelled = false;
+      const load = async () => {
+         try {
+            const res = await authenticatedApi.get("/api/assets/managers") as any;
+            if (!cancelled) {
+               setManagerList(res.data?.data || res.data || []);
+            }
+         } catch {
+            if (!cancelled) setManagerList([]);
+         }
+      };
+      load();
+      return () => { cancelled = true; };
+   }, [user?.username]);
+
+   const isManager = useMemo(() => {
+      if (!user?.username || !Array.isArray(managerList)) return false;
+      return managerList.some((m: any) => {
+         const ramcoId = m?.employee?.ramco_id || m?.ramco_id;
+         return ramcoId && String(ramcoId) === String(user.username);
+      });
+   }, [managerList, user?.username]);
+
+   const recordStatusOptions = useMemo(() => {
+      const cls = (classification || '').toLowerCase();
+      if (cls === 'asset') return ['active', 'disposed'];
+      if (['rental', 'non-asset', 'personal'].includes(cls)) return ['active', 'archived'];
+      return ['active'];
+   }, [classification]);
+
+   const conditionOptions = useMemo(() => {
+      const cls = (classification || '').toLowerCase();
+      const status = (recordStatus || '').toLowerCase();
+
+      if (status === 'archived' && ['non-asset', 'personal', 'rental'].includes(cls)) {
+         return ['returned', 'retired', 'transferred'];
+      }
+
+      if (status === 'disposed') {
+         return ['disposed'];
+      }
+
+      if (status === 'active') {
+         return ['in-use'];
+      }
+
+      return ['in-use'];
+   }, [recordStatus, classification]);
+
+   useEffect(() => {
+      const currentClassification = (asset?.classification ?? '').toLowerCase();
+      const currentRecord = (asset?.record_status ?? asset?.status ?? '').toLowerCase();
+      const currentCondition = (asset?.condition_status ?? '').toLowerCase();
+      setClassification(currentClassification);
+      setRecordStatus(currentRecord);
+      setConditionStatus(currentCondition);
+   }, [asset?.record_status, asset?.status, asset?.condition_status, asset?.classification]);
+
+   useEffect(() => {
+      if (recordStatusOptions.length && !recordStatusOptions.includes(recordStatus)) {
+         setRecordStatus(recordStatusOptions[0]);
+      }
+   }, [recordStatusOptions, recordStatus]);
+
+   useEffect(() => {
+      if (conditionOptions.length && !conditionOptions.includes(conditionStatus)) {
+         setConditionStatus(conditionOptions[0]);
+      }
+   }, [conditionOptions, conditionStatus]);
+
+   const getCurrentUsername = () => {
+      const fromAuth = (auth?.authData?.user as any)?.username || (auth?.authData?.user as any)?.ramco_id;
+      if (fromAuth) return String(fromAuth);
+      if (typeof window !== "undefined") {
+         return localStorage.getItem("username") || "";
+      }
+      return "";
+   };
+
+   const recordStatusRaw = (recordStatus || asset?.record_status || asset?.status || '').toLowerCase();
+   const displayStatus = (recordStatus || asset?.record_status || asset?.status || 'Unknown') as string;
+   const displayClassification = (classification || asset?.classification || 'Unknown') as string;
+   const isActive = recordStatusRaw === 'active';
+
+   const startEditing = () => setWarningOpen(true);
+   const confirmStartEditing = () => {
+      setEditingStatus(true);
+      setWarningOpen(false);
+   };
+
+   const requestSave = () => setConfirmOpen(true);
+
+   const handleSave = async () => {
+      if (!asset?.id) return;
+      setSaving(true);
+      try {
+         await authenticatedApi.put(`/api/assets/${asset.id}/update-status`, {
+            classification: classification || asset?.classification || '',
+            record_status: recordStatus,
+            condition_status: conditionStatus,
+            updated_by: getCurrentUsername(),
+            updated_at: formatTimestamp()
+         });
+         toast.success("Asset status updated");
+         setConfirmOpen(false);
+         setEditingStatus(false);
+      } catch (e: any) {
+         toast.error(e?.response?.data?.message || e?.message || "Failed to update status");
+      } finally {
+         setSaving(false);
+      }
+   };
+
+   const notifyParentAndClose = () => {
+      if (typeof window === "undefined") {
+         router.back();
+         return;
+      }
+
+      try {
+         localStorage.setItem("asset-record-refresh", Date.now().toString());
+         if (window.opener && !window.opener.closed) {
+            window.opener.location.reload();
+            window.close();
+            return;
+         }
+         // Same-tab flow: go back then hard reload to ensure grid re-fetches
+         const fallback = document.referrer || "/";
+         window.location.href = fallback;
+      } catch (e) {
+         window.location.href = document.referrer || "/";
+      }
+   };
+
+   return (
+      <>
+         <AlertDialog open={warningOpen} onOpenChange={setWarningOpen}>
+            <AlertDialogContent>
+               <AlertDialogHeader>
+                  <AlertDialogTitle>Update statuses?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                     You&apos;re about to edit the classification and statuses for this asset. Continue?
+                  </AlertDialogDescription>
+               </AlertDialogHeader>
+               <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmStartEditing}>Continue</AlertDialogAction>
+               </AlertDialogFooter>
+            </AlertDialogContent>
+         </AlertDialog>
+
+         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogContent>
+               <AlertDialogHeader>
+                  <AlertDialogTitle>Save status changes?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                     Classification, record status, and condition status will be updated.
+                  </AlertDialogDescription>
+               </AlertDialogHeader>
+               <AlertDialogFooter>
+                  <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleSave} disabled={saving}>
+                     {saving ? 'Saving...' : 'Save'}
+                  </AlertDialogAction>
+               </AlertDialogFooter>
+            </AlertDialogContent>
+         </AlertDialog>
+
+         <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-gray-50 to-white border border-gray-200">
+         <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl z-0" />
+
+         <div className="relative z-10 p-6 lg:p-8 bg-lime-800/20 backdrop-blur-sm">
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
+               <div className="flex-1 space-y-5">
+                  <div>
+                     <div className="flex items-center gap-3 mb-2">
+                        <Badge className="text-sm px-2 py-0.5 font-medium bg-gray-500">
+                           {(asset?.type?.name ?? asset?.types?.name) || 'Unknown Type'}
+                        </Badge>
+                        <Badge className="text-sm px-2 py-0.5 capitalize font-medium bg-gray-500">
+                           {displayClassification}
+                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                           <Badge
+                              variant={isActive ? 'outline' : 'destructive'}
+                              className={`text-sm px-2 py-0.5 flex items-center gap-1 ${isActive ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}
+                           >
+                              {isActive ? (
+                                 <>
+                                    <CheckCircle className="w-3 h-3" />
+                                    <span className="capitalize">{displayStatus || 'Active'}</span>
+                                 </>
+                              ) : (
+                                 <>
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span className="capitalize">{displayStatus || 'Unknown'}</span>
+                                 </>
+                              )}
+                           </Badge>
+                           {isManager && (
+                              <TooltipProvider delayDuration={150}>
+                                 <Tooltip>
+                                    <TooltipTrigger asChild>
+                                       <div
+                                          className="h-7 w-7 flex items-center justify-center hover:bg-gray-100 rounded-lg"
+                                          title={editingStatus ? "Save statuses" : "Update asset status"}
+                                          onClick={() => (editingStatus ? requestSave() : startEditing())}
+                                       >
+                                          {editingStatus ? (
+                                             <Save className="w-5 h-5 text-emerald-600" />
+                                          ) : (
+                                             <Pencil className="w-5 h-5 text-yellow-600" />
+                                          )}
+                                       </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                       {editingStatus ? "Save statuses" : "Update asset status"}
+                                    </TooltipContent>
+                                 </Tooltip>
+                              </TooltipProvider>
+                           )}
+                        </div>
                      </div>
+                     {editingStatus && (
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl space-y-6">
+                           <div className="flex flex-col gap-1">
+                              <p className="text-xs text-gray-600">Classification</p>
+                              <Select value={classification} onValueChange={(val) => setClassification(val)}>
+                                 <SelectTrigger className="h-9 capitalize w-full bg-stone-100/50">
+                                    <SelectValue placeholder="Select classification" />
+                                 </SelectTrigger>
+                                 <SelectContent>
+                                    {['rental', 'personal', 'non-asset', 'asset'].map((option) => (
+                                       <SelectItem key={option} value={option} className="capitalize">
+                                          {option}
+                                       </SelectItem>
+                                    ))}
+                                 </SelectContent>
+                              </Select>
+                           </div>
+                           <div className="flex flex-col gap-1">
+                              <p className="text-xs text-gray-600">Record Status</p>
+                              <Select value={recordStatus} onValueChange={(val) => setRecordStatus(val)}>
+                                 <SelectTrigger className="h-9 capitalize w-full bg-stone-100/50">
+                                    <SelectValue placeholder="Select record status" />
+                                 </SelectTrigger>
+                                 <SelectContent>
+                                    {recordStatusOptions.map((option) => (
+                                       <SelectItem key={option} value={option} className="capitalize">
+                                          {option}
+                                       </SelectItem>
+                                    ))}
+                                 </SelectContent>
+                              </Select>
+                           </div>
+                           <div className="flex flex-col gap-1">
+                              <p className="text-xs text-gray-600">Condition Status</p>
+                              <Select value={conditionStatus} onValueChange={(val) => setConditionStatus(val)}>
+                                 <SelectTrigger className="h-9 capitalize w-full bg-stone-100/50">
+                                    <SelectValue placeholder="Select condition status" />
+                                 </SelectTrigger>
+                                 <SelectContent>
+                                    {conditionOptions.map((option) => (
+                                       <SelectItem key={option} value={option} className="capitalize">
+                                          {option}
+                                       </SelectItem>
+                                    ))}
+                                 </SelectContent>
+                              </Select>
+                           </div>
+                        </div>
+                     )}
+                     <div className="flex justify-between items-center">
+                        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Register Number: {asset?.register_number}</h1>
+                        <div className="text-2xl lg:text-3xl font-bold text-gray-900">
+                           {asset?.age ? `${asset.age} year${Number(asset.age) === 1 ? '' : 's'}` : '-'}
+                        </div>
+                     </div>
+
                   </div>
 
-               </div>
-
-               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <InfoCard icon={Calendar} label="Purchase Year" value={asset?.purchase_year || '-'} color="blue" />
-                  <InfoCard icon={Building} label="Cost Center" value={asset?.costcenter?.name || '-'} color="purple" />
-                  <InfoCard icon={MapPin} label="Location" value={asset?.location?.name || '-'} color="red" />
-                  <InfoCard icon={Users} label="Owner" value={currentOwner?.name ?? currentOwner?.employee?.name ?? '-'} color="green" />
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                     <InfoCard icon={Calendar} label="Purchase Year" value={asset?.purchase_year || '-'} color="blue" />
+                     <InfoCard icon={Building} label="Cost Center" value={asset?.costcenter?.name || '-'} color="purple" />
+                     <InfoCard icon={MapPin} label="Location" value={asset?.location?.name || '-'} color="red" />
+                     <InfoCard icon={Users} label="Owner" value={currentOwner?.name ?? currentOwner?.employee?.name ?? '-'} color="green" />
+                  </div>
                </div>
             </div>
          </div>
-      </div>
-   </div>
-);
+         </div>
+      </>
+   );
+};
 
 const InfoCard = ({ icon: Icon, label, value, color }: any) => {
    const colorClasses: any = {
@@ -716,50 +984,6 @@ const SpecsSection = ({ asset, renderTypeSpecificSpecs }: any) => (
       </Card>
 
       {renderTypeSpecificSpecs()}
-   </div>
-);
-
-const DisposalSection = ({ asset, disposalData, formatDate }: any) => (
-   <div className="space-y-4">
-      {asset?.record_status?.toLowerCase() === 'disposed' ? (
-         <Card className="bg-stone-50/50">
-            <CardHeader className="pb-3">
-               <CardTitle className="text-base font-bold text-red-700 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-                     <AlertTriangle className="w-5 h-5 text-red-600" />
-                  </div>
-                  Asset Disposed
-               </CardTitle>
-            </CardHeader>
-            <CardContent>
-               {disposalData ? (
-                  <div className="space-y-3">
-                     <DataRow label="Disposal Date" value={formatDate(disposalData.disposal_date)} />
-                     <DataRow label="Disposal Method" value={disposalData.method || '-'} />
-                     <DataRow label="Reason" value={disposalData.reason || '-'} />
-                     {disposalData.remarks && (
-                        <div>
-                           <p className="text-xs text-gray-500 mb-2">Remarks</p>
-                           <p className="text-sm text-gray-900 bg-white p-3 rounded-lg border border-red-100">{disposalData.remarks}</p>
-                        </div>
-                     )}
-                  </div>
-               ) : (
-                  <div className="text-center py-4">
-                     <p className="text-sm text-gray-700">Asset marked as disposed but no disposal details available</p>
-                  </div>
-               )}
-            </CardContent>
-         </Card>
-      ) : (
-         <Card className="bg-stone-50/50">
-            <CardContent className="p-8 text-center">
-               <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-               <p className="text-gray-900 font-semibold mb-1">Asset is currently active</p>
-               <p className="text-sm text-gray-500">No disposal records</p>
-            </CardContent>
-         </Card>
-      )}
    </div>
 );
 

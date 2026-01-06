@@ -176,6 +176,28 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
 
     useEffect(() => { fetchData(); }, [typeId, managerId]);
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const flag = localStorage.getItem("asset-record-refresh");
+        if (flag) {
+            fetchData();
+            localStorage.removeItem("asset-record-refresh");
+        }
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === "asset-record-refresh" && e.newValue) {
+                fetchData();
+                localStorage.removeItem("asset-record-refresh");
+            }
+        };
+        const handleFocus = () => fetchData();
+        window.addEventListener("storage", handleStorage);
+        window.addEventListener("focus", handleFocus);
+        return () => {
+            window.removeEventListener("storage", handleStorage);
+            window.removeEventListener("focus", handleFocus);
+        };
+    }, [typeId, managerId]);
+
     const currentYear = new Date().getFullYear();
     const selectedTypeName = useMemo(() => {
         if (!typeId) return null;
@@ -243,12 +265,12 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
 
         const baseColumns: ColumnDef<any>[] = [
             { key: "id", header: "ID", sortable: true },
-            { 
-                key: "classification", 
-                header: "Classification", 
-                sortable: true, 
-                filter: 'singleSelect', 
-                filterParams: { options: Array.from(new Set(contextData.map(d => d.classification).filter(Boolean))) as (string | number)[] } 
+            {
+                key: "classification",
+                header: "Classification",
+                sortable: true,
+                filter: 'singleSelect',
+                filterParams: { options: Array.from(new Set(contextData.map(d => d.classification).filter(Boolean))) as (string | number)[] }
             },
             { key: "register_number", header: "Register Number", sortable: true, filter: 'input' },
             {
@@ -284,6 +306,18 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                 header: "Status",
                 sortable: true,
                 filter: 'singleSelect',
+                render: (row) => {
+                    const status = (row.record_status || '').toLowerCase();
+                    const isActiveStatus = status === 'active';
+                    const colorClasses = isActiveStatus
+                        ? 'bg-emerald-50 text-emerald-700 ring-2 ring-emerald-600'
+                        : 'bg-red-50 text-red-700 ring-2 ring-red-600';
+                    return (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${colorClasses}`}>
+                            {row.record_status || '-'}
+                        </span>
+                    );
+                },
                 filterParams: {
                     options: Array.from(new Set(transformedData.map(f => f.record_status).filter(Boolean))) as (string | number)[]
                 }
@@ -331,7 +365,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         : contextData;
 
     // Apply type filter if selected
-    const finalFilteredData = selectedTypeFilter 
+    const finalFilteredData = selectedTypeFilter
         ? filteredData.filter(asset => (asset as any).asset_type === selectedTypeFilter)
         : filteredData;
 
@@ -379,11 +413,10 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                         const counts = getCountsByClassification(typeName);
                         const isSelected = selectedTypeFilter === typeName;
                         return (
-                            <Card 
+                            <Card
                                 key={typeName}
-                                className={`cursor-pointer transition-all hover:shadow-md ${
-                                    isSelected ? 'border-blue-500 bg-blue-50' : ''
-                                }`}
+                                className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-50' : ''
+                                    }`}
                                 onClick={() => handleTypeCardClick(typeName)}
                             >
                                 <CardHeader>
