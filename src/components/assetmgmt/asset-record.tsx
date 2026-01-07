@@ -7,6 +7,7 @@ import { authenticatedApi } from "../../config/api";
 import { Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Switch } from "@components/ui/switch";
+import ExcelAssetReport from "./excel-asset-report";
 
 interface Brand { id: number; name: string; }
 interface Category { id: number; name: string; }
@@ -14,6 +15,7 @@ interface Type { id: number; name: string; }
 interface Costcenter { id: number; name: string; }
 interface Department { id: number; name: string; }
 interface Location { id: number; name: string; }
+interface Model { id: number; name: string; }
 
 interface Owner {
     ramco_id: string;
@@ -58,12 +60,21 @@ interface Asset {
     asset_type?: string;
     category_name?: string;
     brand_name?: string;
-    model?: string;
+    model_name?: string;
     fuel_type?: string;
     transmission?: string;
     cubic_meter?: string;
     roadtax_expiry_formatted?: string;
     insurance_expiry_formatted?: string;
+    entry_code?: string;
+    condition_status?: string;
+    nbv?: string;
+    unit_price?: string;
+    purpose?: string;
+    disposed_date?: string | null;
+    purchase_id?: number | null;
+    model?: Model;
+    manager_id?: number;
 }
 
 interface AssetRecordProps {
@@ -472,10 +483,11 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                             <Switch
                                 checked={hideNonAsset}
                                 onCheckedChange={setHideNonAsset}
-                                id="asset-switch"
-                            />
-                        </div>
+                            id="asset-switch"
+                        />
+                    </div>
                     )}
+                    <ExcelAssetReport types={types} managerId={managerId} />
                 </div>
             </div>
             {loading ? (
