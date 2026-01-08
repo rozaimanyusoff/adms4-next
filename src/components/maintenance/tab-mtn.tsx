@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { BarChart3, List, Activity, Wrench } from 'lucide-react';
@@ -10,8 +10,12 @@ import Workshop from '@components/billings/workshop';
 import Workflows from '@components/maintenance/workflows';
 import InsuranceModule from './insurance-module';
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
 const TabMaintenance = () => {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const [activeTab, setActiveTab] = useState<string>('dashboard');
     const tabs = [
         {
@@ -33,6 +37,29 @@ const TabMaintenance = () => {
         { value: 'insurance', label: 'Insurance', icon: Wrench, content: <InsuranceModule /> },
         { value: 'workflows', label: 'Authorization Workflows', icon: Activity, content: <Workflows /> },
     ];
+
+    const tabValues = tabs.map(t => t.value);
+
+    // Restore last tab from URL or localStorage
+    useEffect(() => {
+        const urlTab = searchParams?.get('tab');
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('maintenanceTab') : null;
+        const next = tabValues.includes(urlTab ?? '') ? urlTab : tabValues.includes(stored ?? '') ? stored : 'dashboard';
+        if (next && next !== activeTab) setActiveTab(next);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams]);
+
+    // Persist tab to URL and localStorage
+    useEffect(() => {
+        const params = new URLSearchParams(searchParams?.toString());
+        if (params.get('tab') !== activeTab) {
+            params.set('tab', activeTab);
+            router.replace(`${pathname}?${params.toString()}`);
+        }
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('maintenanceTab', activeTab);
+        }
+    }, [activeTab, pathname, router, searchParams]);
 
     return (
         <>

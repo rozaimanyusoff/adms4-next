@@ -30,7 +30,6 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
             responseBeneficiary = (responseBeneficiary as any).beneficiary;
         }
         try {
-             
             console.log('exportPrintingBillSummary: responseBeneficiary ->', responseBeneficiary);
             if (!responseBeneficiary) {
                 toast.error('Export: beneficiary missing in API response (check console)');
@@ -94,48 +93,43 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
 
         let y = 75;
         const tableHeaderRow = [
-            'No', 'Account', 'Inv No', 'Cost Center', 'Location', 'Rental (RM)', 'Color (RM)', 'B/W (RM)', 'Sub-total (RM)'
+            'No', 'Account No', 'Inv No', 'Cost Center', 'Location', 'Rental (RM)', 'Color (RM)', 'B/W (RM)', 'Sub-total (RM)'
         ];
         let rowNum = 1;
-        const tableBody = [
-            tableHeaderRow,
-            ...bills.map((bill: any) => {
-                return [
-                    String(rowNum++),
-                    bill.account?.account || bill.account?.account_no || '',
-                    //bill.ubill_date ? formatDate(bill.ubill_date) : '',
-                    bill.ubill_no || '',
-                    bill.account?.costcenter?.name || (bill.costcenter?.name || '-'),
-                    bill.account?.location?.name || (bill.location?.name || '-'),
-                    Number(bill.ubill_rent || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    Number(bill.ubill_color || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    Number(bill.ubill_bw || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                    Number(bill.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                ];
-            })
-        ];
+        let totalRent = 0;
+        let totalColor = 0;
+        let totalBw = 0;
+        let grandTotal = 0;
+
+        const tableBody = bills.map((bill: any) => {
+            const rent = Number(bill.ubill_rent || 0);
+            const color = Number(bill.ubill_color || 0);
+            const bw = Number(bill.ubill_bw || 0);
+            const gtotal = Number(bill.ubill_gtotal || 0);
+
+            totalRent += rent;
+            totalColor += color;
+            totalBw += bw;
+            grandTotal += gtotal;
+
+            return [
+                String(rowNum++),
+                bill.account?.account || bill.account?.account_no || '',
+                bill.ubill_no || '',
+                bill.account?.costcenter?.name || (bill.costcenter?.name || '-'),
+                bill.account?.location?.name || (bill.location?.name || '-'),
+                rent.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                color.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                bw.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                gtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ];
+        });
 
         autoTable(doc, {
             startY: y,
-            head: [],
+            head: [tableHeaderRow],
             body: tableBody,
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
-            didParseCell: function (data: any) {
-                if (data.row.index === 0) {
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [255, 255, 255];
-                    data.cell.styles.textColor = [0, 0, 0];
-                }
-            },
-            didDrawCell: function (data: any) {
-                if (data.row.index === 0) {
-                    const { cell } = data;
-                    const doc = data.doc;
-                    doc.setDrawColor(200);
-                    doc.setLineWidth(0.1);
-                    doc.rect(cell.x, cell.y, cell.width, cell.height);
-                }
-            },
             columnStyles: {
                 0: { cellWidth: 8, halign: 'center' },
                 1: { cellWidth: 20, halign: 'left' },
@@ -150,42 +144,39 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
             theme: 'grid',
+            headStyles: {
+                fillColor: [41, 128, 185],
+                textColor: 255,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'center',
+            },
+            footStyles: {
+                fillColor: [240, 240, 240],
+                textColor: 0,
+                fontStyle: 'bold',
+                fontSize: 9,
+                halign: 'right',
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200],
+            },
+            foot: [[
+                { content: '', colSpan: 4 },
+                'Grand Total (RM):',
+                totalRent.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                totalColor.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                totalBw.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            ]],
+            didParseCell(data: any) {
+                // Remove left border on the Totals label cell in the footer row
+                if (data.section === 'foot' && data.column.index === 4) {
+                    data.cell.styles.lineWidth = { top: 0.1, right: 0.1, bottom: 0.1, left: 0 };
+                }
+            },
         });
 
-        y = (doc as any).lastAutoTable.finalY + 4;
-
-        // Totals for printing fields — render a boxed totals area on the right
-        const totalRent = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_rent || 0), 0);
-        const totalColor = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_color || 0), 0);
-        const totalBw = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_bw || 0), 0);
-        const grandTotal = bills.reduce((sum: number, b: any) => sum + Number(b.ubill_gtotal || 0), 0);
-        const totalRentLabel = 'Total Rental (RM):';
-        const totalColorLabel = 'Total Color (RM):';
-        const totalBwLabel = 'Total B/W (RM):';
-        const grandTotalLabel = 'Grand Total (RM):';
-        const totalRentValue = totalRent.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const totalColorValue = totalColor.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const totalBwValue = totalBw.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const xStart = 14; // 14 margin + 140 box width
-        const rowHeight = 6; // Grand total box height
-        const colWidth = [8, 20, 20, 25, 25, 20, 20, 20, 25]; // widths for Rental, Color, B/W, Grand Total columns
-        const totalTableWidth = colWidth.reduce((a, b) => a + b, 0); // sum of all colWidths
-        doc.setFillColor(255, 255, 255);
-        doc.setDrawColor(200);
-        doc.setLineWidth(0.1);
-        doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD'); // drawbox for Grand Total ('FD' = fill and draw)
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        //doc.text(totalRentLabel, xStart + totalTableWidth - 28, y, { align: 'right' }); // 1st line label
-        //doc.text(totalRentValue, xStart + totalTableWidth - 66, y, { align: 'right' }); // 1st line value
-        //doc.text(totalBwLabel, xStart + totalTableWidth - 28, y + 5, { align: 'right' });
-        //doc.text(totalBwValue, xStart + totalTableWidth - 46, y, { align: 'right' });
-        //doc.text(totalColorLabel, xStart + totalTableWidth - 28, y + 10, { align: 'right' });
-        //doc.text(totalColorValue, xStart + totalTableWidth - 26, y, { align: 'right' });
-        doc.text(grandTotalLabel, xStart + totalTableWidth - 26, y, { align: 'right' });
-        doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
-        y += 10; // line spacing below box
+        y = (doc as any).lastAutoTable.finalY + 10;
 
         // Signatures area (reuse helper)
         y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 });
@@ -230,6 +221,114 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
         doc.text('Date:', pageWidth / 2 - 28, y);
         doc.text('Date:', pageWidth - 73, y);
         y += 10;
+
+        // Previous 5 bills trend table (if available per account) - shown after signatures
+        try {
+            // Build account -> meta + previous_5_bills map
+            const accountPrevMap = new Map<string, { arr: any[]; costcenter?: string; location?: string }>();
+            bills.forEach((b: any) => {
+                const acct = b?.account?.account_no;
+                if (!acct) return;
+                const meta = {
+                    arr: Array.isArray(b?.previous_5_bills) ? [...b.previous_5_bills] : [],
+                    costcenter: b?.account?.costcenter?.name,
+                    location: b?.account?.location?.name,
+                };
+                if (meta.arr.length) accountPrevMap.set(acct, meta);
+            });
+
+            if (accountPrevMap.size) {
+                // Start the previous bills table on a fresh page (after header/logo space)
+                doc.addPage();
+                y = 50;
+
+                // Header label
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.text('Previous month bill status:', 15, y);
+                y += 4;
+
+                // Sorting helpers for months like 'Jul-2025'
+                const monthIdx: Record<string, number> = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+                const parseMonthKey = (m?: string): number => {
+                    if (!m) return 0;
+                    const [mon, yr] = String(m).split('-');
+                    const yNum = Number(yr || 0);
+                    const mNum = monthIdx[mon as keyof typeof monthIdx] ?? 0;
+                    return yNum * 12 + mNum;
+                };
+                const fmtHeaderMonth = (m?: string) => {
+                    if (!m) return '';
+                    const [mon, yr] = String(m).split('-');
+                    return `${mon}\'${String(yr || '').slice(-2)}`;
+                };
+
+                // Collect union of months across accounts, sort earliest -> latest, keep up to 5
+                const monthSet = new Set<string>();
+                accountPrevMap.forEach(({ arr }) => arr.forEach(pb => pb?.month && monthSet.add(pb.month)));
+                const monthsSorted = Array.from(monthSet).sort((a, b) => parseMonthKey(a) - parseMonthKey(b)).slice(-5);
+
+                // Build table rows
+                const headRow = ['No', 'Account No', ...monthsSorted.map(m => fmtHeaderMonth(m))];
+                const bodyRows: any[] = [];
+                let idxCounter = 1;
+                // helper to format trending with thousands separators and sign
+                const formatTrend = (v: any): string => {
+                    if (v === null || v === undefined || v === '') return '';
+                    const s = String(v).trim();
+                    const hasExplicitSign = s.startsWith('+') || s.startsWith('-');
+                    const sign = s.startsWith('-') ? '-' : (s.startsWith('+') ? '+' : '');
+                    const num = Number(s.replace(/[,+]/g, ''));
+                    if (!Number.isFinite(num)) return s; // fallback to raw if unparseable
+                    const absFmt = Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                    return hasExplicitSign ? `${sign}${absFmt}` : absFmt;
+                };
+
+                accountPrevMap.forEach((meta, acct) => {
+                    const byMonth = new Map<string, any>(meta.arr.map(pb => [pb.month, pb]));
+                    const suffix = meta.costcenter && meta.location
+                        ? ` (${meta.costcenter} - ${meta.location})`
+                        : meta.costcenter
+                            ? ` (${meta.costcenter})`
+                            : meta.location
+                                ? ` (${meta.location})`
+                                : '';
+                    const acctWithCc = `${acct}${suffix}`;
+                    const row: any[] = [String(idxCounter++), acctWithCc];
+                    monthsSorted.forEach(m => {
+                        const pb = byMonth.get(m);
+                        if (!pb) {
+                            row.push('-');
+                            return;
+                        }
+                        const amt = Number(pb.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                        const trendVal = formatTrend(pb.trending);
+                        const trend = trendVal ? ` (${trendVal})` : '';
+                        const billLine = pb.ubill_no ? `\n(${pb.ubill_no})` : '';
+                        row.push(`RM ${amt}`);
+                    });
+                    bodyRows.push(row);
+                });
+
+                // Render compact grid with font size 7
+                autoTable(doc, {
+                    startY: y,
+                    head: [headRow],
+                    body: bodyRows,
+                    styles: { font: 'helvetica', fontSize: 7, cellPadding: 1, halign: 'right' },
+                    headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0], halign: 'center' },
+                    columnStyles: {
+                        0: { halign: 'center', cellWidth: 10 },
+                        1: { halign: 'left', cellWidth: 65 },
+                    },
+                    margin: { left: 14, right: 14 },
+                    theme: 'grid',
+                });
+                y = (doc as any).lastAutoTable.finalY + 4;
+            }
+        } catch (e) {
+            // swallow errors if previous_5_bills not present
+        }
 
         const pad = (n: number) => String(n).padStart(2, '0');
         const tsNow = new Date();
