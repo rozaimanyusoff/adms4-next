@@ -171,7 +171,7 @@ interface VehicleMaintenanceDetailProps {
   requestId: string;
 }
 
-const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ requestId }) => {
+const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = ({ requestId }) => {
   const auth = useContext(AuthContext);
   const authData = auth?.authData;
   const canView = can('view', authData);
@@ -1283,4 +1283,4 @@ const VehicleMaintenanceDetail: React.FC<VehicleMaintenanceDetailProps> = ({ req
   );
 };
 
-export default VehicleMaintenanceDetail;
+export default VehicleMaintenanceAdminDetail;

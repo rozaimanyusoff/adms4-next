@@ -1,5 +1,5 @@
 import React from 'react';
-import VehicleMaintenanceDetail from '@/components/maintenance/vehicle-mtn-detail';
+import VehicleMaintenanceDetail from '@components/maintenance/vehicle-mtn-admin-detail';
 
 export default async function MaintenanceDetailPage(props: any) {
   // Next.js requires awaiting params for dynamic routes in server components

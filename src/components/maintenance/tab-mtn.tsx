@@ -7,6 +7,7 @@ import MaintenanceDash from './mtn-dash';
 import VehicleMaintenanceAdmin from './vehicle-mtn-admin';
 import ServiceTypes from './service-types';
 import Workshop from '@components/billings/workshop';
+import Workflows from '@components/usermgmt/workflows';
 import InsuranceModule from './insurance-module';
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
@@ -26,6 +27,7 @@ const TabMaintenance = () => {
         { value: 'service-types', label: 'Service Types' },
         { value: 'workshop', label: 'Workshop' },
         { value: 'insurance', label: 'Insurance' },
+        { value: 'workflows', label: 'Authorization Workflows' },
 
     ];
     // Keep state in sync if URL ?tab changes (e.g., back/forward navigation)
@@ -44,7 +46,7 @@ const TabMaintenance = () => {
         params.set('tab', activeTab);
         router.replace(`${pathname}?${params.toString()}`);
         // Do not include searchParams to avoid loops; we only react to activeTab/path changes
-         
+
     }, [activeTab, pathname, router]);
 
     return (
@@ -86,6 +88,10 @@ const TabMaintenance = () => {
                     <TabsTrigger value="insurance" className="flex items-center gap-2">
                         Insurance
                     </TabsTrigger>
+                    <TabsTrigger value="workflows" className="flex items-center gap-2">
+                        <Activity size={16} />
+                        Authorization Workflows
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="dashboard" className="mt-6">
@@ -111,6 +117,9 @@ const TabMaintenance = () => {
                 </TabsContent>
                 <TabsContent value="insurance" className="mt-6">
                     <InsuranceModule />
+                </TabsContent>
+                <TabsContent value="workflows" className="mt-6">
+                    <Workflows />
                 </TabsContent>
             </Tabs>
         </>
