@@ -7,7 +7,7 @@ import Groups from "./groups";
 import Navigations from "./navigation";
 import Roles from "./roles";
 import CLogs from "./logs";
-import Workflows from "./workflows";
+import Workflows from "../maintenance/workflows";
 import ManagementModule from "./mgmt-module";
 import PermissionMgmt from "./permission";
 import AdminGuide from "./admin-guide";

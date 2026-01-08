@@ -6,16 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 export interface Workflows {
   id?: number;
@@ -87,7 +83,7 @@ interface WorkflowsProps {
 const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const [workflows, setWorkflows] = useState<Workflows[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Workflows | null>(null);
   const [formData, setFormData] = useState<WorkflowsForm>({
     module_name: '',
@@ -257,7 +253,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
         toast.success('Workflow created successfully');
       }
 
-      setIsDialogOpen(false);
+      setIsFormOpen(false);
       setEditingLevel(null);
       resetForm();
       await fetchApprovalLevels();
@@ -380,13 +376,13 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       setSelectedEmployee(null);
     }
 
-    setIsDialogOpen(true);
+    setIsFormOpen(true);
   };
 
   const handleAdd = () => {
     setEditingLevel(null);
     resetForm();
-    setIsDialogOpen(true);
+    setIsFormOpen(true);
     // Auto-open the employee combobox for better UX
     setTimeout(() => setEmployeeComboboxOpen(true), 100);
   };
@@ -480,7 +476,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           level_name: l.level_name || 'verifier',
         })),
     });
-    setIsDialogOpen(true);
+    setIsFormOpen(true);
   };
 
   const handleDeleteModule = (moduleName: string) => {
@@ -532,31 +528,36 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           <h2 className="text-2xl font-semibold">Workflows Management</h2>
           <p className="text-gray-600 mt-1">Configure workflows for different modules</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={handleAdd} className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Workflow
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingLevel ? 'Edit Workflow' : 'Add New Workflow'}
-              </DialogTitle>
-              <DialogDescription>
-                {editingLevel ? 'Update the workflow details' : 'Create a new workflow for management'}
-              </DialogDescription>
-            </DialogHeader>
+        <Button onClick={handleAdd} className="flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Add Workflow
+        </Button>
+      </div>
 
-            <div className="grid grid-cols-2 gap-4 py-4">
+      {isFormOpen && (
+        <Card className="mb-6">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between">
+              <div>
+                <div className="text-lg">{editingLevel ? 'Edit Workflow' : 'Add New Workflow'}</div>
+                <p className="text-sm font-normal text-gray-500">
+                  {editingLevel ? 'Update the workflow details' : 'Create a new workflow for management'}
+                </p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                Inline edit mode
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="text-sm font-medium block mb-2">Module Name *</label>
                 <Input
                   value={formData.module_name}
                   onChange={(e) => setFormData({ ...formData, module_name: e.target.value })}
                   placeholder="Enter module name"
-                  className='capitalize'
+                  className="capitalize"
                 />
               </div>
 
@@ -647,7 +648,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                               <Select
                                 value={emp.level_name}
                                 onValueChange={(val) => {
-                                  // Optional: prevent duplicate workflow stages
                                   const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
                                   if (duplicateStage) {
                                     toast.error('This level name is already used');
@@ -677,7 +677,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                 onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
                                 value={emp.authorize_level}
                                 onValueChange={(val) => {
-                                  // Prevent duplicate level for the same employee across entries
                                   const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === val);
                                   if (duplicate) {
                                     toast.error('This authorize level is already assigned to this employee');
@@ -740,8 +739,15 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsFormOpen(false);
+                  setEditingLevel(null);
+                  resetForm();
+                }}
+              >
                 Cancel
               </Button>
               <Button
@@ -761,9 +767,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                 )}
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
@@ -818,36 +824,27 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                   {levels.map((level, index) => (
                     <div
                       key={level.id}
-                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
+                      className="relative p-4 bg-gray-50 rounded-lg border pr-28 sm:pr-36"
                     >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <Badge variant="outline" className="text-xs">
-                            {level.level_order}
-                          </Badge>
-                          <span className="font-medium">{level.level_name}</span>
-                          {level.employee?.full_name && (
-                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                              <User className="w-3 h-3 mr-1" />
-                              {level.employee.full_name}
-                            </Badge>
-                          )}
-                          {!level.is_active && (
-                            <Badge variant="destructive" className="text-xs">
-                              Inactive
-                            </Badge>
-                          )}
-                        </div>
-                        {level.description && (
-                          <p className="text-sm text-gray-600 ml-16">{level.description}</p>
-                        )}
-                        {level.employee && (
-                          <p className="text-sm text-blue-600 ml-16">
-                            Employee: {level.employee.full_name} ({level.employee.ramco_id})
-                          </p>
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-medium text-gray-700">
+                          {level.level_order}
+                        </span>
+                        <span className="font-medium capitalize text-gray-900">{level.level_name}</span>
+                        {!level.is_active && (
+                          <span className="text-xs text-red-600 font-semibold">Inactive</span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1">
+                      {level.description && (
+                        <p className="text-sm text-gray-600 ml-10 sm:ml-14">{level.description}</p>
+                      )}
+                      {level.employee && (
+                        <p className="text-sm text-blue-600 ml-10 sm:ml-14">
+                          Employee: {level.employee.full_name} ({level.employee.ramco_id})
+                        </p>
+                      )}
+
+                      <div className="absolute top-3 right-3 flex items-center gap-1 sm:gap-2">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -872,7 +869,8 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleToggleActive(level)}
-                          className="h-8 w-8 p-0"
+                          className="h-8 w-10 px-2"
+                          title={level.is_active ? 'Deactivate' : 'Activate'}
                         >
                           <Switch checked={level.is_active} className="pointer-events-none scale-75" />
                         </Button>
@@ -881,6 +879,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                           size="sm"
                           onClick={() => handleEdit(level)}
                           className="h-8 w-8 p-0"
+                          title="Edit level"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>

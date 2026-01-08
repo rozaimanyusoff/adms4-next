@@ -7,7 +7,7 @@ import MaintenanceDash from './mtn-dash';
 import VehicleMaintenanceAdmin from './vehicle-mtn-admin';
 import ServiceTypes from './service-types';
 import Workshop from '@components/billings/workshop';
-import Workflows from '@components/usermgmt/workflows';
+import Workflows from '@components/maintenance/workflows';
 import InsuranceModule from './insurance-module';
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
