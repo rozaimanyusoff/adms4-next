@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 export interface Workflows {
@@ -23,19 +23,15 @@ export interface Workflows {
   created_at?: string;
   updated_at?: string;
   department_id?: number | null;
-  authorize_level?: string | null;
   employee?: {
     ramco_id: string;
     full_name: string;
   };
 }
 
-type AuthorizeLevel = string; // stores numeric codes as strings: '1','2','3','0'
-
 interface AssignedEmployee {
   ramco_id: string;
   full_name: string;
-  authorize_level: AuthorizeLevel;
   department_id?: number | null;
   level_name: string;
 }
@@ -57,24 +53,7 @@ interface Employee {
   } | null;
 }
 
-const authorizedLevels: { value: string; label: string }[] = [
-  { value: '1', label: 'hod' },
-  { value: '2', label: 'supervisor' },
-  { value: '3', label: 'applicant' },
-  { value: '0', label: 'none' },
-];
 const levelNames: string[] = ['verifier', 'recommender', 'approver'];
-
-// Helper: map backend/string to code
-const mapAuthorizeLevelToCode = (input: any): string | undefined => {
-  if (input === null || input === undefined) return undefined;
-  const s = String(input).toLowerCase().trim();
-  // direct code match
-  if (authorizedLevels.some(a => a.value === s)) return s;
-  // label match
-  const match = authorizedLevels.find(a => a.label === s);
-  return match?.value;
-};
 
 interface WorkflowsProps {
   className?: string;
@@ -100,9 +79,16 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
   const [employeeComboboxOpen, setEmployeeComboboxOpen] = useState(false);
-  // Per-employee authorize level select state
-  const [empSelectOpen, setEmpSelectOpen] = useState<Record<number, boolean>>({});
-  // Removed custom authorize level input; using fixed options
+  const [lastReplacement, setLastReplacement] = useState<{
+    removed: { name: string; id: string };
+    added: { name: string; id: string };
+    role?: string;
+  } | null>(null);
+  const roleLocked = Boolean(editingLevel);
+  const isEditing = Boolean(editingLevel);
+  const formTitle = isEditing
+    ? `Edit ${editingLevel?.level_name || 'role'} in ${editingLevel?.module_name} workflow`
+    : 'Add New Workflow';
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -208,7 +194,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       if (
         !formData.module_name ||
         formData.employees.length === 0 ||
-        formData.employees.some(e => !e.authorize_level?.trim() || !e.level_name?.trim())
+        formData.employees.some(e => !e.level_name?.trim())
       ) {
         toast.error('Please fill in all required fields');
         setSaving(false);
@@ -227,7 +213,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           module_name: formData.module_name,
           description: formData.description,
           level_name: assignee.level_name,
-          authorize_level: Number(assignee.authorize_level),
           level_order: editingLevel.level_order ?? 1,
           ramco_id: assignee.ramco_id,
           department_id: assignee.department_id ?? null,
@@ -243,9 +228,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           is_active: formData.is_active,
           employees: formData.employees.map((e) => ({
             ramco_id: e.ramco_id,
-            department_id: e.department_id ?? null,
             level_name: e.level_name,
-            authorize_level: Number(e.authorize_level),
           })),
         };
 
@@ -274,44 +257,58 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   const handleAddSelectedEmployee = () => {
     if (!selectedEmployee) return;
-    // Allow duplicates for the same employee as long as authorize_level differs
-    const usedLevels = formData.employees
-      .filter((e) => e.ramco_id === selectedEmployee.ramco_id)
-      .map((e) => e.authorize_level);
+    if (isEditing) {
+      // Replace current employee entry with the newly selected employee
+      const existingLevelName = formData.employees[0]?.level_name || levelNames[0] || 'verifier';
+      const previous = formData.employees[0];
+      if (previous && previous.ramco_id === selectedEmployee.ramco_id) {
+        setEmployeeComboboxOpen(false);
+        return;
+      }
 
-    // Pick first unused standard level; if all used, leave empty to let user choose
-    const defaultLevel = (authorizedLevels.find((lvl) => !usedLevels.includes(lvl.value))?.value) || '';
-    // Pick first unused workflow level name
-    const usedLevelNames = formData.employees.map((e) => e.level_name);
-    const defaultLevelName = levelNames.find((n) => !usedLevelNames.includes(n)) || '';
-
-    // Prevent adding exact duplicate pair (same employee with same level)
-    if (defaultLevel && formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id && e.authorize_level === defaultLevel)) {
-      toast.error('Employee already added with this authorize level');
-      return;
-    }
-
-    // If all standard levels are used and there is already an empty-level entry, block
-    if (!defaultLevel && formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id && !e.authorize_level)) {
-      toast.error('Please set a unique authorize level for the existing entry first');
-      return;
-    }
-
-    setFormData({
-      ...formData,
-      employees: [
-        ...formData.employees,
-        {
+      setFormData({
+        ...formData,
+        employees: [{
           ramco_id: selectedEmployee.ramco_id,
           full_name: selectedEmployee.full_name,
-          authorize_level: defaultLevel,
           department_id: selectedEmployee.department?.id ?? null,
-          level_name: defaultLevelName,
-        },
-      ],
-    });
+          level_name: existingLevelName,
+        }],
+      });
+      if (previous) {
+        setLastReplacement({
+          removed: { name: previous.full_name, id: previous.ramco_id },
+          added: { name: selectedEmployee.full_name, id: selectedEmployee.ramco_id },
+          role: existingLevelName,
+        });
+      } else {
+        setLastReplacement(null);
+      }
+    } else {
+      // Adding new entries for a new workflow
+      if (formData.employees.some((e) => e.ramco_id === selectedEmployee.ramco_id)) {
+        toast.error('Employee already added');
+        return;
+      }
+      const usedLevelNames = formData.employees.map((e) => e.level_name);
+      const defaultLevelName = levelNames.find((n) => !usedLevelNames.includes(n)) || levelNames[0] || 'verifier';
+      setFormData({
+        ...formData,
+        employees: [
+          ...formData.employees,
+          {
+            ramco_id: selectedEmployee.ramco_id,
+            full_name: selectedEmployee.full_name,
+            department_id: selectedEmployee.department?.id ?? null,
+            level_name: defaultLevelName,
+          },
+        ],
+      });
+      setLastReplacement(null);
+    }
     setSelectedEmployee(null);
     setEmployeeSearchQuery('');
+    setEmployeeComboboxOpen(false);
   };
 
   const handleRemoveAssignedEmployee = (index: number) => {
@@ -357,8 +354,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           {
             ramco_id: level.employee.ramco_id,
             full_name: level.employee.full_name,
-            // if API returns authorize_level, use it; otherwise default
-            authorize_level: mapAuthorizeLevelToCode((level as any).authorize_level) || '1',
             department_id: (level as any).department_id ?? null,
             level_name: level.level_name || 'verifier',
           },
@@ -394,6 +389,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       is_active: true,
       employees: []
     });
+    setLastReplacement(null);
     setSelectedEmployee(null);
     setEmployeeSearchQuery('');
     setEmployees([]);
@@ -471,7 +467,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
         .map((l) => ({
           ramco_id: l.employee!.ramco_id,
           full_name: l.employee!.full_name,
-          authorize_level: mapAuthorizeLevelToCode((l as any).authorize_level) || '1',
           department_id: (l as any).department_id ?? null,
           level_name: l.level_name || 'verifier',
         })),
@@ -480,12 +475,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleDeleteModule = (moduleName: string) => {
-    const levels = groupedLevels[moduleName] || [];
     const performDelete = async () => {
       try {
-        for (const lvl of levels) {
-          await authenticatedApi.delete(`/api/users/approvals/${lvl.id}`);
-        }
+        await authenticatedApi.delete(`/api/users/workflows/${moduleName}`);
         toast.success('Workflow deleted successfully');
         await fetchApprovalLevels();
       } catch (error) {
@@ -535,39 +527,54 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       </div>
 
       {isFormOpen && (
-        <Card className="mb-6">
+        <Card className="mb-6 bg-stone-200/50">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center justify-between">
               <div>
-                <div className="text-lg">{editingLevel ? 'Edit Workflow' : 'Add New Workflow'}</div>
+                <div className="text-lg">{formTitle}</div>
                 <p className="text-sm font-normal text-gray-500">
                   {editingLevel ? 'Update the workflow details' : 'Create a new workflow for management'}
                 </p>
               </div>
-              <Badge variant="outline" className="text-xs">
-                Inline edit mode
-              </Badge>
+              <div className="flex items-center gap-2 text-sm">
+                <Switch
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+                <span className="font-medium">Active</span>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="text-sm font-medium block mb-2">Module Name *</label>
-                <Input
-                  value={formData.module_name}
-                  onChange={(e) => setFormData({ ...formData, module_name: e.target.value })}
-                  placeholder="Enter module name"
-                  className="capitalize"
-                />
-              </div>
+              {editingLevel ? (
+                <>
+                  <input type="hidden" value={formData.module_name} readOnly />
+                  <textarea className="hidden" value={formData.description} readOnly />
+                </>
+              ) : (
+                <>
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium block mb-2">Module Name *</label>
+                    <Input
+                      value={formData.module_name}
+                      onChange={(e) => setFormData({ ...formData, module_name: e.target.value })}
+                      placeholder="Enter module name"
+                      className="capitalize bg-stone-50/50"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="col-span-2">
-                <label className="text-sm font-medium block mb-2">Employees *</label>
+                <label className="text-sm font-medium block mb-2">
+                  {isEditing ? 'Role replacement' : 'Add Role'}
+                </label>
                 <div className="relative employee-dropdown">
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
-                      placeholder="Search employee..."
+                      placeholder={isEditing ? 'Search replacement employee...' : 'Search employee...'}
                       value={employeeSearchQuery}
                       onChange={(e) => {
                         setEmployeeSearchQuery(e.target.value);
@@ -582,7 +589,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                           setEmployeeComboboxOpen(true);
                         }
                       }}
-                      className="pl-10"
+                      className="pl-10 bg-stone-50/50"
                     />
                     <Button
                       type="button"
@@ -591,9 +598,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       variant="default"
                       onClick={handleAddSelectedEmployee}
                       disabled={!selectedEmployee}
-                      title="Add employee"
+                      title={isEditing ? 'Replace employee' : 'Add employee to workflow'}
                     >
-                      <Plus className="w-4 h-4" />
+                      {isEditing ? <RefreshCw className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     </Button>
                   </div>
 
@@ -637,17 +644,25 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                   {formData.employees.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {formData.employees.map((emp, idx) => (
-                        <div key={`${emp.ramco_id}-${idx}`} className="flex items-center justify-between gap-3 p-2 bg-gray-50 border rounded">
+                        <div key={`${emp.ramco_id}-${idx}`} className="flex items-center justify-between gap-3 p-2 bg-stone-50/50 border rounded">
                           <div className="flex-1">
                             <div className="font-medium text-sm">{emp.full_name}</div>
                             <div className="text-xs text-gray-500">{emp.ramco_id}</div>
                           </div>
+                      {lastReplacement && isEditing && (
+                        <div className="text-xs text-blue-600 px-3 py-2">
+                          Replaced <span className="font-semibold">{lastReplacement.removed.name}</span> ({lastReplacement.removed.id})
+                          with <span className="font-semibold">{lastReplacement.added.name}</span> ({lastReplacement.added.id})
+                          {lastReplacement.role ? <> as <span className="font-semibold capitalize">{lastReplacement.role}</span></> : null}
+                        </div>
+                      )}
                           <div className="flex items-center gap-2">
-                            <div className="flex flex-col gap-2">
-                              {/* Level name (workflow stage) */}
+                            {!isEditing && (
                               <Select
+                                disabled={roleLocked}
                                 value={emp.level_name}
                                 onValueChange={(val) => {
+                                  if (roleLocked) return;
                                   const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
                                   if (duplicateStage) {
                                     toast.error('This level name is already used');
@@ -659,7 +674,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                   });
                                 }}
                               >
-                                <SelectTrigger className="w-55">
+                                <SelectTrigger className="w-55" disabled={roleLocked}>
                                   <SelectValue placeholder="Level" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -670,36 +685,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                   ))}
                                 </SelectContent>
                               </Select>
-
-                              {/* Authorize level (role) */}
-                              <Select
-                                open={empSelectOpen[idx] || false}
-                                onOpenChange={(o) => setEmpSelectOpen((prev) => ({ ...prev, [idx]: o }))}
-                                value={emp.authorize_level}
-                                onValueChange={(val) => {
-                                  const duplicate = formData.employees.some((x, i) => i !== idx && x.ramco_id === emp.ramco_id && x.authorize_level === val);
-                                  if (duplicate) {
-                                    toast.error('This authorize level is already assigned to this employee');
-                                    return;
-                                  }
-                                  setFormData({
-                                    ...formData,
-                                    employees: formData.employees.map((x, i) => (i === idx ? { ...x, authorize_level: val } : x)),
-                                  });
-                                }}
-                              >
-                                <SelectTrigger className="w-55">
-                                  <SelectValue placeholder="Authorize level" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {authorizedLevels.map((lvl) => (
-                                    <SelectItem key={lvl.value} value={lvl.value}>
-                                      {lvl.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            )}
                             <Button
                               type="button"
                               variant="ghost"
@@ -718,25 +704,18 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                 </div>
               </div>
 
-              <div className="col-span-2">
-                <label className="text-sm font-medium block mb-2">Description</label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Optional description of this approval level"
-                  rows={3}
-                />
-              </div>
-
-              <div className="col-span-2">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              {!editingLevel && (
+                <div className="col-span-2">
+                  <label className="text-sm font-medium block mb-2">Description</label>
+                  <Textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Optional description of this approval level"
+                    rows={3}
+                    className='bg-stone-50/50'
                   />
-                  <label className="text-sm font-medium">Active</label>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
@@ -778,9 +757,11 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
         </div>
       ) : (
         <Accordion type="multiple" className="space-y-4">
-          {Object.entries(groupedLevels).map(([moduleName, levels]) => (
-            <AccordionItem key={moduleName} value={moduleName} className='border rounded-lg'>
-              <AccordionTrigger className="px-6 py-4 hover:no-underline">
+          {Object.entries(groupedLevels).map(([moduleName, levels]) => {
+            const isEditingModule = editingLevel?.module_name === moduleName;
+            return (
+              <AccordionItem key={moduleName} value={moduleName} className={`border rounded-lg ${isEditingModule ? 'ring-2 ring-red-400 border-red-200' : ''}`}>
+                <AccordionTrigger className="px-6 py-4 hover:no-underline">
                 <div className="flex items-center justify-between w-full mr-4">
                   <div className="flex items-center gap-3">
                     <Settings className="w-5 h-5" />
@@ -818,83 +799,84 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                     </Button>
                   </div>
                 </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-6 pb-4">
-                <div className="space-y-3">
-                  {levels.map((level, index) => (
-                    <div
-                      key={level.id}
-                      className="relative p-4 bg-gray-50 rounded-lg border pr-28 sm:pr-36"
-                    >
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-medium text-gray-700">
-                          {level.level_order}
-                        </span>
-                        <span className="font-medium capitalize text-gray-900">{level.level_name}</span>
-                        {!level.is_active && (
-                          <span className="text-xs text-red-600 font-semibold">Inactive</span>
+                </AccordionTrigger>
+                <AccordionContent className="px-6 pb-4">
+                  <div className="space-y-3">
+                    {levels.map((level, index) => (
+                      <div
+                        key={level.id}
+                        className="relative p-4 bg-gray-50 rounded-lg border pr-28 sm:pr-36"
+                      >
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-medium text-gray-700">
+                            {level.level_order}
+                          </span>
+                          <span className="font-medium capitalize text-gray-900">{level.level_name}</span>
+                          {!level.is_active && (
+                            <span className="text-xs text-red-600 font-semibold">Inactive</span>
+                          )}
+                        </div>
+                        {level.description && (
+                          <p className="text-sm text-gray-600 ml-10 sm:ml-14">{level.description}</p>
                         )}
-                      </div>
-                      {level.description && (
-                        <p className="text-sm text-gray-600 ml-10 sm:ml-14">{level.description}</p>
-                      )}
-                      {level.employee && (
-                        <p className="text-sm text-blue-600 ml-10 sm:ml-14">
-                          Employee: {level.employee.full_name} ({level.employee.ramco_id})
-                        </p>
-                      )}
+                        {level.employee && (
+                          <p className="text-sm text-blue-600 ml-10 sm:ml-14">
+                            Employee: {level.employee.full_name} ({level.employee.ramco_id})
+                          </p>
+                        )}
 
-                      <div className="absolute top-3 right-3 flex items-center gap-1 sm:gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleChevronMove(moduleName, index, 'up')}
-                          disabled={index === 0}
-                          className="h-8 w-8 p-0"
-                          title="Move up"
-                        >
-                          <ChevronUp className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleChevronMove(moduleName, index, 'down')}
-                          disabled={index === levels.length - 1}
-                          className="h-8 w-8 p-0"
-                          title="Move down"
-                        >
-                          <ChevronDown className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleToggleActive(level)}
-                          className="h-8 w-10 px-2"
-                          title={level.is_active ? 'Deactivate' : 'Activate'}
-                        >
-                          <Switch checked={level.is_active} className="pointer-events-none scale-75" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(level)}
-                          className="h-8 w-8 p-0"
-                          title="Edit level"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
+                        <div className="absolute top-3 right-3 flex items-center gap-1 sm:gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleChevronMove(moduleName, index, 'up')}
+                            disabled={index === 0}
+                            className="h-8 w-8 p-0"
+                            title="Move up"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleChevronMove(moduleName, index, 'down')}
+                            disabled={index === levels.length - 1}
+                            className="h-8 w-8 p-0"
+                            title="Move down"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleActive(level)}
+                            className="h-8 w-10 px-2"
+                            title={level.is_active ? 'Deactivate' : 'Activate'}
+                          >
+                            <Switch checked={level.is_active} className="pointer-events-none scale-75" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(level)}
+                            className="h-8 w-8 p-0"
+                            title="Edit level"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  {levels.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      No approval levels configured for this module
-                    </div>
-                  )}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+                    ))}
+                    {levels.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">
+                        No approval levels configured for this module
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
         </Accordion>
       )}
 

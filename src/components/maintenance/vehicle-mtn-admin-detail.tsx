@@ -1035,7 +1035,7 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
                         size="sm"
                         onClick={resendRecommendationRequest}
                         disabled={resendingRecommendation || !canResendRecommendation}
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        className="bg-white border text-dark border-blue-600 hover:bg-blue-700 hover:text-white"
                       >
                         {resendingRecommendation ? (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1049,7 +1049,7 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
                         size="sm"
                         onClick={resendApprovalRequest}
                         disabled={resendingApproval || !canResendApproval}
-                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                        className="bg-white border text-dark border-purple-600 hover:bg-purple-700 hover:text-white"
                       >
                         {resendingApproval ? (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
