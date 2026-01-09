@@ -5,9 +5,8 @@ import { CustomDataGrid, ColumnDef } from "@/components/ui/DataGrid";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { MultiSelect, type ComboboxOption } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authenticatedApi } from "@/config/api";
 import { toast } from "sonner";
@@ -75,6 +74,15 @@ const displayName = (value: any) => {
   return value?.name || value?.full_name || value?.code || value?.label || "-";
 };
 
+const normalizeClassificationLabel = (value: any) => {
+  const raw = displayName(value);
+  const lower = raw.toString().toLowerCase();
+  if (raw === "-" || raw.trim() === "") return "Unclassified";
+  if (["asset", "assets"].includes(lower)) return "Asset";
+  if (["non-asset", "non asset", "nonasset"].includes(lower)) return "Non-Asset";
+  return raw;
+};
+
 const uniqueOptions = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.filter((v): v is string | number => v !== undefined && v !== null && v !== "")));
 
@@ -82,11 +90,8 @@ const PcAssessmentRecord: React.FC = () => {
   const router = useRouter();
   const [data, setData] = useState<PcAssessmentRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
-  const [selectedCostcenter, setSelectedCostcenter] = useState<string[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string[]>([]);
-  const [selectedAssessmentYears, setSelectedAssessmentYears] = useState<string[]>([]);
-  const [onlyDeviceCategories, setOnlyDeviceCategories] = useState(true);
+  const [hideDisposed, setHideDisposed] = useState(true);
+  const [resendingId, setResendingId] = useState<number | null>(null);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -136,92 +141,91 @@ const PcAssessmentRecord: React.FC = () => {
     [data]
   );
 
-  const categorySummary = useMemo(
-    () => summarize((row) => displayName(row.category)),
-    [summarize]
-  );
-  const costcenterSummary = useMemo(
-    () => summarize((row) => displayName(row.costcenter)),
-    [summarize]
-  );
-  const locationSummary = useMemo(
-    () => summarize((row) => displayName(row.location)),
-    [summarize]
-  );
-  const lastAssessmentSummary = useMemo(
-    () =>
-      summarize((row) => {
-        const year = row.last_assessment?.assessment_year;
-        return year ? String(year) : "Not Assessed";
-      }),
-    [summarize]
-  );
+  const overallAssessmentSummary = useMemo(() => {
+    const total = data.length;
+    const assessed = data.filter((row) => row.assessed).length;
+    const notAssessed = total - assessed;
+    const pct = (count: number) => (total === 0 ? 0 : Math.round((count / total) * 1000) / 10);
+    return {
+      total,
+      assessed,
+      notAssessed,
+      assessedPct: pct(assessed),
+      notAssessedPct: pct(notAssessed),
+    };
+  }, [data]);
 
-  const summaryToOptions = useCallback(
-    (items: { label: string; count: number }[]): ComboboxOption[] =>
-      items.map((item) => ({
-        value: item.label,
-        label: item.label,
-        render: (
-          <div className="flex w-full items-center justify-between">
-            <span className="truncate">{item.label}</span>
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-              {item.count}
-            </Badge>
-          </div>
-        ),
-      })),
-    []
-  );
+  const classificationBreakdown = useMemo(() => {
+    const map = new Map<
+      string,
+      { assessed: number; total: number }
+    >();
+    data.forEach((row) => {
+      const label = normalizeClassificationLabel(row.classification);
+      const entry = map.get(label) ?? { assessed: 0, total: 0 };
+      entry.total += 1;
+      if (row.assessed) entry.assessed += 1;
+      map.set(label, entry);
+    });
+    return Array.from(map.entries())
+      .map(([label, counts]) => {
+        const notAssessed = counts.total - counts.assessed;
+        const pct = (val: number) => (counts.total === 0 ? 0 : Math.round((val / counts.total) * 1000) / 10);
+        return {
+          label,
+          ...counts,
+          notAssessed,
+          assessedPct: pct(counts.assessed),
+          notAssessedPct: pct(notAssessed),
+        };
+      })
+      .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  }, [data]);
 
-  const deviceCategorySet = useMemo(() => new Set(["laptop", "desktop", "tablet"]), []);
-  const categoryOptions = useMemo(
-    () =>
-      summaryToOptions(
-        categorySummary.filter(
-          (item) => !onlyDeviceCategories || deviceCategorySet.has(item.label.toLowerCase())
-        )
-      ),
-    [categorySummary, summaryToOptions, onlyDeviceCategories, deviceCategorySet]
-  );
-  const costcenterOptions = useMemo(
-    () => summaryToOptions(costcenterSummary),
-    [costcenterSummary, summaryToOptions]
-  );
-  const locationOptions = useMemo(() => summaryToOptions(locationSummary), [locationSummary, summaryToOptions]);
+  const assessedByLocation = useMemo(() => {
+    const map = new Map<string, { assessed: number; total: number }>();
+    data.forEach((row) => {
+      const label = displayName(row.location);
+      const entry = map.get(label) ?? { assessed: 0, total: 0 };
+      entry.total += 1;
+      if (row.assessed) entry.assessed += 1;
+      map.set(label, entry);
+    });
+    return Array.from(map.entries())
+      .map(([label, counts]) => ({
+        label,
+        ...counts,
+        percent: counts.total === 0 ? 0 : Math.round((counts.assessed / counts.total) * 1000) / 10,
+      }))
+      .sort((a, b) => b.assessed - a.assessed || a.label.localeCompare(b.label));
+  }, [data]);
+
+  const assessedByCategory = useMemo(() => {
+    const map = new Map<string, { assessed: number; total: number }>();
+    data.forEach((row) => {
+      const label = displayName(row.category);
+      const entry = map.get(label) ?? { assessed: 0, total: 0 };
+      entry.total += 1;
+      if (row.assessed) entry.assessed += 1;
+      map.set(label, entry);
+    });
+    return Array.from(map.entries())
+      .map(([label, counts]) => ({
+        label,
+        ...counts,
+        percent: counts.total === 0 ? 0 : Math.round((counts.assessed / counts.total) * 1000) / 10,
+      }))
+      .sort((a, b) => b.assessed - a.assessed || a.label.localeCompare(b.label));
+  }, [data]);
 
   const filteredData = useMemo(
     () =>
       data.filter((row) => {
-        const categoryLabel = displayName(row.category);
-        const costcenterLabel = displayName(row.costcenter);
-        const locationLabel = displayName(row.location);
-        const assessmentLabel = row.last_assessment?.assessment_year
-          ? String(row.last_assessment.assessment_year)
-          : "Not Assessed";
-        const isDeviceCategory = ["laptop", "desktop", "tablet"].includes(
-          categoryLabel?.toString().toLowerCase()
-        );
-
-        const categoryMatch =
-          selectedCategory.length === 0 || selectedCategory.includes(categoryLabel);
-        const costcenterMatch =
-          selectedCostcenter.length === 0 || selectedCostcenter.includes(costcenterLabel);
-        const locationMatch =
-          selectedLocation.length === 0 || selectedLocation.includes(locationLabel);
-        const assessmentMatch =
-          selectedAssessmentYears.length === 0 || selectedAssessmentYears.includes(assessmentLabel);
-        const deviceGate = !onlyDeviceCategories || isDeviceCategory;
-        return categoryMatch && costcenterMatch && locationMatch && assessmentMatch && deviceGate;
+        const isDisposed = String(row.record_status || "").toLowerCase() === "disposed";
+        if (hideDisposed && isDisposed) return false;
+        return true;
       }),
-    [
-      data,
-      selectedCategory,
-      selectedCostcenter,
-      selectedLocation,
-      selectedAssessmentYears,
-      onlyDeviceCategories,
-    ]
+    [data, hideDisposed]
   );
 
   const handleCreate = useCallback(() => {
@@ -236,8 +240,24 @@ const PcAssessmentRecord: React.FC = () => {
     [router]
   );
 
+  const handleResendEmail = useCallback(async (assessmentId?: number) => {
+    if (!assessmentId) {
+      toast.error("No assessment available to resend");
+      return;
+    }
+    try {
+      setResendingId(assessmentId);
+      await authenticatedApi.post(`/api/compliance/it-assess/${assessmentId}/resend-email`);
+      toast.success("Assessment email resent");
+    } catch (error) {
+      console.error("Failed to resend assessment email", error);
+      toast.error("Failed to resend assessment email");
+    } finally {
+      setResendingId(null);
+    }
+  }, []);
+
   const columns: ColumnDef<PcAssessmentRow>[] = useMemo(() => {
-    const typeOptions = uniqueOptions(data.map((d) => (typeof d.type === "string" ? d.type : d.type?.name)));
     const categoryFilterOptions = uniqueOptions(
       data.map((d) => (typeof d.category === "string" ? d.category : d.category?.name))
     );
@@ -259,13 +279,12 @@ const PcAssessmentRecord: React.FC = () => {
     return [
       { key: "id", header: "ID", sortable: true },
       { key: "register_number", header: "Register #", sortable: true, filter: "input" },
-      { key: "entry_code", header: "Entry Code", sortable: true, filter: "input" },
       {
-        key: "type",
-        header: "Type",
+        key: "classification",
+        header: "Classification",
         filter: "singleSelect",
-        filterParams: { options: typeOptions },
-        render: (row) => displayName(row.type),
+        filterParams: { options: uniqueOptions(data.map((d) => d.classification || "")) },
+        render: (row) => row.classification || "-",
       },
       {
         key: "category",
@@ -274,12 +293,27 @@ const PcAssessmentRecord: React.FC = () => {
         filterParams: { options: categoryFilterOptions },
         render: (row) => displayName(row.category),
       },
+      { key: "owner", header: "Owner", filter: "input", render: (row) => displayName(row.owner) },
       {
-        key: "classification",
-        header: "Classification",
+        key: "costcenter",
+        header: "Cost Center",
         filter: "singleSelect",
-        filterParams: { options: uniqueOptions(data.map((d) => d.classification || "")) },
-        render: (row) => row.classification || "-",
+        filterParams: { options: costCenterOptions },
+        render: (row) => displayName(row.costcenter),
+      },
+      {
+        key: "location",
+        header: "Location",
+        filter: "singleSelect",
+        filterParams: { options: locationFilterOptions },
+        render: (row) => displayName(row.location),
+      },
+      {
+        key: "department",
+        header: "Department",
+        filter: "singleSelect",
+        filterParams: { options: deptOptions },
+        render: (row) => displayName(row.department),
       },
       { key: "brand", header: "Brand", filter: "input", render: (row) => displayName(row.brand) },
       { key: "model", header: "Model", filter: "input", render: (row) => displayName(row.model) },
@@ -351,36 +385,6 @@ const PcAssessmentRecord: React.FC = () => {
       },
       { key: "purchase_id", header: "Purchase ID", sortable: true },
       {
-        key: "unit_price",
-        header: "Unit Price",
-        sortable: true,
-        render: (row) => formatMoney(row.unit_price),
-      },
-      { key: "nbv", header: "NBV", sortable: true, render: (row) => formatMoney(row.nbv) },
-      {
-        key: "costcenter",
-        header: "Cost Center",
-        filter: "singleSelect",
-        filterParams: { options: costCenterOptions },
-        render: (row) => displayName(row.costcenter),
-      },
-      {
-        key: "location",
-        header: "Location",
-        filter: "singleSelect",
-        filterParams: { options: locationFilterOptions },
-        render: (row) => displayName(row.location),
-      },
-      {
-        key: "department",
-        header: "Department",
-        filter: "singleSelect",
-        filterParams: { options: deptOptions },
-        render: (row) => displayName(row.department),
-      },
-      { key: "owner", header: "Owner", filter: "input", render: (row) => displayName(row.owner) },
-      { key: "purpose", header: "Purpose", filter: "input", render: (row) => row.purpose || "-" },
-      {
         key: "disposed_date",
         header: "Disposed Date",
         filter: "date",
@@ -389,122 +393,181 @@ const PcAssessmentRecord: React.FC = () => {
       {
         key: "action",
         header: "Action",
-        render: (row) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-blue-600 hover:text-blue-800"
-            onClick={() => handleOpenRow(row)}
-          >
-            <Eye className="h-4 w-4 mr-1" />
-            Assess
-          </Button>
-        ),
+        render: (row) => {
+          const lastAssessmentId =
+            row.last_assessment?.id ??
+            (Array.isArray(row.assessments) && row.assessments.length > 0
+              ? row.assessments[row.assessments.length - 1]?.id
+              : undefined);
+          const isResending = resendingId === lastAssessmentId;
+
+          return (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => handleOpenRow(row)}
+              >
+                <Eye className="h-4 w-4 mr-1" />
+                Assess
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-emerald-600 hover:text-emerald-800"
+                disabled={!lastAssessmentId || isResending}
+                onClick={() => handleResendEmail(lastAssessmentId)}
+              >
+                <Send className="h-4 w-4 mr-1" />
+                {isResending ? "Sending..." : "Resend Email"}
+              </Button>
+            </div>
+          );
+        },
       },
     ];
-  }, [data, handleOpenRow]);
+  }, [data, handleOpenRow, handleResendEmail, resendingId]);
+  const columnsKey = useMemo(() => columns.map((col) => String(col.key)).join("|"), [columns]);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
+          <h1 className="text-xl font-semibold">IT Assessment Record</h1>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            Compliance / IT Hardware
+            Assessment records for IT Hardware
           </p>
-          <h1 className="text-xl font-semibold">PC Assessment Record</h1>
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-4 md:items-end">
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Category</p>
-          <MultiSelect
-            options={categoryOptions}
-            value={selectedCategory}
-            onValueChange={setSelectedCategory}
-            placeholder="Select category..."
-            searchPlaceholder="Search category..."
-            clearable
-          />
-        </div>
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Cost Center</p>
-          <MultiSelect
-            options={costcenterOptions}
-            value={selectedCostcenter}
-            onValueChange={setSelectedCostcenter}
-            placeholder="Select cost center..."
-            searchPlaceholder="Search cost center..."
-            clearable
-          />
-        </div>
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By Location</p>
-          <MultiSelect
-            options={locationOptions}
-            value={selectedLocation}
-            onValueChange={setSelectedLocation}
-            placeholder="Select location..."
-            searchPlaceholder="Search location..."
-            clearable
-          />
-        </div>
-        <div className="flex flex-col gap-1 md:items-end md:justify-end">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category Filter</p>
-          <div className="flex items-center gap-2">
-            <div className="text-sm text-muted-foreground">Only Laptop/Desktop/Tablet</div>
-            <Switch checked={onlyDeviceCategories} onCheckedChange={setOnlyDeviceCategories} />
-          </div>
-        </div>
+      {/* Assessment summary removed in favor of classification breakdown */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Card className="border-stone-300 bg-stone-200/30">
+          <CardContent className="space-y-2 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assessed by Location</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {assessedByLocation.map((item) => {
+                const zero = item.assessed === 0;
+                return (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between px-3 py-1"
+                  >
+                    <span className={zero ? "text-red-600 font-semibold" : ""}>{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-semibold ${zero ? "text-red-600" : ""}`}>
+                        {item.assessed}/{item.total}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className={`${zero ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}
+                      >
+                        {item.percent.toFixed(1)}%
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+              {assessedByLocation.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No location data</CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-stone-300 bg-stone-200/30">
+          <CardContent className="space-y-2 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assessed by Category</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {assessedByCategory.map((item) => {
+                const zero = item.assessed === 0;
+                return (
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between px-3 py-1"
+                  >
+                    <span className={zero ? "text-red-600 font-semibold" : ""}>{item.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-semibold ${zero ? "text-red-600" : ""}`}>
+                        {item.assessed}/{item.total}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className={`${zero ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}
+                      >
+                        {item.percent.toFixed(1)}%
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
+              {assessedByCategory.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No category data</CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-stone-300 bg-stone-200/30">
+          <CardContent className="space-y-3 px-3 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Classification Breakdown</p>
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+              {classificationBreakdown.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-lg bg-stone-300/40 px-4 py-3 flex flex-col gap-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-semibold">{item.label}</span>
+                    <Badge variant="outline" className="bg-lime-50 text-lime-700 border-lime-200">
+                      {item.total}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Assessed</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{item.assessed}</span>
+                        <Badge variant="secondary" className="bg-green-100 text-green-700">
+                          {item.assessedPct.toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Not Assessed</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{item.notAssessed}</span>
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-700">
+                          {item.notAssessedPct.toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {classificationBreakdown.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No classification data</CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Last Assessment</p>
-        <div className="flex flex-wrap items-center gap-2">
-          {lastAssessmentSummary.map((item) => {
-            const active = selectedAssessmentYears.includes(item.label);
-            return (
-              <Card
-                key={item.label}
-                role="button"
-                tabIndex={0}
-                onClick={() =>
-                  setSelectedAssessmentYears((prev) =>
-                    prev.includes(item.label)
-                      ? prev.filter((yr) => yr !== item.label)
-                      : [...prev, item.label]
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") e.currentTarget.click();
-                }}
-                className={`cursor-pointer transition-colors ${
-                  active
-                    ? "border-blue-300 bg-blue-50/70"
-                    : "border-fuchsia-200 bg-fuchsia-50/50 hover:border-fuchsia-300"
-                }`}
-              >
-                <CardContent className="flex items-center gap-2 px-3 py-2">
-                  <span className="truncate font-medium">{item.label}</span>
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                    {item.count}
-                  </Badge>
-                </CardContent>
-              </Card>
-            );
-          })}
-          <div className="flex items-stretch ml-auto">
-            <Button onClick={handleCreate} className="gap-2 w-full sm:w-auto" disabled={loading}>
-              <Plus className="h-4 w-4" />
-              {loading ? "Loading..." : "Create"}
-            </Button>
-          </div>
-          {lastAssessmentSummary.length === 0 && (
-            <Card className="border-dashed">
-              <CardContent className="px-3 py-2 text-sm text-muted-foreground">No assessment data</CardContent>
-            </Card>
-          )}
+      <div className="flex items-stretch ml-auto gap-4 justify-end">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Hide disposed</span>
+          <Switch checked={hideDisposed} onCheckedChange={setHideDisposed} />
         </div>
+        <Button onClick={handleCreate} className="gap-2 w-full sm:w-auto" disabled={loading}>
+          <Plus className="h-4 w-4" />
+          {loading ? "Loading..." : "Create"}
+        </Button>
       </div>
       <CustomDataGrid
+        key={columnsKey}
         data={filteredData}
         columns={columns}
         pageSize={10}
