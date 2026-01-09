@@ -400,6 +400,7 @@ const PcAssessmentRecord: React.FC = () => {
               ? row.assessments[row.assessments.length - 1]?.id
               : undefined);
           const isResending = resendingId === lastAssessmentId;
+          const showResend = row.assessed && !!lastAssessmentId;
 
           return (
             <div className="flex items-center gap-2">
@@ -412,16 +413,18 @@ const PcAssessmentRecord: React.FC = () => {
                 <Eye className="h-4 w-4 mr-1" />
                 Assess
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-emerald-600 hover:text-emerald-800"
-                disabled={!lastAssessmentId || isResending}
-                onClick={() => handleResendEmail(lastAssessmentId)}
-              >
-                <Send className="h-4 w-4 mr-1" />
-                {isResending ? "Sending..." : "Resend Email"}
-              </Button>
+              {showResend && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-emerald-600 hover:text-emerald-800"
+                  disabled={isResending}
+                  onClick={() => handleResendEmail(lastAssessmentId)}
+                >
+                  <Send className="h-4 w-4 mr-1" />
+                  {isResending ? "Sending..." : "Resend Email"}
+                </Button>
+              )}
             </div>
           );
         },
