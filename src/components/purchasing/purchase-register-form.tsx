@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { ShoppingCart, Package, Plus, Truck, Trash2, FileText } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ShoppingCart, Package, Plus, Truck, Trash2, FileText, Info, Save } from 'lucide-react';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,7 @@ interface PurchaseRegisterFormProps {
   onSupplierNameChange: (val: string) => void;
   onCreateSupplier: () => Promise<void>;
   addingBrand: boolean;
+  setAddingBrand: (val: boolean) => void;
   creatingBrand: boolean;
   newBrandName: string;
   onBrandSelect: (val: string) => void;
@@ -120,6 +121,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   onSupplierNameChange,
   onCreateSupplier,
   addingBrand,
+  setAddingBrand,
   creatingBrand,
   newBrandName,
   onBrandSelect,
@@ -158,6 +160,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
       formData.costcenter &&
       formData.pic &&
       formData.type_id &&
+      formData.brand_id &&
       formData.items &&
       formData.supplier_id &&
       formData.po_no &&
@@ -168,6 +171,41 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   }, [formData]);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [supplierMatches, setSupplierMatches] = useState<Array<{ id?: number | string; name: string; matched_words?: string[] }>>([]);
+  const [supplierMatchLoading, setSupplierMatchLoading] = useState(false);
+  const [localSupplierOption, setLocalSupplierOption] = useState<ComboboxOption | null>(null);
+  const [dismissedSupplierFallback, setDismissedSupplierFallback] = useState(false);
+
+  useEffect(() => {
+    // Reset brand add mode when form changes or a brand is selected
+    if (formData.brand_id && formData.brand_id !== '__add_brand__') {
+      setAddingBrand(false);
+      onBrandNameChange('');
+    }
+  }, [formData.brand_id, setAddingBrand, onBrandNameChange]);
+  const supplierFallbackName = useMemo(() => {
+    if (dismissedSupplierFallback) return '';
+    const nameFromPurchase = (() => {
+      if (!selectedPurchase) return '';
+      if (selectedPurchase.supplier_name) return selectedPurchase.supplier_name;
+      if (selectedPurchase.supplier && typeof selectedPurchase.supplier === 'object' && !selectedPurchase.supplier.id) {
+        return selectedPurchase.supplier.name || '';
+      }
+      if (typeof selectedPurchase.supplier === 'string') return selectedPurchase.supplier;
+      return '';
+    })();
+    if (!nameFromPurchase) return '';
+    const exists = supplierOptions.some(opt => opt.label === nameFromPurchase || opt.value === nameFromPurchase);
+    return exists ? '' : nameFromPurchase;
+  }, [selectedPurchase, supplierOptions, dismissedSupplierFallback]);
+
+  const supplierOptionList = useMemo(() => {
+    const base = [...supplierOptions];
+    if (localSupplierOption) {
+      base.unshift(localSupplierOption);
+    }
+    return [...base, { value: '__add_supplier__', label: 'Add new supplier…' }];
+  }, [supplierOptions, localSupplierOption]);
 
   const validateDeliveries = (): boolean => {
     const errs: DeliveryError[] = [];
@@ -211,6 +249,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
     if (!formData.pic) errors.pic = 'Requester is required';
     if (!formData.items) errors.items = 'Item description is required';
     if (!formData.type_id) errors.type_id = 'Item type is required';
+    if (!formData.brand_id) errors.brand_id = 'Brand is required';
     if (!formData.supplier_id) errors.supplier_id = 'Supplier is required';
     if (!formData.pr_no?.trim()) errors.pr_no = 'PR number is required';
     if (!formData.pr_date?.trim()) errors.pr_date = 'PR date is required';
@@ -223,6 +262,80 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
     const deliveriesOk = validateDeliveries();
     setValidationErrors(errors);
     return baseOk && deliveriesOk;
+  };
+
+  const fetchSupplierMatches = async (name: string) => {
+    const supplierName = (name || '').trim();
+    if (!supplierName) {
+      toast.error('Enter a supplier name first');
+      return;
+    }
+    setSupplierMatchLoading(true);
+    try {
+      const res = await authenticatedApi.post('/api/purchases/match-suppliers', {
+        supplier_name: supplierName
+      });
+      const data = (res as any).data;
+      const payload = data?.data || data;
+      const matches = Array.isArray(payload?.matches)
+        ? payload.matches
+        : Array.isArray(payload)
+          ? payload
+          : [];
+      const arr = matches.map((m: any) => ({
+        id: m?.id,
+        name: m?.name || m?.supplier_name || (typeof m === 'string' ? m : ''),
+        matched_words: m?.matched_words || []
+      })).filter((m: { name: string }) => m.name);
+      setSupplierMatches(arr);
+      if (!arr.length) {
+        toast.message('No similar suppliers found');
+      }
+    } catch (e) {
+      console.error('Failed to match suppliers', e);
+      toast.error('Failed to fetch similar suppliers');
+    } finally {
+      setSupplierMatchLoading(false);
+    }
+  };
+
+  const handleSupplierNameInput = (val: string) => {
+    setSupplierMatches([]);
+    onSupplierNameChange(val);
+  };
+
+  const useFallbackSupplier = () => {
+    if (!supplierFallbackName) return;
+    onCreateSupplierFromFallback();
+  };
+
+  const onCreateSupplierFromFallback = async () => {
+    const name = (supplierFallbackName || newSupplierName || '').trim();
+    if (!name) {
+      toast.error('Supplier name is empty');
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await authenticatedApi.post('/api/purchases/suppliers', { name });
+      const data = (res as any).data;
+      const createdId = data?.data?.id || data?.id;
+      if (createdId) {
+        onSupplierSelect(String(createdId));
+        setLocalSupplierOption({ value: String(createdId), label: name });
+        setSupplierMatches([]);
+        onSupplierNameChange('');
+        setDismissedSupplierFallback(true);
+        toast.success('Supplier registered');
+        return;
+      }
+      toast.success('Supplier registered, please reselect from the list');
+    } catch (err) {
+      console.error('Failed to register supplier', err);
+      toast.error('Failed to register supplier');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -622,24 +735,47 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
 
             <div>
               <Label htmlFor="supplier">Supplier *</Label>
-              <Combobox
-                options={[...supplierOptions, { value: '__add_supplier__', label: 'Add new supplier…' }]}
-                value={formData.supplier_id}
-                onValueChange={onSupplierSelect}
-                placeholder="Select supplier"
-                emptyMessage="No suppliers"
-                disabled={suppliersLoading}
-                clearable={true}
-              />
-              <p className="text-xs text-gray-500 mt-1">Required: select a supplier</p>
-              {validationErrors.supplier_id && (
-                <p className="text-red-500 text-sm mt-1">{validationErrors.supplier_id}</p>
+              {supplierFallbackName && !addingSupplier && (
+                <div className="flex items-center justify-between text-xs font-semibold text-red-600 mb-1">
+                  <span>Detected unregistered supplier: {supplierFallbackName}</span>
+                  <Button size="sm" variant="outline" className="h-8 px-2" onClick={onCreateSupplierFromFallback} disabled={loading}>
+                    <Save className="h-4 w-4" />
+                  </Button>
+                </div>
               )}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  {!supplierFallbackName && (
+                    <Combobox
+                      options={supplierOptionList}
+                      value={formData.supplier_id}
+                      onValueChange={onSupplierSelect}
+                      placeholder="Select supplier"
+                      emptyMessage="No suppliers"
+                      disabled={suppliersLoading}
+                      clearable={true}
+                    />
+                  )}
+                  {supplierFallbackName && (
+                    <Input
+                      value={supplierFallbackName}
+                      onChange={(e) => handleSupplierNameInput(e.target.value)}
+                      disabled={creatingSupplier}
+                      className="bg-amber-50 border-amber-300"
+                    />
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">Required: select a supplier</p>
+                  {validationErrors.supplier_id && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.supplier_id}</p>
+                  )}
+                  
+                </div>
+              </div>
               {addingSupplier && (
                 <div className="relative mt-2">
                   <Input
                     value={newSupplierName}
-                    onChange={(e) => onSupplierNameChange(e.target.value)}
+                    onChange={(e) => handleSupplierNameInput(e.target.value)}
                     placeholder="Enter new supplier name"
                     disabled={creatingSupplier}
                     className="pr-10"
@@ -654,19 +790,72 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   </Button>
                 </div>
               )}
+              {addingSupplier && newSupplierName.trim() !== '' && (
+                <div className="mt-2 space-y-2">
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 inline-flex items-center gap-1 hover:underline disabled:text-gray-400"
+                    onClick={() => fetchSupplierMatches(newSupplierName)}
+                    disabled={supplierMatchLoading}
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    {supplierMatchLoading ? 'Checking similar suppliers...' : 'View similar suppliers'}
+                  </button>
+                  {supplierMatches.length > 0 && (
+                    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-2 text-xs">
+                      <div className="font-semibold text-blue-800">Similar suppliers</div>
+                      {supplierMatches.map((match) => (
+                        <div key={`${match.id || match.name}`} className="flex items-center justify-between gap-2">
+                          <div className="flex flex-col">
+                            <span className="truncate">{match.name}</span>
+                            {match.matched_words && match.matched_words.length > 0 && (
+                              <span className="text-[11px] text-blue-600">Matched: {match.matched_words.join(', ')}</span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            {match.id ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 px-2"
+                                onClick={() => { onSupplierSelect(String(match.id)); setDismissedSupplierFallback(true); setSupplierMatches([]); }}
+                              >
+                                Use supplier
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 px-2"
+                                onClick={() => handleSupplierNameInput(match.name)}
+                              >
+                                Use name
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
-              <Label htmlFor="brand">Brand</Label>
-              <Combobox
-                options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
-                value={formData.brand_id}
-                onValueChange={onBrandSelect}
-                placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
-                emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
-                disabled={brandsLoading || !formData.type_id}
-                clearable={true}
-              />
+              <Label htmlFor="brand">Brand *</Label>
+              {!addingBrand && (
+                <Combobox
+                  options={[...brandOptions, { value: '__add_brand__', label: 'Add new brand…' }]}
+                  value={formData.brand_id}
+                  onValueChange={onBrandSelect}
+                  placeholder={formData.type_id ? 'Select brand' : 'Select item type first'}
+                  emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
+                  disabled={brandsLoading || !formData.type_id}
+                  clearable={true}
+                />
+              )}
               {addingBrand && (
                 <div className="relative mt-2">
                   <Input
@@ -679,12 +868,17 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   <Button
                     size="icon"
                     type="button"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                     onClick={onCreateBrand}
+                    disabled={!formData.type_id || creatingBrand}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
+              )}
+              <p className="text-xs text-gray-500 mt-1">Required: select a brand or add a new one.</p>
+              {validationErrors.brand_id && (
+                <p className="text-red-500 text-sm mt-1">{validationErrors.brand_id}</p>
               )}
             </div>
 
@@ -1019,6 +1213,11 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
           </AlertDialogHeader>
           <AlertDialogDescription>
             <div className="text-sm">Are you sure you want to {sidebarMode === 'edit' ? 'update' : 'create'} this purchase record? Please confirm.</div>
+            {sidebarMode === 'edit' && (!formData.deliveries || formData.deliveries.length === 0 || formData.deliveries.every(d => !d.do_no && !d.do_date && !d.inv_no && !d.inv_date && !d.grn_no && !d.grn_date)) && (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                No delivery information provided yet. You can update deliveries later if needed.
+              </div>
+            )}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel asChild>

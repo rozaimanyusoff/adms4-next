@@ -22,6 +22,7 @@ export interface ApiPurchase {
   purpose?: string | null;
   supplier?: { id: number; name: string } | string;
   brand?: { id: number; name: string } | string;
+  supplier_name?: string;
   qty: number;
   unit_price: string;
   total_price?: string;
@@ -57,6 +58,29 @@ export interface ApiPurchase {
   upload_path?: string | null;
   upload_url?: string | null;
   status?: string;
+}
+
+export interface FlatPurchase extends ApiPurchase {
+  request_type?: string;
+  costcenter_name?: string;
+  type_name?: string;
+  category_name?: string | null;
+  supplier_name?: string;
+  brand_name?: string;
+  pic?: string;
+  pr_no?: string;
+  pr_date?: string;
+  po_date?: string;
+  po_no?: string;
+  do_date?: string;
+  do_no?: string;
+  inv_date?: string;
+  inv_no?: string;
+  grn_date?: string;
+  grn_no?: string;
+  status?: 'undelivered' | 'unregistered' | 'registered';
+  total_amount?: number;
+  purchase_year?: number;
 }
 
 export interface PurchaseFormDelivery {

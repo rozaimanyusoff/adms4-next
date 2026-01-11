@@ -3,10 +3,10 @@
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter } from 'next/navigation';
-// PurchaseSummary is shown in the parent tabs component
+// Purchase dashboard is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
 import PurchaseRegisterForm from './purchase-register-form';
-import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle, Mail, Pencil } from 'lucide-react';
+import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle, Mail, Pencil, Upload } from 'lucide-react';
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,19 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
-import { ApiPurchase, PurchaseFormData } from './types';
+import { ApiPurchase, FlatPurchase, PurchaseFormData } from './types';
+import ExcelPurchaseItems from './excel-purchase-items';
+import { deriveAssetStatus, flattenPurchase } from './purchase-normalizer';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 // import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 // Removed Excel importer – creating records directly in-app
 
@@ -26,6 +38,7 @@ const fmtRM = (value: number) => {
 
 // Users allowed to delete purchase records
 const deletePermissionAdmin = ['000705', '000277'];
+const importPermissionAdmin = ['000277'];
 
 interface PurchaseRecordsProps {
   filters?: { type?: string; request_type?: string };
@@ -36,8 +49,8 @@ interface PurchaseRecordsProps {
 
 const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormMode, initialPurchaseId, inlineFormOnly }) => {
   const router = useRouter();
-  const [purchases, setPurchases] = useState<ApiPurchase[]>([]);
-  const [filteredPurchases, setFilteredPurchases] = useState<ApiPurchase[]>([]);
+  const [purchases, setPurchases] = useState<FlatPurchase[]>([]);
+  const [filteredPurchases, setFilteredPurchases] = useState<FlatPurchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [sidebarMode, setSidebarMode] = useState<'view' | 'create' | 'edit'>('create');
   const [selectedPurchase, setSelectedPurchase] = useState<ApiPurchase | null>(null);
@@ -73,8 +86,10 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [deliveryErrors, setDeliveryErrors] = useState<Array<Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>>>([]);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
   // Delivery deletion confirm dialog state
   const [pendingDelete, setPendingDelete] = useState<{ index: number; message: string } | null>(null);
+  const [importing, setImporting] = useState(false);
   const draftKey = 'purchase_register_draft';
   const draftLoadedRef = useRef(false);
   const formDataRef = useRef(formData);
@@ -82,6 +97,38 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   // Per-delivery file uploads
   const [deliveryFiles, setDeliveryFiles] = useState<Array<File | null>>([]);
   const fileInputRefs = React.useRef<Array<HTMLInputElement | null>>([]);
+
+  // Status summary (undelivered / unregistered / handed over)
+  const statusSummary = useMemo(() => {
+    const counts = { undelivered: 0, unregistered: 0, registered: 0 };
+    purchases.forEach(p => {
+      const status = p.status || deriveAssetStatus(p);
+      if (status === 'registered') counts.registered += 1;
+      else if (status === 'unregistered') counts.unregistered += 1;
+      else counts.undelivered += 1;
+    });
+    const total = purchases.length || 1;
+    const pct = (n: number) => ((n / total) * 100).toFixed(0);
+    return {
+      ...counts,
+      total: purchases.length,
+      pctRegistered: pct(counts.registered),
+      pctUnregistered: pct(counts.unregistered),
+      pctUndelivered: pct(counts.undelivered)
+    };
+  }, [purchases]);
+
+  // Ensure grid rows always include the derived status for filtering
+  const gridData = useMemo(() => {
+    return filteredPurchases.map(p => {
+      const status = (p as any).status || deriveAssetStatus(p);
+      return { ...p, status };
+    });
+  }, [filteredPurchases]);
+
+  const handleSummaryClick = (key: 'undelivered' | 'unregistered' | 'registered') => {
+    setStatusFilter(prev => (prev === key ? 'all' : key));
+  };
 
   const onDeliveryFileDrop = (index: number, e: React.DragEvent) => {
     e.preventDefault();
@@ -251,6 +298,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     }
   };
   const canDelete = useMemo(() => deletePermissionAdmin.includes(getUsername()), [auth?.authData?.user?.username]);
+  const canImport = useMemo(() => importPermissionAdmin.includes(getUsername()), [auth?.authData?.user?.username]);
 
   // Load purchases whenever username becomes available/changes
   useEffect(() => {
@@ -332,31 +380,37 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     // Apply external filters passed from summary
     if (filters?.type) {
       filtered = filtered.filter(p => {
-        const typeName = typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || '';
+        const typeName = p.type_name || (typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || '');
         return String(typeName) === String(filters.type);
       });
     }
     if (filters?.request_type) {
-      filtered = filtered.filter(p => (p.request?.request_type || (p as any).request_type) === filters.request_type);
+      filtered = filtered.filter(p => (p.request_type || p.request?.request_type || (p as any).request_type) === filters.request_type);
     }
 
     // Apply search filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(purchase => {
-        const supplier = typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '');
-        const cc = purchase.request?.costcenter?.name || (typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter as any)?.name || '');
-        const brand = typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || '');
-        const prNo = purchase.request?.pr_no ? String(purchase.request.pr_no) : (purchase.pr_no ? String(purchase.pr_no) : '');
+        const supplier = purchase.supplier_name || (typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || ''));
+        const cc = purchase.costcenter_name || purchase.request?.costcenter?.name || (typeof purchase.costcenter === 'string' ? purchase.costcenter : (purchase.costcenter as any)?.name || '');
+        const brand = purchase.brand_name || (typeof purchase.brand === 'string' ? purchase.brand : (purchase.brand?.name || ''));
+        const prNo = purchase.pr_no ? String(purchase.pr_no) : (purchase.request?.pr_no ? String(purchase.request.pr_no) : '');
         const poNo = purchase.po_no ? String(purchase.po_no) : '';
         const desc = purchase.description || purchase.items || '';
+        const requesterName = purchase.pic || purchase.request?.requested_by?.full_name || '';
+        const requesterId = purchase.request?.requested_by?.ramco_id || '';
+        const requestorLoose = typeof purchase.requestor === 'string' ? purchase.requestor : (purchase.requestor?.full_name || '');
         return (
           desc.toLowerCase().includes(q) ||
           supplier.toLowerCase().includes(q) ||
           cc.toLowerCase().includes(q) ||
           brand.toLowerCase().includes(q) ||
           prNo.toLowerCase().includes(q) ||
-          poNo.toLowerCase().includes(q)
+          poNo.toLowerCase().includes(q) ||
+          requesterName.toLowerCase().includes(q) ||
+          requesterId.toLowerCase().includes(q) ||
+          requestorLoose.toLowerCase().includes(q)
         );
       });
     }
@@ -364,13 +418,13 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     // Apply status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(purchase => {
-        const status = getStatusText(purchase).toLowerCase();
+        const status = purchase.status || deriveAssetStatus(purchase);
         return status === statusFilter;
       });
     }
 
     setFilteredPurchases(filtered);
-  }, [purchases, searchQuery, statusFilter]);
+  }, [purchases, searchQuery, statusFilter, filters]);
 
   const loadPurchases = async (managerUsername?: string) => {
     setLoading(true);
@@ -379,7 +433,9 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         ? `/api/purchases?managers=${encodeURIComponent(managerUsername)}`
         : '/api/purchases';
       const response = await authenticatedApi.get<{ data: ApiPurchase[] }>(url);
-      setPurchases(response.data?.data || []);
+      const raw = response.data?.data || [];
+      const normalized = raw.map((p: any) => flattenPurchase(p as ApiPurchase));
+      setPurchases(normalized);
     } catch (error) {
       toast.error('Failed to load purchase records');
       console.error('Error loading purchases:', error);
@@ -604,6 +660,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   const handleBrandSelect = (val: string) => {
     if (val === '__add_brand__') {
       setAddingBrand(true);
+      handleInputChange('brand_id', '');
       return;
     }
     setAddingBrand(false);
@@ -652,8 +709,8 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       }
 
       setNewBrandName('');
-      setAddingBrand(false);
       toast.success('Brand created');
+      setAddingBrand(false);
     } catch (err) {
       toast.error('Failed to create brand');
       console.error('Create brand error', err);
@@ -900,38 +957,27 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     }
   };
 
-  // Get status badge variant
-  const getStatusVariant = (purchase: ApiPurchase) => {
-    const ds = (purchase as any).deliveries as any[] | undefined;
-    const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
-    if ((latest?.grn_date && latest?.grn_no) || (purchase.grn_date && purchase.grn_no)) return 'success';
-    if ((latest?.inv_date && latest?.inv_no) || (purchase.inv_date && purchase.inv_no)) return 'secondary';
-    if ((latest?.do_date && latest?.do_no) || (purchase.do_date && purchase.do_no)) return 'outline';
-    if (purchase.po_date && purchase.po_no) return 'default';
-    return 'destructive';
+  const triggerImport = async () => {
+    setImporting(true);
+    try {
+      await authenticatedApi.post('/api/purchases/import', {});
+      toast.success('Purchase import triggered');
+      loadPurchases(getUsername());
+    } catch (error) {
+      toast.error('Failed to import purchase records');
+      console.error('Error triggering purchase import:', error);
+    } finally {
+      setImporting(false);
+      setShowImportConfirm(false);
+    }
   };
 
   // Get status text
   const getStatusText = (purchase: ApiPurchase) => {
-    const ds = (purchase as any).deliveries as any[] | undefined;
-    const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
-    const qty = Number(purchase.qty || 0);
-
-    // Completed when GRN recorded
-    if ((latest?.grn_date && latest?.grn_no) || (purchase.grn_date && purchase.grn_no)) return 'Completed';
-
-    // Handover when assets have been registered
-    const assetRegistry = String((purchase as any).asset_registry || '').toLowerCase();
-    if (assetRegistry === 'completed') return 'Handover';
-
-    // Delivered only when all purchased items have been delivered
-    const deliveredCount = Array.isArray(ds) ? ds.length : 0;
-    const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!purchase.do_date && !!purchase.do_no);
-    if (allDelivered) return 'Delivered';
-
-    // Otherwise, still ordered
-    if (purchase.po_date && purchase.po_no) return 'Ordered';
-    return 'Requested';
+    const status = (purchase as any).status || deriveAssetStatus(purchase);
+    if (status === 'registered') return 'Handed Over';
+    if (status === 'unregistered') return 'Unregistered';
+    return 'Undelivered';
   };
 
   // Badge class for request type: CAPEX -> green, OPEX -> blue, others -> amber
@@ -962,15 +1008,24 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     // Exclude deliveries columns for now; /api/purchases list does not include them
     {
       key: 'status',
-      header: 'Status',
+      header: 'Asset Registration',
+      filter: 'singleSelect',
+      filterParams: {
+        options: ['undelivered', 'unregistered', 'registered'],
+        labelMap: {
+          undelivered: 'Undelivered',
+          unregistered: 'Unregistered',
+          registered: 'Handed Over'
+        }
+      },
       render: (row: any) => {
         const typeId = typeof row.type === 'string' ? '' : (row.type?.id || '');
-        const isRegCompleted = String((row as any).asset_registry || '').toLowerCase() === 'completed';
+        const status = (row as any).status || deriveAssetStatus(row);
+        const isRegCompleted = status === 'registered';
+        const disableAsset = status === 'undelivered';
+        const assetLabel = isRegCompleted ? 'Handed Over' : (disableAsset ? 'Undelivered' : 'Unregistered');
         return (
           <div className="flex items-center gap-2">
-            <Badge variant={getStatusVariant(row) as any}>
-              {getStatusText(row)}
-            </Badge>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -980,10 +1035,17 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
                   const editParam = isRegCompleted ? '&edit=true' : '';
                   window.open(`/purchase/asset/${row.id}?type=${typeId}${editParam}`, '_blank');
                 }}
-                className={`h-6 px-2 ${isRegCompleted ? 'bg-green-600 hover:bg-green-700 text-white border-0' : 'text-blue-600 hover:text-blue-700'}`}
+                className={`h-6 px-2 ${
+                  isRegCompleted
+                    ? 'bg-green-600 hover:bg-green-700 text-white border-0'
+                    : disableAsset
+                      ? 'ring-1 ring-red-400 border-0 text-red-500 hover:bg-red-100'
+                      : 'ring-1 ring-amber-500 border-0 text-amber-600 hover:bg-amber-100'
+                } ${disableAsset ? 'opacity-60 cursor-not-allowed' : ''}`}
                 title="Open Asset Manager"
+                disabled={disableAsset}
               >
-                {isRegCompleted ? <Pencil className="h-4 w-4 mr-1" /> : <PlusCircle className="h-4 w-4 mr-1" />} Assets
+                {isRegCompleted ? <Pencil className="h-3 w-3 mr-1" /> : (!disableAsset ? <Plus className="h-3 w-3 mr-1" /> : null)}{assetLabel}
               </Button>
               <Button
                 size="sm"
@@ -1002,14 +1064,13 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
           </div>
         );
       },
-      filter: 'singleSelect'
     },
     {
       key: 'request_type',
       header: 'Request Type',
       render: (row: any) => (
-        <span className={getRequestTypeBadgeClass(row.request?.request_type || row.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
-          {row.request?.request_type || row.request_type}
+        <span className={getRequestTypeBadgeClass(row.request_type || row.request?.request_type) + ' inline-flex items-center px-2 py-0.5 rounded-full'}>
+          {row.request_type || row.request?.request_type}
         </span>
       ),
       filter: 'singleSelect'
@@ -1017,27 +1078,29 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     {
       key: 'pr_date',
       header: 'PR Date',
-      render: (row: any) => (row.request?.pr_date ? new Date(row.request.pr_date).toLocaleDateString('en-GB') : (row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : ''))
+      render: (row: any) => (row.pr_date ? new Date(row.pr_date).toLocaleDateString('en-GB') : (row.request?.pr_date ? new Date(row.request.pr_date).toLocaleDateString('en-GB') : ''))
     },
-    { key: 'pr_no', header: 'PR Number', filter: 'input', render: (row: any) => row.request?.pr_no || row.pr_no || '' },
+    { key: 'pr_no', header: 'PR Number', filter: 'input', render: (row: any) => row.pr_no || row.request?.pr_no || '' },
     {
       key: 'pic',
       header: 'Requested By',
       filter: 'input',
       render: (row: any) => {
-        const r = row.request?.requested_by || (typeof row.requestor === 'string' ? null : row.requestor);
-        if (r && r.ramco_id && r.full_name) return `${r.ramco_id} - ${r.full_name}`;
+        const r = row.pic;
+        if (r) return r;
+        const requestedBy = row.request?.requested_by || (typeof row.requestor === 'string' ? null : row.requestor);
+        if (requestedBy && requestedBy.ramco_id && requestedBy.full_name) return `${requestedBy.ramco_id} - ${requestedBy.full_name}`;
         if (typeof row.requestor === 'string') return row.requestor;
-        return r?.full_name || '';
+        return requestedBy?.full_name || '';
       }
     },
     {
       key: 'costcenter',
       header: 'Cost Center',
       filter: 'singleSelect',
-      render: (row: any) => row.request?.costcenter?.name || (typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || ''))
+      render: (row: any) => row.costcenter_name || row.request?.costcenter?.name || (typeof row.costcenter === 'string' ? row.costcenter : (row.costcenter?.name || ''))
     },
-    { key: 'item_type', header: 'Item Type', filter: 'singleSelect', render: (row: any) => typeof row.type === 'string' ? row.type : (row.type?.name || row.item_type || '') },
+    { key: 'item_type', header: 'Item Type', filter: 'singleSelect', render: (row: any) => row.type_name || (typeof row.type === 'string' ? row.type : (row.type?.name || row.item_type || '')) },
     {
       key: 'description',
       header: 'Description',
@@ -1045,8 +1108,8 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       render: (row: any) => row.description || row.items || ''
     },
     { key: 'qty', header: 'Qty' },
-    { key: 'supplier', header: 'Supplier', filter: 'singleSelect', render: (row: any) => typeof row.supplier === 'string' ? row.supplier : (row.supplier?.name || '') },
-    { key: 'brand', header: 'Brand', filter: 'singleSelect', render: (row: any) => typeof row.brand === 'string' ? row.brand : (row.brand?.name || '') },
+    { key: 'supplier', header: 'Supplier', filter: 'singleSelect', render: (row: any) => row.supplier_name || (typeof row.supplier === 'string' ? row.supplier : (row.supplier?.name || '')) },
+    { key: 'brand', header: 'Brand', filter: 'singleSelect', render: (row: any) => row.brand_name || (typeof row.brand === 'string' ? row.brand : (row.brand?.name || '')) },
     {
       key: 'unit_price',
       header: 'Unit Price (RM)',
@@ -1056,7 +1119,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       key: 'total',
       header: 'Total (RM)',
       render: (row: any) => {
-        const total = Number(row.total_price ?? NaN);
+        const total = Number(row.total_amount ?? row.total_price ?? NaN);
         if (Number.isFinite(total)) return `RM ${fmtRM(total)}`;
         return `RM ${fmtRM((row.qty || 0) * (Number(row.unit_price) || 0))}`;
       }
@@ -1101,6 +1164,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       onSupplierNameChange={setNewSupplierName}
       onCreateSupplier={handleCreateSupplier}
       addingBrand={addingBrand}
+      setAddingBrand={setAddingBrand}
       creatingBrand={creatingBrand}
       newBrandName={newBrandName}
       onBrandSelect={handleBrandSelect}
@@ -1162,41 +1226,15 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       {/* Header with Search and Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <h2 className="text-lg font-semibold">
             Purchase Records
-          </h1>
+          </h2>
           <p className="text-gray-600 dark:text-gray-400">
             Manage your purchase requests, orders, and delivery tracking
           </p>
         </div>
 
         <div className="flex items-center space-x-4 w-full lg:w-auto">
-          {/* Search */}
-          <div className="relative flex-1 lg:w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="Search purchases..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-
-          {/* Status Filter */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="requested">Requested</SelectItem>
-              <SelectItem value="ordered">Ordered</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="handover">Handover</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-
           {/* View Toggle */}
           <div className="flex border rounded-lg">
             <Button
@@ -1217,11 +1255,62 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
             </Button>
           </div>
 
+          <ExcelPurchaseItems purchases={filteredPurchases} />
+
+          {canImport && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowImportConfirm(true)}
+              disabled={importing}
+              className='bg-amber-200/50 border-amber-200 hover:bg-amber-200'
+            >
+              <Upload className="h-4 w-4" />
+            </Button>
+          )}
+
           {/* Add Purchase */}
           <Button variant={'default'} onClick={() => router.push('/purchase/register/new')}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      {/* Status summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <button
+          type="button"
+          onClick={() => handleSummaryClick('undelivered')}
+          className={`rounded-lg border bg-red-200/50 dark:bg-slate-900 p-4 text-left ${statusFilter === 'undelivered' ? 'ring-2 ring-red-500' : ''}`}
+        >
+          <div className="text-sm text-muted-foreground">Undelivered</div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-semibold">{statusSummary.undelivered}</span>
+            <span className="text-sm text-muted-foreground">{statusSummary.pctUndelivered}%</span>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSummaryClick('unregistered')}
+          className={`rounded-lg border bg-amber-200/50 dark:bg-slate-900 p-4 text-left ${statusFilter === 'unregistered' ? 'ring-2 ring-amber-500' : ''}`}
+        >
+          <div className="text-sm text-muted-foreground">Unregistered</div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-semibold">{statusSummary.unregistered}</span>
+            <span className="text-sm text-muted-foreground">{statusSummary.pctUnregistered}%</span>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSummaryClick('registered')}
+          className={`rounded-lg border bg-emerald-100 dark:bg-slate-900 p-4 text-left ${statusFilter === 'registered' ? 'ring-2 ring-emerald-500' : ''}`}
+        >
+          <div className="text-sm text-muted-foreground">Handed Over</div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-semibold">{statusSummary.registered}</span>
+            <span className="text-sm text-muted-foreground">{statusSummary.pctRegistered}%</span>
+          </div>
+        </button>
       </div>
 
       {/* Content Area */}
@@ -1236,12 +1325,12 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
           <>
             {viewMode === 'grid' ? (
               <CustomDataGrid
-                data={filteredPurchases}
+                data={gridData}
                 columns={columns}
                 pagination={false}
                 inputFilter={false}
                 columnsVisibleOption={false}
-                dataExport={true}
+                dataExport={false}
                 onRowDoubleClick={(row: any) => router.push(`/purchase/register/${row.id}`)}
               />
             ) : (
@@ -1282,52 +1371,29 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         )}
       </div>
 
+      <AlertDialog open={showImportConfirm} onOpenChange={(open) => { if (!open && !importing) setShowImportConfirm(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Import</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="text-sm">Trigger purchase import from the latest source? This may take a moment.</div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="secondary" size="sm" disabled={importing}>Cancel</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="default" size="sm" onClick={triggerImport} disabled={importing}>
+                {importing ? 'Importing...' : 'Confirm'}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 };
 
 export default PurchaseRecords;
-
-/* 
-{
-"request_type": "CAPEX",
-"costcenter_id": "12",
-"ramco_id": "EMP123",
-"type_id": "7",
-"items": "Laptop 14"",
-"supplier_id": "45",
-"brand_id": "3",
-"qty": 2,
-"unit_price": "3500",
-"total_price": "7000",
-"pr_date": "2025-09-01",
-"pr_no": "PR-001",
-"po_date": "2025-09-05",
-"po_no": "PO-100",
-"do_date": "2025-09-20",
-"do_no": "DO-002",
-"inv_date": "2025-09-22",
-"inv_no": "INV-002",
-"grn_date": "2025-09-24",
-"grn_no": "GRN-002",
-"deliveries": [
-{
-"do_date": "2025-09-10",
-"do_no": "DO-001",
-"inv_date": "2025-09-12",
-"inv_no": "INV-001",
-"grn_date": "2025-09-14",
-"grn_no": "GRN-001"
-},
-{
-"do_date": "2025-09-20",
-"do_no": "DO-002",
-"inv_date": "2025-09-22",
-"inv_no": "INV-002",
-"grn_date": "2025-09-24",
-"grn_no": "GRN-002"
-}
-]
-}
-
-*/

@@ -2,16 +2,7 @@ import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Calendar,
-  Package,
-  DollarSign,
-  Truck,
-  FileText,
-  CheckCircle,
-  Clock,
-  AlertCircle
-} from 'lucide-react';
+import { DollarSign, Plus, CheckCircle, Package, FileText } from 'lucide-react';
 
 interface PurchaseCardProps {
   purchase: any;
@@ -25,68 +16,36 @@ const fmtRM = (value: number) => {
   return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-// Get status based on available data
-// Completed is set when Handover (inv_date/inv_no) is registered by Asset Manager.
-const getStatusType = (purchase: any): string => {
-  // Procurement 'Handover' indicates transfer to Asset Manager (handover_at/handover_to)
-  if (purchase.handover_at || purchase.handover_to) return 'handover';
-  if (purchase.grn_date && purchase.grn_no) return 'delivered';
-  if (purchase.do_date && purchase.do_no) return 'delivered';
-  if (purchase.po_date && purchase.po_no) return 'ordered';
-  if (purchase.pr_date && purchase.pr_no) return 'requested';
-  return 'draft';
+// Determine asset registration status: undelivered / unregistered / handed over
+const getAssetStatus = (purchase: any): 'undelivered' | 'unregistered' | 'registered' => {
+  const assetRegistry = String((purchase as any).asset_registry || '').toLowerCase();
+  const hasDeliveries = Array.isArray(purchase.deliveries) && purchase.deliveries.length > 0;
+  if (assetRegistry === 'completed') return 'registered';
+  if (hasDeliveries) return 'unregistered';
+  return 'undelivered';
 };
 
-const getPurchaseStatus = (purchase: any): string => {
-  return getStatusType(purchase);
-};
-
-const getStatusConfig = (status: string) => {
+const getStatusConfig = (status: 'undelivered' | 'unregistered' | 'registered') => {
   const configs = {
-    requested: {
-      label: 'Requested',
-      variant: 'secondary' as const,
-      icon: Clock,
-      color: 'text-yellow-600',
-      bgColor: 'bg-yellow-50'
+    undelivered: {
+      label: 'Undelivered',
+      className: 'ring-1 ring-red-400 text-red-600 bg-red-50'
     },
-    ordered: {
-      label: 'Ordered',
-      variant: 'default' as const,
-      icon: Package,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50'
+    unregistered: {
+      label: 'Unregistered',
+      className: 'ring-1 ring-amber-500 text-amber-700 bg-amber-50'
     },
-    delivered: {
-      label: 'Delivered',
-      variant: 'outline' as const,
-      icon: Truck,
-      color: 'text-white',
-      bgColor: 'bg-amber-500'
-    },
-    handover: {
-      label: 'Handover',
-      variant: 'secondary' as const,
-      icon: FileText,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50'
-    },
-    completed: {
-      label: 'Completed',
-      variant: 'default' as const,
-      icon: CheckCircle,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50'
+    registered: {
+      label: 'Handed Over',
+      className: 'bg-green-600 text-white'
     }
   };
-
-  return configs[status as keyof typeof configs] || configs.requested;
+  return configs[status] || configs.unregistered;
 };
 
 const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, onDelete }) => {
-  const status = getPurchaseStatus(purchase as any);
+  const status = getAssetStatus(purchase as any);
   const statusConfig = getStatusConfig(status);
-  const StatusIcon = statusConfig.icon;
 
   return (
     <Card className="hover:shadow-lg transition-shadow duration-200">
@@ -102,10 +61,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
               <span>{typeof purchase.supplier === 'string' ? purchase.supplier : (purchase.supplier?.name || '')}</span>
             </div>
           </div>
-          <Badge variant={statusConfig.variant} className="shrink-0">
-            <StatusIcon className="w-3 h-3 mr-1" />
-            {statusConfig.label}
-          </Badge>
+          <Badge className={`shrink-0 whitespace-nowrap ${statusConfig.className}`}>{statusConfig.label}</Badge>
         </div>
       </CardHeader>
 
@@ -138,54 +94,43 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
           </div>
         </div>
 
-        {/* Process Timeline */}
+        {/* Process Status */}
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-700">Process Status</p>
-          <div className="flex items-center space-x-2">
-            {/* Request */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.pr_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <Calendar className="w-4 h-4" />
-            </div>
-            <div className={`flex-1 h-1 ${purchase.po_date ? 'bg-green-300' : 'bg-gray-200'
-              }`} />
+          <div className="flex items-center gap-2">
+            {['undelivered', 'unregistered', 'registered'].map((step, idx) => {
+              const order = ['undelivered', 'unregistered', 'registered'] as const;
+              const currentIndex = order.indexOf(status as any);
+              const stepIndex = order.indexOf(step as any);
+              const baseDot = 'w-8 h-8 rounded-full flex items-center justify-center';
+              const baseLine = 'flex-1 h-1 rounded-full';
 
-            {/* Purchase Order */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.po_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <Package className="w-4 h-4" />
-            </div>
-            <div className={`flex-1 h-1 ${purchase.do_date ? 'bg-green-300' : 'bg-gray-200'
-              }`} />
+              let colorDot = 'bg-gray-200 text-gray-400';
+              if (step === 'undelivered') {
+                colorDot = currentIndex === 0 ? 'bg-red-500 text-white' : 'bg-green-500 text-white';
+              } else if (step === 'unregistered') {
+                colorDot = currentIndex === 2 ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400';
+              } else if (step === 'registered') {
+                colorDot = currentIndex === 2 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-400';
+              }
 
-            {/* Delivery */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.do_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <Truck className="w-4 h-4" />
-            </div>
-            {/* GRN */}
-            <div className={`flex-1 h-1 ${purchase.grn_date ? 'bg-green-300' : 'bg-gray-200'
-              }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.grn_date ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <CheckCircle className="w-4 h-4" />
-            </div>
+              const icon = step === 'registered'
+                ? <CheckCircle className="w-4 h-4" />
+                : step === 'unregistered'
+                  ? <FileText className="w-4 h-4" />
+                  : <Package className="w-4 h-4" />;
 
-            {/* Handover */}
-            <div className={`flex-1 h-1 ${purchase.handover_at ? 'bg-green-300' : 'bg-gray-200'
-              }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.handover_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <FileText className="w-4 h-4" />
-            </div>
+              const lineActive = currentIndex > stepIndex;
 
-            {/* Completed (Procurement closed) */}
-            <div className={`flex-1 h-1 ${purchase.handover_at ? 'bg-green-300' : 'bg-gray-200'
-              }`} />
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${purchase.handover_at ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-              }`}>
-              <CheckCircle className="w-4 h-4" />
-            </div>
+              return (
+                <React.Fragment key={step}>
+                  {idx > 0 && <div className={`${baseLine} ${lineActive ? 'bg-green-300' : 'bg-gray-200'}`} />}
+                  <div className={`${baseDot} ${colorDot}`}>
+                    {icon}
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
@@ -196,7 +141,7 @@ const PurchaseCard: React.FC<PurchaseCardProps> = ({ purchase, onView, onEdit, o
               {purchase.pr_no && <p>PR: {purchase.pr_no}</p>}
               {purchase.po_no && <p>PO: {purchase.po_no}</p>}
               {purchase.do_no && <p>DO: {purchase.do_no}</p>}
-              {purchase.inv_no && <p>Handover: {purchase.inv_no}</p>}
+              {purchase.inv_no && <p>Registered: {purchase.inv_no}</p>}
               {purchase.grn_no && <p>GRN: {purchase.grn_no}</p>}
             </div>
           )}

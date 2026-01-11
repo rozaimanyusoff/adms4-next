@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   ShoppingCart,
   Package,
@@ -23,7 +22,7 @@ const fmtRM = (value: number) => {
   });
 };
 
-const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void }> = ({ purchases = [], onFilter }) => {
+const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void }> = ({ purchases = [], onFilter }) => {
 
   // stats memo
   const stats = useMemo(() => {
@@ -42,19 +41,18 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     const totalValue = amounts.reduce((s, a) => s + a, 0);
 
     // Calculate status counts by deriving per-purchase procurement status (match PurchaseCard logic)
-    type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'closed' | 'draft';
+    type ProcStatus = 'undelivered' | 'unregistered' | 'registered' | 'draft';
     const deriveStatus = (p: any): ProcStatus => {
       const ds = (p as any).deliveries as any[] | undefined;
       const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
       const qty = Number(p.qty || 0);
-      if ((latest?.grn_date && latest?.grn_no) || (p.grn_date && p.grn_no)) return 'closed';
       const assetRegistry = String((p as any).asset_registry || '').toLowerCase();
-      if (assetRegistry === 'completed') return 'handover';
+      if (assetRegistry === 'completed') return 'registered';
       const deliveredCount = Array.isArray(ds) ? ds.length : 0;
-      const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!p.do_date && !!p.do_no);
-      if (allDelivered) return 'delivered';
-      if (p.po_date && p.po_no) return 'ordered';
-      if ((p.request && p.request.pr_date) || p.pr_date) return 'requested';
+      const hasDeliveries = Array.isArray(ds) && ds.length > 0;
+      if (!hasDeliveries) return 'undelivered';
+      // deliveries exist but not yet registered by asset team
+      if (hasDeliveries && assetRegistry !== 'completed') return 'unregistered';
       return 'draft';
     };
 
@@ -62,13 +60,13 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       const st = deriveStatus(p);
       acc[st] = (acc[st] || 0) + 1;
       return acc;
-    }, { requested: 0, ordered: 0, delivered: 0, handover: 0, closed: 0, draft: 0 } as Record<ProcStatus, number>);
+    }, { undelivered: 0, unregistered: 0, registered: 0, draft: 0 } as Record<ProcStatus, number>);
 
-    const pending = counts.requested;
-    const ordered = counts.ordered;
-    const delivered = counts.delivered;
-    const handover = counts.handover;
-    const completed = counts.closed;
+    const pending = 0;
+    const undelivered = counts.undelivered;
+    const unregistered = counts.unregistered;
+    const registered = counts.registered;
+    const completed = 0;
 
     // Request type breakdown
     const capex = purchases.filter(p => (p.request?.request_type || p.request_type) === 'CAPEX').length;
@@ -91,9 +89,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
       total,
       totalValue,
       pending,
-      ordered,
-      delivered,
-      handover,
+      undelivered,
+      unregistered,
+      registered,
       completed,
       capex,
       opex,
@@ -104,7 +102,7 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     };
   }, [purchases]);
 
-  const completionRate = stats.total > 0 ? ((stats.completed / stats.total) * 100).toFixed(1) : 0;
+  const completionRate = 0;
 
   // Yearly breakdown by PR date
   const yearly = useMemo(() => {
@@ -153,28 +151,22 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
     return rows;
   }, [purchases]);
 
-  // Status breakdown by Item Type (focus on Handover monitoring)
+  // Status breakdown by Item Type (undelivered / unregistered / handed over)
   const statusByType = useMemo(() => {
-    type ProcStatus = 'requested' | 'ordered' | 'delivered' | 'handover' | 'draft';
-    const rows: Array<{ type: string; requested: number; ordered: number; delivered: number; handover: number; total: number }> = [];
-    const map: Record<string, { requested: number; ordered: number; delivered: number; handover: number; total: number }> = {};
+    type ProcStatus = 'undelivered' | 'unregistered' | 'registered';
+    const rows: Array<{ type: string; undelivered: number; unregistered: number; registered: number; total: number }> = [];
+    const map: Record<string, { undelivered: number; unregistered: number; registered: number; total: number }> = {};
     const derive = (p: any): ProcStatus => {
       const ds = (p as any).deliveries as any[] | undefined;
-      const latest = ds && ds.length > 0 ? ds[ds.length - 1] : undefined;
-      const qty = Number(p.qty || 0);
       const assetRegistry = String((p as any).asset_registry || '').toLowerCase();
-      if (assetRegistry === 'completed') return 'handover';
-      if ((latest?.grn_date && latest?.grn_no) || (p.grn_date && p.grn_no)) return 'delivered';
-      const deliveredCount = Array.isArray(ds) ? ds.length : 0;
-      const allDelivered = (qty > 0 && deliveredCount >= qty) || (!!p.do_date && !!p.do_no);
-      if (allDelivered) return 'delivered';
-      if (p.po_date && p.po_no) return 'ordered';
-      if ((p.request && p.request.pr_date) || p.pr_date) return 'requested';
-      return 'draft';
+      if (assetRegistry === 'completed') return 'registered';
+      const hasDeliveries = Array.isArray(ds) && ds.length > 0;
+      if (!hasDeliveries) return 'undelivered';
+      return 'unregistered';
     };
     purchases.forEach(p => {
       const t = typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || 'Unknown';
-      if (!map[t]) map[t] = { requested: 0, ordered: 0, delivered: 0, handover: 0, total: 0 };
+      if (!map[t]) map[t] = { undelivered: 0, unregistered: 0, registered: 0, total: 0 };
       const st = derive(p);
       (map[t] as any)[st] = ((map[t] as any)[st] || 0) + 1;
       map[t].total += 1;
@@ -327,18 +319,15 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
   }, [requestTypeYearRows]);
 
   return (
-    <Accordion type="single" collapsible className="mb-6">
-      <AccordionItem value="summary">
-        <AccordionTrigger className="px-2">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold">Purchase Summary</span>
-            {stats.total > 0 && (
-              <span className="text-xs text-muted-foreground">{stats.total} records • RM {fmtRM(stats.totalValue)}</span>
-            )}
-          </div>
-        </AccordionTrigger>
-        <AccordionContent className="pt-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 px-1">
+        <h2 className="text-lg font-semibold">Purchase Dashboard</h2>
+        {stats.total > 0 && (
+          <span className="text-sm text-muted-foreground">{stats.total} records • RM {fmtRM(stats.totalValue)}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Purchases summary (count + value) */}
             <Card className={`${pick(0).border} md:col-span-2`}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -423,76 +412,51 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                 <CardTitle className="text-(length:--text-size-base) font-medium">Process Status</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Clock className="h-4 w-4 text-yellow-600" />
-                      <span className="text-(length:--text-size-base)">Requested</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-(length:--text-size-base) font-medium">{stats.pending}</span>
-                      <Badge variant="secondary" className="text-(length:--text-size-small)">
-                        {stats.total > 0 ? ((stats.pending / stats.total) * 100).toFixed(0) : 0}%
-                      </Badge>
-                    </div>
-                  </div>
+              <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Package className="h-4 w-4 text-gray-600" />
+                  <span className="text-(length:--text-size-base)">Undelivered</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-(length:--text-size-base) font-medium">{stats.undelivered}</span>
+                  <Badge variant="outline" className="text-(length:--text-size-small)">
+                    {stats.total > 0 ? ((stats.undelivered / stats.total) * 100).toFixed(0) : 0}%
+                  </Badge>
+                </div>
+              </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Package className="h-4 w-4 text-blue-600" />
-                      <span className="text-(length:--text-size-base)">Ordered</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-(length:--text-size-base) font-medium">{stats.ordered}</span>
-                      <Badge variant="default" className="text-(length:--text-size-small)">
-                        {stats.total > 0 ? ((stats.ordered / stats.total) * 100).toFixed(0) : 0}%
-                      </Badge>
-                    </div>
-                  </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Package className="h-4 w-4 text-gray-700" />
+                  <span className="text-(length:--text-size-base)">Unregistered</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-(length:--text-size-base) font-medium">{stats.unregistered}</span>
+                  <Badge variant="secondary" className="text-(length:--text-size-small)">
+                    {stats.total > 0 ? ((stats.unregistered / stats.total) * 100).toFixed(0) : 0}%
+                  </Badge>
+                </div>
+              </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Truck className="h-4 w-4 text-amber-600" />
-                      <span className="text-(length:--text-size-base)">Delivered</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-(length:--text-size-base) font-medium">{stats.delivered}</span>
-                      <Badge variant="outline" className="text-(length:--text-size-small)">
-                        {stats.total > 0 ? ((stats.delivered / stats.total) * 100).toFixed(0) : 0}%
-                      </Badge>
-                    </div>
-                  </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4 text-green-700" />
+                  <span className="text-(length:--text-size-base)">Handed Over</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-(length:--text-size-base) font-medium">{stats.registered}</span>
+                  <Badge variant="default" className="text-(length:--text-size-small)">
+                    {stats.total > 0 ? ((stats.registered / stats.total) * 100).toFixed(0) : 0}%
+                  </Badge>
+                </div>
+              </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-purple-600" />
-                      <span className="text-(length:--text-size-base)">Handover</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-(length:--text-size-base) font-medium">{stats.handover}</span>
-                      <Badge variant="secondary" className="text-(length:--text-size-small)">
-                        {stats.total > 0 ? ((stats.handover / stats.total) * 100).toFixed(0) : 0}%
-                      </Badge>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-(length:--text-size-base)">Completed</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-(length:--text-size-base) font-medium">{stats.completed}</span>
-                      <Badge variant="default" className="text-(length:--text-size-small) bg-green-600">
-                        {completionRate}%
-                      </Badge>
-                    </div>
-                  </div>
                 </div>
 
-                {/* Breakdown by Item Type for Handover monitoring */}
+                {/* Breakdown by Item Type for status monitoring */}
                 <div className="mt-4">
-                  <p className="text-(length:--text-size-small) text-muted-foreground mb-2">By Item Type (Handover progress)</p>
+                  <p className="text-(length:--text-size-small) text-muted-foreground mb-2">By Item Type (Undelivered / Unregistered / Handed Over)</p>
                   {statusByType.length === 0 ? (
                     <div className="text-(length:--text-size-small) text-muted-foreground">No data</div>
                   ) : (
@@ -501,18 +465,18 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
                         <thead>
                           <tr className="text-left bg-muted/50">
                             <th className="px-2 py-1">Type</th>
-                            <th className="px-2 py-1 text-right">Handover</th>
-                            <th className="px-2 py-1 text-right">Pending</th>
-                            <th className="px-2 py-1 text-right">Total</th>
+                            <th className="px-2 py-1 text-right">Undelivered</th>
+                            <th className="px-2 py-1 text-right">Unregistered</th>
+                            <th className="px-2 py-1 text-right">Handed Over</th>
                           </tr>
                         </thead>
                         <tbody>
                           {statusByType.map(row => (
                             <tr key={row.type} className="border-t">
                               <td className="px-2 py-1">{row.type}</td>
-                              <td className="px-2 py-1 text-right">{row.handover}</td>
-                              <td className="px-2 py-1 text-right">{row.total - row.handover}</td>
-                              <td className="px-2 py-1 text-right">{row.total}</td>
+                              <td className="px-2 py-1 text-right">{row.undelivered}</td>
+                              <td className="px-2 py-1 text-right">{row.unregistered}</td>
+                              <td className="px-2 py-1 text-right">{row.registered}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -605,11 +569,9 @@ const PurchaseSummary: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void
             </Card>
 
             {/* Yearly breakdown moved into Total Purchases & Total Value cards */}
-          </div>
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+      </div>
+    </div>
   );
 };
 
-export default PurchaseSummary;
+export default PurchaseDashboard;
