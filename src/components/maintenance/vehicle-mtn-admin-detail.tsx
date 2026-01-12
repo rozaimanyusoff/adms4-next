@@ -202,6 +202,7 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
   const router = useRouter();
   const unauthorizedView = !canView;
   const isApproved = (request?.status || '').toLowerCase() === 'approved' || Boolean(request?.approval_date);
+  const isVerified = Boolean(request?.verification_date) && (request as any)?.verification_stat !== null && (request as any)?.verification_stat !== undefined;
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [pendingUnverifiedIds, setPendingUnverifiedIds] = useState<number[]>([]);
   // Cache for invoiced parts by request id
@@ -310,6 +311,8 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
   };
 
   // Fetch global list of unverified (pending verification) requests for current year
+  // vehicle-mtn-admin-detail.tsx (line 314) defines fetchPendingUnverified in a useEffect to load IDs for pending-verification requests into pendingUnverifiedIds.
+  // Those IDs drive the UI navigation: the Prev/Next arrow buttons in the top bar use prevReqId/nextReqId to move between pending requests (vehicle-mtn-admin-detail.tsx (lines 668-698)), and the success dialog’s “Show unverified application no: #...” button uses nextUnverifiedId to jump to the next pending item (vehicle-mtn-admin-detail.tsx (lines 1264-1273)).
   useEffect(() => {
     const fetchPendingUnverified = async () => {
       try {
@@ -1004,7 +1007,16 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
                     <Button
                       onClick={handleAdminSave}
                       variant={"default"}
-                      disabled={isApproved || adminSaving || adminFinalized || !((serviceConfirm === 'reject' && rejectionRemarks.trim().length > 0) || (serviceConfirm === 'proceed' && adminRemarks.trim().length > 0 && workshopPanel !== 'none'))}
+                      disabled={
+                        isApproved ||
+                        isVerified ||
+                        adminSaving ||
+                        adminFinalized ||
+                        !(
+                          (serviceConfirm === 'reject' && rejectionRemarks.trim().length > 0) ||
+                          (serviceConfirm === 'proceed' && adminRemarks.trim().length > 0 && workshopPanel !== 'none')
+                        )
+                      }
                       className="text-white disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {adminSaving ? (
@@ -1100,7 +1112,7 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
                 ) : serviceHistory.length === 0 ? (
                   <p className="text-sm text-gray-500">No service records found for this asset.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[60vh] sm:max-h-187.5 border-0 overflow-y-auto overscroll-contain pr-1">
+                  <div className="space-y-2 max-h-[60vh] sm:max-h-187.5 border-0 overflow-y-auto overscroll-contain pr-1 history-scroll">
                     {serviceHistory.map(rec => (
                       <div
                         key={rec.req_id}
@@ -1279,6 +1291,29 @@ const VehicleMaintenanceAdminDetail: React.FC<VehicleMaintenanceDetailProps> = (
         </DialogContent>
       </Dialog>
 
+      <style jsx>{`
+        .history-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .history-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+        .history-scroll:hover {
+          scrollbar-width: thin;
+        }
+        .history-scroll:hover::-webkit-scrollbar {
+          width: 8px;
+        }
+        .history-scroll::-webkit-scrollbar-thumb {
+          background-color: rgba(100, 116, 139, 0.6);
+          border-radius: 9999px;
+        }
+        .history-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+      `}</style>
     </>
   );
 };
