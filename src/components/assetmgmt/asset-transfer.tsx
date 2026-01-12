@@ -5,23 +5,19 @@ import { authenticatedApi } from "@/config/api";
 import { Plus } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import AssetTransferForm from "./asset-transfer-form";
 import AssetTransferReceiveForm from "./asset-transfer-receive-form";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 
 export default function AssetTransfer() {
-    const [showForm, setShowForm] = useState(false);
-    const [editId, setEditId] = useState<string | number | undefined>(undefined);
-    const [formDirty, setFormDirty] = useState(false);
+    const router = useRouter();
     const [showReceiveForm, setShowReceiveForm] = useState(false);
     const [receiveItem, setReceiveItem] = useState<any | null>(null);
     const [receiveTransferId, setReceiveTransferId] = useState<string | number | undefined>(undefined);
     const [receiveItemId, setReceiveItemId] = useState<string | number | undefined>(undefined);
-    const [confirmBackOpen, setConfirmBackOpen] = useState(false);
 
     const fetchReceiveItem = React.useCallback(async (transferId?: string | number, itemId?: string | number) => {
         if (!transferId || !itemId) return;
@@ -46,10 +42,10 @@ export default function AssetTransfer() {
             fetchReceiveItem(transferIdValue, row.id);
             return;
         }
-        // Otherwise open the parent transfer edit form
+        // Otherwise open the parent transfer edit form on dedicated page
         if (row && (row.id || row.request_no)) {
-            setEditId(row.id ?? row.request_no);
-            setShowForm(true);
+            const editKey = row.id ?? row.request_no;
+            router.push(`/assetdata/transfer/form?id=${encodeURIComponent(String(editKey))}`);
         }
     };
 
@@ -204,57 +200,6 @@ export default function AssetTransfer() {
         return Array.isArray(dataBy) ? dataBy : [];
     }, [dataBy]);
 
-    if (showForm) {
-        return (
-            <div className="py-4">
-                <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-bold">Asset Transfer Form</h2>
-                    {/* Back button with unsaved changes confirmation */}
-                    <>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="ring-1 ring-red-500"
-                            size="sm"
-                            onClick={() => {
-                                if (formDirty) setConfirmBackOpen(true);
-                                else { setShowForm(false); setEditId(undefined); }
-                            }}
-                        >
-                            Back to Requests
-                        </Button>
-                    </>
-                </div>
-                {/* Confirm dialog */}
-                <div>
-                    {confirmBackOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-                            <div className="bg-white rounded shadow-lg p-4 w-full max-w-sm">
-                                <div className="font-semibold mb-2">Leave Form?</div>
-                                <div className="text-sm text-gray-600 mb-4">You have unsaved changes. Are you sure you want to go back?</div>
-                                <div className="flex justify-end gap-2">
-                                    <button className="px-3 py-2 rounded border" onClick={() => setConfirmBackOpen(false)}>Stay</button>
-                                    <button
-                                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded"
-                                        onClick={() => { setConfirmBackOpen(false); setShowForm(false); setEditId(undefined); }}
-                                    >
-                                        Leave
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <AssetTransferForm
-                    id={editId}
-                    onClose={() => { setShowForm(false); setEditId(undefined); }}
-                    onDirtyChange={setFormDirty}
-                    onSubmitted={refreshAll}
-                />
-            </div>
-        );
-    }
-
     if (showReceiveForm) {
         // Use the list from /api/assets/transfers/items?new_owner={username}
         // Navigate strictly by ascending item id
@@ -349,7 +294,7 @@ export default function AssetTransfer() {
                     variant="default"
                     size="sm"
                     title="Create New Asset Transfer"
-                    onClick={() => { setEditId(undefined); setShowForm(true); }}
+                    onClick={() => { router.push('/assetdata/transfer/form'); }}
                 >
                     <Plus className="w-5 h-5" />
                 </Button>

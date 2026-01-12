@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useRouter } from 'next/navigation';
 
 // --- Asset Transfer API and Form Types ---
 export interface AssetTransferItem {
@@ -155,6 +156,7 @@ interface AssetTransferFormProps {
 }
 
 const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDirtyChange, onSubmitted }) => {
+	const router = useRouter();
 	const [form, setForm] = React.useState<any>({ requestor: {}, reason: {} });
 	const [selectedItems, setSelectedItems] = React.useState<any[]>([]);
 	const [supervised, setSupervised] = React.useState<any[]>([]);
@@ -194,6 +196,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	// Application type/purpose: resignation reporting vs transfer to someone else
 	// This form defaults to resignation flow; transfer type selector removed
 	const [applicationOption, setApplicationOption] = React.useState<'resignation' | 'transfer' | ''>('resignation');
+	// Manager access
+	const [managerId, setManagerId] = React.useState<number | null>(null);
+	const [managerAssets, setManagerAssets] = React.useState<any[]>([]);
+	const [managerSidebarOpen, setManagerSidebarOpen] = React.useState(false);
+	const [managerSidebarLoading, setManagerSidebarLoading] = React.useState(false);
+	const [managerAssetSearch, setManagerAssetSearch] = React.useState('');
 
 	const authContext = useContext(AuthContext);
 	const user = authContext?.authData?.user;
@@ -649,7 +657,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		if (onClose) {
 			onClose();
 		} else {
-			try { window.close(); } catch { }
+			try {
+				router.push('/assetdata/transfer');
+			} catch {
+				try { window.close(); } catch { }
+			}
 		}
 	}
 
@@ -672,6 +684,27 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			toast.error('Failed to load assets');
 		} finally {
 			setSidebarLoading(false);
+		}
+	}
+
+	// Manager sidebar (master assets list)
+	async function handleOpenManagerSidebar() {
+		if (!managerId) {
+			toast.error('Manager access not available.');
+			return;
+		}
+		if (managerSidebarLoading) return;
+		setManagerSidebarOpen(true);
+		setManagerSidebarLoading(true);
+		try {
+			const url = `/api/assets?manager=${encodeURIComponent(String(managerId))}&status=active`;
+			const res: any = await authenticatedApi.get(url);
+			setManagerAssets(res?.data?.data || res?.data || []);
+		} catch (err) {
+			toast.error('Failed to load managed assets');
+			setManagerAssets([]);
+		} finally {
+			setManagerSidebarLoading(false);
 		}
 	}
 
@@ -944,6 +977,29 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const isReadOnly = isSubmitted || isApproved;
 	const watermarkText = isApproved ? (allAccepted ? 'Accepted' : 'Pending Acceptance') : undefined;
 
+	// Discover manager access once (if current user listed in /api/assets/managers)
+	useEffect(() => {
+		const fetchManagerAccess = async () => {
+			if (!user?.username) return;
+			try {
+				const res: any = await authenticatedApi.get('/api/assets/managers');
+				const list: any[] = res?.data?.data || res?.data || [];
+				const match = list.find((m: any) => {
+					const ramco = m?.ramco_id || m?.employee?.ramco_id;
+					const active = String(m?.is_active ?? '').toLowerCase() === '1' || m?.is_active === 1;
+					return active && ramco && String(ramco) === String(user.username);
+				});
+				if (match) {
+					const mgrId = match.manager_id ?? match.id ?? null;
+					if (mgrId) setManagerId(Number(mgrId));
+				}
+			} catch (err) {
+				// Silent failure; manager access is optional
+			}
+		};
+		fetchManagerAccess();
+	}, [user?.username]);
+
 	return (
 		<>
 			{/* AlertDialogs for confirmation */}
@@ -1024,6 +1080,16 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				</AlertDialogContent>
 			</AlertDialog>
 
+			<div className="flex items-center justify-between mb-4">
+				<h2 className="text-2xl font-bold">Asset Transfer Form
+					<p className="text-xs text-gray-400 mb-4">
+						Use this form to transfer an asset to another person or location within the organization. Provide the required details and submit when ready.
+					</p>
+				</h2>
+				<Button variant="outline" size="sm" onClick={handleCancel}>
+					Back to Records
+				</Button>
+			</div>
 			<Card>
 				<CardHeader>
 					<CardTitle className='text-lg'>Requestor</CardTitle>
@@ -1096,32 +1162,55 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 										<Badge variant="secondary">Submitted</Badge>
 									)}
 								</div>
-								<TooltipProvider>
-									<Tooltip open={showAddItemsTooltip}>
-										<TooltipTrigger asChild>
-											<span>
-												<Button
-													type="button"
-													onClick={handleOpenSidebar}
-													size="icon"
-													variant="default"
-													className=""
-													title="Add Items"
-													disabled={sidebarLoading || isReadOnly}
-												>
-													{sidebarLoading ? <span className="loader w-5 h-5" /> : <Plus className="w-5 h-5" />}
-												</Button>
-											</span>
-										</TooltipTrigger>
-										<TooltipContent side="top" align="center" className="z-50">
-											Click here to add items for transfer.
-										</TooltipContent>
-									</Tooltip>
-								</TooltipProvider>
+								<div className="flex items-center gap-2">
+									{!managerId && (
+										<TooltipProvider>
+											<Tooltip open={showAddItemsTooltip}>
+												<TooltipTrigger asChild>
+													<span>
+														<Button
+															type="button"
+															onClick={handleOpenSidebar}
+															size="lg"
+															variant="default"
+															className="bg-black hover:bg-black/90 text-white rounded-xl px-4"
+															title="Add Items"
+															disabled={sidebarLoading || isReadOnly}
+														>
+															{sidebarLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+														</Button>
+													</span>
+												</TooltipTrigger>
+												<TooltipContent side="top" align="center" className="z-50">
+													Click here to add items for transfer.
+												</TooltipContent>
+											</Tooltip>
+										</TooltipProvider>
+									)}
+									{managerId ? (
+										<Button
+											variant="outline"
+											size="lg"
+											onClick={handleOpenManagerSidebar}
+											disabled={managerSidebarLoading || isReadOnly}
+											className="rounded-xl px-4 bg-white text-black hover:bg-gray-100"
+										>
+											{managerSidebarLoading ? (
+												<>
+													<Loader2 className="w-5 h-5 mr-2 animate-spin" /> Loading
+												</>
+											) : (
+												<>
+													<Plus className="w-5 h-5 mr-2" /> Master Assets
+												</>
+											)}
+										</Button>
+									) : null}
+								</div>
 							</div>
-							{selectedItems.length === 0 ? (
-								<div className="text-gray-400 text-center py-4">No items selected.</div>
-							) : (
+						{selectedItems.length === 0 ? (
+							<div className="text-gray-400 text-center py-4">No items selected.</div>
+						) : (
 								<div className="mt-2 px-1 space-y-3">
 									{selectedItems.map((item, idx) => {
 										if (typeof item.id === 'undefined' || item.id === null) return null;
@@ -1150,8 +1239,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																<Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white shrink-0" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
 																	<X />
 																</Button>
-																<span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">Item {idx + 1}</span>
-																<span className="text-xs font-semibold text-blue-600 min-w-[70px] text-left">{typeLabel}</span>
+																<span className="text-xs font-semibold text-blue-600 min-w-17.5 text-left">Item {idx + 1}</span>
+																<span className="text-xs font-semibold text-blue-600 min-w-17.5 text-left">{typeLabel}</span>
 																<span className="font-medium">
 																	{isEmployee ? (
 																		<span>{renderValue(item.full_name) || renderValue(item.name) || renderValue(item.ramco_id)}</span>
@@ -1183,7 +1272,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																<Input
 																	type="date"
 																	required
-																	className={`w-full min-w-0 md:w-[160px] ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
+																	className={`w-full min-w-0 md:w-40 ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
 																	value={itemEffectiveDates[item.id] || ''}
 																	onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
 																	onClick={e => e.stopPropagation()}
@@ -1272,7 +1361,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	{/* Effective Date moved to header; Transfer type radio controls present in header */}
 
 																	<div className="-mx-1 overflow-x-auto md:mx-0">
-																		<table className="w-full min-w-[520px] text-left align-middle text-xs sm:text-sm">
+																		<table className="w-full min-w-130 text-left align-middle text-xs sm:text-sm">
 																			<thead className="bg-transparent py-0">
 																				<tr>
 																					<th className="bg-transparent py-1 pr-4 sm:pr-6 w-[20%]"></th>
@@ -1477,7 +1566,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		{form.reason.others && (
 																			<div className="mt-2 px-2">
 																				<Textarea
-																					className="w-full border rounded px-2 py-1 text-sm min-h-[40px]"
+																					className="w-full border rounded px-2 py-1 text-sm min-h-10"
 																					placeholder="Please specify..."
 																					value={form.reason.othersText}
 																					onChange={e => handleInput('reason', 'othersText', e.target.value)}
@@ -1489,7 +1578,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
 																			<div className="flex-1">
 																				<Label className="font-semibold mb-1">Other Reason</Label>
-																				<Textarea className="w-full min-h-[90px] border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." disabled={isAcceptedItem} />
+																				<Textarea className="w-full min-h-22.5 border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." disabled={isAcceptedItem} />
 																			</div>
 																			<div className="flex-1">
 																				<Label className="font-semibold mb-1">Attachments</Label>
@@ -1572,9 +1661,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																/>
 															</div>
 															<ul className="space-y-3">
-													{Object.entries(ownerGroups)
-														.filter(([ownerKey, assets]) => {
-															if (!assetSearch) return true;
+																{Object.entries(ownerGroups)
+																	.filter(([ownerKey, assets]) => {
+																		if (!assetSearch) return true;
 																		const search = assetSearch.toLowerCase();
 																		const firstAsset = assets[0];
 																		const ownerName = firstAsset.owner?.full_name || '';
@@ -1591,16 +1680,16 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		));
 																		return matches(ownerName) || matches(ownerId) || assetMatches;
 																	})
-														.map(([ownerKey, assets]) => {
-															const firstAsset = assets[0];
-															const ownerName = firstAsset.owner?.full_name || 'Unassigned';
-															const ownerRamcoId = firstAsset.owner?.ramco_id || '';
-															const filteredAssets = assets.filter(a => !isAssetSelected(a));
-															const selectableAssets = filteredAssets.filter(a => !isAssetLockedByPendingTransfer(a));
-															if (filteredAssets.length === 0) return null;
+																	.map(([ownerKey, assets]) => {
+																		const firstAsset = assets[0];
+																		const ownerName = firstAsset.owner?.full_name || 'Unassigned';
+																		const ownerRamcoId = firstAsset.owner?.ramco_id || '';
+																		const filteredAssets = assets.filter(a => !isAssetSelected(a));
+																		const selectableAssets = filteredAssets.filter(a => !isAssetLockedByPendingTransfer(a));
+																		if (filteredAssets.length === 0) return null;
 
-															return (
-																<li key={ownerKey} className="bg-blue-50 dark:bg-gray-700 rounded-lg p-3 border border-blue-200">
+																		return (
+																			<li key={ownerKey} className="bg-blue-50 dark:bg-gray-700 rounded-lg p-3 border border-blue-200">
 																				<div className="flex items-center justify-between mb-2">
 																					<div className="flex items-center gap-3">
 																						<User className="w-5 h-5 text-blue-600" />
@@ -1613,55 +1702,55 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							</div>
 																						</div>
 																					</div>
-																	<Button
-																		size="sm"
-																		onClick={() => {
-																			// Add all this owner's remaining assets to current selection
-																			addAllAssetsForOwner(selectableAssets, ownerName);
-																		}}
-																		className="bg-blue-600 hover:bg-blue-700 text-white"
-																		disabled={selectableAssets.length === 0}
-																	>
-																		Add All ({selectableAssets.length})
-																	</Button>
-																</div>
-																<div className="space-y-1">
-																	{filteredAssets.map((asset, idx) => {
+																					<Button
+																						size="sm"
+																						onClick={() => {
+																							// Add all this owner's remaining assets to current selection
+																							addAllAssetsForOwner(selectableAssets, ownerName);
+																						}}
+																						className="bg-blue-600 hover:bg-blue-700 text-white"
+																						disabled={selectableAssets.length === 0}
+																					>
+																						Add All ({selectableAssets.length})
+																					</Button>
+																				</div>
+																				<div className="space-y-1">
+																					{filteredAssets.map((asset, idx) => {
 																						const typeName = getAssetTypeName(asset);
 																						const categoryName = getAssetCategoryName(asset);
 																						const brandName = getAssetBrandName(asset);
 																						const modelName = getAssetModelName(asset);
 																						const typeLine = [typeName, categoryName].filter(Boolean).join(' - ');
-																		const brandLine = [brandName, modelName].filter(Boolean).join(' ');
-																		const locked = isAssetLockedByPendingTransfer(asset);
-																		return (
-																			<div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
-																				<div>
-																					<span className="font-medium">{asset.register_number}</span>
-																					<div className="text-gray-600 dark:text-gray-300">
-																						{typeLine || '-'}
-																					</div>
-																					<div className="text-gray-500 dark:text-gray-400">
-																						{brandLine || '-'}
-																					</div>
-																					{locked && (
-																						<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
-																							Pending transfer
-																						</Badge>
-																					)}
-																				</div>
-																				<button
-																					type="button"
-																					className={`rounded-full p-1 ${locked ? 'cursor-not-allowed text-gray-300' : 'text-blue-500 hover:text-blue-600'}`}
-																					onClick={() => addSelectedItem(asset)}
-																					disabled={locked}
-																					title={locked ? 'Pending transfer in progress' : 'Add asset'}
-																				>
-																					<CirclePlus className="w-5 h-5" />
-																				</button>
-																			</div>
-																		);
-																	})}
+																						const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																						const locked = isAssetLockedByPendingTransfer(asset);
+																						return (
+																							<div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
+																								<div>
+																									<span className="font-medium">{asset.register_number}</span>
+																									<div className="text-gray-600 dark:text-gray-300">
+																										{typeLine || '-'}
+																									</div>
+																									<div className="text-gray-500 dark:text-gray-400">
+																										{brandLine || '-'}
+																									</div>
+																									{locked && (
+																										<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
+																											Pending transfer
+																										</Badge>
+																									)}
+																								</div>
+																								<button
+																									type="button"
+																									className={`rounded-full p-1 ${locked ? 'cursor-not-allowed text-gray-300' : 'text-blue-500 hover:text-blue-600'}`}
+																									onClick={() => addSelectedItem(asset)}
+																									disabled={locked}
+																									title={locked ? 'Pending transfer in progress' : 'Add asset'}
+																								>
+																									<CirclePlus className="w-5 h-5" />
+																								</button>
+																							</div>
+																						);
+																					})}
 																				</div>
 																			</li>
 																		);
@@ -1771,6 +1860,119 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 										</div>
 									}
 									onClose={() => setSidebarOpen(false)}
+									size="sm"
+								/>
+							)}
+							{managerSidebarOpen && (
+								<ActionSidebar
+									title={"Select Managed Assets"}
+									content={
+										<div className="w-full">
+											{(() => {
+												if (managerSidebarLoading) {
+													return (
+														<div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+															<Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+															<p className="text-sm text-muted-foreground">Loading managed assets...</p>
+														</div>
+													);
+												}
+												const allAssets = Array.isArray(managerAssets) ? managerAssets : [];
+												const typeCounts: Record<string, number> = {};
+												allAssets.forEach(a => {
+													const typeName = getAssetTypeName(a);
+													const key = typeName && typeName.trim() ? typeName : '(Unspecified)';
+													typeCounts[key] = (typeCounts[key] || 0) + 1;
+												});
+												const summary = Object.entries(typeCounts).map(([type, count]) => `${type}: ${count}`).join(' | ');
+
+												return (
+													<>
+														<div className="mb-4 font-semibold flex flex-col gap-2">
+															<span>Managed Assets ({summary || '0'})</span>
+															<Input
+																type="text"
+																placeholder="Search assets..."
+																className="border rounded px-2 py-1 w-full text-sm"
+																value={managerAssetSearch}
+																onChange={e => setManagerAssetSearch(e.target.value)}
+															/>
+														</div>
+														<ul className="space-y-2">
+															{allAssets
+																.filter((a: any) => !isAssetSelected(a))
+																.filter((a: any) => {
+																	if (!managerAssetSearch) return true;
+																	const search = managerAssetSearch.toLowerCase();
+																	const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
+																	return (
+																		matches(a.register_number) ||
+																		matches(a.entry_code) ||
+																		matches(getAssetCategoryName(a)) ||
+																		matches(getAssetBrandName(a)) ||
+																		matches(getAssetModelName(a)) ||
+																		matches(getAssetTypeName(a)) ||
+																		matches(a?.owner?.full_name) ||
+																		matches(a?.owner?.ramco_id)
+																	);
+																})
+																.map((a: any, j: any) => {
+																	const assetType = getAssetTypeName(a);
+																	const lowerType = (assetType || '').toLowerCase();
+																	let typeIcon = null;
+																	if (lowerType.includes('motor')) {
+																		typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
+																	} else if (lowerType.includes('computer')) {
+																		typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
+																	}
+																	const categoryName = getAssetCategoryName(a);
+																	const brandName = getAssetBrandName(a);
+																	const modelName = getAssetModelName(a);
+																	const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
+																	const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																	const locked = isAssetLockedByPendingTransfer(a);
+																	const alreadySelected = isAssetSelected(a);
+																	return (
+																		<React.Fragment key={`managed-${a.id || a.register_number || j}`}>
+																			<li className="flex flex-col bg-emerald-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+																				<div className="flex items-center gap-3">
+																					<div className="flex items-center gap-2">
+																						<Checkbox
+																							checked={alreadySelected}
+																							disabled={locked || alreadySelected}
+																							onCheckedChange={(v) => {
+																								if (v && !locked && !alreadySelected) addSelectedItem(a);
+																							}}
+																						/>
+																						{typeIcon && typeIcon}
+																					</div>
+																					<div>
+																						<div className="text-medium dark:text-dark-light">
+																							{a.owner?.full_name && (
+																								<div className="font-medium dark:text-dark-light">{a.owner.full_name} <span className="text-black">({a.owner.ramco_id})</span></div>
+																							)}
+																						</div>
+																						<span className="font-medium dark:text-dark-light">{a.register_number}</span>
+																						<div className="text-sm text-gray-600 dark:text-gray-300">{typeLine || '-'}</div>
+																						<div className="text-sm text-gray-500 dark:text-gray-400">{brandLine || '-'}</div>
+																						{locked && (
+																							<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
+																								Pending transfer
+																							</Badge>
+																						)}
+																					</div>
+																				</div>
+																			</li>
+																		</React.Fragment>
+																	);
+																})}
+														</ul>
+													</>
+												);
+											})()}
+										</div>
+									}
+									onClose={() => { setManagerSidebarOpen(false); setManagerAssetSearch(''); }}
 									size="sm"
 								/>
 							)}
