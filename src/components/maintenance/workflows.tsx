@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useContext } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, Repeat2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { AuthContext } from '@/store/AuthContext';
 
 export interface Workflows {
   id?: number;
@@ -60,6 +61,7 @@ interface WorkflowsProps {
 }
 
 const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
+  const auth = useContext(AuthContext);
   const [workflows, setWorkflows] = useState<Workflows[]>([]);
   const [loading, setLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -89,6 +91,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const formTitle = isEditing
     ? `Edit ${editingLevel?.level_name || 'role'} in ${editingLevel?.module_name} workflow`
     : 'Add New Workflow';
+  const canAddWorkflow = auth?.authData?.user?.role?.id === 1 && auth?.authData?.user?.username === '000277';
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -229,6 +232,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           employees: formData.employees.map((e) => ({
             ramco_id: e.ramco_id,
             level_name: e.level_name,
+            department_id: e.department_id ?? null,
           })),
         };
 
@@ -375,6 +379,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleAdd = () => {
+    if (!canAddWorkflow) return;
     setEditingLevel(null);
     resetForm();
     setIsFormOpen(true);
@@ -520,7 +525,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           <h2 className="text-2xl font-semibold">Workflows Management</h2>
           <p className="text-gray-600 mt-1">Configure workflows for different modules</p>
         </div>
-        <Button onClick={handleAdd} className="flex items-center gap-2">
+        <Button onClick={handleAdd} className="flex items-center gap-2" disabled={!canAddWorkflow}>
           <Plus className="w-4 h-4" />
           Add Workflow
         </Button>
@@ -597,10 +602,10 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       className="absolute right-2 top-1/2 transform -translate-y-1/2 h-7 px-2"
                       variant="default"
                       onClick={handleAddSelectedEmployee}
-                      disabled={!selectedEmployee}
+                      disabled={!employeeSearchQuery.trim()}
                       title={isEditing ? 'Replace employee' : 'Add employee to workflow'}
                     >
-                      {isEditing ? <RefreshCw className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      {isEditing ? <Repeat2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     </Button>
                   </div>
 
@@ -663,11 +668,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                                 value={emp.level_name}
                                 onValueChange={(val) => {
                                   if (roleLocked) return;
-                                  const duplicateStage = formData.employees.some((x, i) => i !== idx && x.level_name === val);
-                                  if (duplicateStage) {
-                                    toast.error('This level name is already used');
-                                    return;
-                                  }
                                   setFormData({
                                     ...formData,
                                     employees: formData.employees.map((x, i) => (i === idx ? { ...x, level_name: val } : x)),
@@ -887,7 +887,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
               <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Workflow Levels</h3>
               <p className="text-gray-500 mb-4">Get started by creating your first approval level</p>
-              <Button onClick={handleAdd} className="flex items-center gap-2 mx-auto">
+              <Button onClick={handleAdd} className="flex items-center gap-2 mx-auto" disabled={!canAddWorkflow}>
                 <Plus className="w-4 h-4" />
                 Add Workflow Level
               </Button>

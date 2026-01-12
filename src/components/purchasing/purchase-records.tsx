@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 // Purchase dashboard is shown in the parent tabs component
 import PurchaseCard from './purchase-card';
 import PurchaseRegisterForm from './purchase-register-form';
-import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle, Mail, Pencil, Upload } from 'lucide-react';
+import { Plus, ShoppingCart, Package, Grid, List, Search, PlusCircle, Mail, Pencil, Upload, CircleAlert, TriangleAlert } from 'lucide-react';
 import type { ComboboxOption } from '@/components/ui/combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -980,6 +980,19 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
     return 'Undelivered';
   };
 
+  // Explain what is missing for asset registration
+  const getStatusNotice = (purchase: ApiPurchase) => {
+    const assetRegistry = String((purchase as any).asset_registry || '').toLowerCase();
+    const deliveries = Array.isArray((purchase as any).deliveries) ? (purchase as any).deliveries : [];
+    const hasDeliveries = deliveries.length > 0;
+    const hasDeliveryProof = hasDeliveries && deliveries.some((d: any) => Boolean((d as any)?.upload_path));
+
+    if (!hasDeliveries) return 'Delivery record missing';
+    if (!hasDeliveryProof) return 'Purchase form not completed or upload file missing';
+    if (assetRegistry !== 'completed') return 'Asset registry not completed';
+    return '';
+  };
+
   // Badge class for request type: CAPEX -> green, OPEX -> blue, others -> amber
   const getRequestTypeBadgeClass = (type?: string) => {
     const t = (type || '').toString().toUpperCase();
@@ -1004,7 +1017,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
 
   // Define columns for DataGrid
   const columns: ColumnDef<any>[] = [
-    { key: 'id', header: 'No' },
+    { key: 'id', header: 'No', sortable: true, render: (row: any) => row.id },
     // Exclude deliveries columns for now; /api/purchases list does not include them
     {
       key: 'status',
@@ -1024,8 +1037,9 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         const isRegCompleted = status === 'registered';
         const disableAsset = status === 'undelivered';
         const assetLabel = isRegCompleted ? 'Handed Over' : (disableAsset ? 'Undelivered' : 'Unregistered');
+        const statusNotice = getStatusNotice(row);
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
@@ -1061,6 +1075,12 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
                 {resendingId === String(row.id) ? 'Sending...' : 'Resend'}
               </Button>
             </div>
+            {statusNotice && (
+              <div className="flex items-center gap-1 mt-1 text-xs text-red-600 leading-tight animate-pulse">
+                <TriangleAlert className="h-4 w-4" />
+                {statusNotice}
+              </div>
+            )}
           </div>
         );
       },
@@ -1288,6 +1308,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
             <span className="text-2xl font-semibold">{statusSummary.undelivered}</span>
             <span className="text-sm text-muted-foreground">{statusSummary.pctUndelivered}%</span>
           </div>
+          <div className="text-xs text-red-700 dark:text-red-300 mt-1">No delivery record or missing delivery file</div>
         </button>
         <button
           type="button"
@@ -1299,6 +1320,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
             <span className="text-2xl font-semibold">{statusSummary.unregistered}</span>
             <span className="text-sm text-muted-foreground">{statusSummary.pctUnregistered}%</span>
           </div>
+          <div className="text-xs text-amber-800 dark:text-amber-300 mt-1">Delivered but asset registry not completed</div>
         </button>
         <button
           type="button"
@@ -1310,6 +1332,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
             <span className="text-2xl font-semibold">{statusSummary.registered}</span>
             <span className="text-sm text-muted-foreground">{statusSummary.pctRegistered}%</span>
           </div>
+          <div className="text-xs text-emerald-800 dark:text-emerald-300 mt-1">Delivery complete and asset registry updated</div>
         </button>
       </div>
 

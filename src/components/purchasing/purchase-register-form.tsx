@@ -24,6 +24,7 @@ import {
 import { ApiPurchase, PurchaseFormData } from './types';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 type DeliveryError = Partial<Record<'do_date' | 'do_no' | 'inv_date' | 'inv_no' | 'grn_date' | 'grn_no', string>>;
 
@@ -169,12 +170,94 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
       formData.unit_price > 0
     );
   }, [formData]);
+  const supplierMissing = !formData.supplier_id;
+  const brandMissing = !formData.brand_id;
+  const missingFlags = useMemo(() => ({
+    request_type: !formData.request_type,
+    pr_date: !formData.pr_date?.trim(),
+    pr_no: !formData.pr_no?.trim(),
+    costcenter: !formData.costcenter,
+    pic: !formData.pic,
+    type_id: !formData.type_id,
+    brand_id: !formData.brand_id,
+    supplier_id: !formData.supplier_id,
+    items: !formData.items,
+    qty: !formData.qty || formData.qty <= 0,
+    unit_price: !formData.unit_price || formData.unit_price <= 0,
+    po_no: !formData.po_no?.trim(),
+    po_date: !formData.po_date?.trim(),
+  }), [formData]);
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [supplierMatches, setSupplierMatches] = useState<Array<{ id?: number | string; name: string; matched_words?: string[] }>>([]);
+  const [supplierMatches, setSupplierMatches] = useState<Array<{ id?: string; name: string; matched_words?: string[] }>>([]);
   const [supplierMatchLoading, setSupplierMatchLoading] = useState(false);
   const [localSupplierOption, setLocalSupplierOption] = useState<ComboboxOption | null>(null);
   const [dismissedSupplierFallback, setDismissedSupplierFallback] = useState(false);
+  const [supplierPopoverOpen, setSupplierPopoverOpen] = useState(false);
+
+  // --- Supplier similarity helpers (to reduce false "unregistered" flags) ---
+  const normalizeSupplierText = (val: string) => (val || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const bigramDice = (a: string, b: string) => {
+    const bigrams = (s: string) => {
+      const text = s.replace(/\s+/g, ' ');
+      const arr: string[] = [];
+      for (let i = 0; i < text.length - 1; i += 1) {
+        arr.push(text.slice(i, i + 2));
+      }
+      return arr;
+    };
+    const aGrams = bigrams(a);
+    const bGrams = bigrams(b);
+    if (!aGrams.length || !bGrams.length) return 0;
+    const bCount: Record<string, number> = {};
+    bGrams.forEach(g => { bCount[g] = (bCount[g] || 0) + 1; });
+    let matches = 0;
+    aGrams.forEach(g => {
+      if (bCount[g]) {
+        matches += 1;
+        bCount[g] -= 1;
+      }
+    });
+    return (2 * matches) / (aGrams.length + bGrams.length);
+  };
+
+  const supplierSimilarity = (a: string, b: string) => {
+    const A = normalizeSupplierText(a);
+    const B = normalizeSupplierText(b);
+    if (!A || !B) return 0;
+    const shorter = A.length <= B.length ? A : B;
+    const longer = A.length > B.length ? A : B;
+    const containsScore = longer.includes(shorter) ? shorter.length / longer.length : 0;
+
+    const aWords = new Set(A.split(' ').filter(Boolean));
+    const bWords = new Set(B.split(' ').filter(Boolean));
+    const unionSize = new Set([...aWords, ...bWords]).size || 1;
+    const intersectionSize = [...aWords].filter(w => bWords.has(w)).length;
+    const tokenScore = intersectionSize / unionSize;
+
+    const diceScore = bigramDice(A, B);
+    return Math.max(containsScore, tokenScore, diceScore);
+  };
+
+  const findLocalSupplierMatches = (name: string, options: ComboboxOption[], limit = 8) => {
+    const target = (name || '').trim();
+    if (!target) return [];
+    const scored = options
+      .map(opt => {
+        if (opt.value === '__add_supplier__') return null;
+        const label = typeof opt.label === 'string' ? opt.label : String(opt.label || opt.value || '');
+        const score = supplierSimilarity(target, label);
+        return { id: opt.value, name: label, matched_words: [] as string[], score };
+      })
+      .filter(
+        (m): m is { id: string; name: string; matched_words: string[]; score: number } =>
+          !!m && typeof m.name === 'string' && m.name.length > 0 && typeof m.score === 'number' && m.score >= 0.45
+      )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(m => ({ id: m.id, name: m.name, matched_words: m.matched_words }));
+    return scored;
+  };
 
   useEffect(() => {
     // Reset brand add mode when form changes or a brand is selected
@@ -234,6 +317,10 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
         if (!d.grn_date) e.grn_date = 'GRN date is required';
         if (!d.grn_no) e.grn_no = 'GRN number is required';
       }
+      // PDF is now mandatory when any delivery details exist
+      if (hasAny && !deliveryFiles[i]) {
+        e.grn_no = 'PDF attachment is required when delivery details are filled';
+      }
       errs[i] = e;
       if (Object.keys(e).length > 0) ok = false;
     });
@@ -283,7 +370,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
           ? payload
           : [];
       const arr = matches.map((m: any) => ({
-        id: m?.id,
+        id: m?.id !== undefined && m?.id !== null ? String(m.id) : undefined,
         name: m?.name || m?.supplier_name || (typeof m === 'string' ? m : ''),
         matched_words: m?.matched_words || []
       })).filter((m: { name: string }) => m.name);
@@ -300,7 +387,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   };
 
   const handleSupplierNameInput = (val: string) => {
-    setSupplierMatches([]);
+    const localMatches = findLocalSupplierMatches(val, supplierOptions);
+    setSupplierMatches(localMatches);
+    setSupplierPopoverOpen(false);
     onSupplierNameChange(val);
   };
 
@@ -335,6 +424,25 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
       toast.error('Failed to register supplier');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // When an unregistered supplier is detected, surface similar registered suppliers automatically
+  useEffect(() => {
+    if (!supplierFallbackName || supplierMatchLoading) return;
+    const localMatches = findLocalSupplierMatches(supplierFallbackName, supplierOptions);
+    setSupplierMatches(localMatches);
+  }, [supplierFallbackName, supplierOptions, supplierMatchLoading]);
+
+  const handleOpenSupplierPopover = async () => {
+    const name = (supplierFallbackName || newSupplierName || '').trim();
+    if (!name) {
+      toast.error('Enter a supplier name first');
+      return;
+    }
+    setSupplierPopoverOpen(true);
+    if (supplierMatches.length === 0) {
+      await fetchSupplierMatches(name);
     }
   };
 
@@ -525,7 +633,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.request_type}
                 onValueChange={(value) => handleInputChange('request_type', value)}
               >
-                <SelectTrigger className='w-full'>
+                <SelectTrigger className={`w-full ${missingFlags.request_type ? 'border-red-300 focus-visible:ring-red-500' : ''}`}>
                   <SelectValue placeholder="Select request type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -534,7 +642,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   <SelectItem value="SERVICES">SERVICES</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500 mt-1">Required: choose CAPEX, OPEX, or SERVICES</p>
+              <p className={`text-xs mt-1 ${missingFlags.request_type ? 'text-red-500' : 'text-gray-500'}`}>Required: choose CAPEX, OPEX, or SERVICES</p>
               {validationErrors.request_type && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.request_type}</p>
               )}
@@ -546,8 +654,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 type="date"
                 value={formData.pr_date}
                 onChange={(e) => handleInputChange('pr_date', e.target.value)}
+                className={missingFlags.pr_date ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: pick the PR/request date</p>
+              <p className={`text-xs mt-1 ${missingFlags.pr_date ? 'text-red-500' : 'text-gray-500'}`}>Required: pick the PR/request date</p>
               {validationErrors.pr_date && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.pr_date}</p>
               )}
@@ -559,8 +668,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.pr_no}
                 onChange={(e) => handleInputChange('pr_no', e.target.value)}
                 placeholder="Enter PR number"
+                className={missingFlags.pr_no ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: enter the PR/Request number</p>
+              <p className={`text-xs mt-1 ${missingFlags.pr_no ? 'text-red-500' : 'text-gray-500'}`}>Required: enter the PR/Request number</p>
               {validationErrors.pr_no && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.pr_no}</p>
               )}
@@ -576,8 +686,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 emptyMessage="No cost centers"
                 disabled={costcentersLoading}
                 clearable={true}
+                className={missingFlags.costcenter ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: select the charging cost center</p>
+              <p className={`text-xs mt-1 ${missingFlags.costcenter ? 'text-red-500' : 'text-gray-500'}`}>Required: select the charging cost center</p>
               {validationErrors.costcenter && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.costcenter}</p>
               )}
@@ -619,8 +730,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 emptyMessage="No employees"
                 disabled={employeesLoading}
                 clearable={true}
+                className={missingFlags.pic ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: assign the requester/person in charge</p>
+              <p className={`text-xs mt-1 ${missingFlags.pic ? 'text-red-500' : 'text-gray-500'}`}>Required: assign the requester/person in charge</p>
               {validationErrors.pic && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.pic}</p>
               )}
@@ -636,8 +748,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 emptyMessage="No types"
                 disabled={typesLoading}
                 clearable={true}
+                className={missingFlags.type_id ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: choose an item type</p>
+              <p className={`text-xs mt-1 ${missingFlags.type_id ? 'text-red-500' : 'text-gray-500'}`}>Required: choose an item type</p>
               {validationErrors.type_id && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.type_id}</p>
               )}
@@ -664,8 +777,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 onChange={(e) => handleInputChange('items', e.target.value)}
                 placeholder="Enter item description"
                 rows={3}
+                className={missingFlags.items ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: describe the requested item</p>
+              <p className={`text-xs mt-1 ${missingFlags.items ? 'text-red-500' : 'text-gray-500'}`}>Required: describe the requested item</p>
               {validationErrors.items && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.items}</p>
               )}
@@ -702,8 +816,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.qty || ''}
                 onChange={(e) => handleInputChange('qty', parseInt(e.target.value) || 0)}
                 placeholder="Enter quantity"
+                className={missingFlags.qty ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: quantity must be greater than 0</p>
+              <p className={`text-xs mt-1 ${missingFlags.qty ? 'text-red-500' : 'text-gray-500'}`}>Required: quantity must be greater than 0</p>
               {validationErrors.qty && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.qty}</p>
               )}
@@ -719,8 +834,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.unit_price || ''}
                 onChange={(e) => handleInputChange('unit_price', parseFloat(e.target.value) || 0)}
                 placeholder="Enter unit price"
+                className={missingFlags.unit_price ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: unit price must be greater than 0</p>
+              <p className={`text-xs mt-1 ${missingFlags.unit_price ? 'text-red-500' : 'text-gray-500'}`}>Required: unit price must be greater than 0</p>
               {validationErrors.unit_price && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.unit_price}</p>
               )}
@@ -736,11 +852,69 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
             <div>
               <Label htmlFor="supplier">Supplier *</Label>
               {supplierFallbackName && !addingSupplier && (
-                <div className="flex items-center justify-between text-xs font-semibold text-red-600 mb-1">
+                <div className="flex items-center gap-2 text-xs font-semibold text-red-600">
                   <span>Detected unregistered supplier: {supplierFallbackName}</span>
-                  <Button size="sm" variant="outline" className="h-8 px-2" onClick={onCreateSupplierFromFallback} disabled={loading}>
-                    <Save className="h-4 w-4" />
-                  </Button>
+                  {(supplierFallbackName || (addingSupplier && newSupplierName.trim() !== '')) && (
+                    <Popover open={supplierPopoverOpen} onOpenChange={setSupplierPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="text-xs text-blue-600 inline-flex items-center gap-1 hover:underline disabled:text-gray-400"
+                          onClick={handleOpenSupplierPopover}
+                          disabled={supplierMatchLoading}
+                        >
+                          <Info className="h-3.5 w-3.5" />
+                          {supplierMatchLoading ? 'Checking similar suppliers...' : 'View similar suppliers'}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80 p-3 bg-stone-100 shadow-lg" align="start">
+                        <div className="space-y-2 text-xs">
+                          <div className="font-semibold text-blue-800">Similar suppliers</div>
+                          {supplierMatchLoading && <div className="text-gray-600">Checking...</div>}
+                          {!supplierMatchLoading && supplierMatches.length === 0 && (
+                            <div className="text-gray-600">No similar suppliers found</div>
+                          )}
+                          {!supplierMatchLoading && supplierMatches.length > 0 && (
+                            <div className="space-y-2">
+                              {supplierMatches.map((match) => (
+                                <div key={`${match.id || match.name}`} className="flex items-center justify-between gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="truncate">{match.name}</span>
+                                    {match.matched_words && match.matched_words.length > 0 && (
+                                      <span className="text-[11px] text-blue-600">Matched: {match.matched_words.join(', ')}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    {match.id ? (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 bg-amber-100"
+                                        onClick={() => { onSupplierSelect(String(match.id)); setDismissedSupplierFallback(true); setSupplierMatches([]); setSupplierPopoverOpen(false); }}
+                                      >
+                                        Choose supplier
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        className="h-7 px-2 bg-amber-100"
+                                        onClick={() => { handleSupplierNameInput(match.name); setSupplierPopoverOpen(false); }}
+                                      >
+                                        Use name
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
               )}
               <div className="flex items-start justify-between gap-2">
@@ -754,21 +928,34 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                       emptyMessage="No suppliers"
                       disabled={suppliersLoading}
                       clearable={true}
+                      className={supplierMissing ? 'border-red-300 focus-visible:ring-red-500' : undefined}
                     />
                   )}
                   {supplierFallbackName && (
-                    <Input
-                      value={supplierFallbackName}
-                      onChange={(e) => handleSupplierNameInput(e.target.value)}
-                      disabled={creatingSupplier}
-                      className="bg-amber-50 border-amber-300"
-                    />
+                    <div className="relative">
+                      <Input
+                        value={supplierFallbackName}
+                        onChange={(e) => handleSupplierNameInput(e.target.value)}
+                        disabled={creatingSupplier}
+                        className={`bg-amber-50 border-amber-300 pr-12 ${supplierMissing ? 'border-red-300 focus-visible:ring-red-500' : ''}`}
+                      />
+                      <Button
+                        size="icon"
+                        variant="default"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 h-7.5 w-7.5"
+                        onClick={onCreateSupplierFromFallback}
+                        disabled={loading || creatingSupplier}
+                        title="Add supplier"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">Required: select a supplier</p>
+                  <p className={`text-xs mt-1 ${supplierMissing ? 'text-red-500' : 'text-gray-500'}`}>Required: select a supplier</p>
                   {validationErrors.supplier_id && (
                     <p className="text-red-500 text-sm mt-1">{validationErrors.supplier_id}</p>
                   )}
-                  
+
                 </div>
               </div>
               {addingSupplier && (
@@ -790,57 +977,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   </Button>
                 </div>
               )}
-              {addingSupplier && newSupplierName.trim() !== '' && (
-                <div className="mt-2 space-y-2">
-                  <button
-                    type="button"
-                    className="text-xs text-blue-600 inline-flex items-center gap-1 hover:underline disabled:text-gray-400"
-                    onClick={() => fetchSupplierMatches(newSupplierName)}
-                    disabled={supplierMatchLoading}
-                  >
-                    <Info className="h-3.5 w-3.5" />
-                    {supplierMatchLoading ? 'Checking similar suppliers...' : 'View similar suppliers'}
-                  </button>
-                  {supplierMatches.length > 0 && (
-                    <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-2 text-xs">
-                      <div className="font-semibold text-blue-800">Similar suppliers</div>
-                      {supplierMatches.map((match) => (
-                        <div key={`${match.id || match.name}`} className="flex items-center justify-between gap-2">
-                          <div className="flex flex-col">
-                            <span className="truncate">{match.name}</span>
-                            {match.matched_words && match.matched_words.length > 0 && (
-                              <span className="text-[11px] text-blue-600">Matched: {match.matched_words.join(', ')}</span>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            {match.id ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-7 px-2"
-                                onClick={() => { onSupplierSelect(String(match.id)); setDismissedSupplierFallback(true); setSupplierMatches([]); }}
-                              >
-                                Use supplier
-                              </Button>
-                            ) : (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-7 px-2"
-                                onClick={() => handleSupplierNameInput(match.name)}
-                              >
-                                Use name
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+
             </div>
 
             <div>
@@ -854,6 +991,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   emptyMessage={formData.type_id ? 'No brands found' : 'Select item type first'}
                   disabled={brandsLoading || !formData.type_id}
                   clearable={true}
+                  className={brandMissing ? 'border-red-300 focus-visible:ring-red-500' : undefined}
                 />
               )}
               {addingBrand && (
@@ -876,7 +1014,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                   </Button>
                 </div>
               )}
-              <p className="text-xs text-gray-500 mt-1">Required: select a brand or add a new one.</p>
+              <p className={`text-xs mt-1 ${brandMissing ? 'text-red-500' : 'text-gray-500'}`}>Required: select a brand or add a new one.</p>
               {validationErrors.brand_id && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.brand_id}</p>
               )}
@@ -889,8 +1027,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.po_no}
                 onChange={(e) => handleInputChange('po_no', e.target.value)}
                 placeholder="Enter PO number"
+                className={missingFlags.po_no ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: enter the PO number</p>
+              <p className={`text-xs mt-1 ${missingFlags.po_no ? 'text-red-500' : 'text-gray-500'}`}>Required: enter the PO number</p>
               {validationErrors.po_no && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.po_no}</p>
               )}
@@ -904,8 +1043,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                 value={formData.po_date}
                 onChange={(e) => handleInputChange('po_date', e.target.value)}
                 placeholder="Enter PO date"
+                className={missingFlags.po_date ? 'border-red-300 focus-visible:ring-red-500' : undefined}
               />
-              <p className="text-xs text-gray-500 mt-1">Required: select the PO date</p>
+              <p className={`text-xs mt-1 ${missingFlags.po_date ? 'text-red-500' : 'text-gray-500'}`}>Required: select the PO date</p>
               {validationErrors.po_date && (
                 <p className="text-red-500 text-sm mt-1">{validationErrors.po_date}</p>
               )}
@@ -1133,7 +1273,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                         <div className="text-xs text-gray-500">PDF</div>
                       </div>
                     )}
-                    <Label>Attach PDF (optional)</Label>
+                    <Label>Attach PDF *</Label>
                     <div
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => onDeliveryFileDrop(idx, e)}
@@ -1144,6 +1284,7 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                         <div className="text-center text-sm text-gray-600">
                           Drop PDF here or click to select
                           <div className="text-xs text-gray-400">Only .pdf files accepted</div>
+                          <div className="text-xs text-red-500 mt-1">Required when delivery details are provided</div>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between w-full px-4">

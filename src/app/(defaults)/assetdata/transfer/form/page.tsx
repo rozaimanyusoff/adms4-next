@@ -1,8 +1,5 @@
-"use client";
-import React from "react";
 import type { Metadata } from "next";
 import AssetTransferForm from "@/components/assetmgmt/asset-transfer-form";
-import { useSearchParams } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Asset Transfer Form",
@@ -10,9 +7,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const AssetTransferFormPage = () => {
-  const searchParams = useSearchParams();
-  const id = searchParams?.get("id");
+type PageProps = {
+  searchParams?: {
+    id?: string | string[];
+  };
+};
+
+const AssetTransferFormPage = ({ searchParams }: PageProps) => {
+  const idParam = searchParams?.id;
+  const id = Array.isArray(idParam) ? idParam[0] : idParam;
 
   return (
     <div className="w-full">

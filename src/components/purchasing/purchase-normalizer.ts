@@ -4,8 +4,13 @@ import { ApiPurchase, FlatPurchase } from "./types";
 
 export const deriveAssetStatus = (p: ApiPurchase): "undelivered" | "unregistered" | "registered" => {
   const assetRegistry = String((p as any).asset_registry || "").toLowerCase();
-  const hasDeliveries = Array.isArray(p.deliveries) && p.deliveries.length > 0;
+  const deliveries = Array.isArray(p.deliveries) ? p.deliveries : [];
+  const hasDeliveries = deliveries.length > 0;
+  const hasDeliveryProof = hasDeliveries && deliveries.some((d: any) => Boolean((d as any)?.upload_path));
+
   if (assetRegistry === "completed") return "registered";
+  // Deliveries exist but no supporting files means treat as undelivered
+  if (hasDeliveries && !hasDeliveryProof) return "undelivered";
   if (hasDeliveries) return "unregistered";
   return "undelivered";
 };

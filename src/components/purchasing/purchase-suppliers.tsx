@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit, Trash2, Check, X, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, Check, X } from 'lucide-react';
+import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 
 const PurchaseSuppliers: React.FC = () => {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -40,25 +41,6 @@ const PurchaseSuppliers: React.FC = () => {
     load();
   }, []);
   
-
-  // Search & pagination
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  const filtered = suppliers.filter(s => {
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (s.name || '').toLowerCase().includes(q) || (s.contact_name || '').toLowerCase().includes(q) || String(s.id || '').includes(q);
-  });
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
-
-  useEffect(() => {
-    // reset to first page when query or pageSize changes
-    setPage(1);
-  }, [query, pageSize]);
 
   const handleAddChange = (field: string, value: string) => setNewSupplier(prev => ({ ...prev, [field]: value }));
 
@@ -127,15 +109,78 @@ const PurchaseSuppliers: React.FC = () => {
     }
   };
 
+  const columns: ColumnDef<any>[] = [
+    { key: 'id', header: 'ID', sortable: true },
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      filter: 'input',
+      render: (row: any) =>
+        editingId === row.id ? (
+          <Input value={editData.name} onChange={(e) => handleEditChange('name', e.target.value)} />
+        ) : (
+          row.name
+        )
+    },
+    {
+      key: 'contact_name',
+      header: 'Contact Name',
+      filter: 'input',
+      render: (row: any) =>
+        editingId === row.id ? (
+          <Input value={editData.contact_name} onChange={(e) => handleEditChange('contact_name', e.target.value)} />
+        ) : (
+          row.contact_name || '-'
+        )
+    },
+    {
+      key: 'contact_no',
+      header: 'Contact No',
+      filter: 'input',
+      render: (row: any) =>
+        editingId === row.id ? (
+          <Input value={editData.contact_no} onChange={(e) => handleEditChange('contact_no', e.target.value)} />
+        ) : (
+          row.contact_no || '-'
+        )
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      colClass: 'text-end',
+      render: (row: any) =>
+        editingId === row.id ? (
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant={'ghost'} onClick={() => saveEdit(row.id)} disabled={saving}>
+              <Check className="h-4 w-4 text-green-600" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={cancelEdit}>
+              <X className="h-4 w-4 text-red-600" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="ghost" onClick={() => startEdit(row)}>
+              <Edit className="h-4 w-4 text-amber-600" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => handleDelete(row.id)}>
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </Button>
+          </div>
+        )
+    }
+  ];
+
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Add form */}
       <Card>
         <CardHeader>
-          <CardTitle>Suppliers</CardTitle>
+          <CardTitle className='text-lg font-semibold'>Add New Supplier</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Add form */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
             <div>
               <Label>Name</Label>
               <Input value={newSupplier.name} onChange={(e) => handleAddChange('name', e.target.value)} placeholder="Supplier name" />
@@ -150,96 +195,26 @@ const PurchaseSuppliers: React.FC = () => {
             </div>
             <div className="flex items-end">
               <Button onClick={handleCreate} disabled={saving}>
-                <Plus className="mr-2 h-4 w-4" /> Add
+                <Plus className="h-4 w-4" />
               </Button>
             </div>
           </div>
-
-          {loading && <div>Loading suppliers...</div>}
-          {!loading && suppliers.length === 0 && <div>No suppliers found</div>}
-          {!loading && suppliers.length > 0 && (
-            <div className="overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="text-left p-2">ID</th>
-                    <th className="text-left p-2">Name</th>
-                    <th className="text-left p-2">Contact Name</th>
-                    <th className="text-left p-2">Contact No</th>
-                    <th className="text-right p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paged.map((s: any) => (
-                    <tr key={s.id} className="border-t">
-                      <td className="p-2 align-top w-20">{s.id}</td>
-                      <td className="p-2 align-top">
-                        {editingId === s.id ? (
-                          <Input value={editData.name} onChange={(e) => handleEditChange('name', e.target.value)} />
-                        ) : (
-                          s.name
-                        )}
-                      </td>
-                      <td className="p-2 align-top">
-                        {editingId === s.id ? (
-                          <Input value={editData.contact_name} onChange={(e) => handleEditChange('contact_name', e.target.value)} />
-                        ) : (
-                          s.contact_name || '-'
-                        )}
-                      </td>
-                      <td className="p-2 align-top">
-                        {editingId === s.id ? (
-                          <Input value={editData.contact_no} onChange={(e) => handleEditChange('contact_no', e.target.value)} />
-                        ) : (
-                          s.contact_no || '-'
-                        )}
-                      </td>
-                      <td className="p-2 align-top text-right space-x-2">
-                        {editingId === s.id ? (
-                          <>
-                            <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving}>
-                              <Check className="mr-2 h-4 w-4" /> Save
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={cancelEdit}>
-                              <X className="mr-2 h-4 w-4" /> Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button size="sm" variant="ghost" onClick={() => startEdit(s)}>
-                              <Edit className="mr-2 h-4 w-4" /> Edit
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(s.id)}>
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </Button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination controls */}
-          {!loading && filtered.length > 0 && (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-gray-600">
-                Showing {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, filtered.length)} of {filtered.length}
-              </div>
-              <div className="space-x-2">
-                <Button size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-                  Prev
-                </Button>
-                <Button size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={page === pageCount}>
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {loading && <div>Loading suppliers...</div>}
+      {!loading && suppliers.length === 0 && <div>No suppliers found</div>}
+      {!loading && suppliers.length > 0 && (
+        <CustomDataGrid
+          data={suppliers}
+          columns={columns}
+          pagination={false}
+          inputFilter={false}
+          columnsVisibleOption={false}
+          dataExport={false}
+          rowColHighlight={false}
+        />
+      )}
     </div>
   );
 };

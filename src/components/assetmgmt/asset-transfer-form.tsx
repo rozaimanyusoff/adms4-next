@@ -1,3 +1,4 @@
+"use client";
 import React, { useEffect, useContext, useRef } from 'react';
 import { AuthContext } from "@/store/AuthContext";
 import { Checkbox } from '../ui/checkbox';
