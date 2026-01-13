@@ -1,5 +1,5 @@
 import TransferApp from '@components/assetmgmt/tabassettransfer';
-import AssetTransfer from '@components/assetmgmt/asset-transfer';
+import AssetTransfer from '@components/assetmgmt/asset-transfer-record';
 import { Metadata } from 'next';
 import React from 'react';
 

@@ -2,22 +2,52 @@
 import React, { useState, useContext, useEffect } from "react";
 import { AuthContext } from "@/store/AuthContext";
 import { authenticatedApi } from "@/config/api";
-import { Plus } from "lucide-react";
+import { Inbox, Plus, Send, ArrowRightFromLine, ArrowLeftToLine } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import AssetTransferReceiveForm from "./asset-transfer-receive-form";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Arrow } from "@radix-ui/react-select";
 
 
-export default function AssetTransfer() {
+export default function AssetTranserRecords() {
     const router = useRouter();
+    const [activeTab, setActiveTab] = useState<string>(() => {
+        if (typeof window !== "undefined") {
+            return localStorage.getItem("assetTransferRecordsTab") || "applications";
+        }
+        return "applications";
+    });
+    const searchParams = useSearchParams();
+    const pathname = usePathname();
     const [showReceiveForm, setShowReceiveForm] = useState(false);
     const [receiveItem, setReceiveItem] = useState<any | null>(null);
     const [receiveTransferId, setReceiveTransferId] = useState<string | number | undefined>(undefined);
     const [receiveItemId, setReceiveItemId] = useState<string | number | undefined>(undefined);
+    const updateReceiveParams = React.useCallback((transferId?: string | number, itemId?: string | number) => {
+        if (!pathname) return;
+        const params = new URLSearchParams(searchParams?.toString() || '');
+        if (transferId && itemId) {
+            params.set('receive_transfer', String(transferId));
+            params.set('receive_item', String(itemId));
+        } else {
+            params.delete('receive_transfer');
+            params.delete('receive_item');
+        }
+        const query = params.toString();
+        const nextUrl = query ? `${pathname}?${query}` : pathname;
+        router.replace(nextUrl);
+    }, [pathname, router, searchParams]);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            localStorage.setItem("assetTransferRecordsTab", activeTab);
+        }
+    }, [activeTab]);
 
     const fetchReceiveItem = React.useCallback(async (transferId?: string | number, itemId?: string | number) => {
         if (!transferId || !itemId) return;
@@ -35,11 +65,13 @@ export default function AssetTransfer() {
         // If this is an item row (has transfer_id and asset), open the Receive form
         if (row && (row.transfer_id || row.asset)) {
             const transferIdValue = row.transfer_id ?? row.id;
+            setActiveTab("to-receive");
             setReceiveItem(row);
             setReceiveTransferId(transferIdValue);
             setReceiveItemId(row.id);
             setShowReceiveForm(true);
             fetchReceiveItem(transferIdValue, row.id);
+            updateReceiveParams(transferIdValue, row.id);
             return;
         }
         // Otherwise open the parent transfer edit form on dedicated page
@@ -56,6 +88,7 @@ export default function AssetTransfer() {
     const [loadingBy, setLoadingBy] = useState(false);
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
+    const fullName = auth?.authData?.user?.name || username || '-';
 
     const refreshTransfers = React.useCallback(() => {
         if (!username) return;
@@ -96,6 +129,18 @@ export default function AssetTransfer() {
         refreshTransferItems();
     }, [refreshTransfers, refreshTransferItems]);
 
+    // Precompute filtered datasets so hooks order remains stable
+    const transferToRows = React.useMemo(() => {
+        const me = String(username || '');
+        // Rows I initiated (make asset transfer to new owner)
+        return (data || []).filter((row: any) => String(row?.transfer_by?.ramco_id || '') === me);
+    }, [data, username]);
+
+    const transferByRows = React.useMemo(() => {
+        // Backend already filters by new_owner=me; show all returned items
+        return Array.isArray(dataBy) ? dataBy : [];
+    }, [dataBy]);
+
     // Base renderers
     const renderNewOwners = (row: any) => {
         if (!Array.isArray(row?.new_owner) || row.new_owner.length === 0) return "-";
@@ -125,17 +170,29 @@ export default function AssetTransfer() {
     };
     const renderApplicationDate = (row: any) => formatApplicationDate(row.transfer_date);
     const renderAcceptanceStatus = (row: any) => {
-        if (row?.acceptance_date) {
-            const d = new Date(row.acceptance_date);
-            const when = isNaN(d.getTime()) ? '' : d.toLocaleString();
+        const acceptedDate = row?.acceptance_date ? new Date(row.acceptance_date) : null;
+        const approvalDate = row?.approval_date ? new Date(row.approval_date) : null;
+        const approvalStatus = String(row?.approval_status || '').toLowerCase();
+
+        if (acceptedDate && !isNaN(acceptedDate.getTime())) {
+            const when = acceptedDate.toLocaleString();
             return (
                 <div className="flex items-center">
                     <Badge className="truncate bg-green-600 hover:bg-green-700 text-white">Accepted{when && <span className="pl-1">on {when}</span>}</Badge>
-
                 </div>
             );
         }
-        return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Acceptance</Badge>;
+
+        if (approvalStatus.includes('reject')) {
+            return <Badge className="truncate bg-red-600 hover:bg-red-700 text-white">Rejected</Badge>;
+        }
+
+        const isApproved = (approvalDate && !isNaN(approvalDate.getTime())) || approvalStatus.includes('approve');
+        if (isApproved) {
+            return <Badge variant="secondary" className="truncate bg-sky-500 hover:bg-sky-600 text-white">Pending Acceptance</Badge>;
+        }
+
+        return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Approval</Badge>;
     };
 
     const renderApprovalStatus = (row: any) => {
@@ -161,11 +218,46 @@ export default function AssetTransfer() {
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
         { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
         { key: "approval_status", header: "Approval Status", render: renderApprovalStatus },
-        { key: "transfer_status", header: "Status" },
     ];
 
+    // Item ordinal lookup per transfer (e.g., 1/2, 2/2)
+    const itemOrdinalLookup = React.useMemo(() => {
+        const byTransfer = new Map<string, any[]>();
+        (transferByRows || []).forEach((row: any) => {
+            const tid = row?.transfer_id ?? row?.transfer?.id;
+            if (tid === undefined || tid === null) return;
+            const key = String(tid);
+            if (!byTransfer.has(key)) byTransfer.set(key, []);
+            byTransfer.get(key)!.push(row);
+        });
+        const lookup: Record<string, string> = {};
+        byTransfer.forEach((rows, tid) => {
+            const sorted = [...rows].sort((a, b) => Number(a?.id ?? 0) - Number(b?.id ?? 0));
+            const total = sorted.length || 1;
+            sorted.forEach((r, idx) => {
+                lookup[String(r.id)] = `${idx + 1}/${total}`;
+            });
+        });
+        return lookup;
+    }, [transferByRows]);
+
+    // Restore receive form from URL params on load/refresh
+    useEffect(() => {
+        const paramTransfer = searchParams?.get('receive_transfer');
+        const paramItem = searchParams?.get('receive_item');
+        if (!paramTransfer || !paramItem) return;
+        setActiveTab("to-receive");
+        const foundRow = transferByRows.find(r => String(r.id) === String(paramItem));
+        const transferIdValue = foundRow?.transfer_id ?? foundRow?.id ?? paramTransfer;
+        setReceiveItem(foundRow || null);
+        setReceiveTransferId(transferIdValue);
+        setReceiveItemId(paramItem);
+        setShowReceiveForm(true);
+        fetchReceiveItem(transferIdValue, paramItem);
+    }, [searchParams, transferByRows, fetchReceiveItem]);
+
     const columnsTransferByItems: ColumnDef<any>[] = [
-        { key: "id", header: "Item ID" },
+        { key: "id", header: "Item ID", render: row => itemOrdinalLookup[String(row.id)] || row.id },
         { key: "transfer_id", header: "Transfer ID" },
         { key: "transfer_by", header: "Transfer By", colClass: "truncate", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
         { key: "type", header: "Type", filter: 'singleSelect', render: row => row.type?.name || "-" },
@@ -188,17 +280,30 @@ export default function AssetTransfer() {
         return counts;
     }, [data]);
 
-    // Precompute filtered datasets so hooks order remains stable
-    const transferToRows = React.useMemo(() => {
-        const me = String(username || '');
-        // Rows I initiated (make asset transfer to new owner)
-        return (data || []).filter((row: any) => String(row?.transfer_by?.ramco_id || '') === me);
-    }, [data, username]);
-
-    const transferByRows = React.useMemo(() => {
-        // Backend already filters by new_owner=me; show all returned items
-        return Array.isArray(dataBy) ? dataBy : [];
-    }, [dataBy]);
+    // Counters for pending actions
+    const hasValidDate = (value: any) => {
+        if (!value) return false;
+        const d = new Date(value);
+        return !isNaN(d.getTime());
+    };
+    const isApproved = (row: any) => hasValidDate(row?.approval_date) || String(row?.approval_status || '').toLowerCase().includes('approve');
+    const isAccepted = (row: any) => hasValidDate(row?.acceptance_date);
+    const isRejected = (row: any) => String(row?.approval_status || '').toLowerCase().includes('reject');
+    const pendingApprovalCount = React.useMemo(() => {
+        return transferToRows.reduce((count, row) => count + (hasValidDate(row?.approved_date) ? 0 : 1), 0);
+    }, [transferToRows]);
+    const pendingToReceiveApprovalCount = React.useMemo(() => {
+        return transferByRows.reduce((count, row) => {
+            if (isAccepted(row) || isRejected(row)) return count;
+            return isApproved(row) ? count : count + 1;
+        }, 0);
+    }, [transferByRows]);
+    const pendingAcceptanceCount = React.useMemo(() => {
+        return transferByRows.reduce((count, row) => {
+            if (isAccepted(row) || isRejected(row)) return count;
+            return isApproved(row) ? count + 1 : count;
+        }, 0);
+    }, [transferByRows]);
 
     if (showReceiveForm) {
         // Use the list from /api/assets/transfers/items?new_owner={username}
@@ -214,6 +319,7 @@ export default function AssetTransfer() {
             setReceiveTransferId(transferIdValue);
             setReceiveItemId(prevRow.id);
             fetchReceiveItem(transferIdValue, prevRow.id);
+            updateReceiveParams(transferIdValue, prevRow.id);
         } : undefined;
         const goNext = nextRow ? () => {
             const transferIdValue = nextRow.transfer_id ?? nextRow.id;
@@ -221,6 +327,7 @@ export default function AssetTransfer() {
             setReceiveTransferId(transferIdValue);
             setReceiveItemId(nextRow.id);
             fetchReceiveItem(transferIdValue, nextRow.id);
+            updateReceiveParams(transferIdValue, nextRow.id);
         } : undefined;
         return (
             <div className="py-4">
@@ -232,13 +339,20 @@ export default function AssetTransfer() {
                     onNext={goNext}
                     prevDisabled={!prevRow}
                     nextDisabled={!nextRow}
-                    onClose={() => { setShowReceiveForm(false); setReceiveItem(null); setReceiveTransferId(undefined); setReceiveItemId(undefined); }}
+                    onClose={() => {
+                        setShowReceiveForm(false);
+                        setReceiveItem(null);
+                        setReceiveTransferId(undefined);
+                        setReceiveItemId(undefined);
+                        updateReceiveParams(undefined, undefined);
+                    }}
                     onAccepted={() => {
                         refreshTransferItems();
                         setShowReceiveForm(false);
                         setReceiveItem(null);
                         setReceiveTransferId(undefined);
                         setReceiveItemId(undefined);
+                        updateReceiveParams(undefined, undefined);
                     }}
                     onDirtyChange={() => { /* no-op for now */ }}
                 />
@@ -286,38 +400,68 @@ export default function AssetTransfer() {
                     </CardContent>
                 </Card>
             </div>
-            {/* Transfer To (initiated by me) */}
-            <div className="flex justify-between items-center mb-2">
-                <h2 className="text-xl font-bold">Transfer Application</h2>
-                <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    title="Create New Asset Transfer"
-                    onClick={() => { router.push('/assetdata/transfer/form'); }}
-                >
-                    <Plus className="w-5 h-5" />
-                </Button>
-            </div>
-            <CustomDataGrid
-                columns={columnsTransferTo}
-                data={transferToRows}
-                pagination={false}
-                inputFilter={false}
-                onRowDoubleClick={handleRowDoubleClick}
-            />
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+                <TabsList className="w-full justify-start overflow-x-auto">
+                    <TabsTrigger value="applications" className="flex items-center gap-2">
+                        <ArrowRightFromLine className="h-4 w-4" />
+                        <span>Transfers</span>
+                        {pendingApprovalCount > 0 && (
+                            <Badge variant="secondary" className="ml-1 h-5 px-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold">
+                                {pendingApprovalCount}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
+                    <TabsTrigger value="to-receive" className="flex items-center gap-2">
+                        <ArrowLeftToLine className="h-4 w-4" />
+                        <span>To Receive</span>
+                        {pendingToReceiveApprovalCount > 0 && (
+                            <Badge variant="secondary" className="ml-1 h-5 px-2 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold">
+                                {pendingToReceiveApprovalCount}
+                            </Badge>
+                        )}
+                        {pendingAcceptanceCount > 0 && (
+                            <Badge variant="secondary" className="ml-1 h-5 px-2 rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-semibold">
+                                {pendingAcceptanceCount}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
+                </TabsList>
 
-            {/* Transfer By (requests from others to me) */}
-            <div className="flex justify-between items-center mt-8 mb-2">
-                <h2 className="text-xl font-bold">Asset To Receive</h2>
-            </div>
-            <CustomDataGrid
-                columns={columnsTransferByItems}
-                data={transferByRows}
-                pagination={false}
-                inputFilter={false}
-                onRowDoubleClick={handleRowDoubleClick}
-            />
+                <TabsContent value="applications" className="space-y-3">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-bold">Transfered by <span className="capitalize"> {fullName}</span></h2>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            title="Create New Asset Transfer"
+                            onClick={() => { router.push('/assetdata/transfer/form'); }}
+                        >
+                            <Plus className="w-5 h-5" />
+                        </Button>
+                    </div>
+                    <CustomDataGrid
+                        columns={columnsTransferTo}
+                        data={transferToRows}
+                        pagination={false}
+                        inputFilter={false}
+                        onRowDoubleClick={handleRowDoubleClick}
+                    />
+                </TabsContent>
+
+                <TabsContent value="to-receive" className="space-y-3">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-bold">To Receive by  <span className="capitalize"> {fullName}</span></h2>
+                    </div>
+                    <CustomDataGrid
+                        columns={columnsTransferByItems}
+                        data={transferByRows}
+                        pagination={false}
+                        inputFilter={false}
+                        onRowDoubleClick={handleRowDoubleClick}
+                    />
+                </TabsContent>
+            </Tabs>
         </>
     );
 }

@@ -194,6 +194,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	// Track which items' accordions are expanded so we can apply the approval-level visual style
 	const [expandedItems, setExpandedItems] = React.useState<Record<number, boolean>>({});
 	const [pendingAssetLocks, setPendingAssetLocks] = React.useState<Record<number, boolean>>({});
+	const [pendingAssetAcceptance, setPendingAssetAcceptance] = React.useState<Record<number, boolean>>({});
 	// Application type/purpose: resignation reporting vs transfer to someone else
 	// This form defaults to resignation flow; transfer type selector removed
 	const [applicationOption, setApplicationOption] = React.useState<'resignation' | 'transfer' | ''>('resignation');
@@ -466,10 +467,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		return asset?.models?.name || asset?.model?.name || '';
 	}
 
+	function getAssetDepartmentName(asset: any): string {
+		return asset?.department?.name || asset?.departments?.name || '';
+	}
+
+	function getAssetCostCenterName(asset: any): string {
+		return asset?.costcenter?.name || asset?.costcenters?.name || '';
+	}
+
 	// AddSelectedItem handler (internalized)
 	function addSelectedItem(item: any) {
 		if (item?.id && pendingAssetLocks[Number(item.id)]) {
-			toast.info('This asset already has a pending transfer and cannot be added.');
 			return;
 		}
 		setSelectedItems((prev: any[]) => {
@@ -508,7 +516,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				newList = prev;
 			}
 			if (newList.length > prev.length) {
-				toast.success('Item added to selection.');
 				// Show tooltip for the new item
 				const newItem = newList[newList.length - 1];
 				setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: true }));
@@ -533,12 +540,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	function addAllAssetsForOwner(ownerAssets: any[], ownerName: string) {
 		const eligibleAssets = ownerAssets.filter(asset => !pendingAssetLocks[Number(asset?.id)]);
 		if (eligibleAssets.length === 0) {
-			toast.info(`All assets for ${ownerName} are part of pending transfers.`);
 			return;
 		}
 		eligibleAssets.forEach(asset => addSelectedItem(asset));
 		setSelectedOwnerName(ownerName);
-		toast.success(`${eligibleAssets.length} asset(s) added for ${ownerName}.`);
 		if (applicationOption === 'resignation') {
 			setSidebarOpen(false);
 		}
@@ -549,9 +554,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		setSelectedItems((prev: any[]) => {
 			const removed = prev[idx];
 			const newList = prev.filter((_, i) => i !== idx);
-			if (removed) {
-				toast.info('Item removed from selection.');
-			}
 			return newList;
 		});
 	}
@@ -794,7 +796,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		try {
 			const url = `/api/assets?manager=${encodeURIComponent(String(managerId))}&status=active`;
 			const res: any = await authenticatedApi.get(url);
-			setManagerAssets(res?.data?.data || res?.data || []);
+			const assets = res?.data?.data || res?.data || [];
+			setManagerAssets(assets);
+			const acceptances: Record<number, boolean> = {};
+			assets.forEach((a: any) => {
+				const id = Number(a?.id);
+				if (!id) return;
+				if (String(a?.asset_transfer_status || '').toLowerCase() === 'pending acceptance') {
+					acceptances[id] = true;
+				}
+			});
+			setPendingAssetAcceptance(prev => ({ ...prev, ...acceptances }));
 			lastManagerFetchKeyRef.current = String(managerId);
 		} catch (err) {
 			toast.error('Failed to load managed assets');
@@ -864,6 +876,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		return !!pendingAssetLocks[assetId];
 	}
 
+	function isAssetPendingAcceptance(asset: any): boolean {
+		const assetId = Number(asset?.id);
+		if (!assetId) return false;
+		return !!pendingAssetAcceptance[assetId];
+	}
+
 	// Fetch data for cost center, departments, and locations from their respective APIs and populate the dropdowns.
 	useEffect(() => {
 		async function fetchDropdownData() {
@@ -885,24 +903,31 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		fetchDropdownData();
 	}, []);
 
-	// Prefetch employees based on header department id for 'Search new owner'
+	// Prefetch employees for new-owner picker
+	// - Asset managers: all active employees
+	// - Regular users: employees in same department
 	useEffect(() => {
 		const deptId = form?.requestor?.department?.id;
-		if (!deptId) {
-			setEmployees([]);
-			return;
-		}
 		let cancelled = false;
 		(async () => {
 			try {
-				const res: any = await authenticatedApi.get(`/api/assets/employees?dept=${deptId}`);
+				if (managerId) {
+					const res: any = await authenticatedApi.get(`/api/assets/employees?status=active`);
+					if (!cancelled) setEmployees(res.data?.data || []);
+					return;
+				}
+				if (!deptId) {
+					if (!cancelled) setEmployees([]);
+					return;
+				}
+				const res: any = await authenticatedApi.get(`/api/assets/employees?dept=${deptId}&status=active`);
 				if (!cancelled) setEmployees(res.data?.data || []);
 			} catch (err) {
 				if (!cancelled) setEmployees([]);
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [form?.requestor?.department?.id]);
+	}, [form?.requestor?.department?.id, managerId]);
 
 	// Require at least one reason per selected item before enabling submit
 	const allItemsHaveReason = React.useMemo(() => {
@@ -1243,6 +1268,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							<div className="font-semibold flex items-center justify-between text-lg gap-2">
 								<div className="flex items-center gap-3">
 									<span>Transfer Items</span>
+									<Badge variant="secondary" className="text-xs px-2 py-1 bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+										Added: {selectedItems.length} items
+									</Badge>
 									{/* Status badges */}
 									{isApproved && (
 										<>
@@ -1327,7 +1355,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 												// controlled expansion so we can style the expanded item
 												value={expandedItems[item.id] ? `item-${item.id}` : undefined}
 												onValueChange={(val: string | undefined) => setExpandedItems(prev => ({ ...prev, [item.id]: !!val }))}
-												className={`px-4 rounded ring-2 ${item.acceptance_date && item.acceptance_by ? 'ring-green-400' : (expandedItems[item.id] ? 'ring-blue-300' : 'ring-gray-200')}`}
+												className={`px-4 bg-lime-800/20 rounded ring-1 ring-offset-2 ${item.acceptance_date && item.acceptance_by ? 'ring-green-400' : (expandedItems[item.id] ? 'ring-lime-600' : 'ring-gray-200')}`}
 											>
 												<AccordionItem value={`item-${item.id}`}>
 													<AccordionTrigger className="no-underline hover:no-underline px-0">
@@ -1336,7 +1364,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																<Button type="button" size="icon" variant="ghost" className="text-red-500 hover:bg-red-500 hover:text-white shrink-0" onClick={e => { e.stopPropagation(); removeSelectedItem(idx); }}>
 																	<X />
 																</Button>
-																<span className="text-xs font-semibold text-blue-600 min-w-17.5 text-left">Item {idx + 1}</span>
+																<span className="text-xs font-semibold text-blue-600 min-w-17.5 text-left">Item {idx + 1}/{selectedItems.length}</span>
 																<span className="text-xs font-semibold text-blue-600 min-w-17.5 text-left">{typeLabel}</span>
 																<span className="font-medium">
 																	{isEmployee ? (
@@ -1369,7 +1397,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																<Input
 																	type="date"
 																	required
-																	className={`w-full min-w-0 md:w-40 ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
+																	className={`w-full min-w-0 bg-stone-100 md:w-40 ${!itemEffectiveDates[item.id] && submitError ? 'border-red-500' : ''}`}
 																	value={itemEffectiveDates[item.id] || ''}
 																	onChange={e => handleItemEffectiveDate(item.id, e.target.value)}
 																	onClick={e => e.stopPropagation()}
@@ -1383,7 +1411,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 														</div>
 													</AccordionTrigger>
 													<AccordionContent>
-														<div className={`relative p-4 bg-gray-50 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
+														<div className={`relative p-4 bg-stone-100/80 rounded-lg border ${expandedItems[item.id] ? '' : ''}`}>
 															{item.acceptance_date && item.acceptance_by && (
 																<div className="pointer-events-none select-none absolute inset-0 z-20 flex items-center justify-center">
 																	<span className="-rotate-12 text-4xl md:text-6xl font-extrabold tracking-wider text-green-600/45">ACCEPTED • COMPLETED</span>
@@ -1507,7 +1535,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																									searchPlaceholder="Search employees..."
 																									emptyMessage="No employees"
 																									disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
-																									className="w-full border border-gray-200 rounded-md bg-white"
+																									className="w-full border border-gray-200 rounded-md bg-stone-100"
 																								/>
 																							</div>
 																						</td>
@@ -1534,7 +1562,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							onValueChange={val => detectNewChanges(item.id, 'new', 'costCenter', val)}
 																							placeholder="New Cost Center"
 																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
-																							className="w-full border border-gray-200 rounded-md bg-white"
+																							className="w-full border border-gray-200 rounded-md bg-stone-100"
 																						/>
 																					</td>
 																				</tr>
@@ -1558,7 +1586,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							onValueChange={val => detectNewChanges(item.id, 'new', 'department', val)}
 																							placeholder="New Department"
 																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
-																							className="w-full border border-gray-200 rounded-md bg-white"
+																							className="w-full border border-gray-200 rounded-md bg-stone-100"
 																						/>
 																					</td>
 																				</tr>
@@ -1582,7 +1610,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							onValueChange={val => detectNewChanges(item.id, 'new', 'location', val)}
 																							placeholder="New Location"
 																							disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
-																							className="w-full border border-gray-200 rounded-md bg-white"
+																							className="w-full border border-gray-200 rounded-md bg-stone-100"
 																						/>
 																					</td>
 																				</tr>
@@ -1675,11 +1703,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
 																			<div className="flex-1">
 																				<Label className="font-semibold mb-1">Other Reason</Label>
-																				<Textarea className="w-full min-h-22.5 border rounded px-2 py-1 text-sm" placeholder="Add your comment here..." disabled={isAcceptedItem} />
+																				<Textarea className="w-full min-h-22.5 border rounded px-2 py-1 text-sm bg-stone-100" placeholder="Add your comment here..." disabled={isAcceptedItem}/>
 																			</div>
-																			<div className="flex-1">
+																			<div className="flex-1 bg-stone-100">
 																				<Label className="font-semibold mb-1">Attachments</Label>
-																				<div className="border-2 border-dashed rounded-md p-1 text-center bg-white">
+																				<div className="border-2 border-dashed rounded-md p-1 text-center">
 																					<input
 																						id={`attachment-${item.id}`}
 																						type="file"
@@ -1773,7 +1801,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																			matches(getAssetCategoryName(a)) ||
 																			matches(getAssetBrandName(a)) ||
 																			matches(getAssetModelName(a)) ||
-																			matches(getAssetTypeName(a))
+																			matches(getAssetTypeName(a)) ||
+																			matches(getAssetDepartmentName(a)) ||
+																			matches(getAssetCostCenterName(a))
 																		));
 																		return matches(ownerName) || matches(ownerId) || assetMatches;
 																	})
@@ -1815,10 +1845,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																					{filteredAssets.map((asset, idx) => {
 																						const typeName = getAssetTypeName(asset);
 																						const categoryName = getAssetCategoryName(asset);
-																						const brandName = getAssetBrandName(asset);
-																						const modelName = getAssetModelName(asset);
+																						const deptName = getAssetDepartmentName(asset);
+																						const costCenterName = getAssetCostCenterName(asset);
 																						const typeLine = [typeName, categoryName].filter(Boolean).join(' - ');
-																						const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																						const deptCostLine = [deptName, costCenterName].filter(Boolean).join(' • ');
 																						const locked = isAssetLockedByPendingTransfer(asset);
 																						return (
 																							<div key={asset.id || idx} className="text-xs bg-white dark:bg-gray-600 rounded p-2 flex justify-between items-center">
@@ -1828,7 +1858,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																										{typeLine || '-'}
 																									</div>
 																									<div className="text-gray-500 dark:text-gray-400">
-																										{brandLine || '-'}
+																										{deptCostLine || '-'}
 																									</div>
 																									{locked && (
 																										<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
@@ -1889,9 +1919,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		matches(a.register_number) ||
 																		matches(a.entry_code) ||
 																		matches(getAssetCategoryName(a)) ||
-																		matches(getAssetBrandName(a)) ||
-																		matches(getAssetModelName(a)) ||
-																		matches(getAssetTypeName(a))
+																		matches(getAssetTypeName(a)) ||
+																		matches(getAssetDepartmentName(a)) ||
+																		matches(getAssetCostCenterName(a)) ||
+																		matches(a?.owner?.full_name) ||
+																		matches(a?.owner?.ramco_id)
 																	);
 																})
 																.map((a: any, j: any) => {
@@ -1904,16 +1936,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
 																	}
 																	const categoryName = getAssetCategoryName(a);
-																	const brandName = getAssetBrandName(a);
-																	const modelName = getAssetModelName(a);
+																	const deptName = getAssetDepartmentName(a);
+																	const costCenterName = getAssetCostCenterName(a);
 																	const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
-																	const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																	const deptCostLine = [deptName, costCenterName].filter(Boolean).join(' • ');
 																	const locked = isAssetLockedByPendingTransfer(a);
+																	const pendingAcceptance = isAssetPendingAcceptance(a);
 																	const alreadySelected = isAssetSelected(a);
-																	const disableAdd = locked || alreadySelected;
+																	const disableAdd = locked || pendingAcceptance || alreadySelected;
 																	return (
 																		<React.Fragment key={a.id || a.register_number || j}>
-																			<li className={`flex flex-col bg-indigo-100 dark:bg-gray-800 rounded-lg px-3 py-2 transition-all duration-200 ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
+																			<li className={`flex flex-col rounded-lg px-3 py-2 transition-all duration-200 ${pendingAcceptance ? 'bg-amber-100/50 border border-amber-200' : 'bg-indigo-100 dark:bg-gray-800'} ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
 																				<div className="flex items-center gap-3">
 																					<div className="flex items-center gap-2">
 																						<button
@@ -1921,7 +1954,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							className={`rounded-full p-1 ${disableAdd ? 'cursor-not-allowed text-blue-200' : 'text-blue-500 hover:text-blue-600'}`}
 																							onClick={() => { if (!disableAdd) addSelectedItem(a); }}
 																							disabled={disableAdd}
-																							title={locked ? 'Pending transfer in progress' : (alreadySelected ? 'Already selected' : 'Add asset')}
+																							title={
+																								locked
+																									? 'Pending transfer in progress'
+																									: pendingAcceptance
+																										? 'Pending acceptance in progress'
+																										: (alreadySelected ? 'Already selected' : 'Add asset')
+																							}
 																						>
 																							<CirclePlus className="w-6 h-6" />
 																						</button>
@@ -1936,11 +1975,16 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																						<span className="font-medium dark:text-dark-light">{a.register_number}</span>
 																						<div className="text-xs text-gray-700 dark:text-dark-light mt-0.5">
 																							<div>{typeLine || '-'}</div>
-																							<div>{brandLine || '-'}</div>
+																							<div>{deptCostLine || '-'}</div>
 																						</div>
 																						{locked && (
 																							<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800 w-fit">
 																								Pending transfer
+																							</Badge>
+																						)}
+																						{pendingAcceptance && (
+																							<Badge variant="secondary" className="mt-1 bg-sky-100 text-sky-800 w-fit">
+																								Pending acceptance
 																							</Badge>
 																						)}
 																						{alreadySelected && !locked && (
@@ -2011,9 +2055,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		matches(a.register_number) ||
 																		matches(a.entry_code) ||
 																		matches(getAssetCategoryName(a)) ||
-																		matches(getAssetBrandName(a)) ||
-																		matches(getAssetModelName(a)) ||
 																		matches(getAssetTypeName(a)) ||
+																		matches(getAssetDepartmentName(a)) ||
+																		matches(getAssetCostCenterName(a)) ||
 																		matches(a?.owner?.full_name) ||
 																		matches(a?.owner?.ramco_id)
 																	);
@@ -2028,38 +2072,45 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
 																	}
 																	const categoryName = getAssetCategoryName(a);
-																	const brandName = getAssetBrandName(a);
-																	const modelName = getAssetModelName(a);
+																	const deptName = getAssetDepartmentName(a);
+																	const costCenterName = getAssetCostCenterName(a);
 																	const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
-																	const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																	const deptCostLine = [deptName, costCenterName].filter(Boolean).join(' • ');
 																	const locked = isAssetLockedByPendingTransfer(a);
+																	const pendingAcceptance = isAssetPendingAcceptance(a);
 																	const alreadySelected = isAssetSelected(a);
+																	const disableAdd = locked || pendingAcceptance || alreadySelected;
 																	return (
 																		<React.Fragment key={`managed-${a.id || a.register_number || j}`}>
-																			<li className={`flex flex-col bg-emerald-100 dark:bg-gray-800 rounded-lg px-3 py-2 transition-all duration-200 ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
+																			<li className={`flex flex-col border rounded-lg px-3 py-1 text-xs transition-all duration-200 ${pendingAcceptance ? 'bg-amber-100/50 border-amber-200' : 'bg-sky-100/50 border-sky-200 dark:bg-gray-800'} ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
 																				<div className="flex items-center gap-3">
 																					<div className="flex items-center gap-2">
 																						<Checkbox
 																							checked={alreadySelected}
-																							disabled={locked || alreadySelected}
+																							disabled={disableAdd}
 																							onCheckedChange={(v) => {
-																								if (v && !locked && !alreadySelected) addSelectedItem(a);
+																								if (v && !disableAdd) addSelectedItem(a);
 																							}}
 																						/>
 																						{typeIcon && typeIcon}
 																					</div>
 																					<div>
-																						<div className="text-medium dark:text-dark-light">
+																						<div className="dark:text-dark-light">
 																							{a.owner?.full_name && (
-																								<div className="font-medium dark:text-dark-light">{a.owner.full_name} <span className="text-black">({a.owner.ramco_id})</span></div>
+																								<div className="font-medium dark:text-dark-light text-blue-600">{a.owner.full_name} <span className="text-black">({a.owner.ramco_id})</span></div>
 																							)}
 																						</div>
-																						<span className="font-medium dark:text-dark-light">{a.register_number}</span>
-																						<div className="text-sm text-gray-600 dark:text-gray-300">{typeLine || '-'}</div>
-																						<div className="text-sm text-gray-500 dark:text-gray-400">{brandLine || '-'}</div>
+																						<span className="dark:text-dark-light">R/N: <span className='text-blue-700'> {a.register_number}</span></span>
+																						<div className="text-xs text-gray-700 dark:text-gray-300">{typeLine || '-'}</div>
+																						<div className="text-xs text-gray-700 dark:text-gray-400">{deptCostLine || '-'}</div>
 																						{locked && (
 																							<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
 																								Pending transfer
+																							</Badge>
+																						)}
+																						{pendingAcceptance && (
+																							<Badge variant="secondary" className="mt-1 bg-sky-100 text-sky-800">
+																								Pending acceptance
 																							</Badge>
 																						)}
 																						{alreadySelected && !locked && (

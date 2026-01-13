@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, Repeat2 } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
 
@@ -66,6 +66,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const [loading, setLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLevel, setEditingLevel] = useState<Workflows | null>(null);
+  const [editingModuleName, setEditingModuleName] = useState<string | null>(null);
   const [formData, setFormData] = useState<WorkflowsForm>({
     module_name: '',
     description: '',
@@ -90,7 +91,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const isEditing = Boolean(editingLevel);
   const formTitle = isEditing
     ? `Edit ${editingLevel?.level_name || 'role'} in ${editingLevel?.module_name} workflow`
-    : 'Add New Workflow';
+    : editingModuleName
+      ? `Edit ${editingModuleName.replace('_', ' ').toUpperCase()} workflow`
+      : 'Add New Workflow';
   const canAddWorkflow = auth?.authData?.user?.role?.id === 1 && auth?.authData?.user?.username === '000277';
 
   // Alert dialog state
@@ -224,6 +227,20 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
         await authenticatedApi.put(`/api/users/workflows/${editingLevel.id}`, updatePayload);
         toast.success('Workflow updated successfully');
+      } else if (editingModuleName) {
+        const updatePayload = {
+          module_name: formData.module_name,
+          description: formData.description,
+          is_active: formData.is_active,
+          employees: formData.employees.map((e) => ({
+            ramco_id: e.ramco_id,
+            level_name: e.level_name,
+            department_id: e.department_id ?? null,
+          })),
+        };
+
+        await authenticatedApi.put(`/api/users/workflows/${encodeURIComponent(editingModuleName)}`, updatePayload);
+        toast.success('Workflow updated successfully');
       } else {
         const createPayload = {
           module_name: formData.module_name,
@@ -242,6 +259,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
       setIsFormOpen(false);
       setEditingLevel(null);
+      setEditingModuleName(null);
       resetForm();
       await fetchApprovalLevels();
 
@@ -348,6 +366,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   const handleEdit = (level: Workflows) => {
     setEditingLevel(level);
+    setEditingModuleName(null);
     setFormData({
       id: level.id,
       module_name: level.module_name,
@@ -381,6 +400,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const handleAdd = () => {
     if (!canAddWorkflow) return;
     setEditingLevel(null);
+    setEditingModuleName(null);
     resetForm();
     setIsFormOpen(true);
     // Auto-open the employee combobox for better UX
@@ -394,6 +414,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
       is_active: true,
       employees: []
     });
+    setEditingModuleName(null);
     setLastReplacement(null);
     setSelectedEmployee(null);
     setEmployeeSearchQuery('');
@@ -462,6 +483,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const handleEditModule = (moduleName: string) => {
     const levels = groupedLevels[moduleName] || [];
     setEditingLevel(null);
+    setEditingModuleName(moduleName);
     setFormData({
       id: undefined,
       module_name: moduleName,
@@ -566,6 +588,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       onChange={(e) => setFormData({ ...formData, module_name: e.target.value })}
                       placeholder="Enter module name"
                       className="capitalize bg-stone-50/50"
+                      disabled={false}
                     />
                   </div>
                 </>
@@ -605,11 +628,11 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       disabled={!employeeSearchQuery.trim()}
                       title={isEditing ? 'Replace employee' : 'Add employee to workflow'}
                     >
-                      {isEditing ? <Repeat2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      {isEditing ? <ArrowRightLeft className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     </Button>
                   </div>
 
-                  {employeeComboboxOpen && (
+                  {employeeComboboxOpen && (employeeSearchQuery.length >= 2 || employeeSearchLoading || employees.length > 0) && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
                       {employeeSearchLoading ? (
                         <div className="flex items-center justify-center py-4">
@@ -741,7 +764,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    {editingLevel ? 'Update' : 'Create'}
+                    {editingLevel || editingModuleName ? 'Update' : 'Create'}
                   </>
                 )}
               </Button>
@@ -760,7 +783,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
           {Object.entries(groupedLevels).map(([moduleName, levels]) => {
             const isEditingModule = editingLevel?.module_name === moduleName;
             return (
-              <AccordionItem key={moduleName} value={moduleName} className={`border rounded-lg ${isEditingModule ? 'ring-2 ring-red-400 border-red-200' : ''}`}>
+              <AccordionItem key={moduleName} value={moduleName} className={`border rounded-lg bg-lime-800/20 ${isEditingModule ? 'ring-2 ring-red-400 border-red-200' : ''}`}>
                 <AccordionTrigger className="px-6 py-4 hover:no-underline">
                 <div className="flex items-center justify-between w-full mr-4">
                   <div className="flex items-center gap-3">
@@ -770,11 +793,11 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{levels.length} levels</Badge>
+                    <Badge variant="secondary" className='bg-blue-500 text-white'>{levels.length} levels</Badge>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0"
+                      className="h-8 w-8 p-0 bg-none"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -782,12 +805,12 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       }}
                       title="Edit Workflow"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-4 h-4 text-amber-700" />
                     </Button>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="h-8 w-8 p-0 bg-none"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -795,7 +818,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                       }}
                       title="Delete Workflow"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4 text-red-700" />
                     </Button>
                   </div>
                 </div>
@@ -805,7 +828,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                     {levels.map((level, index) => (
                       <div
                         key={level.id}
-                        className="relative p-4 bg-gray-50 rounded-lg border pr-28 sm:pr-36"
+                        className="relative p-2 bg-stone-100/50 rounded-lg border pr-28 sm:pr-36"
                       >
                         <div className="flex items-center gap-3 mb-1">
                           <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border text-xs font-medium text-gray-700">
@@ -816,11 +839,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             <span className="text-xs text-red-600 font-semibold">Inactive</span>
                           )}
                         </div>
-                        {level.description && (
-                          <p className="text-sm text-gray-600 ml-10 sm:ml-14">{level.description}</p>
-                        )}
+
                         {level.employee && (
-                          <p className="text-sm text-blue-600 ml-10 sm:ml-14">
+                          <p className="text-sm text-blue-600 ml-9">
                             Employee: {level.employee.full_name} ({level.employee.ramco_id})
                           </p>
                         )}
@@ -847,7 +868,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             <ChevronDown className="w-4 h-4" />
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => handleToggleActive(level)}
                             className="h-8 w-10 px-2"
@@ -856,13 +877,13 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             <Switch checked={level.is_active} className="pointer-events-none scale-75" />
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(level)}
                             className="h-8 w-8 p-0"
                             title="Edit level"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-4 h-4 text-amber-700" />
                           </Button>
                         </div>
                       </div>

@@ -289,62 +289,61 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
 
       {/* Overview + Asset cards side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className='shadow-none bg-stone-50'>
-          <CardHeader>
+        <Card className="shadow-none bg-stone-50">
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm">Transfer Overview</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
-                <div className="text-muted-foreground">Transfer ID</div>
-                <div className="font-medium">{item?.transfer_id ?? '-'}</div>
+                <div className="text-xs uppercase text-muted-foreground">Transfer ID</div>
+                <div className="font-semibold text-gray-900">{item?.transfer_id ?? '-'}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Item ID</div>
-                <div className="font-medium">{item?.id ?? '-'}</div>
+                <div className="text-xs uppercase text-muted-foreground">Item ID</div>
+                <div className="font-semibold text-gray-900">{item?.id ?? '-'}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Effective Date</div>
-                <div className="font-medium">{item?.effective_date ? new Date(item.effective_date).toLocaleDateString() : '-'}</div>
+                <div className="text-xs uppercase text-muted-foreground">Effective Date</div>
+                <div className="font-semibold text-gray-900">
+                  {item?.effective_date ? new Date(item.effective_date).toLocaleDateString() : '-'}
+                </div>
               </div>
               <div>
-                <div className="text-muted-foreground">Transfer By</div>
-                <div className="font-medium">{transferByName}</div>
+                <div className="text-xs uppercase text-muted-foreground">Transfer By</div>
+                <div className="font-semibold text-gray-900">{transferByName}</div>
               </div>
-              <div>
-                <div className="text-muted-foreground">Approved</div>
-                {item?.approved_date ? (
-                  <div className="font-medium">
-                    Approved
-                    <div className="text-xs text-muted-foreground">
-                      {`By ${item?.approved_by || '-'}`} on {new Date(item.approved_date).toLocaleString()}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="font-medium">{awaitingApproval ? 'Pending Approval' : '-'}</div>
-                )}
-              </div>
+            </div>
+            <div className="border-t pt-3 text-sm">
+              <div className="text-xs uppercase text-muted-foreground mb-1">Approved</div>
+              {item?.approved_date ? (
+                <div className="font-semibold text-gray-900">
+                  {`By ${item?.approved_by || '-'}`} on {new Date(item.approved_date).toLocaleString()}
+                </div>
+              ) : (
+                <div className="font-semibold text-gray-900">{awaitingApproval ? 'Pending Approval' : '-'}</div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className='shadow-none bg-stone-50'>
-          <CardHeader>
+        <Card className="shadow-none bg-stone-50">
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm">Asset</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
               <div>
-                <div className="text-muted-foreground">Register Number</div>
-                <div className="font-medium">{label(item?.asset?.register_number)}</div>
+                <div className="text-xs uppercase text-muted-foreground">Register Number</div>
+                <div className="font-semibold text-gray-900">{label(item?.asset?.register_number)}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Type</div>
-                <div className="font-medium">{label(item?.type?.name)}</div>
+                <div className="text-xs uppercase text-muted-foreground">Type</div>
+                <div className="font-semibold text-gray-900">{label(item?.type?.name)}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Asset ID</div>
-                <div className="font-medium">{item?.asset?.id ?? '-'}</div>
+                <div className="text-xs uppercase text-muted-foreground">Asset ID</div>
+                <div className="font-semibold text-gray-900">{item?.asset?.id ?? '-'}</div>
               </div>
             </div>
           </CardContent>
@@ -364,31 +363,19 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                 : 'New'}
             </div>
           </div>
-          {/* Owner */}
-          <div className="grid grid-cols-3 border-t border-border text-sm">
-            <div className="px-3 py-2 text-muted-foreground">Owner</div>
-            <div className="px-3 py-2">{currOwner}</div>
-            <div className="px-3 py-2 font-medium">{newOwner}</div>
-          </div>
-          {/* Cost Center */}
-          <div className="grid grid-cols-3 border-t border-border text-sm">
-            <div className="px-3 py-2 text-muted-foreground">Cost Center</div>
-            <div className="px-3 py-2">{label(item?.current_costcenter?.name)}</div>
-            <div className="px-3 py-2 font-medium">{label(item?.new_costcenter?.name)}</div>
-          </div>
-          {/* Department */}
-          <div className="grid grid-cols-3 border-t border-border text-sm">
-            <div className="px-3 py-2 text-muted-foreground">Department</div>
-            <div className="px-3 py-2">{label(item?.current_department && (item?.current_department as any)?.name)}</div>
-            <div className="px-3 py-2 font-medium">{label(item?.new_department?.name)}</div>
-          </div>
-          {/* Location */}
-          <div className="grid grid-cols-3 border-t border-border text-sm">
-            <div className="px-3 py-2 text-muted-foreground">Location</div>
-            <div className="px-3 py-2">{label(item?.current_location?.name)}</div>
-            <div className="px-3 py-2 font-medium">{label(item?.new_location?.name)}</div>
-          </div>
-          {/* Reason */}
+          {[
+            { label: 'Owner', current: currOwner, next: newOwner },
+            { label: 'Cost Center', current: label(item?.current_costcenter?.name), next: label(item?.new_costcenter?.name) },
+            { label: 'Department', current: label(item?.current_department && (item?.current_department as any)?.name), next: label(item?.new_department?.name) },
+            { label: 'Location', current: label(item?.current_location?.name), next: label(item?.new_location?.name) },
+          ].map((row) => (
+            <div key={row.label} className="grid grid-cols-3 border-t border-border text-sm">
+              <div className="px-3 py-2 text-muted-foreground">{row.label}</div>
+              <div className="px-3 py-2">{row.current}</div>
+              <div className="px-3 py-2 font-medium">{row.next}</div>
+            </div>
+          ))}
+          {/* Reason row spans current + new for readability */}
           <div className="grid grid-cols-3 border-t border-border text-sm">
             <div className="px-3 py-2 text-muted-foreground">Reason</div>
             <div className="px-3 py-2 col-span-2">{label(item?.reason)}</div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AssetTransfer from "./asset-transfer";
+import AssetTransfer from "./asset-transfer-record";
 import AssetTransferForm from "./asset-transfer-form";
 import AssetTransferChecklist from "./asset-transfer-checklist";
 
