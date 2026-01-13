@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 // Removed unused Label/Badge
 import { Loader2, X, AlertTriangle } from 'lucide-react';
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 
 type TransferItem = {
   id: number;
+  transfer_id?: number;
   effective_date?: string | null;
   asset?: {
     id: number;
@@ -95,10 +97,10 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
   const [loginPassword, setLoginPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [remarksMap, setRemarksMap] = useState<Record<number, string>>({});
-  const [effectiveDates, setEffectiveDates] = useState<Record<number, string>>({});
+  const [remarksByItem, setRemarksByItem] = useState<Record<string, string>>({});
+  const [effectiveDates, setEffectiveDates] = useState<Record<string, string>>({});
   const [actionLoading, setActionLoading] = useState<{ id: number; kind: 'approve' | 'reject' } | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<'approve' | 'reject' | null>(null);
 
   const loggedIn = Boolean(auth?.authData?.user);
@@ -134,16 +136,32 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
     fetchData();
   }, [fetchData]);
 
-  // Keep selections in sync with current list
+  const makeItemKey = (transferId: number, itemId: number) => `${transferId}:${itemId}`;
+
+  const flatItems = React.useMemo(() => {
+    if (!Array.isArray(dataList)) return [];
+    return dataList.flatMap((t) => (t.items || []).map((item) => ({ transfer: t, item })));
+  }, [dataList]);
+
+  const itemLookup = React.useMemo(() => {
+    const map: Record<string, { transfer: TransferData; item: TransferItem }> = {};
+    flatItems.forEach(({ transfer, item }) => {
+      const key = makeItemKey(transfer.id, item.id);
+      map[key] = { transfer, item };
+    });
+    return map;
+  }, [flatItems]);
+
+  // Keep selections in sync with current items
   React.useEffect(() => {
-    if (!dataList) return;
-    const present = new Set<number>(dataList.map((d) => d.id));
+    if (!flatItems.length) return;
+    const present = new Set<string>(flatItems.map(({ transfer, item }) => makeItemKey(transfer.id, item.id)));
     setSelectedIds((prev) => {
-      const next = new Set<number>();
+      const next = new Set<string>();
       prev.forEach((id) => { if (present.has(id)) next.add(id); });
       return next;
     });
-  }, [dataList]);
+  }, [flatItems]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -168,21 +186,23 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
     }
   }
 
-  // Initialize Effective Date per transfer when list loads
+  // Initialize Effective Date per item when list loads
   React.useEffect(() => {
-    if (!dataList) return;
-    const next: Record<number, string> = {};
+    if (!flatItems.length) return;
+    const next: Record<string, string> = {};
     try {
-      for (const t of dataList) {
-        const d = (t?.items && t.items[0]?.effective_date) ? String(t.items[0].effective_date) : '';
-        if (d) next[t.id] = d.slice(0, 10);
+      for (const { transfer, item } of flatItems) {
+        const d = item?.effective_date ? String(item.effective_date) : '';
+        if (d) next[makeItemKey(transfer.id, item.id)] = d.slice(0, 10);
       }
       if (Object.keys(next).length) setEffectiveDates((prev) => ({ ...next, ...prev }));
     } catch {}
-  }, [dataList]);
+  }, [flatItems]);
 
-  const approveReject = async (transfer: TransferData, kind: 'approve' | 'reject') => {
-    if (!transfer) return;
+  const approveReject = async (itemKey: string, kind: 'approve' | 'reject') => {
+    const entry = itemLookup[itemKey];
+    if (!entry) return;
+    const { transfer } = entry;
     try {
       setActionLoading({ id: transfer.id, kind });
       const url = `/api/assets/transfers/approval`;
@@ -203,7 +223,7 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
     }
   };
 
-  const toggleSelected = (id: number, checked: boolean) => {
+  const toggleSelected = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (checked) next.add(id); else next.delete(id);
@@ -219,19 +239,22 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
       setBulkLoading(kind);
       const url = `/api/assets/transfers/approval`;
       const approvedBy = approvedByParam || (auth?.authData as any)?.user?.ramco_id || '';
-      const ids = Array.from(selectedIds);
+      const ids = Array.from(selectedIds)
+        .map((key) => itemLookup[key]?.transfer?.id)
+        .filter((v): v is number => typeof v === 'number');
+      const uniqueIds = Array.from(new Set(ids));
       const payload = {
         status: kind === 'approve' ? 'approved' : 'rejected',
         approved_by: approvedBy,
         approved_date: fmtDateTimeLocal(new Date()),
-        transfer_id: ids,
+        transfer_id: uniqueIds,
       } as const;
       await authenticatedApi.put(url, payload, { headers: authHeaders });
-      toast.success(kind === 'approve' ? 'Selected transfers approved' : 'Selected transfers rejected');
+      toast.success(kind === 'approve' ? 'Selected items approved' : 'Selected items rejected');
       await fetchData();
       clearSelection();
     } catch (e) {
-      toast.error(`Failed to ${kind} selected transfers`);
+      toast.error(`Failed to ${kind} selected items`);
     } finally {
       setBulkLoading(null);
     }
@@ -303,133 +326,147 @@ export default function AssetTransferPortal({ transferId }: { transferId: string
             <Button size="sm" variant="outline" onClick={clearSelection} disabled={Boolean(bulkLoading)}>Clear</Button>
           </div>
         )}
-        {/* Receive & Acceptance — multiple accordions when list mode */}
+        {/* Receive & Acceptance — render per item */}
         <div className="mt-4">
           <Accordion type="multiple">
-            {(dataList || []).map((data) => {
-              const it = (data.items || [])[0];
-              const reasonStr = it ? ((it as any).reason || '-') : '-';
-              const effDate = effectiveDates[data.id] || '';
-              const remarks = remarksMap[data.id] || '';
-              const currentLoading = actionLoading && actionLoading.id === data.id ? actionLoading.kind : null;
+            {flatItems.map(({ transfer, item }) => {
+              const itemKey = makeItemKey(transfer.id, item.id);
+              const effDate = effectiveDates[itemKey] || '';
+              const remarks = remarksByItem[itemKey] || '';
+              const currentLoading = actionLoading && actionLoading.id === transfer.id ? actionLoading.kind : null;
+              const totalItems = transfer.total_items ?? transfer.items?.length ?? 0;
+              const itemIndex = (transfer.items || []).findIndex((it) => it.id === item.id);
+              const itemOrdinal = itemIndex >= 0 ? itemIndex + 1 : '-';
               return (
-                <AccordionItem key={data.id} value={`transfer-${data.id}`} className="border rounded-lg mb-2">
-                  <AccordionTrigger className="px-4 py-2 bg-stone-100">
-                    <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                      <div className="flex flex-wrap items-center gap-2 text-left sm:flex-nowrap">
+                <AccordionItem key={itemKey} value={`item-${itemKey}`} className="border bg-stone-200/50 rounded-lg mb-3">
+                  <AccordionTrigger className="px-4 py-4">
+                    <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="flex items-center gap-3 text-left min-w-0">
                         <Checkbox
-                          checked={selectedIds.has(data.id)}
-                          onCheckedChange={(v) => toggleSelected(data.id, Boolean(v))}
+                          checked={selectedIds.has(itemKey)}
+                          onCheckedChange={(v) => toggleSelected(itemKey, Boolean(v))}
                           onClick={(e) => e.stopPropagation()}
-                          aria-label={`Select transfer ${data.id}`}
+                          aria-label={`Select transfer item ${item.id}`}
                         />
-                        <span className="text-xs text-muted-foreground">Asset</span>
-                        <span className="text-sm min-w-0">
-                          S/N: {it?.asset?.register_number || '-'}{' '}
-                          <span className="text-blue-600">[ {it?.asset?.type?.name || '-'} ]</span>
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2 text-sm min-w-0">
+                          <span className="font-medium truncate">
+                            S/N: {item.asset?.register_number || '-'}{' '}
+                            <span className="text-blue-600">[ {item.asset?.type?.name || '-'} ]</span>
+                          </span>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">Item {itemOrdinal}/{totalItems || '-'}</span>
+                        </div>
                       </div>
-                      <div className="flex w-full flex-col gap-1 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
-                        <label className="text-sm font-medium">Effective Date <span className="text-red-500">*</span></label>
-                        <Input
-                          type="date"
-                          value={effDate}
-                          onChange={(e) => setEffectiveDates((prev) => ({ ...prev, [data.id]: e.target.value }))}
-                          className="h-9 w-full sm:w-[170px]"
-                        />
+                      <div className="flex items-center text-sm text-muted-foreground pl-9 sm:pl-0 sm:justify-end sm:flex-none sm:min-w-45">
+                        <span className="mr-1">Effective Date:</span>
+                        <span className="font-medium text-dark whitespace-nowrap">{effDate ? fmtDate(effDate) : '-'}</span>
                       </div>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-4 pb-4 space-y-3">
-                    {it ? (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <Card className='shadow-none bg-stone-50'>
-                            <CardHeader className="py-3"><CardTitle className="text-sm">Transfer Overview</CardTitle></CardHeader>
-                            <CardContent className="pt-0">
-                              <div className="grid grid-cols-2 gap-2 text-sm">
-                                <div className="text-muted-foreground">Transfer ID</div>
-                                <div className="font-medium">{data.id}</div>
-                                <div className="text-muted-foreground">Item ID</div>
-                                <div className="font-medium">{it.id}</div>
-                                <div className="text-muted-foreground">Effective Date</div>
-                                <div className="font-medium">{fmtDate(it.effective_date)}</div>
-                                <div className="text-muted-foreground">Transfer By</div>
-                                <div className="font-medium">{transferByName(data)}</div>
+                  <AccordionContent className="px-1 pb-4 space-y-3">
+                    <div className="grid grid-cols-1 gap-3">
+                      <Card className='shadow-none bg-lime-800/20'>
+                        <CardHeader><CardTitle className="text-sm">Transfer Overview</CardTitle></CardHeader>
+                        <CardContent className="pt-0 space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-dark">
+                            <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                              <span>ID:</span>
+                              <span className="font-medium">{transfer.id}</span>
+                            </div>
+                            <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                              <span>Items</span>
+                              <span className="font-medium">{itemOrdinal}/{totalItems || '-'}</span>
+                            </div>
+                            <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                              <span>Request Date</span>
+                              <span className="font-medium">{fmtDate(transfer.transfer_date)}</span>
+                            </div>
+                            <div className="flex items-center justify-between sm:justify-start sm:gap-2">
+                              <span>Request By</span>
+                              <span className="font-medium">{transferByName(transfer)}</span>
+                            </div>
+                          </div>
+
+                          <div className="border rounded-md p-3 bg-stone-200/50 space-y-3">
+                            <div className="text-sm font-semibold mb-2">Asset Details</div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>Effective Date</div>
+                              <div className="font-medium">{fmtDate(item.effective_date)}</div>
+                              <div>Asset Type</div>
+                              <div className="font-medium">{item.asset?.type?.name || '-'}</div>
+                              <div>Register Number</div>
+                              <div className="font-medium">{item.asset?.register_number || '-'}</div>
+                              <div>Reason</div>
+                              <div className="font-medium">{(item as any).reason || '-'}</div>
+                            </div>
+
+                            <div className="pt-2">
+                              <div className="text-sm font-semibold mb-2">Transfer Details</div>
+                              <div className="overflow-hidden rounded-md border border-border">
+                                <div className="grid grid-cols-3 bg-lime-800/20 text-xs uppercase tracking-wide">
+                                  <div className="px-3 py-2">Field</div>
+                                  <div className="px-3 py-2">Current</div>
+                                  <div className="px-3 py-2">New</div>
+                                </div>
+                                <div className="grid grid-cols-3 text-sm border-t">
+                                  <div className="px-3 py-1">Owner</div>
+                                  <div className="px-3 py-1">{item.current_owner?.full_name || '-'}</div>
+                                  <div className="px-3 py-1 font-medium">{item.new_owner?.full_name || '-'}</div>
+                                </div>
+                                <div className="grid grid-cols-3 text-sm border-t">
+                                  <div className="px-3 py-1">Cost Center</div>
+                                  <div className="px-3 py-1">{item.current_costcenter?.name || '-'}</div>
+                                  <div className="px-3 py-1 font-medium">{item.new_costcenter?.name || '-'}</div>
+                                </div>
+                                <div className="grid grid-cols-3 text-sm border-t">
+                                  <div className="px-3 py-1">Department</div>
+                                  <div className="px-3 py-1">{item.current_department?.name || item.current_department?.code || '-'}</div>
+                                  <div className="px-3 py-1 font-medium">{item.new_department?.name || item.new_department?.code || '-'}</div>
+                                </div>
+                                <div className="grid grid-cols-3 text-sm border-t">
+                                  <div className="px-3 py-1">Location</div>
+                                  <div className="px-3 py-1">{item.current_location?.name || '-'}</div>
+                                  <div className="px-3 py-1 font-medium">{item.new_location?.name || '-'}</div>
+                                </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                          <Card className='shadow-none bg-stone-50'>
-                            <CardHeader className="py-3"><CardTitle className="text-sm">Asset</CardTitle></CardHeader>
-                            <CardContent className="pt-0">
-                              <div className="grid grid-cols-3 gap-2 text-sm">
-                                <div className="text-muted-foreground col-span-2">Register Number</div>
-                                <div className="font-medium">{it.asset?.register_number || '-'}</div>
-                                <div className="text-muted-foreground col-span-2">Type</div>
-                                <div className="font-medium">{it.asset?.type?.name || '-'}</div>
-                                <div className="text-muted-foreground col-span-2">Asset ID</div>
-                                <div className="font-medium">{it.asset?.id ?? '-'}</div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
 
-                        <div className="pt-1 text-sm font-semibold">Ownership & Assignment</div>
-                        <div className="overflow-hidden rounded-md border border-border">
-                          <div className="grid grid-cols-3 bg-muted text-xs uppercase tracking-wide text-muted-foreground">
-                            <div className="px-3 py-2">Field</div>
-                            <div className="px-3 py-2">Current</div>
-                            <div className="px-3 py-2">New</div>
-                          </div>
-                          <div className="grid grid-cols-3 border-t text-sm">
-                            <div className="px-3 py-2 text-muted-foreground">Owner</div>
-                            <div className="px-3 py-2">{it.current_owner?.full_name || '-'}</div>
-                            <div className="px-3 py-2 font-medium">{it.new_owner?.full_name || '-'}</div>
-                          </div>
-                          <div className="grid grid-cols-3 border-t text-sm">
-                            <div className="px-3 py-2 text-muted-foreground">Cost Center</div>
-                            <div className="px-3 py-2">{it.current_costcenter?.name || '-'}</div>
-                            <div className="px-3 py-2 font-medium">{it.new_costcenter?.name || '-'}</div>
-                          </div>
-                          <div className="grid grid-cols-3 border-t text-sm">
-                            <div className="px-3 py-2 text-muted-foreground">Department</div>
-                            <div className="px-3 py-2">{it.current_department?.code || it.current_department?.name || '-'}</div>
-                            <div className="px-3 py-2 font-medium">{it.new_department?.code || it.new_department?.name || '-'}</div>
-                          </div>
-                          <div className="grid grid-cols-3 border-t text-sm">
-                            <div className="px-3 py-2 text-muted-foreground">Location</div>
-                            <div className="px-3 py-2">{it.current_location?.name || '-'}</div>
-                            <div className="px-3 py-2 font-medium">{it.new_location?.name || '-'}</div>
-                          </div>
-                          <div className="grid grid-cols-3 border-t text-sm">
-                            <div className="px-3 py-2 text-muted-foreground">Reason</div>
-                            <div className="px-3 py-2 col-span-2">{reasonStr}</div>
-                          </div>
-                        </div>
+                    <div className="grid grid-cols-1 gap-3 mt-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Remarks</label>
+                        <Textarea
+                          rows={3}
+                          value={remarks}
+                          onChange={(e) => setRemarksByItem((prev) => ({ ...prev, [itemKey]: e.target.value }))}
+                          placeholder="Optional remarks (required if rejecting)"
+                          className='bg-stone-100/50'
+                        />
+                      </div>
+                    </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Remarks</label>
-                            <Input
-                              value={remarks}
-                              onChange={(e) => setRemarksMap((prev) => ({ ...prev, [data.id]: e.target.value }))}
-                              placeholder="Optional remarks"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex justify-center gap-3 mt-4">
-                          <Button size="sm" variant="destructive" disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token)} onClick={() => approveReject(data, 'reject')}>
-                            {currentLoading === 'reject' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Rejecting…</>) : 'Reject'}
-                          </Button>
-                          <Button size="sm" disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token)} onClick={() => approveReject(data, 'approve')}>
-                            {currentLoading === 'approve' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Approving…</>) : 'Approve'}
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-sm text-muted-foreground">No items to display.</div>
-                    )}
+                    <div className="flex justify-center gap-3 mt-4">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token)}
+                        onClick={() => {
+                          if (!remarks?.trim()) {
+                            toast.error('Remarks are required when rejecting.');
+                            return;
+                          }
+                          approveReject(itemKey, 'reject');
+                        }}
+                      >
+                        {currentLoading === 'reject' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Rejecting…</>) : 'Reject'}
+                      </Button>
+                      <Button size="sm" disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token)} onClick={() => approveReject(itemKey, 'approve')}>
+                        {currentLoading === 'approve' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Approving…</>) : 'Approve'}
+                      </Button>
+                    </div>
                   </AccordionContent>
                 </AccordionItem>
               );

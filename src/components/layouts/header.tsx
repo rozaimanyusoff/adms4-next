@@ -308,24 +308,25 @@ const Header = () => {
 
     const handleLogout = async () => {
         console.log('🚪 Starting logout process...');
-        try {
-            await authenticatedApi.post('/api/auth/logout');
-        } catch (e) {
-            // Optionally handle error
-        }
-        
-        // Preserve remembered credentials if they exist
+        const token = authData?.token || JSON.parse(localStorage.getItem('authData') || '{}').token;
         const rememberedCredentials = localStorage.getItem('rememberedCredentials');
         console.log('💾 Preserving remembered credentials:', rememberedCredentials ? 'Yes' : 'No');
-        
-        // Clear all localStorage
-        localStorage.clear();
-        console.log('🧹 localStorage cleared');
-        
-        // Restore remembered credentials if they existed
-        if (rememberedCredentials) {
-            localStorage.setItem('rememberedCredentials', rememberedCredentials);
-            console.log('✅ Remembered credentials restored');
+
+        try {
+            await authenticatedApi.post('/api/auth/logout', undefined, {
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+        } catch (e) {
+            // Optionally handle error
+        } finally {
+            // Only clear after the logout request resolves/rejects
+            localStorage.clear();
+            console.log('🧹 localStorage cleared');
+
+            if (rememberedCredentials) {
+                localStorage.setItem('rememberedCredentials', rememberedCredentials);
+                console.log('✅ Remembered credentials restored');
+            }
         }
         
         window.location.href = '/auth/login';
@@ -397,7 +398,7 @@ const Header = () => {
                                 >
                                     <span className="text-lg font-bold">-</span>
                                 </Button>
-                                <div className="flex items-center px-2 min-w-[40px] justify-center">
+                                <div className="flex items-center px-2 min-w-10 justify-center">
                                     <span className="text-sm font-semibold">T</span>
                                 </div>
                                 <Button
@@ -474,8 +475,8 @@ const Header = () => {
                                             <IconBellBing />
                                             {unreadCount > 0 && (
                                                 <span className="absolute top-0 flex h-3 w-3 ltr:right-0 rtl:left-0">
-                                                    <span className="absolute -top-[3px] inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-[3px] rtl:-right-[3px]"></span>
-                                                    <span className="relative inline-flex h-[6px] w-[6px] rounded-full bg-success"></span>
+                                                    <span className="absolute -top-0.75 inline-flex h-full w-full animate-ping rounded-full bg-success/50 opacity-75 ltr:-left-0.75 rtl:-right-0.75"></span>
+                                                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success"></span>
                                                 </span>
                                             )}
                                         </span>
@@ -487,7 +488,7 @@ const Header = () => {
                                     sideOffset={8}
                                     className="p-0"
                                 >
-                                    <ul className="w-[300px] divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-[350px]">
+                                    <ul className="w-75 divide-y py-0! text-dark dark:divide-white/10 dark:text-white-dark sm:w-87.5">
                                     <li onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-between px-4 py-2 font-semibold">
                                             <h4 className={textSizeClasses.heading}>Notifications</h4>
@@ -595,7 +596,7 @@ const Header = () => {
                                                         <div className="grid place-content-center rounded-sm">
                                                             <div className="relative h-12 w-12">
                                                                 <img className="h-12 w-12 rounded-full object-cover" alt="profile" src={notification.profile} />
-                                                                {!notification.read && <span className="absolute bottom-0 right-[6px] block h-2 w-2 rounded-full bg-success"></span>}
+                                                                {!notification.read && <span className="absolute bottom-0 right-1.5 block h-2 w-2 rounded-full bg-success"></span>}
                                                             </div>
                                                         </div>
                                                         <div className="flex flex-auto ltr:pl-3 rtl:pr-3">
@@ -646,7 +647,7 @@ const Header = () => {
                                     ) : (
                                         !loadingNotifications && (
                                             <li onClick={(e) => e.stopPropagation()}>
-                                                <Button type="button" variant="ghost" className="!grid min-h-[160px] place-content-center text-sm hover:bg-transparent! w-full">
+                                                <Button type="button" variant="ghost" className="grid! min-h-40 place-content-center text-sm hover:bg-transparent! w-full">
                                                     <div className="mx-auto mb-3 rounded-full ring-4 ring-primary/20 p-2 w-fit">
                                                         <IconInfoCircle fill={true} className="h-8 w-8 text-primary" />
                                                     </div>
@@ -672,7 +673,7 @@ const Header = () => {
                                     sideOffset={8}
                                     className="p-0"
                                 >
-                                    <ul className="w-[230px] py-0! font-semibold text-dark dark:text-white-light/90 bg-white dark:bg-[#0e1726] rounded-md shadow-lg border border-gray-200 dark:border-gray-700">
+                                    <ul className="w-57.5 py-0! font-semibold text-dark dark:text-white-light/90 bg-white dark:bg-black rounded-md shadow-lg border border-gray-200 dark:border-gray-700">
                                     <li>
                                         <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white-light/10">
                                             <img className="h-10 w-10 rounded-md object-cover" src={userAvatar} alt={userDisplayName} />
@@ -751,7 +752,7 @@ const Header = () => {
                                                                     <IconCaretDown />
                                                                 </div>
                                                             </div>
-                                                            <ul className="absolute top-0 ltr:left-[95%] rtl:right-[95%] min-w-[180px] bg-stone-100 z-10 text-dark dark:text-white-dark dark:bg-[#1b2e4b] shadow-2xl hidden group-hover:block">
+                                                            <ul className="absolute top-0 ltr:left-[95%] rtl:right-[95%] min-w-45 bg-stone-100 z-10 text-dark dark:text-white-dark dark:bg-[#1b2e4b] shadow-2xl hidden group-hover:block">
                                                                 {item.children
                                                                     ?.sort((a: any, b: any) => a.position - b.position)
                                                                     .map((child: any) => (
@@ -764,7 +765,7 @@ const Header = () => {
                                                                                             <IconCaretDown />
                                                                                         </div>
                                                                                     </div>
-                                                                                    <ul className="absolute top-0 ltr:left-[95%] rtl:right-[95%] min-w-[180px] bg-white-light z-10 text-dark dark:text-white-dark dark:bg-[#1b2e4b] shadow-2xl py-2 hidden group-hover:block">
+                                                                                    <ul className="absolute top-0 ltr:left-[95%] rtl:right-[95%] min-w-45 bg-white-light z-10 text-dark dark:text-white-dark dark:bg-[#1b2e4b] shadow-2xl py-2 hidden group-hover:block">
                                                                                         {child.children
                                                                                             ?.sort((a: any, b: any) => a.position - b.position)
                                                                                             .map((subChild: any) => (

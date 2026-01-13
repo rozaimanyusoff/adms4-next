@@ -8,13 +8,14 @@ export const metadata: Metadata = {
 };
 
 type PageProps = {
-  searchParams?: {
+  searchParams: Promise<{
     id?: string | string[];
-  };
+  }>;
 };
 
-const AssetTransferFormPage = ({ searchParams }: PageProps) => {
-  const idParam = searchParams?.id;
+const AssetTransferFormPage = async ({ searchParams }: PageProps) => {
+  const resolvedParams = await searchParams;
+  const idParam = resolvedParams?.id;
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
 
   return (

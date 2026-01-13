@@ -207,6 +207,19 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const authContext = useContext(AuthContext);
 	const user = authContext?.authData?.user;
 	const formRef = useRef<HTMLFormElement>(null);
+	// Prevent duplicate asset-loaded toasts when effects run multiple times (e.g. StrictMode)
+	const assetLoadToastKeyRef = useRef<string | null>(null);
+	// Cache keys to avoid re-fetching sidebars when data already present
+	const lastSupervisorFetchKeyRef = useRef<string | null>(null);
+	const lastManagerFetchKeyRef = useRef<string | null>(null);
+	// Draft handling: persist form state locally to avoid losing work on refresh
+	const draftKey = React.useMemo(() => {
+		const userKey = user?.username ? String(user.username) : 'anon';
+		const idKey = id ? String(id) : 'new';
+		return `asset-transfer-draft:${userKey}:${idKey}`;
+	}, [user?.username, id]);
+	const [draftRestored, setDraftRestored] = React.useState(false);
+	const draftSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 	const requestor = React.useMemo(() => (form?.requestor ? { ...form.requestor } : {}), [form?.requestor]);
 
 	function clearFormAndItems() {
@@ -321,6 +334,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			// Notify parent to refresh its data and show success dialog
 			try { onSubmitted && onSubmitted(); } catch { }
 			clearFormAndItems();
+			// Clear any locally persisted draft once submission succeeds
+			try { localStorage.removeItem(draftKey); } catch { }
 			setOpenSuccessDialog(true);
 		} catch (err) {
 			setSubmitError('Failed to submit transfer. Please try again.');
@@ -599,6 +614,71 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		return () => window.removeEventListener('beforeunload', beforeUnload);
 	}, []);
 
+	// Restore draft from localStorage once initial load completes
+	React.useEffect(() => {
+		if (draftRestored) return;
+		if (loading) return;
+		try {
+			const raw = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
+			if (raw) {
+				const parsed = JSON.parse(raw);
+				if (parsed.form) setForm(parsed.form);
+				if (Array.isArray(parsed.selectedItems)) setSelectedItems(parsed.selectedItems);
+				if (parsed.itemTransferDetails) setItemTransferDetails(parsed.itemTransferDetails);
+				if (parsed.itemReasons) setItemReasons(parsed.itemReasons);
+				if (parsed.itemEffectiveDates) setItemEffectiveDates(parsed.itemEffectiveDates);
+				if (parsed.returnToAssetManager) setReturnToAssetManager(parsed.returnToAssetManager);
+				if (parsed.applicationOption) setApplicationOption(parsed.applicationOption);
+				if (parsed.requestStatus) setRequestStatus(parsed.requestStatus);
+				if (parsed.dateRequest) setDateRequest(parsed.dateRequest);
+			}
+		} catch (err) {
+			console.warn('Failed to restore asset transfer draft', err);
+		} finally {
+			setDraftRestored(true);
+		}
+	}, [draftKey, draftRestored, loading]);
+
+	// Persist draft to localStorage with a small debounce to avoid frequent writes
+	React.useEffect(() => {
+		if (!draftRestored) return;
+		if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+		draftSaveTimerRef.current = setTimeout(() => {
+			const payload = {
+				form,
+				selectedItems,
+				itemTransferDetails,
+				itemReasons,
+				itemEffectiveDates,
+				returnToAssetManager,
+				applicationOption,
+				requestStatus,
+				dateRequest,
+				updatedAt: new Date().toISOString(),
+			};
+			try {
+				localStorage.setItem(draftKey, JSON.stringify(payload));
+			} catch (err) {
+				console.warn('Failed to save asset transfer draft', err);
+			}
+		}, 800);
+		return () => {
+			if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+		};
+	}, [
+		applicationOption,
+		dateRequest,
+		draftKey,
+		draftRestored,
+		form,
+		itemEffectiveDates,
+		itemReasons,
+		itemTransferDetails,
+		requestStatus,
+		returnToAssetManager,
+		selectedItems,
+	]);
+
 	const loadPendingAssetLocks = React.useCallback(async () => {
 		try {
 			const pendingRes: any = await authenticatedApi.get('/api/assets/transfers?status=pending');
@@ -635,10 +715,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 					setSupervised(assets);
 					await loadPendingAssetLocks();
 
-					if (assets.length > 0) {
+					const toastKey = `${String(param)}-${assets.length}`;
+					if (assetLoadToastKeyRef.current !== toastKey && assets.length > 0) {
 						toast.success(`${assets.length} asset(s) loaded. Click + to select.`);
-					} else {
+						assetLoadToastKeyRef.current = toastKey;
+					} else if (assetLoadToastKeyRef.current !== toastKey && assets.length === 0) {
 						toast.info('No assets found for this supervisor');
+						assetLoadToastKeyRef.current = toastKey;
 					}
 				} catch (err) {
 					console.error('Error loading resignation assets:', err);
@@ -674,11 +757,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			toast.error('Unable to determine supervisor for asset lookup.');
 			return;
 		}
+		// If we already fetched for this supervisor and have data, just open the sidebar
+		if (lastSupervisorFetchKeyRef.current === String(param) && supervised.length > 0) {
+			setSidebarOpen(true);
+			return;
+		}
 		setSidebarOpen(true);
 		setSidebarLoading(true);
 		try {
 			const res: any = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
 			setSupervised(res.data?.data || []);
+			lastSupervisorFetchKeyRef.current = String(param);
 			await loadPendingAssetLocks();
 		} catch (err) {
 			console.error('Error fetching assets:', err);
@@ -695,12 +784,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			return;
 		}
 		if (managerSidebarLoading) return;
+		// If already loaded for this manager, avoid refetch and just open
+		if (lastManagerFetchKeyRef.current === String(managerId) && managerAssets.length > 0) {
+			setManagerSidebarOpen(true);
+			return;
+		}
 		setManagerSidebarOpen(true);
 		setManagerSidebarLoading(true);
 		try {
 			const url = `/api/assets?manager=${encodeURIComponent(String(managerId))}&status=active`;
 			const res: any = await authenticatedApi.get(url);
 			setManagerAssets(res?.data?.data || res?.data || []);
+			lastManagerFetchKeyRef.current = String(managerId);
 		} catch (err) {
 			toast.error('Failed to load managed assets');
 			setManagerAssets([]);
@@ -968,16 +1063,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		}
 	}, [selectedItems.length]);
 
-	if (loading) return <div className="p-8 text-center">Loading...</div>;
-	if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
-
-	// Read-only rules and watermark
-	const isApproved = String(form?.transfer_status || '').toLowerCase() === 'approved';
-	const isSubmitted = requestStatus === 'submitted';
-	const allAccepted = isApproved && selectedItems.length > 0 && selectedItems.every((it: any) => Boolean(it.acceptance_date));
-	const isReadOnly = isSubmitted || isApproved;
-	const watermarkText = isApproved ? (allAccepted ? 'Accepted' : 'Pending Acceptance') : undefined;
-
 	// Discover manager access once (if current user listed in /api/assets/managers)
 	useEffect(() => {
 		const fetchManagerAccess = async () => {
@@ -1000,6 +1085,16 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		};
 		fetchManagerAccess();
 	}, [user?.username]);
+
+	if (loading) return <div className="p-8 text-center">Loading...</div>;
+	if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
+
+	// Read-only rules and watermark
+	const isApproved = String(form?.transfer_status || '').toLowerCase() === 'approved';
+	const isSubmitted = requestStatus === 'submitted';
+	const allAccepted = isApproved && selectedItems.length > 0 && selectedItems.every((it: any) => Boolean(it.acceptance_date));
+	const isReadOnly = isSubmitted || isApproved;
+	const watermarkText = isApproved ? (allAccepted ? 'Accepted' : 'Pending Acceptance') : undefined;
 
 	return (
 		<>
@@ -1190,6 +1285,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 									)}
 									{managerId ? (
 										<Button
+											type="button"
 											variant="outline"
 											size="lg"
 											onClick={handleOpenManagerSidebar}
@@ -1783,77 +1879,83 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	onChange={e => setAssetSearch(e.target.value)}
 																/>
 															</div>
-															<ul className="space-y-2">
-																{allAssets
-																	.filter((a: any) => !isAssetSelected(a))
-																	.filter((a: any) => {
-																		if (!assetSearch) return true;
-																		const search = assetSearch.toLowerCase();
-																		const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
-																		return (
-																			matches(a.register_number) ||
-																			matches(a.entry_code) ||
-																			matches(getAssetCategoryName(a)) ||
-																			matches(getAssetBrandName(a)) ||
-																			matches(getAssetModelName(a)) ||
-																			matches(getAssetTypeName(a))
-																		);
-																	})
-																	.map((a: any, j: any) => {
-																		const assetType = getAssetTypeName(a);
-																		const lowerType = assetType.toLowerCase();
-																		let typeIcon = null;
-																		if (lowerType.includes('motor')) {
-																			typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
-																		} else if (lowerType.includes('computer')) {
-																			typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
-																		}
-																		const categoryName = getAssetCategoryName(a);
-																		const brandName = getAssetBrandName(a);
-																		const modelName = getAssetModelName(a);
-																		const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
-																		const brandLine = [brandName, modelName].filter(Boolean).join(' ');
-																		const locked = isAssetLockedByPendingTransfer(a);
-																		return (
-																			<React.Fragment key={a.id || a.register_number || j}>
-																				<li className="flex flex-col bg-indigo-100 dark:bg-gray-800 rounded-lg px-3 py-2">
-																					<div className="flex items-center gap-3">
-																						<div className="flex items-center gap-2">
-																							<button
-																								type="button"
-																								className={`rounded-full p-1 ${locked ? 'cursor-not-allowed text-blue-200' : 'text-blue-500 hover:text-blue-600'}`}
-																								onClick={() => { addSelectedItem(a); }}
-																								disabled={locked}
-																								title={locked ? 'Pending transfer in progress' : 'Add asset'}
-																							>
-																								<CirclePlus className="w-6 h-6" />
-																							</button>
-																							{typeIcon && typeIcon}
-																						</div>
-																						<div>
-																							<div className="text-medium dark:text-dark-light">
-																								{a.owner?.full_name && (
-																									<div className="font-medium dark:text-dark-light">{a.owner.full_name} <span className="text-black">({a.owner.ramco_id})</span></div>
-																								)}
-																							</div>
-																							<span className="font-medium dark:text-dark-light">{a.register_number}</span>
-																							<div className="text-xs text-gray-700 dark:text-dark-light mt-0.5">
-																								<div>{typeLine || '-'}</div>
-																								<div>{brandLine || '-'}</div>
-																							</div>
-																							{locked && (
-																								<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800 w-fit">
-																									Pending transfer
-																								</Badge>
+														<ul className="space-y-2">
+															{allAssets
+																.filter((a: any) => {
+																	if (!assetSearch) return true;
+																	const search = assetSearch.toLowerCase();
+																	const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
+																	return (
+																		matches(a.register_number) ||
+																		matches(a.entry_code) ||
+																		matches(getAssetCategoryName(a)) ||
+																		matches(getAssetBrandName(a)) ||
+																		matches(getAssetModelName(a)) ||
+																		matches(getAssetTypeName(a))
+																	);
+																})
+																.map((a: any, j: any) => {
+																	const assetType = getAssetTypeName(a);
+																	const lowerType = assetType.toLowerCase();
+																	let typeIcon = null;
+																	if (lowerType.includes('motor')) {
+																		typeIcon = <CarIcon className="w-4.5 h-4.5 text-pink-500" />;
+																	} else if (lowerType.includes('computer')) {
+																		typeIcon = <LucideComputer className="w-4.5 h-4.5 text-green-500" />;
+																	}
+																	const categoryName = getAssetCategoryName(a);
+																	const brandName = getAssetBrandName(a);
+																	const modelName = getAssetModelName(a);
+																	const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
+																	const brandLine = [brandName, modelName].filter(Boolean).join(' ');
+																	const locked = isAssetLockedByPendingTransfer(a);
+																	const alreadySelected = isAssetSelected(a);
+																	const disableAdd = locked || alreadySelected;
+																	return (
+																		<React.Fragment key={a.id || a.register_number || j}>
+																			<li className={`flex flex-col bg-indigo-100 dark:bg-gray-800 rounded-lg px-3 py-2 transition-all duration-200 ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
+																				<div className="flex items-center gap-3">
+																					<div className="flex items-center gap-2">
+																						<button
+																							type="button"
+																							className={`rounded-full p-1 ${disableAdd ? 'cursor-not-allowed text-blue-200' : 'text-blue-500 hover:text-blue-600'}`}
+																							onClick={() => { if (!disableAdd) addSelectedItem(a); }}
+																							disabled={disableAdd}
+																							title={locked ? 'Pending transfer in progress' : (alreadySelected ? 'Already selected' : 'Add asset')}
+																						>
+																							<CirclePlus className="w-6 h-6" />
+																						</button>
+																						{typeIcon && typeIcon}
+																					</div>
+																					<div>
+																						<div className="text-medium dark:text-dark-light">
+																							{a.owner?.full_name && (
+																								<div className="font-medium dark:text-dark-light">{a.owner.full_name} <span className="text-black">({a.owner.ramco_id})</span></div>
 																							)}
 																						</div>
+																						<span className="font-medium dark:text-dark-light">{a.register_number}</span>
+																						<div className="text-xs text-gray-700 dark:text-dark-light mt-0.5">
+																							<div>{typeLine || '-'}</div>
+																							<div>{brandLine || '-'}</div>
+																						</div>
+																						{locked && (
+																							<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800 w-fit">
+																								Pending transfer
+																							</Badge>
+																						)}
+																						{alreadySelected && !locked && (
+																							<Badge variant="secondary" className="mt-1 bg-blue-100 text-blue-800 w-fit">
+																								Selected
+																							</Badge>
+																						)}
 																					</div>
-																				</li>
-																			</React.Fragment>
-																		);
-																	})
-																}
-															</ul>
+																				</div>
+																			</li>
+																		</React.Fragment>
+																	);
+																})
+															}
+														</ul>
 														</>
 													);
 												}
@@ -1901,7 +2003,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 														</div>
 														<ul className="space-y-2">
 															{allAssets
-																.filter((a: any) => !isAssetSelected(a))
 																.filter((a: any) => {
 																	if (!managerAssetSearch) return true;
 																	const search = managerAssetSearch.toLowerCase();
@@ -1935,7 +2036,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	const alreadySelected = isAssetSelected(a);
 																	return (
 																		<React.Fragment key={`managed-${a.id || a.register_number || j}`}>
-																			<li className="flex flex-col bg-emerald-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+																			<li className={`flex flex-col bg-emerald-100 dark:bg-gray-800 rounded-lg px-3 py-2 transition-all duration-200 ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
 																				<div className="flex items-center gap-3">
 																					<div className="flex items-center gap-2">
 																						<Checkbox
@@ -1959,6 +2060,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																						{locked && (
 																							<Badge variant="secondary" className="mt-1 bg-amber-100 text-amber-800">
 																								Pending transfer
+																							</Badge>
+																						)}
+																						{alreadySelected && !locked && (
+																							<Badge variant="secondary" className="mt-1 bg-blue-100 text-blue-800 w-fit">
+																								Selected
 																							</Badge>
 																						)}
 																					</div>
