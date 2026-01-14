@@ -2,7 +2,7 @@
 import React, { useState, useContext, useEffect } from "react";
 import { AuthContext } from "@/store/AuthContext";
 import { authenticatedApi } from "@/config/api";
-import { Inbox, Plus, Send, ArrowRightFromLine, ArrowLeftToLine } from "lucide-react";
+import { Inbox, Plus, Send, MailWarning, ArrowRightFromLine, ArrowLeftToLine } from "lucide-react";
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -86,6 +86,7 @@ export default function AssetTranserRecords() {
     const [dataBy, setDataBy] = useState<any[]>([]); // item-level rows for To Receive
     const [loading, setLoading] = useState(false);
     const [loadingBy, setLoadingBy] = useState(false);
+    const [resendLoading, setResendLoading] = useState<Record<string, boolean>>({});
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
     const fullName = auth?.authData?.user?.name || username || '-';
@@ -110,11 +111,26 @@ export default function AssetTranserRecords() {
     const refreshTransferItems = React.useCallback(() => {
         if (!username) return;
         setLoadingBy(true);
-        const urlItems = `/api/assets/transfers/items?new_owner=${encodeURIComponent(username)}`;
+        const urlItems = `/api/assets/transfers?new_owner=${encodeURIComponent(username)}`;
         authenticatedApi
             .get(urlItems)
             .then((res: any) => {
-                setDataBy(res?.data?.data || []);
+                const transfers = res?.data?.data || [];
+                const flattened = Array.isArray(transfers)
+                    ? transfers.flatMap((t: any) => {
+                        const items = Array.isArray(t?.items) ? t.items : [];
+                        return items.map((item: any) => ({
+                            ...item,
+                            transfer_id: t?.id,
+                            transfer_by: t?.transfer_by,
+                            approval_status: t?.approval_status,
+                            approval_date: t?.approved_date || t?.approval_date,
+                            approved_date: t?.approved_date || t?.approval_date,
+                            transfer_date: t?.transfer_date,
+                        }));
+                    })
+                    : [];
+                setDataBy(flattened);
             })
             .catch(() => { /* ignore */ })
             .then(() => setLoadingBy(false));
@@ -123,6 +139,20 @@ export default function AssetTranserRecords() {
     useEffect(() => {
         refreshTransferItems();
     }, [refreshTransferItems]);
+
+    const handleResendApproval = async (transferId?: string | number) => {
+        if (!transferId) return;
+        const key = String(transferId);
+        setResendLoading(prev => ({ ...prev, [key]: true }));
+        try {
+            await authenticatedApi.post(`/api/assets/transfers/${encodeURIComponent(String(transferId))}/resend-approval-notification`);
+            toast.success('Approval email sent to supervisor/HOD.');
+        } catch (e) {
+            toast.error('Failed to resend approval email.');
+        } finally {
+            setResendLoading(prev => ({ ...prev, [key]: false }));
+        }
+    };
 
     const refreshAll = React.useCallback(() => {
         refreshTransfers();
@@ -218,6 +248,27 @@ export default function AssetTranserRecords() {
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
         { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
         { key: "approval_status", header: "Approval Status", render: renderApprovalStatus },
+        {
+            key: "actions",
+            header: "Actions",
+            render: (row) => {
+                const transferId = row?.id;
+                if (!transferId) return null;
+                const busy = resendLoading[String(transferId)];
+                return (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700"
+                        disabled={busy}
+                        onClick={() => handleResendApproval(transferId)}
+                        title="Resend approval email to supervisor/HOD"
+                    >
+                        {busy ? 'Sending…' : <MailWarning className="w-4 h-4" />}
+                    </Button>
+                );
+            }
+        },
     ];
 
     // Item ordinal lookup per transfer (e.g., 1/2, 2/2)
@@ -260,7 +311,7 @@ export default function AssetTranserRecords() {
         { key: "id", header: "Item ID", render: row => itemOrdinalLookup[String(row.id)] || row.id },
         { key: "transfer_id", header: "Transfer ID" },
         { key: "transfer_by", header: "Transfer By", colClass: "truncate", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
-        { key: "type", header: "Type", filter: 'singleSelect', render: row => row.type?.name || "-" },
+        { key: "type", header: "Type", filter: 'singleSelect', render: row => row.asset?.type?.name || row.type?.name || "-" },
         { key: "asset", header: "Register Number", render: row => row.asset?.register_number || row.asset?.id || "-" },
         { key: "current_owner", header: "Current Owner", render: row => row.current_owner?.full_name || row.current_owner?.name || row.current_owner?.ramco_id || "-" },
         { key: "effective_date", header: "Effective Date", render: row => row.effective_date ? new Date(row.effective_date).toLocaleDateString() : "-" },

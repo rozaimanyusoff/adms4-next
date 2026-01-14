@@ -40,6 +40,7 @@ export interface AssetTransferItem {
 	effective_date?: string;
 	reasons?: string;
 	attachment?: any;
+	attachment1?: any;
 	accepted_by?: any;
 	accepted_at?: any;
 	acceptance_remarks?: any;
@@ -219,17 +220,57 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		const idKey = id ? String(id) : 'new';
 		return `asset-transfer-draft:${userKey}:${idKey}`;
 	}, [user?.username, id]);
+	const skipNextDraftSaveRef = React.useRef(false);
+
+	// Convert a date-like value into YYYY-MM-DD in the user's local timezone (avoids UTC off-by-one).
+	const toLocalISODate = (value?: string | Date | null) => {
+		if (!value) return '';
+		const date = typeof value === 'string' ? new Date(value) : value;
+		if (isNaN(date.getTime())) return '';
+		const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+		return localDate.toISOString().slice(0, 10);
+	};
+	const requestDateValue = React.useMemo(() => toLocalISODate(dateRequest || new Date()), [dateRequest]);
+	const requestDateDisplay = React.useMemo(() => {
+		return requestDateValue ? new Date(requestDateValue).toLocaleDateString() : '';
+	}, [requestDateValue]);
 	const [draftRestored, setDraftRestored] = React.useState(false);
 	const draftSaveTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 	const requestor = React.useMemo(() => (form?.requestor ? { ...form.requestor } : {}), [form?.requestor]);
 
-	function clearFormAndItems() {
-		setForm(initialForm);
+	function clearDraftStorage() {
+		skipNextDraftSaveRef.current = true;
+		try {
+			localStorage.removeItem(draftKey);
+		} catch {
+			// ignore
+		}
+	}
+
+	function clearFormAndItems(options?: { resetDate?: boolean }) {
+		clearDraftStorage();
+		const keepRequestor = form?.requestor ? { ...form.requestor } : {};
+		setForm({ requestor: keepRequestor, reason: {} });
 		setSelectedItems([]);
 		setItemReasons({});
 		setItemTransferDetails({});
 		setItemEffectiveDates({});
 		setReturnToAssetManager({});
+		setItemAttachments({});
+		setItemAttachmentNames({});
+		setExpandedItems({});
+		setShowAccordionTooltip({});
+		setShowAddItemsTooltip(false);
+		setSubmitError(null);
+		setWorkflow({});
+		setRequestStatus('draft');
+		setApplicationOption('resignation');
+		setManagerAssets([]);
+		setManagerAssetSearch('');
+		setPendingAssetAcceptance({});
+		if (options?.resetDate !== false) {
+			setDateRequest(new Date().toISOString());
+		}
 	}
 
 	async function handleSubmit(e: React.FormEvent<HTMLFormElement>, status?: 'draft' | 'submitted') {
@@ -324,7 +365,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		selectedItems.forEach((item: any) => {
 			const f = itemAttachments[item.id];
 			if (f) {
-				formData.append(`attachments[${item.id}]`, f, f.name);
+				formData.append(`attachment1[${item.id}]`, f, f.name);
 			}
 		});
 
@@ -339,7 +380,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			try { localStorage.removeItem(draftKey); } catch { }
 			setOpenSuccessDialog(true);
 		} catch (err) {
-			setSubmitError('Failed to submit transfer. Please try again.');
+			const message = 'Failed to submit transfer. Please try again.';
+			setSubmitError(message);
+			toast.error(message);
 		} finally {
 			setSubmitting(false);
 		}
@@ -520,15 +563,14 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				const newItem = newList[newList.length - 1];
 				setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: true }));
 				setTimeout(() => {
-					setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: false }));
-				}, 5000);
+				setShowAccordionTooltip((prevTooltip) => ({ ...prevTooltip, [newItem.id]: false }));
+			}, 5000);
 				// Default Effective Date to Application Date for the newly added item
 				try {
-					const appDate = dateRequest ? new Date(dateRequest) : new Date();
-					const yyyy = appDate.getFullYear();
-					const mm = String(appDate.getMonth() + 1).padStart(2, '0');
-					const dd = String(appDate.getDate()).padStart(2, '0');
-					setItemEffectiveDates(prevDates => ({ ...prevDates, [newItem.id]: `${yyyy}-${mm}-${dd}` }));
+					const defaultDate = toLocalISODate(dateRequest || new Date());
+					if (defaultDate) {
+						setItemEffectiveDates(prevDates => ({ ...prevDates, [newItem.id]: defaultDate }));
+					}
 				} catch { }
 			}
 			return newList;
@@ -644,6 +686,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	// Persist draft to localStorage with a small debounce to avoid frequent writes
 	React.useEffect(() => {
 		if (!draftRestored) return;
+		if (skipNextDraftSaveRef.current) {
+			skipNextDraftSaveRef.current = false;
+			return;
+		}
 		if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
 		draftSaveTimerRef.current = setTimeout(() => {
 			const payload = {
@@ -739,6 +785,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 
 	// Handler to close the blank tab (window)
 	async function handleCancel() {
+		clearFormAndItems();
 		// Return to parent if provided, else best-effort close
 		if (onClose) {
 			onClose();
@@ -1060,7 +1107,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							);
 							// Prefill attachment names (we can't reconstruct File objects)
 							setItemAttachmentNames(
-								Object.fromEntries(data.items.map((item: any) => [item.id, item.attachment || null]))
+								Object.fromEntries(data.items.map((item: any) => [item.id, item.attachment1 || item.attachment || null]))
 							);
 						}
 						// Prefill workflow if present
@@ -1207,7 +1254,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 						Use this form to transfer an asset to another person or location within the organization. Provide the required details and submit when ready.
 					</p>
 				</h2>
-				<Button variant="outline" size="sm" onClick={handleCancel}>
+				<Button
+					variant="outline"
+					size="sm"
+					className='border border-red-600 hover:bg-red-600 hover:text-white'
+					onClick={() => setOpenCancelDialog(true)}
+				>
 					Back to Records
 				</Button>
 			</div>
@@ -1229,12 +1281,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 						<div className="space-y-2">
 							{/* Hidden inputs for payload */}
 							<input type="hidden" name="ramco_id" value={requestor?.ramco_id ?? ''} />
-							<input type="hidden" name="request_date" value={dateRequest ? new Date(dateRequest).toISOString().slice(0, 10) : ''} />
+							<input type="hidden" name="request_date" value={requestDateValue} />
 							{/* Row 1: Application Date aligned right */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 								<div className="sm:col-start-2">
 									<Label className="text-sm">Application Date</Label>
-									<Input value={dateRequest ? new Date(dateRequest).toLocaleDateString() : ''} disabled />
+									<Input value={requestDateDisplay} disabled />
 								</div>
 							</div>
 							{/* Row 2: Name & Ramco ID */}

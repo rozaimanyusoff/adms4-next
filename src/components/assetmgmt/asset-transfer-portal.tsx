@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, X, AlertTriangle } from 'lucide-react';
+import { Loader2, X, AlertTriangle, Camera, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 type TransferItem = {
@@ -122,6 +122,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
     message: string;
   }>({ open: false, title: '', message: '' });
   const [attachmentsByItem, setAttachmentsByItem] = useState<Record<string, File[]>>({});
+  const hasAttachments = React.useCallback((itemKey: string) => (attachmentsByItem[itemKey] || []).length > 0, [attachmentsByItem]);
 
   const loggedIn = Boolean(auth?.authData?.user);
   const dataListSafe = Array.isArray(dataList) ? dataList : [];
@@ -130,6 +131,10 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
   const approveLabel = mode === 'acceptance' ? 'Accept' : 'Approve';
   const approvedLabel = mode === 'acceptance' ? 'Accepted' : 'Approved';
   const approveIng = mode === 'acceptance' ? 'Accepting…' : 'Approving…';
+  const selectedMissingAttachments = React.useMemo(() => {
+    if (mode !== 'acceptance') return false;
+    return Array.from(selectedIds).some((key) => !hasAttachments(key));
+  }, [selectedIds, mode, hasAttachments]);
 
   const fetchData = React.useCallback(async () => {
     try {
@@ -244,6 +249,11 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
       if (mode === 'acceptance') {
         const remark = remarksByItem[itemKey] || '';
         const files = attachmentsByItem[itemKey] || [];
+        if (kind === 'approve' && !hasAttachments(itemKey)) {
+          toast.error('Attachments are required to accept.');
+          setActionLoading(null);
+          return;
+        }
         await sendAcceptanceRequest(
           transfer.id,
           [entry.item.id],
@@ -289,10 +299,50 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
 
   const clearSelection = () => setSelectedIds(new Set());
 
-  const handleAttachmentChange = (itemKey: string, fileList: FileList | null) => {
+  // Compress images on the client to reduce payload size before upload
+  const compressImageFile = async (file: File): Promise<File> => {
+    if (!file.type.startsWith('image/')) return file;
+    try {
+      const url = URL.createObjectURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = url;
+      });
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height || 1));
+      const targetW = Math.max(1, Math.round(img.width * scale));
+      const targetH = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        return file;
+      }
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+      URL.revokeObjectURL(url);
+      if (!blob) return file;
+      return new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
+    } catch {
+      return file;
+    }
+  };
+
+  const handleAttachmentChange = async (itemKey: string, fileList: FileList | null) => {
     if (!fileList) return;
-    const files = Array.from(fileList).slice(0, 3);
-    setAttachmentsByItem((prev) => ({ ...prev, [itemKey]: files }));
+    const incoming = await Promise.all(Array.from(fileList).map(compressImageFile));
+    setAttachmentsByItem((prev) => {
+      const existing = prev[itemKey] || [];
+      const combined = [...existing, ...incoming].slice(0, 2);
+      if (combined.length < existing.length + incoming.length) {
+        toast.info('Only 2 attachments are allowed.');
+      }
+      return { ...prev, [itemKey]: combined };
+    });
   };
 
   const removeAttachment = (itemKey: string, index: number) => {
@@ -311,18 +361,22 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
     files?: File[]
   ) => {
     const url = `/api/assets/transfers/${encodeURIComponent(String(transferId))}/acceptance`;
-    const acceptanceBy = newOwnerParam || (auth?.authData as any)?.user?.username || '';
+    const userInfo: any = (auth?.authData as any)?.user || {};
+    const acceptanceBy = newOwnerParam || userInfo?.ramco_id || userInfo?.username || '';
+    const idsToSend = Array.isArray(itemIds) && itemIds.length > 0 ? [itemIds[0]] : [];
     const acceptanceDate = fmtDateTimeLocal(new Date());
     const checklistItems = ''; // checklist values not available in this view
-    const hasFiles = Array.isArray(files) && files.length > 0;
+    const trimmedFiles = Array.isArray(files) ? files.slice(0, 2) : [];
+    const hasFiles = trimmedFiles.length > 0;
     if (hasFiles) {
       const fd = new FormData();
       fd.append('acceptance_by', acceptanceBy);
       fd.append('acceptance_date', acceptanceDate);
       fd.append('acceptance_remarks', remark || '');
       fd.append('checklist-items', checklistItems);
-      itemIds.forEach((id) => fd.append('item_ids[]', String(id)));
-      files!.forEach((f, idx) => fd.append('acceptance_attachments', f, f.name || `attachment-${idx + 1}`));
+      idsToSend.forEach((id) => fd.append('item_ids[]', String(id)));
+      if (trimmedFiles[0]) fd.append('attachment2', trimmedFiles[0], trimmedFiles[0].name || 'attachment-2');
+      if (trimmedFiles[1]) fd.append('attachment3', trimmedFiles[1], trimmedFiles[1].name || 'attachment-3');
       fd.append('status', status);
       await authenticatedApi.put(url, fd, { headers: { ...(authHeaders || {}), 'Content-Type': 'multipart/form-data' } });
       return;
@@ -333,7 +387,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
       acceptance_remarks: remark || '',
       'checklist-items': checklistItems,
       status,
-      item_ids: itemIds.map((id) => Number(id) || id),
+      item_ids: idsToSend.map((id) => Number(id) || id),
     };
     await authenticatedApi.put(url, payload, { headers: authHeaders });
   };
@@ -350,6 +404,14 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
           const missingRemarks = items.filter(({ key }) => !(remarksByItem[key] || '').trim());
           if (missingRemarks.length > 0) {
             toast.error('Remarks are required when rejecting.');
+            setBulkLoading(null);
+            return;
+          }
+        }
+        if (kind === 'approve') {
+          const missingAttachments = items.filter(({ key }) => !hasAttachments(key));
+          if (missingAttachments.length > 0) {
+            toast.error('Attachments are required to accept.');
             setBulkLoading(null);
             return;
           }
@@ -420,6 +482,13 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
         const missing = Array.from(selectedIds).filter((key) => !(remarksByItem[key] || '').trim());
         if (missing.length > 0) {
           toast.error('Remarks are required when rejecting.');
+          return;
+        }
+      }
+      if (mode === 'acceptance' && kind === 'approve') {
+        const missingAttachments = Array.from(selectedIds).filter((key) => !hasAttachments(key));
+        if (missingAttachments.length > 0) {
+          toast.error('Attachments are required to accept.');
           return;
         }
       }
@@ -517,7 +586,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                   variant="ghost"
                   className='bg-emerald-600 text-white font-semibold hover:bg-white hover:border hover:border-emerald-600 hover:text-emerald-700'
                   onClick={() => requestConfirm('approve', 'bulk')}
-                  disabled={Boolean(bulkLoading) || (!loggedIn && !token) || selectedIds.size === 0}
+                  disabled={Boolean(bulkLoading) || (!loggedIn && !token) || selectedIds.size === 0 || selectedMissingAttachments}
                 >
                   {bulkLoading === 'approve' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />{approveIng}</>) : `Bulk ${approvedLabel} (${selectedIds.size})`}
                 </Button>
@@ -633,46 +702,84 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                           </Card>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 items-start">
-                          <div className="space-y-1">
-                            <label className="block text-sm font-medium text-gray-700">Remarks</label>
-                            <Textarea
-                              rows={3}
-                              value={remarks}
-                              onChange={(e) => setRemarksByItem((prev) => ({ ...prev, [itemKey]: e.target.value }))}
-                              placeholder={mode === 'acceptance' ? 'Optional remarks (required if rejecting)' : 'Optional remarks'}
-                              className='bg-stone-100/50'
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700">Attachments (max 3)</label>
-                            <Input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              capture="environment"
-                              onChange={(e) => handleAttachmentChange(itemKey, e.target.files)}
-                            />
-                            <div className="text-xs text-muted-foreground">Add photos from camera or gallery.</div>
-                            {(attachmentsByItem[itemKey] || []).length > 0 && (
+                        {mode === 'acceptance' ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 items-start">
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">Remarks</label>
+                              <Textarea
+                                rows={3}
+                                value={remarks}
+                                onChange={(e) => setRemarksByItem((prev) => ({ ...prev, [itemKey]: e.target.value }))}
+                                placeholder="Optional remarks (required if rejecting)"
+                                className='bg-stone-100/50'
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-sm font-medium text-gray-700">Attachments (max 2)</label>
                               <div className="flex flex-wrap gap-2">
-                                {(attachmentsByItem[itemKey] || []).map((file, idx) => (
-                                  <Badge key={`${file.name}-${idx}`} variant="secondary" className="flex items-center gap-2">
-                                    <span className="truncate max-w-[120px]">{file.name}</span>
-                                    <button
-                                      type="button"
-                                      className="text-red-600 hover:text-red-700"
-                                      onClick={() => removeAttachment(itemKey, idx)}
-                                      aria-label="Remove attachment"
-                                    >
-                                      ×
-                                    </button>
-                                  </Badge>
-                                ))}
+                                <input
+                                  id={`attachment-camera-${itemKey}`}
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={(e) => handleAttachmentChange(itemKey, e.target.files)}
+                                />
+                                <input
+                                  id={`attachment-gallery-${itemKey}`}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handleAttachmentChange(itemKey, e.target.files)}
+                                />
+                                <Button variant="default" size="sm" asChild>
+                                  <label htmlFor={`attachment-camera-${itemKey}`} className="flex items-center gap-2 cursor-pointer">
+                                    <Camera className="w-4 h-4" />
+                                  </label>
+                                </Button>
+                                <Button variant="default" size="sm" asChild>
+                                  <label htmlFor={`attachment-gallery-${itemKey}`} className="flex items-center gap-2 cursor-pointer">
+                                    <ImageIcon className="w-4 h-4" />
+                                  </label>
+                                </Button>
                               </div>
-                            )}
+                              <div className="text-xs text-muted-foreground">Add photos from camera or gallery. Up to 2 files total.</div>
+                              {!hasAttachments(itemKey) && (
+                                <div className="text-xs text-red-600 font-semibold">Attachments are required to accept.</div>
+                              )}
+                              {(attachmentsByItem[itemKey] || []).length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {(attachmentsByItem[itemKey] || []).map((file, idx) => (
+                                    <Badge key={`${file.name}-${idx}`} variant="secondary" className="flex items-center gap-2">
+                                      <span className="truncate max-w-30">{file.name}</span>
+                                      <button
+                                        type="button"
+                                        className="text-red-600 hover:text-red-700"
+                                        onClick={() => removeAttachment(itemKey, idx)}
+                                        aria-label="Remove attachment"
+                                      >
+                                        ×
+                                      </button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="grid grid-cols-1 mt-3 items-start">
+                            <div className="space-y-1">
+                              <label className="block text-sm font-medium text-gray-700">Remarks</label>
+                              <Textarea
+                                rows={3}
+                                value={remarks}
+                                onChange={(e) => setRemarksByItem((prev) => ({ ...prev, [itemKey]: e.target.value }))}
+                                placeholder="Optional remarks"
+                                className='bg-stone-100/50'
+                              />
+                            </div>
+                          </div>
+                        )}
 
                         <div className="flex justify-center gap-3 mt-4">
                           <Button
@@ -682,7 +789,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                           >
                         {currentLoading === 'reject' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />Rejecting…</>) : 'Rejected'}
                       </Button>
-                      <Button disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token)} onClick={() => requestConfirm('approve', 'single', itemKey)}>
+                      <Button disabled={Boolean(currentLoading) || Boolean(bulkLoading) || (!loggedIn && !token) || (mode === 'acceptance' && !hasAttachments(itemKey))} onClick={() => requestConfirm('approve', 'single', itemKey)}>
                         {currentLoading === 'approve' ? (<><Loader2 className="w-4 h-4 animate-spin mr-1" />{approveIng}</>) : approveLabel}
                       </Button>
                         </div>
@@ -692,6 +799,11 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                 })}
               </Accordion>
             </div>
+            {mode === 'acceptance' && (
+              <div className="mt-6 text-center text-sm text-red-600 font-semibold">
+                Please upload proof photos (e.g., asset condition/hand-over) in the attachments section before accepting.
+              </div>
+            )}
           </>
         )}
       </div>
