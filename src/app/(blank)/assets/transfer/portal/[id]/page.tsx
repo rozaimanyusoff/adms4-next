@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Metadata } from 'next';
-import AssetTransferPortal from '@/components/assetmgmt/asset-transfer-portal';
+import AssetTransferPortal from '@components/assetmgmt/asset-transfer-authorize-portal';
 
 export const metadata: Metadata = {
   title: 'Asset Transfer Authorization Portal',

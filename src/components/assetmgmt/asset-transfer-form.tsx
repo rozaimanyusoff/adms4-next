@@ -4,7 +4,7 @@ import { AuthContext } from "@/store/AuthContext";
 import { Checkbox } from '../ui/checkbox';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, ChevronLeft, ChevronRight, Loader2, PlusCircle } from "lucide-react";
+import { CirclePlus, Plus, CarIcon, ComputerIcon, LucideComputer, User, X, ChevronDown, ChevronLeft, ChevronRight, Loader2, PlusCircle, AlertTriangle, Info } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Combobox, SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // --- Asset Transfer API and Form Types ---
 export interface AssetTransferItem {
@@ -749,40 +750,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		}
 	}, []);
 
-	// Auto-populate sidebar when resignation option is selected
-	React.useEffect(() => {
-		async function populateResignationSidebar() {
-			if (applicationOption === 'resignation' && (form?.requestor?.ramco_id || user?.username)) {
-				setSidebarLoading(true);
-				try {
-					const param = form?.requestor?.ramco_id || user?.username;
-					const res: any = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
-					const assets = res.data?.data || [];
-
-					// Populate the supervised assets for the sidebar
-					setSupervised(assets);
-					await loadPendingAssetLocks();
-
-					const toastKey = `${String(param)}-${assets.length}`;
-					if (assetLoadToastKeyRef.current !== toastKey && assets.length > 0) {
-						toast.success(`${assets.length} asset(s) loaded. Click + to select.`);
-						assetLoadToastKeyRef.current = toastKey;
-					} else if (assetLoadToastKeyRef.current !== toastKey && assets.length === 0) {
-						toast.info('No assets found for this supervisor');
-						assetLoadToastKeyRef.current = toastKey;
-					}
-				} catch (err) {
-					console.error('Error loading resignation assets:', err);
-					toast.error('Failed to load assets for resignation');
-				} finally {
-					setSidebarLoading(false);
-				}
-			}
-		}
-
-		populateResignationSidebar();
-	}, [applicationOption, form?.requestor?.ramco_id, user?.username, loadPendingAssetLocks]);
-
 	// Handler to close the blank tab (window)
 	async function handleCancel() {
 		clearFormAndItems();
@@ -798,7 +765,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		}
 	}
 
-	// Handler to open sidebar and fetch data
+	// Handler to open sidebar and fetch assets supervised by the requestor
 	async function handleOpenSidebar() {
 		if (sidebarLoading) return;
 		const param = form?.requestor?.ramco_id || user?.username;
@@ -809,15 +776,26 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		// If we already fetched for this supervisor and have data, just open the sidebar
 		if (lastSupervisorFetchKeyRef.current === String(param) && supervised.length > 0) {
 			setSidebarOpen(true);
+			// Refresh lock status without reloading assets
+			await loadPendingAssetLocks();
 			return;
 		}
 		setSidebarOpen(true);
 		setSidebarLoading(true);
 		try {
 			const res: any = await authenticatedApi.get(`/api/assets?supervisor=${param}`);
-			setSupervised(res.data?.data || []);
+			const assets = res.data?.data || [];
+			setSupervised(assets);
 			lastSupervisorFetchKeyRef.current = String(param);
 			await loadPendingAssetLocks();
+			const toastKey = `${String(param)}-${assets.length}`;
+			if (assetLoadToastKeyRef.current !== toastKey && assets.length > 0) {
+				toast.success(`${assets.length} asset(s) loaded. Click + to select.`);
+				assetLoadToastKeyRef.current = toastKey;
+			} else if (assetLoadToastKeyRef.current !== toastKey && assets.length === 0) {
+				toast.info('No assets found for this supervisor');
+				assetLoadToastKeyRef.current = toastKey;
+			}
 		} catch (err) {
 			console.error('Error fetching assets:', err);
 			toast.error('Failed to load assets');
@@ -1320,7 +1298,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							<div className="font-semibold flex items-center justify-between text-lg gap-2">
 								<div className="flex items-center gap-3">
 									<span>Transfer Items</span>
-									<Badge variant="secondary" className="text-xs px-2 py-1 bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+									<Badge variant="secondary" className="text-xs px-2 py-1 bg-gray-100 border border-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-100">
 										Added: {selectedItems.length} items
 									</Badge>
 									{/* Status badges */}
@@ -1531,8 +1509,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	</div>
 
 																	{/* Description for Transfer Details */}
-																	<div className="text-xs text-red-500 font-semibold -mt-1.5 mb-4">
-																		Select who this asset will be transferred to. Picking a new owner can auto-fill the new Cost Center, Department, and Location; adjust them if needed.
+																	<div className="flex items-center gap-1 text-xs text-red-500 font-semibold -mt-1.5 mb-4">
+																		<AlertTriangle className="w-4 h-4 animate-pulse" aria-hidden="true" />
+																		<span>
+																			Select who this asset will be transferred to. Picking a new owner can auto-fill the new Cost Center, Department, and Location; this assignment will be replicated to the next items—adjust as needed.
+																		</span>
 																	</div>
 
 																	{/* Effective Date moved to header; Transfer type radio controls present in header */}
@@ -1573,22 +1554,39 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							{/* New Owner autocomplete, fallback to a simple input+dropdown if shadcn Autocomplete is not available */}
 																							<div>
 																								{/* Use Combobox SingleSelect for new owner - show employee full names but store ramco_id as value */}
-																								<Combobox
-																									options={employees.map(emp => ({ value: emp.ramco_id, label: emp.full_name }))}
-																									value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
-																									onValueChange={(val: string) => {
-																										// set staff id and ownerName where appropriate
+																								{(() => {
+																									const currentOwnerId =
+																										item.owner?.ramco_id ||
+																										itemTransferDetails[item.id]?.current?.ownerStaffId ||
+																										'';
+																									const newOwnerOptions = employees
+																										.filter(emp => emp.ramco_id !== currentOwnerId)
+																										.map(emp => ({ value: emp.ramco_id, label: emp.full_name }));
+
+																									const handleNewOwnerChange = (val: string) => {
+																										if (val && currentOwnerId && val === currentOwnerId) {
+																											toast.error('Cannot transfer to the current owner.');
+																											return;
+																										}
 																										detectNewChanges(item.id, 'new', 'ownerName', employees.find(e => e.ramco_id === val)?.full_name || '');
 																										detectNewChanges(item.id, 'new', 'ownerStaffId', val);
 																										// Auto-fill related fields (cost center, department, location)
 																										autofillNewOwnerRelated(item.id, val);
-																									}}
+																									};
+
+																									return (
+																								<Combobox
+																									options={newOwnerOptions}
+																									value={itemTransferDetails[item.id]?.new.ownerStaffId || ''}
+																									onValueChange={handleNewOwnerChange}
 																									placeholder="Search new owner"
 																									searchPlaceholder="Search employees..."
 																									emptyMessage="No employees"
 																									disabled={isAcceptedItem || !!returnToAssetManager[item.id]}
 																									className="w-full border border-gray-200 rounded-md bg-stone-100"
 																								/>
+																									);
+																								})()}
 																							</div>
 																						</td>
 																					</tr>
@@ -2126,6 +2124,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	const categoryName = getAssetCategoryName(a);
 																	const deptName = getAssetDepartmentName(a);
 																	const costCenterName = getAssetCostCenterName(a);
+																	const brandName = (a as any)?.brand?.name || (a as any)?.brands?.name || '';
+																	const modelName = (a as any)?.model?.name || '';
+																	const locationName = (a as any)?.location?.name || '';
 																	const typeLine = [assetType, categoryName].filter(Boolean).join(' - ');
 																	const deptCostLine = [deptName, costCenterName].filter(Boolean).join(' • ');
 																	const locked = isAssetLockedByPendingTransfer(a);
@@ -2134,7 +2135,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	const disableAdd = locked || pendingAcceptance || alreadySelected;
 																	return (
 																		<React.Fragment key={`managed-${a.id || a.register_number || j}`}>
-																			<li className={`flex flex-col border rounded-lg px-3 py-1 text-xs transition-all duration-200 ${pendingAcceptance ? 'bg-amber-100/50 border-amber-200' : 'bg-sky-100/50 border-sky-200 dark:bg-gray-800'} ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
+																			<li className={`flex flex-col mr-3 border rounded-lg px-3 py-1 text-xs transition-all duration-200 ${pendingAcceptance ? 'bg-amber-100/50 border-amber-200' : 'bg-stone-200/50 border-stone-200 dark:bg-gray-800'} ${alreadySelected ? 'opacity-60 saturate-50 scale-[0.99]' : 'hover:shadow-md'}`}>
 																				<div className="flex items-center gap-3">
 																					<div className="flex items-center gap-2">
 																						<Checkbox
@@ -2170,6 +2171,26 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																								Selected
 																							</Badge>
 																						)}
+																					</div>
+																					<div className="ml-auto">
+																						<Popover>
+																							<PopoverTrigger asChild>
+																								<button
+																									type="button"
+																									className="p-1 rounded hover:bg-blue-50 text-blue-700"
+																									title="View asset details"
+																									onClick={(e) => e.stopPropagation()}
+																								>
+																									<Info className="w-4 h-4" />
+																								</button>
+																							</PopoverTrigger>
+																							<PopoverContent className="text-xs space-y-1 w-48 shadow-lg bg-stone-200 border-stone-300" side="left" align="start">
+																								<div className="font-semibold text-gray-800">Asset Details</div>
+																								<div><span className="text-gray-500">Brand:</span> {brandName || '-'}</div>
+																								<div><span className="text-gray-500">Model:</span> {modelName || '-'}</div>
+																								<div><span className="text-gray-500">Location:</span> {locationName || '-'}</div>
+																							</PopoverContent>
+																						</Popover>
 																					</div>
 																				</div>
 																			</li>

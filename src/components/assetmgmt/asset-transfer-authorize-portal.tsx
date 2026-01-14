@@ -10,8 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, X, AlertTriangle, Camera, Image as ImageIcon } from 'lucide-react';
+import { Loader2, X, AlertTriangle, Camera, Image as ImageIcon, ListChecks } from 'lucide-react';
 import { toast } from 'sonner';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Switch } from '@components/ui/switch';
 
 type TransferItem = {
   id: number;
@@ -106,7 +108,6 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [remarksByItem, setRemarksByItem] = useState<Record<string, string>>({});
-  const [effectiveDates, setEffectiveDates] = useState<Record<string, string>>({});
   const [actionLoading, setActionLoading] = useState<{ id: number; kind: 'approve' | 'reject' } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<'approve' | 'reject' | null>(null);
@@ -121,8 +122,36 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
     title: string;
     message: string;
   }>({ open: false, title: '', message: '' });
-  const [attachmentsByItem, setAttachmentsByItem] = useState<Record<string, File[]>>({});
+  const [attachmentsByItem, setAttachmentsByItem] = useState<Record<string, { file: File; preview: string }[]>>({});
   const hasAttachments = React.useCallback((itemKey: string) => (attachmentsByItem[itemKey] || []).length > 0, [attachmentsByItem]);
+  const [checklistsByType, setChecklistsByType] = useState<Record<string, string[]>>({});
+  const [checklistLoading, setChecklistLoading] = useState<Record<string, boolean>>({});
+
+  const fetchChecklist = React.useCallback(async (typeId?: number | string) => {
+    if (!typeId) return;
+    const key = String(typeId);
+    if (checklistsByType[key]) return;
+    setChecklistLoading((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res: any = await authenticatedApi.get('/api/assets/transfer-checklist', { headers: authHeaders, params: { type: typeId } });
+      const raw = res?.data?.data ?? res?.data ?? [];
+      const list = Array.isArray(raw)
+        ? raw
+            .map((entry: any, idx: number) => {
+              if (entry === null || entry === undefined) return '';
+              if (typeof entry === 'string') return entry;
+              return entry.name || entry.title || entry.label || entry.description || entry.item || entry.checklist_item || `Item ${idx + 1}`;
+            })
+            .filter((v) => Boolean((v || '').toString().trim()))
+        : [];
+      setChecklistsByType((prev) => ({ ...prev, [key]: list }));
+    } catch (err) {
+      toast.error('Failed to load checklist');
+      setChecklistsByType((prev) => ({ ...prev, [key]: [] }));
+    } finally {
+      setChecklistLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  }, [authHeaders, checklistsByType]);
 
   const loggedIn = Boolean(auth?.authData?.user);
   const dataListSafe = Array.isArray(dataList) ? dataList : [];
@@ -227,19 +256,6 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
     }
   }
 
-  // Initialize Effective Date per item when list loads
-  React.useEffect(() => {
-    if (!flatItems.length) return;
-    const next: Record<string, string> = {};
-    try {
-      for (const { transfer, item } of flatItems) {
-        const d = item?.effective_date ? String(item.effective_date) : '';
-        if (d) next[makeItemKey(transfer.id, item.id)] = d.slice(0, 10);
-      }
-      if (Object.keys(next).length) setEffectiveDates((prev) => ({ ...next, ...prev }));
-    } catch {}
-  }, [flatItems]);
-
   const approveReject = async (itemKey: string, kind: 'approve' | 'reject', showStatus = true) => {
     const entry = itemLookup[itemKey];
     if (!entry) return;
@@ -248,7 +264,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
       setActionLoading({ id: transfer.id, kind });
       if (mode === 'acceptance') {
         const remark = remarksByItem[itemKey] || '';
-        const files = attachmentsByItem[itemKey] || [];
+        const files = (attachmentsByItem[itemKey] || []).map((a) => a.file);
         if (kind === 'approve' && !hasAttachments(itemKey)) {
           toast.error('Attachments are required to accept.');
           setActionLoading(null);
@@ -334,7 +350,8 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
 
   const handleAttachmentChange = async (itemKey: string, fileList: FileList | null) => {
     if (!fileList) return;
-    const incoming = await Promise.all(Array.from(fileList).map(compressImageFile));
+    const incomingFiles = await Promise.all(Array.from(fileList).map(compressImageFile));
+    const incoming = incomingFiles.map((f) => ({ file: f, preview: URL.createObjectURL(f) }));
     setAttachmentsByItem((prev) => {
       const existing = prev[itemKey] || [];
       const combined = [...existing, ...incoming].slice(0, 2);
@@ -348,6 +365,8 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
   const removeAttachment = (itemKey: string, index: number) => {
     setAttachmentsByItem((prev) => {
       const current = prev[itemKey] || [];
+      const toRemove = current[index];
+      if (toRemove?.preview) URL.revokeObjectURL(toRemove.preview);
       const next = [...current.slice(0, index), ...current.slice(index + 1)];
       return { ...prev, [itemKey]: next };
     });
@@ -420,7 +439,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
           const transferId = entry!.transfer.id;
           const itemId = entry!.item.id;
           const remark = remarksByItem[key] || '';
-          const files = attachmentsByItem[key] || [];
+          const files = (attachmentsByItem[key] || []).map((a) => a.file);
           await sendAcceptanceRequest(transferId, [itemId], kind === 'approve' ? 'accepted' : 'rejected', remark, files);
         }
         toast.success(kind === 'approve' ? 'Selected items accepted' : 'Selected items rejected');
@@ -598,7 +617,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
               <Accordion type="multiple">
                 {flatItems.map(({ transfer, item }) => {
                   const itemKey = makeItemKey(transfer.id, item.id);
-                  const effDate = effectiveDates[itemKey] || '';
+                  const effDate = item.effective_date || '';
                   const remarks = remarksByItem[itemKey] || '';
                   const currentLoading = actionLoading && actionLoading.id === transfer.id ? actionLoading.kind : null;
                   const totalItems = transfer.total_items ?? transfer.items?.length ?? 0;
@@ -749,22 +768,73 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                               )}
                               {(attachmentsByItem[itemKey] || []).length > 0 && (
                                 <div className="flex flex-wrap gap-2">
-                                  {(attachmentsByItem[itemKey] || []).map((file, idx) => (
-                                    <Badge key={`${file.name}-${idx}`} variant="secondary" className="flex items-center gap-2">
-                                      <span className="truncate max-w-30">{file.name}</span>
+                                  {(attachmentsByItem[itemKey] || []).map((att, idx) => (
+                                    <div key={`${att.file.name}-${idx}`} className="relative group">
+                                      <img
+                                        src={att.preview}
+                                        alt={att.file.name || 'Attachment preview'}
+                                        className="w-20 h-20 object-cover rounded border"
+                                      />
                                       <button
                                         type="button"
-                                        className="text-red-600 hover:text-red-700"
+                                        className="absolute -top-2 -right-2 bg-white border rounded-full text-red-600 w-6 h-6 shadow hidden group-hover:flex items-center justify-center"
                                         onClick={() => removeAttachment(itemKey, idx)}
                                         aria-label="Remove attachment"
                                       >
                                         ×
                                       </button>
-                                    </Badge>
+                                    </div>
                                   ))}
                                 </div>
                               )}
                             </div>
+                            {mode === 'acceptance' && item.asset?.type?.id && (
+                              <div className="space-y-2 md:col-span-2">
+                                <Popover onOpenChange={(open) => { if (open) fetchChecklist(item.asset?.type?.id); }}>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="text-blue-700 text-xs font-semibold hover:underline inline-flex items-center gap-1"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ListChecks className="w-4 h-4" />
+                                      Show Checklist
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="text-xs min-w-120 bg-white border border-stone-200 shadow-lg" side="right" align="center">
+                                    {checklistLoading[String(item.asset?.type?.id)] ? (
+                                      <div className="flex items-center gap-2 text-gray-600">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading checklist...
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        <div className="font-semibold text-gray-800">Transfer Checklist</div>
+                                        {(checklistsByType[String(item.asset?.type?.id)] || []).length === 0 ? (
+                                          <div className="text-gray-500">No checklist items.</div>
+                                        ) : (
+                                          <div className="space-y-1">
+                                            {(checklistsByType[String(item.asset?.type?.id)] || []).map((cl, idx) => {
+                                              const num = idx + 1;
+                                              return (
+                                                <div key={`${item.asset?.type?.id}-${idx}`} className="flex items-center justify-between gap-2">
+                                                  <span className="text-gray-700">{num}. {cl}</span>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-gray-500 text-[11px]">N/A</span>
+                                                    <Switch />
+                                                    <span className="text-gray-700 text-[11px]">Included</span>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 mt-3 items-start">

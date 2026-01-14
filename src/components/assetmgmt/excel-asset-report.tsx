@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import ExcelJS from "exceljs";
+import type * as ExcelJSType from "exceljs";
 import { Button } from "@/components/ui/button";
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { authenticatedApi } from "@/config/api";
@@ -166,6 +166,7 @@ const ExcelAssetReport: React.FC<ExcelAssetReportProps> = ({ types, managerId })
                 return;
             }
 
+            const ExcelJS = (await import("exceljs")) as typeof import("exceljs");
             const workbook = new ExcelJS.Workbook();
             const managerDataCache = new Map<number, Asset[]>();
 
@@ -315,7 +316,7 @@ const ExcelAssetReport: React.FC<ExcelAssetReportProps> = ({ types, managerId })
 
                 worksheet.columns?.forEach((col, idx) => {
                     const headerLength = headers[idx]?.length || 10;
-                    const values = (col?.values as ExcelJS.CellValue[] | undefined) ?? [];
+                    const values = (col?.values as ExcelJSType.CellValue[] | undefined) ?? [];
                     const colLength = Math.max(
                         headerLength,
                         ...values

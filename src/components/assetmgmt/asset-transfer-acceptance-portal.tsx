@@ -1,5 +1,5 @@
 "use client";
-import AssetTransferPortal from "./asset-transfer-portal";
+import AssetTransferPortal from "./asset-transfer-authorize-portal";
 
 type Props = {
   transferId: string;

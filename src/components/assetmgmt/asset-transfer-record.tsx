@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Arrow } from "@radix-ui/react-select";
+import ExcelTransferItems from "./excel-transfer-items";
 
 
 export default function AssetTranserRecords() {
@@ -80,6 +81,18 @@ export default function AssetTranserRecords() {
             router.push(`/assetdata/transfer/form?id=${encodeURIComponent(String(editKey))}`);
         }
     };
+    const handleReceiveRowDoubleClick = (row: any) => {
+        const transferIdValue = row?.transfer_id ?? row?.transfer?.id ?? row?.id;
+        const itemIdValue = row?.id ?? row?.item_id;
+        if (!transferIdValue || !itemIdValue) return;
+        setActiveTab("to-receive");
+        setReceiveItem(row);
+        setReceiveTransferId(transferIdValue);
+        setReceiveItemId(itemIdValue);
+        setShowReceiveForm(true);
+        fetchReceiveItem(transferIdValue, itemIdValue);
+        updateReceiveParams(transferIdValue, itemIdValue);
+    };
 
 
     const [data, setData] = useState<any[]>([]);
@@ -87,6 +100,7 @@ export default function AssetTranserRecords() {
     const [loading, setLoading] = useState(false);
     const [loadingBy, setLoadingBy] = useState(false);
     const [resendLoading, setResendLoading] = useState<Record<string, boolean>>({});
+    const [resendAcceptanceLoading, setResendAcceptanceLoading] = useState<Record<string, boolean>>({});
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
     const fullName = auth?.authData?.user?.name || username || '-';
@@ -151,6 +165,20 @@ export default function AssetTranserRecords() {
             toast.error('Failed to resend approval email.');
         } finally {
             setResendLoading(prev => ({ ...prev, [key]: false }));
+        }
+    };
+
+    const handleResendAcceptance = async (transferId?: string | number) => {
+        if (!transferId) return;
+        const key = String(transferId);
+        setResendAcceptanceLoading(prev => ({ ...prev, [key]: true }));
+        try {
+            await authenticatedApi.post(`/api/assets/transfers/${encodeURIComponent(String(transferId))}/resend-acceptance-notification`);
+            toast.success('Acceptance email sent to new owner.');
+        } catch (e) {
+            toast.error('Failed to resend acceptance email.');
+        } finally {
+            setResendAcceptanceLoading(prev => ({ ...prev, [key]: false }));
         }
     };
 
@@ -308,14 +336,36 @@ export default function AssetTranserRecords() {
     }, [searchParams, transferByRows, fetchReceiveItem]);
 
     const columnsTransferByItems: ColumnDef<any>[] = [
-        { key: "id", header: "Item ID", render: row => itemOrdinalLookup[String(row.id)] || row.id },
         { key: "transfer_id", header: "Transfer ID" },
+        { key: "id", header: "Items", render: row => itemOrdinalLookup[String(row.id)] || row.id },
         { key: "transfer_by", header: "Transfer By", colClass: "truncate", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
+        { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
         { key: "type", header: "Type", filter: 'singleSelect', render: row => row.asset?.type?.name || row.type?.name || "-" },
         { key: "asset", header: "Register Number", render: row => row.asset?.register_number || row.asset?.id || "-" },
         { key: "current_owner", header: "Current Owner", render: row => row.current_owner?.full_name || row.current_owner?.name || row.current_owner?.ramco_id || "-" },
         { key: "effective_date", header: "Effective Date", render: row => row.effective_date ? new Date(row.effective_date).toLocaleDateString() : "-" },
         { key: "status", header: "Status", render: renderAcceptanceStatus },
+        {
+            key: "actions",
+            header: "Actions",
+            render: (row) => {
+                const transferId = row?.transfer_id ?? row?.transfer?.id;
+                if (!transferId) return null;
+                const busy = resendAcceptanceLoading[String(transferId)];
+                return (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700"
+                        disabled={busy}
+                        onClick={() => handleResendAcceptance(transferId)}
+                        title="Resend acceptance email to new owner"
+                    >
+                        {busy ? 'Sending…' : <MailWarning className="w-4 h-4" />}
+                    </Button>
+                );
+            },
+        },
     ];
 
     // Summary counts for each status
@@ -503,13 +553,14 @@ export default function AssetTranserRecords() {
                 <TabsContent value="to-receive" className="space-y-3">
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-bold">To Receive by  <span className="capitalize"> {fullName}</span></h2>
+                        <ExcelTransferItems items={transferByRows} />
                     </div>
                     <CustomDataGrid
                         columns={columnsTransferByItems}
                         data={transferByRows}
                         pagination={false}
                         inputFilter={false}
-                        onRowDoubleClick={handleRowDoubleClick}
+                        onRowDoubleClick={handleReceiveRowDoubleClick}
                     />
                 </TabsContent>
             </Tabs>

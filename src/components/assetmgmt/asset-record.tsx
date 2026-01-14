@@ -501,7 +501,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                     inputFilter={false}
                     pagination={false}
                     onRowDoubleClick={handleRowDoubleClick}
-                    dataExport={true}
+                    dataExport={false}
                     chainedFilters={['asset_type', 'category_name', 'brand_name']}
                 />
             )}
