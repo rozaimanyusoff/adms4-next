@@ -739,7 +739,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                 <input
                                   id={`attachment-camera-${itemKey}`}
                                   type="file"
-                                  accept="image/*"
+                                  accept="image/*,application/pdf"
                                   capture="environment"
                                   className="hidden"
                                   onChange={(e) => handleAttachmentChange(itemKey, e.target.files)}
@@ -747,7 +747,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                 <input
                                   id={`attachment-gallery-${itemKey}`}
                                   type="file"
-                                  accept="image/*"
+                                  accept="image/*,application/pdf"
                                   className="hidden"
                                   onChange={(e) => handleAttachmentChange(itemKey, e.target.files)}
                                 />
@@ -770,11 +770,18 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                 <div className="flex flex-wrap gap-2">
                                   {(attachmentsByItem[itemKey] || []).map((att, idx) => (
                                     <div key={`${att.file.name}-${idx}`} className="relative group">
-                                      <img
-                                        src={att.preview}
-                                        alt={att.file.name || 'Attachment preview'}
-                                        className="w-20 h-20 object-cover rounded border"
-                                      />
+                                      {att.file.type.startsWith('image/') ? (
+                                        <img
+                                          src={att.preview}
+                                          alt={att.file.name || 'Attachment preview'}
+                                          className="w-20 h-20 object-cover rounded border"
+                                        />
+                                      ) : (
+                                        <div className="w-20 h-20 rounded border flex items-center justify-center bg-slate-50 text-[10px] text-center px-1">
+                                          PDF
+                                          <div className="mt-1 truncate w-full">{att.file.name || 'attachment.pdf'}</div>
+                                        </div>
+                                      )}
                                       <button
                                         type="button"
                                         className="absolute -top-2 -right-2 bg-white border rounded-full text-red-600 w-6 h-6 shadow hidden group-hover:flex items-center justify-center"
@@ -871,7 +878,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
             </div>
             {mode === 'acceptance' && (
               <div className="mt-6 text-center text-sm text-red-600 font-semibold">
-                Please upload proof photos (e.g., asset condition/hand-over) in the attachments section before accepting.
+                Please upload proof photos or PDF evidence (e.g., asset condition/hand-over) in the attachments section before accepting.
               </div>
             )}
           </>
