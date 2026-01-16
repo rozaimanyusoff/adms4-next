@@ -101,6 +101,7 @@ export default function AssetTranserRecords() {
     const [loadingBy, setLoadingBy] = useState(false);
     const [resendLoading, setResendLoading] = useState<Record<string, boolean>>({});
     const [resendAcceptanceLoading, setResendAcceptanceLoading] = useState<Record<string, boolean>>({});
+    const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved' | 'completed'>('all');
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
     const fullName = auth?.authData?.user?.name || username || '-';
@@ -198,6 +199,10 @@ export default function AssetTranserRecords() {
         // Backend already filters by new_owner=me; show all returned items
         return Array.isArray(dataBy) ? dataBy : [];
     }, [dataBy]);
+    const filteredTransferToRows = React.useMemo(() => {
+        if (statusFilter === 'all') return transferToRows;
+        return transferToRows.filter((row: any) => computeTransferStatus(row).state === statusFilter);
+    }, [statusFilter, transferToRows]);
 
     // Base renderers
     const renderNewOwners = (row: any) => {
@@ -253,15 +258,56 @@ export default function AssetTranserRecords() {
         return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Approval</Badge>;
     };
 
-    const renderApprovalStatus = (row: any) => {
+    function computeTransferStatus(row: any) {
+        const approvalStatus = String(row?.approval_status || '').toLowerCase();
         const approvedDate = row?.approved_date ? new Date(row.approved_date) : null;
-        const approvedBy = row?.approved_by?.full_name || row?.approved_by?.name || row?.approved_by || '';
-        if (approvedDate && !isNaN(approvedDate.getTime())) {
-            const when = approvedDate.toLocaleDateString();
+        const items = Array.isArray(row?.items) ? row.items : [];
+        const allItemsAccepted = items.length > 0 && items.every((item: any) => item?.acceptance_by && item?.acceptance_date);
+        const latestAcceptanceDate = (() => {
+            const dates = items
+                .map((item: any) => (item?.acceptance_date ? new Date(item.acceptance_date) : null))
+                .filter((d: Date | null) => d && !isNaN(d.getTime()));
+            if (!dates.length) return null;
+            return new Date(Math.max(...dates.map((d: Date) => d.getTime())));
+        })();
+        const hasApprovedDate = approvedDate && !isNaN(approvedDate.getTime());
+        const isComplete = Boolean(row?.approval_status && row?.approved_by && row?.approved_date && allItemsAccepted);
+
+        if (isComplete) {
+            return { state: 'completed' as const, date: latestAcceptanceDate || approvedDate || null };
+        }
+        if (approvalStatus.includes('reject')) {
+            return { state: 'rejected' as const, date: approvedDate && !isNaN(approvedDate.getTime()) ? approvedDate : null };
+        }
+        if (hasApprovedDate) {
+            return { state: 'approved' as const, date: approvedDate };
+        }
+        return { state: 'submitted' as const, date: null };
+    }
+
+    const renderTransferStatus = (row: any) => {
+        const { state, date } = computeTransferStatus(row);
+        const whenLabel = date && !isNaN(date.getTime()) ? date.toLocaleDateString() : null;
+
+        if (state === 'completed') {
+            return (
+                <div className="flex items-center">
+                    <Badge className="truncate bg-emerald-600 hover:bg-emerald-700 text-white">
+                        Completed {whenLabel ? <span className="pl-1">on {whenLabel}</span> : null}
+                    </Badge>
+                </div>
+            );
+        }
+
+        if (state === 'rejected') {
+            return <Badge className="truncate bg-red-600 hover:bg-red-700 text-white">Rejected</Badge>;
+        }
+
+        if (state === 'approved') {
             return (
                 <div className="flex items-center">
                     <Badge className="truncate bg-green-600 hover:bg-green-700 text-white">
-                        Approved {when ? <span className="pl-1">on {when}</span> : null}
+                        Approved {whenLabel ? <span className="pl-1">on {whenLabel}</span> : null}
                     </Badge>
                 </div>
             );
@@ -275,7 +321,7 @@ export default function AssetTranserRecords() {
         { key: "new_owner", header: "New Owner", filter: 'input', render: renderNewOwners },
         { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
         { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
-        { key: "approval_status", header: "Approval Status", render: renderApprovalStatus },
+        { key: "approval_status", header: "Transfer Status", render: renderTransferStatus },
         {
             key: "actions",
             header: "Actions",
@@ -370,16 +416,19 @@ export default function AssetTranserRecords() {
 
     // Summary counts for each status
     const summary = React.useMemo(() => {
-        const counts = { draft: 0, submitted: 0, approved: 0, completed: 0 } as Record<string, number>;
-        data.forEach((row: any) => {
-            const status = (row.transfer_status || '').toLowerCase();
-            if (status.includes('draft')) counts.draft++;
-            else if (status.includes('submit')) counts.submitted++;
-            else if (status.includes('approve')) counts.approved++;
-            else if (status.includes('complete')) counts.completed++;
+        const counts: Record<'submitted' | 'approved' | 'completed', number> = { submitted: 0, approved: 0, completed: 0 };
+        transferToRows.forEach((row: any) => {
+            const { state } = computeTransferStatus(row);
+            if (state === 'completed') counts.completed++;
+            else if (state === 'approved') counts.approved++;
+            else counts.submitted++;
         });
         return counts;
-    }, [data]);
+    }, [transferToRows]);
+    const totalApplications = transferToRows.length;
+    const toggleFilter = (status: 'submitted' | 'approved' | 'completed') => {
+        setStatusFilter(prev => (prev === status ? 'all' : status));
+    };
 
     // Counters for pending actions
     const hasValidDate = (value: any) => {
@@ -467,37 +516,50 @@ export default function AssetTranserRecords() {
                 <h2 className="text-2xl font-bold">Asset Transfer Management</h2>
             </div>
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-sm font-medium">Draft</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.draft}</div>
-                    </CardContent>
-                </Card>
-                <Card>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                <Card
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleFilter('submitted')}
+                    className={`cursor-pointer transition ${statusFilter === 'submitted' ? 'ring-2 ring-blue-500' : 'ring-0'}`}
+                >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Submitted</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.submitted}</div>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">
+                            {summary.submitted} / {totalApplications}
+                        </div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleFilter('approved')}
+                    className={`cursor-pointer transition ${statusFilter === 'approved' ? 'ring-2 ring-green-500' : 'ring-0'}`}
+                >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Approved</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.approved}</div>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">
+                            {summary.approved} / {totalApplications}
+                        </div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleFilter('completed')}
+                    className={`cursor-pointer transition ${statusFilter === 'completed' ? 'ring-2 ring-emerald-500' : 'ring-0'}`}
+                >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Completed</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{summary.completed}</div>
+                        <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">
+                            {summary.completed} / {totalApplications}
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -543,7 +605,7 @@ export default function AssetTranserRecords() {
                     </div>
                     <CustomDataGrid
                         columns={columnsTransferTo}
-                        data={transferToRows}
+                        data={filteredTransferToRows}
                         pagination={false}
                         inputFilter={false}
                         onRowDoubleClick={handleRowDoubleClick}
