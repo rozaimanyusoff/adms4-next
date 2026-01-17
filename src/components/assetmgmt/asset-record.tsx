@@ -129,47 +129,40 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
     const [hideNonAsset, setHideNonAsset] = useState(showAssetOnlyToggle); // Default checked (asset only) unless suppressed
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null); // For type card filtering
 
+    const fetchAssetsForContext = async (typesData: Type[]) => {
+        if (managerId) {
+            return authenticatedApi.get<any>(`/api/assets?manager=${managerId}`);
+        }
+        if (typeId) {
+            return authenticatedApi.get<any>(`/api/assets?type=${typeId}`);
+        }
+        if (user?.role?.id === 7) {
+            const managedTypeIds = typesData
+                .filter((type: any) => type.manager && user?.username === type.manager.ramco_id)
+                .map((type: any) => type.id);
+            if (managedTypeIds.length > 0) {
+                const assetResults = await Promise.all(
+                    managedTypeIds.map((typeId: number) => authenticatedApi.get<any>(`/api/assets?type=${typeId}`))
+                );
+                const allAssets = assetResults.flatMap(res => res.data.data || []);
+                return { data: { data: allAssets } };
+            }
+        }
+        return authenticatedApi.get<any>('/api/assets');
+    };
+
     const fetchData = async () => {
+        setLoading(true);
         try {
             // Always fetch types first
             const typesRes = await authenticatedApi.get<any>("/api/assets/types");
             const typesData = Array.isArray(typesRes.data) ? typesRes.data : (typesRes.data && typesRes.data.data ? typesRes.data.data : []);
             setTypes(typesData);
 
-            let assetsRes;
-            if (managerId) {
-                // Dedicated manager view fetches by manager id
-                assetsRes = await authenticatedApi.get<any>(`/api/assets?manager=${managerId}`);
-            } else if (typeId) {
-                // Dedicated view for a specific type (e.g. vehicle/computer manager)
-                assetsRes = await authenticatedApi.get<any>(`/api/assets?type=${typeId}`);
-            } else if (user?.role?.id === 7) {
-                // Only asset managers (role.id === 7 and username matches manager.ramco_id) use type param
-                const managedTypeIds = typesData
-                    .filter((type: any) => type.manager && user?.username === type.manager.ramco_id)
-                    .map((type: any) => type.id);
-                if (managedTypeIds.length > 0) {
-                    const assetResults = await Promise.all(
-                        managedTypeIds.map((typeId: number) => authenticatedApi.get<any>(`/api/assets?type=${typeId}`))
-                    );
-                    const allAssets = assetResults.flatMap(res => res.data.data || []);
-                    assetsRes = { data: { data: allAssets } };
-                } else {
-                    assetsRes = await authenticatedApi.get<any>('/api/assets');
-                }
-            } else if (user?.role?.id === 1 || user?.role?.id === 8) {
-                // Roles 1 (admin) and 8 (developer) always fetch all assets
-                assetsRes = await authenticatedApi.get<any>('/api/assets');
-            } else {
-                // Other roles: fetch all assets
-                assetsRes = await authenticatedApi.get<any>('/api/assets');
-            }
-
-            // Fetch brands and categories as before
-            const [brandsRes, categoriesRes] = await Promise.all([
-                authenticatedApi.get<any>("/api/assets/brands"),
-                authenticatedApi.get<any>("/api/assets/categories"),
-            ]);
+            const assetsPromise = fetchAssetsForContext(typesData);
+            const brandsPromise = authenticatedApi.get<any>("/api/assets/brands");
+            const categoriesPromise = authenticatedApi.get<any>("/api/assets/categories");
+            const [assetsRes, brandsRes, categoriesRes] = await Promise.all([assetsPromise, brandsPromise, categoriesPromise]);
 
             // Map API data to grid data - no need to transform since backend provides structured data
             const assetsPayload = Array.isArray(assetsRes.data)
@@ -209,7 +202,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         };
     }, [typeId, managerId]);
 
-    const currentYear = new Date().getFullYear();
+    const currentYear = useMemo(() => new Date().getFullYear(), []);
     const selectedTypeName = useMemo(() => {
         if (!typeId) return null;
         const match = types.find(t => Number(t.id) === Number(typeId));
@@ -241,15 +234,13 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
     };
 
     // Transform data to match the new backend structure
-    const transformedData = data.map(asset => {
-        // Calculate age from purchase_year
+    const transformedData = useMemo(() => data.map(asset => {
         const age = asset.purchase_year ? currentYear - asset.purchase_year : 0;
         const specs = getSpecs(asset);
         const formatDate = (val?: string) => val ? new Date(val).toLocaleDateString() : '-';
 
         return {
             ...asset,
-            // Normalize singular/plural API shapes
             asset_type: asset.types?.name || asset.type?.name || '-',
             category_name: asset.categories?.name || asset.category?.name || '-',
             brand_name: asset.brands?.name || asset.brand?.name || '-',
@@ -259,14 +250,13 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
             costcenter_name: asset.costcenter?.name || '-',
             location_name: asset.location?.name || '-',
             purchase_date_formatted: asset.purchase_date ? new Date(asset.purchase_date).toLocaleDateString() : '-',
-            // Vehicle spec fields (used when available)
             fuel_type: specs.fuel_type || '-',
             transmission: specs.transmission || '-',
             cubic_meter: specs.cubic_meter || '-',
             roadtax_expiry_formatted: formatDate(specs.roadtax_expiry),
             insurance_expiry_formatted: formatDate(specs.insurance_expiry),
         };
-    });
+    }), [data, currentYear, typeId]);
 
     // Memoized columns for the new backend structure
     const columns = useMemo<ColumnDef<any>[]>(() => {
@@ -490,21 +480,22 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                     <ExcelAssetReport types={types} managerId={managerId} />
                 </div>
             </div>
-            {loading ? (
-                <div className="flex justify-center items-center py-8">
-                    <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
-                </div>
-            ) : (
+            <div className="relative">
+                {loading && (
+                    <div className="absolute inset-0 z-10 flex justify-center items-center bg-white/70 backdrop-blur-sm">
+                        <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
+                    </div>
+                )}
                 <CustomDataGrid
                     columns={columns}
-                    data={finalFilteredData}
+                    data={loading ? [] : finalFilteredData}
                     inputFilter={false}
                     pagination={false}
                     onRowDoubleClick={handleRowDoubleClick}
                     dataExport={false}
                     chainedFilters={['asset_type', 'category_name', 'brand_name']}
                 />
-            )}
+            </div>
         </div>
     );
 };

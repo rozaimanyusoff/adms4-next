@@ -354,7 +354,7 @@ const CoreModel: React.FC = () => {
                       id="specification"
                       value={formData.specification || ""}
                       onChange={e => setFormData({ ...formData, specification: e.target.value })}
-                      className="w-full rounded border border-gray-300 px-3 py-2 min-h-[80px]"
+                      className="w-full rounded border border-gray-300 px-3 py-2 min-h-20"
                       rows={3}
                     />
                   </div>

@@ -349,10 +349,10 @@ const ExcelAssetReport: React.FC<ExcelAssetReportProps> = ({ types, managerId })
     return (
         <Button
             size="sm"
-            variant="default"
+            variant="outline"
             onClick={handleExportByManager}
             disabled={exporting}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 border border-emerald-600 hover:bg-emerald-600 hover:text-white"
         >
             {exporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

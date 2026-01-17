@@ -139,7 +139,7 @@ const ExcelTransferItems: React.FC<ExcelTransferItemsProps> = ({ items }) => {
       size="sm"
       onClick={handleExport}
       disabled={exporting}
-      className="flex items-center gap-2 border-emerald-600"
+      className="flex items-center gap-2 border-emerald-600 hover:bg-emerald-600 hover:text-white"
       title="Export transfer items to Excel"
     >
       {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 text-emerald-600" />}
