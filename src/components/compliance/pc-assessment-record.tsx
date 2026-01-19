@@ -4,9 +4,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@/components/ui/DataGrid";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Eye, Send } from "lucide-react";
+import ExcelItAssessReportButton from "@/components/compliance/excel-itassess-report";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { useRouter } from "next/navigation";
 import { authenticatedApi } from "@/config/api";
 import { toast } from "sonner";
@@ -92,6 +94,7 @@ const PcAssessmentRecord: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [hideDisposed, setHideDisposed] = useState(true);
   const [resendingId, setResendingId] = useState<number | null>(null);
+  const [hiddenLocationCategories, setHiddenLocationCategories] = useState<string[]>([]);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -141,26 +144,78 @@ const PcAssessmentRecord: React.FC = () => {
     [data]
   );
 
-  const overallAssessmentSummary = useMemo(() => {
-    const total = data.length;
-    const assessed = data.filter((row) => row.assessed).length;
-    const notAssessed = total - assessed;
-    const pct = (count: number) => (total === 0 ? 0 : Math.round((count / total) * 1000) / 10);
-    return {
-      total,
-      assessed,
-      notAssessed,
-      assessedPct: pct(assessed),
-      notAssessedPct: pct(notAssessed),
-    };
+  const assessedByLocationCategory = useMemo(() => {
+    const map = new Map<string, Record<string, { assessed: number; total: number }>>();
+    const categorySet = new Set<string>();
+
+    data.forEach((row) => {
+      const location = displayName(row.location);
+      const category = displayName(row.category);
+      categorySet.add(category);
+      const current = map.get(location) ?? {};
+      const entry = current[category] ?? { assessed: 0, total: 0 };
+      entry.total += 1;
+      if (row.assessed) entry.assessed += 1;
+      current[category] = entry;
+      map.set(location, current);
+    });
+
+    const categories = Array.from(categorySet).sort((a, b) => a.localeCompare(b));
+    const rows = Array.from(map.entries())
+      .map(([location, counts]) => {
+        const row: Record<string, any> = { location, total: 0 };
+        categories.forEach((category) => {
+          const entry = counts[category] ?? { assessed: 0, total: 0 };
+          row[`${category}__assessed`] = entry.assessed;
+          row[`${category}__unassessed`] = entry.total - entry.assessed;
+          row[`${category}__total`] = entry.total;
+          row.total += entry.total;
+        });
+        return row;
+      })
+      .sort((a, b) => b.total - a.total || String(a.location).localeCompare(String(b.location)));
+
+    return { categories, rows };
   }, [data]);
 
+  const categoryColors = [
+    "#2563eb",
+    "#22c55e",
+    "#f97316",
+    "#0ea5e9",
+    "#a855f7",
+    "#f43f5e",
+    "#84cc16",
+    "#eab308",
+  ];
+  const lightenColor = (hex: string, amount = 0.55) => {
+    const normalized = hex.replace("#", "");
+    if (normalized.length !== 6) return hex;
+    const num = parseInt(normalized, 16);
+    const mix = (value: number) => Math.round(value + (255 - value) * amount);
+    const r = mix((num >> 16) & 0xff);
+    const g = mix((num >> 8) & 0xff);
+    const b = mix(num & 0xff);
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  };
+  const hiddenLocationCategorySet = useMemo(
+    () => new Set(hiddenLocationCategories),
+    [hiddenLocationCategories]
+  );
+  const visibleLocationCategories = useMemo(
+    () => assessedByLocationCategory.categories.filter((category) => !hiddenLocationCategorySet.has(category)),
+    [assessedByLocationCategory.categories, hiddenLocationCategorySet]
+  );
+  const filteredCategoryData = useMemo(
+    () => data.filter((row) => visibleLocationCategories.includes(displayName(row.category))),
+    [data, visibleLocationCategories]
+  );
   const classificationBreakdown = useMemo(() => {
     const map = new Map<
       string,
       { assessed: number; total: number }
     >();
-    data.forEach((row) => {
+    filteredCategoryData.forEach((row) => {
       const label = normalizeClassificationLabel(row.classification);
       const entry = map.get(label) ?? { assessed: 0, total: 0 };
       entry.total += 1;
@@ -180,43 +235,38 @@ const PcAssessmentRecord: React.FC = () => {
         };
       })
       .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
-  }, [data]);
-
-  const assessedByLocation = useMemo(() => {
-    const map = new Map<string, { assessed: number; total: number }>();
-    data.forEach((row) => {
-      const label = displayName(row.location);
-      const entry = map.get(label) ?? { assessed: 0, total: 0 };
-      entry.total += 1;
-      if (row.assessed) entry.assessed += 1;
-      map.set(label, entry);
-    });
-    return Array.from(map.entries())
-      .map(([label, counts]) => ({
-        label,
-        ...counts,
-        percent: counts.total === 0 ? 0 : Math.round((counts.assessed / counts.total) * 1000) / 10,
-      }))
-      .sort((a, b) => b.assessed - a.assessed || a.label.localeCompare(b.label));
-  }, [data]);
-
-  const assessedByCategory = useMemo(() => {
-    const map = new Map<string, { assessed: number; total: number }>();
-    data.forEach((row) => {
-      const label = displayName(row.category);
-      const entry = map.get(label) ?? { assessed: 0, total: 0 };
-      entry.total += 1;
-      if (row.assessed) entry.assessed += 1;
-      map.set(label, entry);
-    });
-    return Array.from(map.entries())
-      .map(([label, counts]) => ({
-        label,
-        ...counts,
-        percent: counts.total === 0 ? 0 : Math.round((counts.assessed / counts.total) * 1000) / 10,
-      }))
-      .sort((a, b) => b.assessed - a.assessed || a.label.localeCompare(b.label));
-  }, [data]);
+  }, [filteredCategoryData]);
+  const classificationSummary = useMemo(() => {
+    const totals = classificationBreakdown.reduce(
+      (acc, item) => {
+        acc.assessed += item.assessed;
+        acc.total += item.total;
+        return acc;
+      },
+      { assessed: 0, total: 0 }
+    );
+    const pct = totals.total === 0 ? 0 : Math.round((totals.assessed / totals.total) * 1000) / 10;
+    return { assessed: totals.assessed, total: totals.total, pct };
+  }, [classificationBreakdown]);
+  const locationSummary = useMemo(() => {
+    const totals = assessedByLocationCategory.rows.reduce(
+      (acc, row) => {
+        visibleLocationCategories.forEach((category) => {
+          acc.assessed += Number(row?.[`${category}__assessed`] ?? 0);
+          acc.total += Number(row?.[`${category}__total`] ?? 0);
+        });
+        return acc;
+      },
+      { assessed: 0, total: 0 }
+    );
+    const pct = totals.total === 0 ? 0 : Math.round((totals.assessed / totals.total) * 1000) / 10;
+    return { assessed: totals.assessed, total: totals.total, pct };
+  }, [assessedByLocationCategory.rows, visibleLocationCategories]);
+  const toggleLocationCategory = useCallback((category: string) => {
+    setHiddenLocationCategories((prev) =>
+      prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category]
+    );
+  }, []);
 
   const filteredData = useMemo(
     () =>
@@ -444,118 +494,199 @@ const PcAssessmentRecord: React.FC = () => {
         </div>
       </div>
       {/* Assessment summary removed in favor of classification breakdown */}
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-[7fr_3fr]">
         <Card className="border-stone-300 bg-stone-200/30">
-          <CardContent className="space-y-2 px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assessed by Location</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {assessedByLocation.map((item) => {
-                const zero = item.assessed === 0;
-                return (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between px-3 py-1"
-                  >
-                    <span className={zero ? "text-red-600 font-semibold" : ""}>{item.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-semibold ${zero ? "text-red-600" : ""}`}>
-                        {item.assessed}/{item.total}
-                      </span>
-                      <Badge
-                        variant="secondary"
-                        className={`${zero ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}
-                      >
-                        {item.percent.toFixed(1)}%
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
-              {assessedByLocation.length === 0 && (
-                <Card className="border-dashed">
-                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No location data</CardContent>
-                </Card>
-              )}
+          <CardHeader className="px-3 pb-1 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Assessed by Location
+              </CardTitle>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {locationSummary.assessed}/{locationSummary.total} ({locationSummary.pct.toFixed(1)}%)
+              </span>
             </div>
+          </CardHeader>
+          <CardContent className="space-y-2 px-3 pb-3 pt-0">
+            {assessedByLocationCategory.rows.length > 0 ? (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={assessedByLocationCategory.rows} margin={{ top: 8, right: 10, left: 0, bottom: 32 }}>
+                    <XAxis
+                      dataKey="location"
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={48}
+                      tick={{ fontSize: 11, fill: "#374151" }}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0]?.payload as Record<string, any>;
+                        return (
+                          <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-md">
+                            <div className="mb-2 font-semibold">Location: {label}</div>
+                            <div className="space-y-1">
+                              {visibleLocationCategories.map((category, idx) => {
+                                const assessed = Number(row?.[`${category}__assessed`] ?? 0);
+                                const total = Number(row?.[`${category}__total`] ?? 0);
+                                if (total === 0) return null;
+                                return (
+                                  <div key={category} className="flex items-center justify-between gap-4">
+                                    <span className="flex items-center gap-2">
+                                    <span
+                                      className="inline-block h-2 w-2 rounded-sm"
+                                      style={{ backgroundColor: categoryColors[idx % categoryColors.length] }}
+                                    />
+                                    {category}
+                                    </span>
+                                    <span className="font-medium">
+                                      {assessed}/{total} assessed
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend
+                      content={() => (
+                        <ul className="flex flex-wrap items-center justify-center gap-3 text-xs">
+                          {assessedByLocationCategory.categories.map((category, idx) => {
+                            const hidden = hiddenLocationCategorySet.has(category);
+                            return (
+                              <li
+                                key={category}
+                                className="flex items-center gap-1 cursor-pointer select-none"
+                                onClick={() => toggleLocationCategory(category)}
+                              >
+                                <span
+                                  className="inline-block h-3 w-3 rounded-sm"
+                                  style={{ backgroundColor: categoryColors[idx % categoryColors.length], opacity: hidden ? 0.35 : 1 }}
+                                />
+                                <span className={hidden ? "line-through text-muted-foreground" : ""}>
+                                  {category}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    />
+                    {visibleLocationCategories.map((category, idx) => {
+                      const color = categoryColors[idx % categoryColors.length];
+                      return (
+                        <React.Fragment key={category}>
+                          <Bar
+                            dataKey={`${category}__assessed`}
+                            stackId={category}
+                            fill={color}
+                            name={category}
+                          />
+                          <Bar
+                            dataKey={`${category}__unassessed`}
+                            stackId={category}
+                            fill={lightenColor(color)}
+                            legendType="none"
+                          />
+                        </React.Fragment>
+                      );
+                    })}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <Card className="border-dashed">
+                <CardContent className="px-3 py-2 text-sm text-muted-foreground">No location data</CardContent>
+              </Card>
+            )}
           </CardContent>
         </Card>
         <Card className="border-stone-300 bg-stone-200/30">
-          <CardContent className="space-y-2 px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Assessed by Category</p>
-            <div className="grid gap-2 md:grid-cols-2">
-              {assessedByCategory.map((item) => {
-                const zero = item.assessed === 0;
-                return (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between px-3 py-1"
-                  >
-                    <span className={zero ? "text-red-600 font-semibold" : ""}>{item.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-sm font-semibold ${zero ? "text-red-600" : ""}`}>
-                        {item.assessed}/{item.total}
-                      </span>
-                      <Badge
-                        variant="secondary"
-                        className={`${zero ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}
-                      >
-                        {item.percent.toFixed(1)}%
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
-              {assessedByCategory.length === 0 && (
-                <Card className="border-dashed">
-                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No category data</CardContent>
-                </Card>
-              )}
+          <CardHeader className="px-3 pb-1 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Classification Breakdown
+              </CardTitle>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {classificationSummary.assessed}/{classificationSummary.total} ({classificationSummary.pct.toFixed(1)}%)
+              </span>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="border-stone-300 bg-stone-200/30">
-          <CardContent className="space-y-3 px-3 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Classification Breakdown</p>
-            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              {classificationBreakdown.map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-lg bg-stone-300/40 px-4 py-3 flex flex-col gap-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-base font-semibold">{item.label}</span>
-                    <Badge variant="outline" className="bg-lime-50 text-lime-700 border-lime-200">
-                      {item.total}
-                    </Badge>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Assessed</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{item.assessed}</span>
-                        <Badge variant="secondary" className="bg-green-100 text-green-700">
-                          {item.assessedPct.toFixed(1)}%
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Not Assessed</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{item.notAssessed}</span>
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-700">
-                          {item.notAssessedPct.toFixed(1)}%
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {classificationBreakdown.length === 0 && (
-                <Card className="border-dashed">
-                  <CardContent className="px-3 py-2 text-sm text-muted-foreground">No classification data</CardContent>
-                </Card>
-              )}
-            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 px-3 pb-3 pt-0">
+            {classificationBreakdown.length > 0 ? (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={classificationBreakdown} margin={{ top: 8, right: 10, left: 0, bottom: 32 }}>
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-20}
+                      textAnchor="end"
+                      height={44}
+                      tick={{ fontSize: 11, fill: "#374151" }}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const row = payload[0]?.payload as any;
+                        return (
+                          <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-md">
+                            <div className="mb-2 font-semibold">{label}</div>
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="flex items-center gap-2">
+                                  <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />
+                                  Assessed
+                                </span>
+                                <span className="font-medium">
+                                  {row.assessed} ({row.assessedPct.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-4">
+                                <span className="flex items-center gap-2">
+                                  <span className="inline-block h-2 w-2 rounded-sm bg-amber-400" />
+                                  Not Assessed
+                                </span>
+                                <span className="font-medium">
+                                  {row.notAssessed} ({row.notAssessedPct.toFixed(1)}%)
+                                </span>
+                              </div>
+                              <div className="pt-1 text-[11px] text-muted-foreground">Total: {row.total}</div>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend />
+                    <Bar
+                      dataKey="assessed"
+                      stackId="a"
+                      name="Assessed"
+                      fill="#10b981"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="notAssessed"
+                      stackId="a"
+                      name="Not Assessed"
+                      fill="#fbbf24"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <Card className="border-dashed">
+                <CardContent className="px-3 py-2 text-sm text-muted-foreground">No classification data</CardContent>
+              </Card>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -564,6 +695,7 @@ const PcAssessmentRecord: React.FC = () => {
           <span className="text-sm text-muted-foreground">Hide disposed</span>
           <Switch checked={hideDisposed} onCheckedChange={setHideDisposed} />
         </div>
+        <ExcelItAssessReportButton />
         <Button onClick={handleCreate} className="gap-2 w-full sm:w-auto" disabled={loading}>
           <Plus className="h-4 w-4" />
           {loading ? "Loading..." : "Create"}

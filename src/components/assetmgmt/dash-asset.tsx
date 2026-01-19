@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { PieChart, Pie, Cell, Legend as RechartsLegend, ResponsiveContainer, Legend, Label, Tooltip } from "recharts";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Asset {
     id: number;
@@ -23,6 +24,8 @@ const DashAsset: React.FC = () => {
     const [hiddenTypeIds, setHiddenTypeIds] = useState<string[]>([]);
     const [activeTypeId, setActiveTypeId] = useState<string | null>(null);
     const [activeCostCenterId, setActiveCostCenterId] = useState<string | null>(null);
+    const [selectedCostCenterId, setSelectedCostCenterId] = useState<string>("all");
+    const [costCenterSearch, setCostCenterSearch] = useState("");
     const formatNumber = (value: number) => new Intl.NumberFormat('en-US').format(value);
     const [typePopoverOpen, setTypePopoverOpen] = useState(false);
     const [typePopoverSummary, setTypePopoverSummary] = useState<{ typeName: string; active: number; disposed: number; total: number } | null>(null);
@@ -67,10 +70,24 @@ const DashAsset: React.FC = () => {
     const isNonAssetClassification = (classification?: string) =>
         nonAssetClasses.includes((classification || '').toLowerCase());
 
+    const getAssetTypeName = (asset: Asset) =>
+        (asset as any).type?.name || (asset as any).types?.name || asset.classification || 'Unknown';
+    const getAssetTypeId = (asset: Asset) =>
+        (asset as any).type?.id ?? (asset as any).types?.id ?? (asset as any).type_id ?? 'unknown-type';
+    const getPurchaseYear = (asset: Asset) =>
+        (asset as any).purchase_year ?? asset.year;
+    const getCostCenterName = (asset: Asset) =>
+        (asset as any).costcenter?.name || (asset as any).cost_center?.name || (asset as any).cost_center || 'Unknown';
+    const getCostCenterId = (asset: Asset) =>
+        (asset as any).costcenter?.id ?? (asset as any).cost_center?.id ?? (asset as any).cost_center_id ?? (asset as any).cost_center ?? 'unknown-cc';
+
     // Filter data for dashboard based on switch (do NOT discount disposed here)
-    const dashboardData = hideNonAsset
+    const dashboardBaseData = hideNonAsset
         ? data.filter(asset => !isNonAssetClassification(asset.classification))
         : data;
+    const dashboardData = selectedCostCenterId === "all"
+        ? dashboardBaseData
+        : dashboardBaseData.filter(asset => String(getCostCenterId(asset)) === String(selectedCostCenterId));
 
     // Filter for charts: exclude disposed assets
     const chartAssets = dashboardData.filter(asset => (asset.status || '').toLowerCase() !== 'disposed');
@@ -90,16 +107,6 @@ const DashAsset: React.FC = () => {
         .map(([year, value]) => ({ year, value }))
         .sort((a, b) => Number(a.year) - Number(b.year));
 
-    const getAssetTypeName = (asset: Asset) =>
-        (asset as any).type?.name || (asset as any).types?.name || asset.classification || 'Unknown';
-    const getAssetTypeId = (asset: Asset) =>
-        (asset as any).type?.id ?? (asset as any).types?.id ?? (asset as any).type_id ?? 'unknown-type';
-    const getPurchaseYear = (asset: Asset) =>
-        (asset as any).purchase_year ?? asset.year;
-    const getCostCenterName = (asset: Asset) =>
-        (asset as any).costcenter?.name || (asset as any).cost_center?.name || (asset as any).cost_center || 'Unknown';
-    const getCostCenterId = (asset: Asset) =>
-        (asset as any).costcenter?.id ?? (asset as any).cost_center?.id ?? (asset as any).cost_center_id ?? (asset as any).cost_center ?? 'unknown-cc';
     const getAssetAge = (asset: Asset) => {
         const ageValue = (asset as any).age;
         if (ageValue !== undefined && ageValue !== null && !isNaN(Number(ageValue))) return Number(ageValue);
@@ -112,6 +119,28 @@ const DashAsset: React.FC = () => {
         const group = ageGroups.find(g => age >= g.min && age <= g.max);
         return group?.label || null;
     };
+    const costCenterOptions = React.useMemo(() => {
+        const map = new Map<string, string>();
+        data.forEach(asset => {
+            const id = String(getCostCenterId(asset));
+            const name = getCostCenterName(asset);
+            if (!map.has(id)) map.set(id, name);
+        });
+        return Array.from(map.entries())
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [data]);
+    const filteredCostCenterOptions = React.useMemo(() => {
+        const search = costCenterSearch.trim().toLowerCase();
+        if (!search) return costCenterOptions;
+        return costCenterOptions.filter(option => option.name.toLowerCase().includes(search));
+    }, [costCenterOptions, costCenterSearch]);
+
+    useEffect(() => {
+        if (selectedCostCenterId === "all") return;
+        const stillExists = costCenterOptions.some(option => option.id === selectedCostCenterId);
+        if (!stillExists) setSelectedCostCenterId("all");
+    }, [costCenterOptions, selectedCostCenterId]);
 
     // Prepare stacked bar chart data for 'Assets Purchased by Year' by asset type
     // Use chartAssets (filtered by status) for the chart
@@ -420,17 +449,51 @@ const DashAsset: React.FC = () => {
         },
     } satisfies ChartConfig;
 
+    const CardLoader = ({ height = 250 }: { height?: number }) => (
+        <div className="flex items-center justify-center" style={{ height }}>
+            <div className="h-9 w-9 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700 dark:border-gray-600 dark:border-t-gray-100" />
+        </div>
+    );
+
     return (
         <div className="mt-4 space-y-6">
-            <div className="flex items-center mb-2 gap-2">
-                <label htmlFor="hide-nonasset-switch" className="text-sm select-none cursor-pointer my-1">
-                    Hide Non-Asset
-                </label>
-                <Switch
-                    id="hide-nonasset-switch"
-                    checked={hideNonAsset}
-                    onCheckedChange={setHideNonAsset}
-                />
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+                <div className="flex items-center gap-2">
+                    <label htmlFor="hide-nonasset-switch" className="text-sm select-none cursor-pointer my-1">
+                        Hide Non-Asset
+                    </label>
+                    <Switch
+                        id="hide-nonasset-switch"
+                        checked={hideNonAsset}
+                        onCheckedChange={setHideNonAsset}
+                    />
+                </div>
+                <div className="flex items-center gap-2">
+                    <label htmlFor="costcenter-filter" className="text-sm select-none cursor-pointer">
+                        Cost Center
+                    </label>
+                    <Select
+                        value={selectedCostCenterId}
+                        onValueChange={setSelectedCostCenterId}
+                        disabled={loading || costCenterOptions.length === 0}
+                    >
+                        <SelectTrigger id="costcenter-filter" className="min-w-50">
+                            <SelectValue placeholder={loading ? "Loading cost centers..." : "All cost centers"} />
+                        </SelectTrigger>
+                        <SelectContent
+                            searchable
+                            onSearchChange={setCostCenterSearch}
+                            searchPlaceholder="Search cost centers..."
+                        >
+                            <SelectItem value="all">All cost centers</SelectItem>
+                            {filteredCostCenterOptions.map(option => (
+                                <SelectItem key={option.id} value={option.id}>
+                                    {option.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
             <div
                 className="grid gap-4"
@@ -441,103 +504,24 @@ const DashAsset: React.FC = () => {
             </div>
             {/* Chart Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow">
+                <Card className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow border-0">
                     <CardHeader className="pb-2">
                         <CardTitle>Asset Type Breakdown</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="flex flex-col gap-3">
-                            <Popover open={typePopoverOpen} onOpenChange={(open) => { setTypePopoverOpen(open); if (!open) setTypePopoverSummary(null); }}>
-                                <div className="relative" ref={pieContainerRef}>
-                                    <PopoverAnchor asChild>
-                                        <span
-                                            aria-hidden
-                                            style={{
-                                                position: 'absolute',
-                                                top: popoverPosition ? `${popoverPosition.top}px` : '50%',
-                                                left: popoverPosition ? `${popoverPosition.left}px` : '50%',
-                                                width: 1,
-                                                height: 1
-                                            }}
-                                        />
-                                    </PopoverAnchor>
-                                    <ResponsiveContainer width="100%" height={250}>
-                                        <PieChart>
-                                            <Pie
-                                                data={filteredPieData}
-                                                dataKey="value"
-                                                nameKey="name"
-                                                cx="50%"
-                                                cy="50%"
-                                                innerRadius={55}
-                                                outerRadius={85}
-                                                paddingAngle={2}
-                                                label
-                                                onClick={handleSliceClick}
-                                            >
-                                                {filteredPieData.map((entry, idx) => (
-                                                    <Cell
-                                                        key={`cell-asset-type-${entry.typeId}`}
-                                                        fill={entry.color}
-                                                        stroke={activeTypeId === entry.typeId ? '#111827' : '#ffffff'}
-                                                        strokeWidth={activeTypeId === entry.typeId ? 2 : 1}
-                                                    />
-                                                ))}
-                                                <Label
-                                                    position="center"
-                                                    content={({ viewBox }) => {
-                                                        const { cx, cy } = viewBox as { cx?: number; cy?: number };
-                                                        if (cx === undefined || cy === undefined) return null;
-                                                        return (
-                                                            <text
-                                                                x={cx}
-                                                                y={cy}
-                                                                textAnchor="middle"
-                                                                dominantBaseline="middle"
-                                                                className="fill-gray-800 dark:fill-gray-100 font-semibold"
-                                                            >
-                                                                {formatNumber(totalAssetClassification)}
-                                                            </text>
-                                                        );
-                                                    }}
-                                                />
-                                            </Pie>
-                                            <RechartsLegend content={renderAssetTypeLegend} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <PopoverContent className="w-56 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
-                                    {typePopoverSummary ? (
-                                        <div className="space-y-1">
-                                            <div className="font-semibold">{typePopoverSummary.typeName}</div>
-                                            <div className="flex justify-between"><span>Active</span><span>{formatNumber(typePopoverSummary.active)}</span></div>
-                                            <div className="flex justify-between"><span>Disposed</span><span>{formatNumber(typePopoverSummary.disposed)}</span></div>
-                                            <div className="flex justify-between border-t pt-1"><span>Total</span><span>{formatNumber(typePopoverSummary.total)}</span></div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-gray-500">Click a slice to see record status.</div>
-                                    )}
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow">
-                    <CardHeader className="pb-2">
-                        <CardTitle>Asset by Age</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex flex-col items-center">
-                        {totalAgeCount > 0 ? (
-                            <>
-                                <Popover open={agePopoverOpen} onOpenChange={(open) => { setAgePopoverOpen(open); if (!open) setAgePopoverSummary(null); }}>
-                                    <div className="relative w-full" ref={ageContainerRef}>
+                        {loading ? (
+                            <CardLoader height={250} />
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <Popover open={typePopoverOpen} onOpenChange={(open) => { setTypePopoverOpen(open); if (!open) setTypePopoverSummary(null); }}>
+                                    <div className="relative" ref={pieContainerRef}>
                                         <PopoverAnchor asChild>
                                             <span
                                                 aria-hidden
                                                 style={{
                                                     position: 'absolute',
-                                                    top: agePopoverPosition ? `${agePopoverPosition.top}px` : '50%',
-                                                    left: agePopoverPosition ? `${agePopoverPosition.left}px` : '50%',
+                                                    top: popoverPosition ? `${popoverPosition.top}px` : '50%',
+                                                    left: popoverPosition ? `${popoverPosition.left}px` : '50%',
                                                     width: 1,
                                                     height: 1
                                                 }}
@@ -545,200 +529,291 @@ const DashAsset: React.FC = () => {
                                         </PopoverAnchor>
                                         <ResponsiveContainer width="100%" height={250}>
                                             <PieChart>
-                                                <Pie data={filteredPieDataAge} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label onClick={handleAgeSliceClick}>
-                                                    {filteredPieDataAge.map((entry, idx) => (
-                                                        <Cell key={`cell-age-${idx}`} fill={entry.color} />
+                                                <Pie
+                                                    data={filteredPieData}
+                                                    dataKey="value"
+                                                    nameKey="name"
+                                                    cx="50%"
+                                                    cy="50%"
+                                                    innerRadius={55}
+                                                    outerRadius={85}
+                                                    paddingAngle={2}
+                                                    label
+                                                    onClick={handleSliceClick}
+                                                >
+                                                    {filteredPieData.map((entry, idx) => (
+                                                        <Cell
+                                                            key={`cell-asset-type-${entry.typeId}`}
+                                                            fill={entry.color}
+                                                            stroke={activeTypeId === entry.typeId ? '#111827' : '#ffffff'}
+                                                            strokeWidth={activeTypeId === entry.typeId ? 2 : 1}
+                                                        />
                                                     ))}
+                                                    <Label
+                                                        position="center"
+                                                        content={({ viewBox }) => {
+                                                            const { cx, cy } = viewBox as { cx?: number; cy?: number };
+                                                            if (cx === undefined || cy === undefined) return null;
+                                                            return (
+                                                                <text
+                                                                    x={cx}
+                                                                    y={cy}
+                                                                    textAnchor="middle"
+                                                                    dominantBaseline="middle"
+                                                                    className="fill-gray-800 dark:fill-gray-100 font-semibold"
+                                                                >
+                                                                    {formatNumber(totalAssetClassification)}
+                                                                </text>
+                                                            );
+                                                        }}
+                                                    />
                                                 </Pie>
-                                                <Tooltip
-                                                    contentStyle={{ background: isDark ? '#22223b' : '#fff', color: isDark ? '#f9fafb' : '#111827' }}
-                                                    wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                                    labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                                    itemStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                                />
-                                                <RechartsLegend content={renderAgeLegend} />
+                                                <RechartsLegend content={renderAssetTypeLegend} />
                                             </PieChart>
                                         </ResponsiveContainer>
                                     </div>
-                                    <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
-                                        {agePopoverSummary ? (
-                                            <div className="space-y-2">
-                                                <div className="font-semibold">{agePopoverSummary.groupName}</div>
-                                                <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                                                    {agePopoverSummary.types.map(t => (
-                                                        <div key={t.name} className="flex justify-between">
-                                                            <span>{t.name}</span>
-                                                            <span>{formatNumber(t.value)}</span>
-                                                        </div>
-                                                    ))}
-                                                    {agePopoverSummary.types.length === 0 && (
-                                                        <div className="text-gray-500">No types found.</div>
-                                                    )}
-                                                </div>
-                                                <div className="flex justify-between border-t pt-1 font-semibold">
-                                                    <span>Total</span>
-                                                    <span>{formatNumber(agePopoverSummary.total)}</span>
-                                                </div>
+                                    <PopoverContent className="w-56 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
+                                        {typePopoverSummary ? (
+                                            <div className="space-y-1">
+                                                <div className="font-semibold">{typePopoverSummary.typeName}</div>
+                                                <div className="flex justify-between"><span>Active</span><span>{formatNumber(typePopoverSummary.active)}</span></div>
+                                                <div className="flex justify-between"><span>Disposed</span><span>{formatNumber(typePopoverSummary.disposed)}</span></div>
+                                                <div className="flex justify-between border-t pt-1"><span>Total</span><span>{formatNumber(typePopoverSummary.total)}</span></div>
                                             </div>
                                         ) : (
-                                            <div className="text-gray-500">Click a slice to see type breakdown.</div>
+                                            <div className="text-gray-500">Click a slice to see record status.</div>
                                         )}
                                     </PopoverContent>
                                 </Popover>
-                            </>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+                <Card className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow border-0">
+                    <CardHeader className="pb-2">
+                        <CardTitle>Asset by Age</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center">
+                        {loading ? (
+                            <CardLoader height={250} />
+                        ) : totalAgeCount > 0 ? (
+                            <Popover open={agePopoverOpen} onOpenChange={(open) => { setAgePopoverOpen(open); if (!open) setAgePopoverSummary(null); }}>
+                                <div className="relative w-full" ref={ageContainerRef}>
+                                    <PopoverAnchor asChild>
+                                        <span
+                                            aria-hidden
+                                            style={{
+                                                position: 'absolute',
+                                                top: agePopoverPosition ? `${agePopoverPosition.top}px` : '50%',
+                                                left: agePopoverPosition ? `${agePopoverPosition.left}px` : '50%',
+                                                width: 1,
+                                                height: 1
+                                            }}
+                                        />
+                                    </PopoverAnchor>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie data={filteredPieDataAge} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label onClick={handleAgeSliceClick}>
+                                                {filteredPieDataAge.map((entry, idx) => (
+                                                    <Cell key={`cell-age-${idx}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{ background: isDark ? '#22223b' : '#fff', color: isDark ? '#f9fafb' : '#111827' }}
+                                                wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                                labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                                itemStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                            />
+                                            <RechartsLegend content={renderAgeLegend} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
+                                    {agePopoverSummary ? (
+                                        <div className="space-y-2">
+                                            <div className="font-semibold">{agePopoverSummary.groupName}</div>
+                                            <div className="space-y-1 max-h-48 overflow-auto pr-1">
+                                                {agePopoverSummary.types.map(t => (
+                                                    <div key={t.name} className="flex justify-between">
+                                                        <span>{t.name}</span>
+                                                        <span>{formatNumber(t.value)}</span>
+                                                    </div>
+                                                ))}
+                                                {agePopoverSummary.types.length === 0 && (
+                                                    <div className="text-gray-500">No types found.</div>
+                                                )}
+                                            </div>
+                                            <div className="flex justify-between border-t pt-1 font-semibold">
+                                                <span>Total</span>
+                                                <span>{formatNumber(agePopoverSummary.total)}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-gray-500">Click a slice to see type breakdown.</div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
                         ) : (
                             <div className="text-gray-500">No age data available.</div>
                         )}
                     </CardContent>
                 </Card>
-                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow">
+                <Card className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow border-0">
                     <CardHeader className="pb-2">
                         <CardTitle>Asset by Cost Center</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <Popover open={costCenterPopoverOpen} onOpenChange={(open) => { setCostCenterPopoverOpen(open); if (!open) setCostCenterPopoverSummary(null); }}>
-                            <div className="relative" ref={costCenterContainerRef}>
-                                <PopoverAnchor asChild>
-                                    <span
-                                        aria-hidden
-                                        style={{
-                                            position: 'absolute',
-                                            top: costCenterPopoverPosition ? `${costCenterPopoverPosition.top}px` : '50%',
-                                            left: costCenterPopoverPosition ? `${costCenterPopoverPosition.left}px` : '50%',
-                                            width: 1,
-                                            height: 1
-                                        }}
-                                    />
-                                </PopoverAnchor>
-                                <ResponsiveContainer width="100%" height={260}>
-                                    <BarChart data={pieDataCostCenter} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
-                                        <XAxis
-                                            dataKey="name"
-                                            tickLine={false}
-                                            axisLine={false}
-                                            interval={0}
-                                            height={40}
-                                            tick={{ fill: '#111827', fontSize: 12 }}
-                                            angle={-25}
-                                            textAnchor="end"
+                        {loading ? (
+                            <CardLoader height={260} />
+                        ) : (
+                            <Popover open={costCenterPopoverOpen} onOpenChange={(open) => { setCostCenterPopoverOpen(open); if (!open) setCostCenterPopoverSummary(null); }}>
+                                <div className="relative" ref={costCenterContainerRef}>
+                                    <PopoverAnchor asChild>
+                                        <span
+                                            aria-hidden
+                                            style={{
+                                                position: 'absolute',
+                                                top: costCenterPopoverPosition ? `${costCenterPopoverPosition.top}px` : '50%',
+                                                left: costCenterPopoverPosition ? `${costCenterPopoverPosition.left}px` : '50%',
+                                                width: 1,
+                                                height: 1
+                                            }}
                                         />
-                                        <Bar
-                                            dataKey="value"
-                                            radius={[4, 4, 0, 0]}
-                                            onClick={handleCostCenterSliceClick}
-                                        >
-                                            {pieDataCostCenter.map((entry) => (
-                                                <Cell
-                                                    key={`cell-cc-${entry.id}`}
-                                                    fill={entry.color}
-                                                    stroke={activeCostCenterId === entry.id ? '#111827' : entry.color}
-                                                    strokeWidth={activeCostCenterId === entry.id ? 2 : 1}
-                                                    cursor="pointer"
-                                                />
-                                            ))}
-                                        </Bar>
-                                        <Tooltip
-                                            contentStyle={{ background: isDark ? '#1f2937' : '#ffffff', color: isDark ? '#f9fafb' : '#111827', borderColor: isDark ? '#4b5563' : '#e5e7eb' }}
-                                            wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                            labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                            itemStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
-                                            cursor={{ fill: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
-                                            formatter={(value) => [formatNumber(Number(value)), 'Total']}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
-                                {costCenterPopoverSummary ? (
-                                    <div className="space-y-2">
-                                        <div className="font-semibold">{costCenterPopoverSummary.costCenterName}</div>
-                                        <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                                            {costCenterPopoverSummary.types.map((t) => (
-                                                <div key={t.name} className="flex justify-between">
-                                                    <span>{t.name}</span>
-                                                    <span>{formatNumber(t.value)}</span>
-                                                </div>
-                                            ))}
-                                            {costCenterPopoverSummary.types.length === 0 && (
-                                                <div className="text-gray-500">No types found.</div>
-                                            )}
+                                    </PopoverAnchor>
+                                    <ResponsiveContainer width="100%" height={260}>
+                                        <BarChart data={pieDataCostCenter} margin={{ top: 10, right: 10, left: 10, bottom: 30 }}>
+                                            <XAxis
+                                                dataKey="name"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                interval={0}
+                                                height={40}
+                                                tick={{ fill: '#111827', fontSize: 12 }}
+                                                angle={-25}
+                                                textAnchor="end"
+                                            />
+                                            <Bar
+                                                dataKey="value"
+                                                radius={[4, 4, 0, 0]}
+                                                onClick={handleCostCenterSliceClick}
+                                            >
+                                                {pieDataCostCenter.map((entry) => (
+                                                    <Cell
+                                                        key={`cell-cc-${entry.id}`}
+                                                        fill={entry.color}
+                                                        stroke={activeCostCenterId === entry.id ? '#111827' : entry.color}
+                                                        strokeWidth={activeCostCenterId === entry.id ? 2 : 1}
+                                                        cursor="pointer"
+                                                    />
+                                                ))}
+                                            </Bar>
+                                            <Tooltip
+                                                contentStyle={{ background: isDark ? '#1f2937' : '#ffffff', color: isDark ? '#f9fafb' : '#111827', borderColor: isDark ? '#4b5563' : '#e5e7eb' }}
+                                                wrapperStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                                labelStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                                itemStyle={{ color: isDark ? '#f9fafb' : '#111827' }}
+                                                cursor={{ fill: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}
+                                                formatter={(value) => [formatNumber(Number(value)), 'Total']}
+                                            />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
+                                    {costCenterPopoverSummary ? (
+                                        <div className="space-y-2">
+                                            <div className="font-semibold">{costCenterPopoverSummary.costCenterName}</div>
+                                            <div className="space-y-1 max-h-48 overflow-auto pr-1">
+                                                {costCenterPopoverSummary.types.map((t) => (
+                                                    <div key={t.name} className="flex justify-between">
+                                                        <span>{t.name}</span>
+                                                        <span>{formatNumber(t.value)}</span>
+                                                    </div>
+                                                ))}
+                                                {costCenterPopoverSummary.types.length === 0 && (
+                                                    <div className="text-gray-500">No types found.</div>
+                                                )}
+                                            </div>
+                                            <div className="flex justify-between border-t pt-1 font-semibold">
+                                                <span>Total</span>
+                                                <span>{formatNumber(costCenterPopoverSummary.total)}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between border-t pt-1 font-semibold">
-                                            <span>Total</span>
-                                            <span>{formatNumber(costCenterPopoverSummary.total)}</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-gray-500">Click a bar to see type breakdown.</div>
-                                )}
-                            </PopoverContent>
-                        </Popover>
+                                    ) : (
+                                        <div className="text-gray-500">Click a bar to see type breakdown.</div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
+                        )}
                     </CardContent>
                 </Card>
-                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow">
+                <Card className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow border-0">
                     <CardHeader className="pb-2">
                         <CardTitle>Assets Purchased by Year</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <Popover open={yearPopoverOpen} onOpenChange={(open) => { setYearPopoverOpen(open); if (!open) setYearPopoverSummary(null); }}>
-                            <div className="relative" ref={yearContainerRef}>
-                                <PopoverAnchor asChild>
-                                    <span
-                                        aria-hidden
-                                        style={{
-                                            position: 'absolute',
-                                            top: yearPopoverPosition ? `${yearPopoverPosition.top}px` : '50%',
-                                            left: yearPopoverPosition ? `${yearPopoverPosition.left}px` : '50%',
-                                            width: 1,
-                                            height: 1
-                                        }}
-                                    />
-                                </PopoverAnchor>
-                                <ChartContainer config={chartConfig} className="max-h-65 w-full">
-                                    <BarChart data={chartDataStacked} height={260}>
-                                        <CartesianGrid vertical={false} horizontal={false} />
-                                        <XAxis dataKey="year" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => String(value)} stroke={axisColor} />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Legend wrapperStyle={{ color: legendTextColor }} />
-                                        {allTypes.map((type, idx) => (
-                                            <Bar
-                                                key={type}
-                                                dataKey={type}
-                                                stackId="a"
-                                                fill={`hsl(${(idx * 60) % 360}, 70%, 55%)`}
-                                                name={type}
-                                                onClick={handleYearBarClick}
-                                                cursor="pointer"
-                                            />
-                                        ))}
-                                    </BarChart>
-                                </ChartContainer>
-                            </div>
-                            <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
-                                {yearPopoverSummary ? (
-                                    <div className="space-y-2">
-                                        <div className="font-semibold">Year {yearPopoverSummary.year}</div>
-                                        <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                                            {yearPopoverSummary.costCenters.map(cc => (
-                                                <div key={cc.name} className="flex justify-between">
-                                                    <span>{cc.name}</span>
-                                                    <span>{formatNumber(cc.value)}</span>
-                                                </div>
+                        {loading ? (
+                            <CardLoader height={260} />
+                        ) : (
+                            <Popover open={yearPopoverOpen} onOpenChange={(open) => { setYearPopoverOpen(open); if (!open) setYearPopoverSummary(null); }}>
+                                <div className="relative" ref={yearContainerRef}>
+                                    <PopoverAnchor asChild>
+                                        <span
+                                            aria-hidden
+                                            style={{
+                                                position: 'absolute',
+                                                top: yearPopoverPosition ? `${yearPopoverPosition.top}px` : '50%',
+                                                left: yearPopoverPosition ? `${yearPopoverPosition.left}px` : '50%',
+                                                width: 1,
+                                                height: 1
+                                            }}
+                                        />
+                                    </PopoverAnchor>
+                                    <ChartContainer config={chartConfig} className="max-h-65 w-full">
+                                        <BarChart data={chartDataStacked} height={260}>
+                                            <CartesianGrid vertical={false} horizontal={false} />
+                                            <XAxis dataKey="year" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(value) => String(value)} stroke={axisColor} />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <Legend wrapperStyle={{ color: legendTextColor }} />
+                                            {allTypes.map((type, idx) => (
+                                                <Bar
+                                                    key={type}
+                                                    dataKey={type}
+                                                    stackId="a"
+                                                    fill={`hsl(${(idx * 60) % 360}, 70%, 55%)`}
+                                                    name={type}
+                                                    onClick={handleYearBarClick}
+                                                    cursor="pointer"
+                                                />
                                             ))}
-                                            {yearPopoverSummary.costCenters.length === 0 && (
-                                                <div className="text-gray-500">No cost centers found.</div>
-                                            )}
+                                        </BarChart>
+                                    </ChartContainer>
+                                </div>
+                                <PopoverContent className="w-64 text-sm bg-stone-100 dark:bg-stone-800 shadow-lg" side="bottom" align="center" sideOffset={8}>
+                                    {yearPopoverSummary ? (
+                                        <div className="space-y-2">
+                                            <div className="font-semibold">Year {yearPopoverSummary.year}</div>
+                                            <div className="space-y-1 max-h-48 overflow-auto pr-1">
+                                                {yearPopoverSummary.costCenters.map(cc => (
+                                                    <div key={cc.name} className="flex justify-between">
+                                                        <span>{cc.name}</span>
+                                                        <span>{formatNumber(cc.value)}</span>
+                                                    </div>
+                                                ))}
+                                                {yearPopoverSummary.costCenters.length === 0 && (
+                                                    <div className="text-gray-500">No cost centers found.</div>
+                                                )}
+                                            </div>
+                                            <div className="flex justify-between border-t pt-1 font-semibold">
+                                                <span>Total</span>
+                                                <span>{formatNumber(yearPopoverSummary.total)}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between border-t pt-1 font-semibold">
-                                            <span>Total</span>
-                                            <span>{formatNumber(yearPopoverSummary.total)}</span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="text-gray-500">Click a bar to see cost center breakdown.</div>
-                                )}
-                            </PopoverContent>
-                        </Popover>
+                                    ) : (
+                                        <div className="text-gray-500">Click a bar to see cost center breakdown.</div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
+                        )}
                     </CardContent>
                 </Card>
             </div>
