@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import ActionSidebar from "@components/ui/action-aside";
 import { CustomDataGrid, ColumnDef } from "@/components/ui/DataGrid";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, ArrowLeftRight } from "lucide-react";
 import { toast } from 'sonner';
@@ -13,6 +15,7 @@ import { toast } from 'sonner';
 interface SimCard {
     id: number;
     sim_sn: string;
+    status?: string | null;
     subs?: {
         id?: number;
         sub_no?: string;
@@ -70,12 +73,17 @@ const TelcoSims: React.FC = () => {
         user?: string;
         asset_id?: number;
         effective_date?: string;
+        status: "active" | "inactive";
+        replacement: boolean;
+        replace_sim_id?: number;
         id?: number;
     }>({
         sim_sn: '',
         sub_no: '',
         sub_no_id: 0,
         effective_date: new Date().toISOString().split('T')[0],
+        status: "active",
+        replacement: false,
     });
     const [detailLoading, setDetailLoading] = useState(false);
     const [subsHistory, setSubsHistory] = useState<Array<{ effective_date?: string; sub_no?: string }>>([]);
@@ -87,6 +95,27 @@ const TelcoSims: React.FC = () => {
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('en-GB');
     };
+    const formatHistoryMeta = (parts: Array<string | null | undefined>) =>
+        parts.filter((part) => part && String(part).trim().length > 0).join(" • ") || "-";
+    const formatUserTitle = (item: Record<string, any>) =>
+        item?.user?.full_name || item?.user?.name || item?.user?.ramco_id || "-";
+    const formatUserMeta = (item: Record<string, any>) =>
+        formatHistoryMeta([
+            item?.user?.ramco_id,
+            item?.department?.name,
+            item?.costcenter?.name,
+            item?.location?.name,
+        ]);
+    const formatAssetTitle = (item: Record<string, any>) =>
+        item?.asset?.register_number ||
+        item?.register_number ||
+        (item?.asset_id ? `Asset ${item.asset_id}` : "-");
+    const formatAssetMeta = (item: Record<string, any>) =>
+        formatHistoryMeta([
+            item?.department?.name,
+            item?.costcenter?.name,
+            item?.location?.name,
+        ]);
     const [formLoading, setFormLoading] = useState(false);
     const [userOptions, setUserOptions] = useState<Employee[]>([]);
     const [subOptions, setSubOptions] = useState<SubscriberOption[]>([]);
@@ -94,6 +123,7 @@ const TelcoSims: React.FC = () => {
     const [subSearch, setSubSearch] = useState('');
     const [userSearch, setUserSearch] = useState('');
     const [assetSearch, setAssetSearch] = useState('');
+    const [replaceSimSearch, setReplaceSimSearch] = useState('');
     const [showSubSelect, setShowSubSelect] = useState(false);
     const [showUserSelect, setShowUserSelect] = useState(false);
     const [showAssetSelect, setShowAssetSelect] = useState(false);
@@ -174,6 +204,14 @@ const TelcoSims: React.FC = () => {
             filter: 'input',
             render: (row) => row.asset?.register_number || '—'
         },
+        {
+            key: 'status',
+            header: 'Status',
+            sortable: true,
+            filter: 'singleSelect',
+            filterParams: { options: ['active', 'inactive'] },
+            render: (row) => row.status || '—'
+        },
     ];
 
     // Handle open create
@@ -186,6 +224,9 @@ const TelcoSims: React.FC = () => {
             user: undefined,
             asset_id: undefined,
             effective_date: new Date().toISOString().split('T')[0],
+            status: "active",
+            replacement: false,
+            replace_sim_id: undefined,
         });
         setSubsHistory([]);
         setUserHistory([]);
@@ -215,6 +256,9 @@ const TelcoSims: React.FC = () => {
                 user: undefined,
                 asset_id: undefined,
                 effective_date: new Date().toISOString().split('T')[0],
+                status: detail.status === "inactive" ? "inactive" : "active",
+                replacement: false,
+                replace_sim_id: undefined,
                 id: detail.id,
             });
             setSubsHistory(detail.sim_subs_history || []);
@@ -241,7 +285,7 @@ const TelcoSims: React.FC = () => {
     // Handle form submit
     const handleSubmit = async (e?: React.FormEvent, confirmed = false) => {
         e?.preventDefault();
-        if (editSim && !confirmed) {
+        if (!confirmed) {
             setShowConfirm(true);
             return;
         }
@@ -249,19 +293,35 @@ const TelcoSims: React.FC = () => {
         try {
             const method = editSim ? 'PUT' : 'POST';
             const url = editSim ? `/api/telco/sims/${editSim.id}` : '/api/telco/sims';
-            const payload = {
-                sim_sn: form.sim_sn,
-                sub_no_id: form.sub_no_id || undefined,
-                ramco_id: form.user || undefined,
-                asset_id: form.asset_id || undefined,
-                effective_date: form.effective_date || undefined,
-            };
-            const res = await fetch(url, {
+            let payload: Record<string, any>;
+            if (editSim) {
+                payload = {
+                    sim_sn: form.sim_sn,
+                    sub_no_id: form.sub_no_id || undefined,
+                    ramco_id: form.user || undefined,
+                    asset_id: form.asset_id || undefined,
+                    effective_date: form.effective_date || undefined,
+                    status: form.status,
+                };
+            } else {
+                payload = {
+                    sim_sn: form.sim_sn,
+                    status: form.status,
+                    replacement_sim: form.replacement ? (form.replace_sim_id ?? null) : null,
+                    reason: form.replacement ? "replace" : null,
+                    sub_no_id: form.sub_no_id || null,
+                    ramco_id: form.user || null,
+                    asset_id: form.asset_id || null,
+                    effective_date: form.effective_date || undefined,
+                };
+            }
+            const res = await authenticatedApi.request({
                 method,
+                url,
+                data: payload,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
             });
-            const data = await res.json();
+            const data = res?.data ?? {};
             if (data.status === 'success') {
                 toast.success(editSim ? 'SIM updated' : 'SIM created');
                 setShowDialog(false);
@@ -302,7 +362,19 @@ const TelcoSims: React.FC = () => {
                     <div className="flex flex-col gap-4">
                         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                             <div>
-                                <label htmlFor="sim_sn" className="block text-sm font-medium mb-1">SIM Serial Number</label>
+                                <div className="mb-1 flex items-center justify-between">
+                                    <label htmlFor="sim_sn" className="block text-sm font-medium">SIM Serial Number</label>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <span className={form.status === "active" ? "text-emerald-600 font-semibold" : ""}>Active</span>
+                                        <Switch
+                                            checked={form.status === "active"}
+                                            onCheckedChange={(checked) =>
+                                                setForm((f) => ({ ...f, status: checked ? "active" : "inactive" }))
+                                            }
+                                        />
+                                        <span className={form.status === "inactive" ? "text-rose-600 font-semibold" : ""}>Inactive</span>
+                                    </div>
+                                </div>
                                 <Input
                                     id="sim_sn"
                                     value={form.sim_sn}
@@ -310,6 +382,64 @@ const TelcoSims: React.FC = () => {
                                     required
                                 />
                             </div>
+                            {!editSim && (
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox
+                                            id="replacement"
+                                            checked={form.replacement}
+                                            onCheckedChange={(checked) =>
+                                                setForm((f) => ({
+                                                    ...f,
+                                                    replacement: Boolean(checked),
+                                                    replace_sim_id: checked ? f.replace_sim_id : undefined,
+                                                }))
+                                            }
+                                        />
+                                        <label htmlFor="replacement" className="text-sm font-medium my-1">
+                                            Replacement
+                                        </label>
+                                    </div>
+                                    <Select
+                                        value={form.replace_sim_id ? String(form.replace_sim_id) : ''}
+                                        onValueChange={(value) => {
+                                            const nextId = Number(value);
+                                            const selected = sims.find((sim) => sim.id === nextId);
+                                            const lastUser = Array.isArray(selected?.sim_user_history)
+                                                ? selected.sim_user_history[selected.sim_user_history.length - 1]
+                                                : undefined;
+                                            const lastAsset = Array.isArray(selected?.sim_asset_history)
+                                                ? selected.sim_asset_history[selected.sim_asset_history.length - 1]
+                                                : undefined;
+                                            setForm((f) => ({
+                                                ...f,
+                                                replace_sim_id: nextId,
+                                                sub_no_id: selected?.subs?.id ?? f.sub_no_id,
+                                                sub_no: selected?.subs?.sub_no || selected?.account?.sub_no || f.sub_no,
+                                                user: selected?.user?.ramco_id ?? lastUser?.user?.ramco_id ?? f.user,
+                                                asset_id: selected?.asset?.id ?? lastAsset?.asset?.id ?? f.asset_id,
+                                            }));
+                                            setShowSubSelect(false);
+                                            setShowUserSelect(false);
+                                            setShowAssetSelect(false);
+                                        }}
+                                        disabled={!form.replacement}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="To Replace (search SIM serial)" />
+                                        </SelectTrigger>
+                                        <SelectContent searchable onSearchChange={setReplaceSimSearch} searchPlaceholder="Search SIM serial...">
+                                            {sims
+                                                .filter((sim) => (sim.sim_sn || '').toLowerCase().includes(replaceSimSearch.toLowerCase()))
+                                                .map((sim) => (
+                                                    <SelectItem key={sim.id} value={String(sim.id)}>
+                                                        {sim.sim_sn || `SIM ${sim.id}`}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                             <div>
                                 <div className="mb-1 flex items-center justify-between">
                                     <label htmlFor="sub_no" className="block text-sm font-medium">Sub Number</label>
@@ -484,12 +614,17 @@ const TelcoSims: React.FC = () => {
                                         {detailLoading ? (
                                             <div className="text-muted-foreground">Loading history...</div>
                                         ) : subsHistory.length > 0 ? (
-                                            <ul className="relative space-y-3 border-l border-border pl-4">
+                                            <ul className="space-y-5">
                                                 {subsHistory.map((item, idx) => (
-                                                    <li key={`${item.sub_no}-${idx}`} className="relative flex flex-col gap-1">
-                                                        <span className="absolute -left-[9px`] top-1 h-3 w-3 rounded-full border border-blue-500 bg-white" />
-                                                        <span className="font-medium">{item.sub_no || '-'}</span>
-                                                        <span className="text-xs text-muted-foreground">{formatDate(item.effective_date)}</span>
+                                                    <li key={`${item.sub_no}-${idx}`} className="flex gap-3">
+                                                        <div className="relative flex w-4 justify-center">
+                                                            <span className="absolute inset-y-0 w-px bg-border" />
+                                                            <span className="relative z-10 mt-4 h-3 w-3 rounded-full border border-blue-500 bg-white" />
+                                                        </div>
+                                                        <div className="flex flex-1 flex-col gap-1 rounded-md border border-border bg-white p-3 shadow-sm">
+                                                            <span className="font-medium">{item.sub_no || '-'}</span>
+                                                            <span className="text-xs text-muted-foreground">{formatDate(item.effective_date)}</span>
+                                                        </div>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -503,11 +638,18 @@ const TelcoSims: React.FC = () => {
                                         {detailLoading ? (
                                             <div className="text-muted-foreground">Loading history...</div>
                                         ) : userHistory.length > 0 ? (
-                                            <ul className="relative space-y-3 border-l border-border pl-4">
+                                            <ul className="space-y-5">
                                                 {userHistory.map((item, idx) => (
-                                                    <li key={`user-${idx}`} className="relative flex flex-col gap-1 text-muted-foreground">
-                                                        <span className="absolute -left-2.25 top-1 h-3 w-3 rounded-full border border-emerald-500 bg-white" />
-                                                        <span className="text-xs">{JSON.stringify(item)}</span>
+                                                    <li key={`user-${idx}`} className="flex gap-3">
+                                                        <div className="relative flex w-4 justify-center">
+                                                            <span className="absolute inset-y-0 w-px bg-border" />
+                                                            <span className="relative z-10 mt-4 h-3 w-3 rounded-full border border-emerald-500 bg-white" />
+                                                        </div>
+                                                        <div className="flex flex-1 flex-col gap-1 rounded-md border border-border bg-white p-3 shadow-sm">
+                                                            <span className="font-medium">{formatUserTitle(item)}</span>
+                                                            <span className="text-xs text-muted-foreground">{formatUserMeta(item)}</span>
+                                                            <span className="text-xs text-muted-foreground">{formatDate(item.effective_date)}</span>
+                                                        </div>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -521,11 +663,18 @@ const TelcoSims: React.FC = () => {
                                         {detailLoading ? (
                                             <div className="text-muted-foreground">Loading history...</div>
                                         ) : assetHistory.length > 0 ? (
-                                            <ul className="relative space-y-3 border-l border-border pl-4">
+                                            <ul className="space-y-5">
                                                 {assetHistory.map((item, idx) => (
-                                                    <li key={`asset-${idx}`} className="relative flex flex-col gap-1 text-muted-foreground">
-                                                        <span className="absolute -left-2.25 top-1 h-3 w-3 rounded-full border border-amber-500 bg-white" />
-                                                        <span className="text-xs">{JSON.stringify(item)}</span>
+                                                    <li key={`asset-${idx}`} className="flex gap-3">
+                                                        <div className="relative flex w-4 justify-center">
+                                                            <span className="absolute inset-y-0 w-px bg-border" />
+                                                            <span className="relative z-10 mt-4 h-3 w-3 rounded-full border border-amber-500 bg-white" />
+                                                        </div>
+                                                        <div className="flex flex-1 flex-col gap-1 rounded-md border border-border bg-white p-3 shadow-sm">
+                                                            <span className="font-medium">{formatAssetTitle(item)}</span>
+                                                            <span className="text-xs text-muted-foreground">{formatAssetMeta(item)}</span>
+                                                            <span className="text-xs text-muted-foreground">{formatDate(item.effective_date)}</span>
+                                                        </div>
                                                     </li>
                                                 ))}
                                             </ul>

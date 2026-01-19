@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CustomDataGrid, ColumnDef } from "@/components/ui/DataGrid";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Plus, Eye, Send } from "lucide-react";
 import ExcelItAssessReportButton from "@/components/compliance/excel-itassess-report";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis } from "recharts";
@@ -18,6 +19,16 @@ type AssessmentInfo = {
   register_number?: string;
   assessment_year?: number;
   id?: number;
+  asset_status?: string | null;
+  brand?: PcAsset["brand"];
+  category?: PcAsset["category"];
+  classification?: PcAsset["classification"];
+  costcenter?: PcAsset["costcenter"];
+  department?: PcAsset["department"];
+  location?: PcAsset["location"];
+  model?: PcAsset["model"];
+  owner?: PcAsset["owner"];
+  purchase_date?: PcAsset["purchase_date"];
 };
 
 type PcAsset = {
@@ -52,7 +63,21 @@ type PcAssessmentRow = PcAsset & {
   assessment_count?: number;
   assessments?: AssessmentInfo[];
   last_assessment?: AssessmentInfo | null;
+  asset_status?: string | null;
   action?: string;
+};
+
+type ClassificationPopoverSummary = {
+  label: string;
+  assessed: number;
+  notAssessed: number;
+  total: number;
+  categories: Array<{
+    label: string;
+    assessed: number;
+    notAssessed: number;
+    total: number;
+  }>;
 };
 
 const formatDate = (value?: string | null) => {
@@ -95,6 +120,10 @@ const PcAssessmentRecord: React.FC = () => {
   const [hideDisposed, setHideDisposed] = useState(true);
   const [resendingId, setResendingId] = useState<number | null>(null);
   const [hiddenLocationCategories, setHiddenLocationCategories] = useState<string[]>([]);
+  const [classificationPopoverOpen, setClassificationPopoverOpen] = useState(false);
+  const [classificationPopoverSummary, setClassificationPopoverSummary] = useState<ClassificationPopoverSummary | null>(null);
+  const [classificationPopoverPosition, setClassificationPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const classificationContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -108,12 +137,33 @@ const PcAssessmentRecord: React.FC = () => {
 
       const normalized = list.map((item: any) => {
         const asset: PcAsset = item?.asset ?? {};
-        return {
+        const lastAssessment: AssessmentInfo | null = item?.last_assessment ?? null;
+        const fallbackAssessment =
+          lastAssessment ??
+          (Array.isArray(item?.assessments) && item.assessments.length > 0
+            ? item.assessments[item.assessments.length - 1]
+            : null);
+        const assessmentAsset = fallbackAssessment ?? {};
+        const mergedAsset: PcAsset = {
           ...asset,
+          register_number: asset.register_number ?? assessmentAsset.register_number ?? null,
+          purchase_date: asset.purchase_date ?? assessmentAsset.purchase_date ?? null,
+          costcenter: asset.costcenter ?? assessmentAsset.costcenter ?? null,
+          department: asset.department ?? assessmentAsset.department ?? null,
+          location: asset.location ?? assessmentAsset.location ?? null,
+          brand: asset.brand ?? assessmentAsset.brand ?? null,
+          model: asset.model ?? assessmentAsset.model ?? null,
+          category: asset.category ?? assessmentAsset.category ?? null,
+          classification: asset.classification ?? assessmentAsset.classification ?? null,
+          owner: asset.owner ?? assessmentAsset.owner ?? null,
+        };
+        return {
+          ...mergedAsset,
           assessed: item?.assessed ?? false,
           assessment_count: item?.assessment_count ?? 0,
           assessments: item?.assessments,
-          last_assessment: item?.last_assessment,
+          last_assessment: lastAssessment,
+          asset_status: lastAssessment?.asset_status ?? fallbackAssessment?.asset_status ?? null,
         };
       });
 
@@ -267,15 +317,67 @@ const PcAssessmentRecord: React.FC = () => {
       prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category]
     );
   }, []);
+  const handleClassificationBarClick = useCallback(
+    (data: any, _index: number, event: any) => {
+      const label = data?.payload?.label;
+      if (!label) return;
+      if (classificationContainerRef.current && event) {
+        const rect = classificationContainerRef.current.getBoundingClientRect();
+        const clientX = event?.clientX ?? event?.pageX;
+        const clientY = event?.clientY ?? event?.pageY;
+        if (clientX != null && clientY != null) {
+          setClassificationPopoverPosition({
+            left: clientX - rect.left,
+            top: clientY - rect.top,
+          });
+        }
+      }
+      const categoryMap = new Map<string, { assessed: number; total: number }>();
+      filteredCategoryData.forEach((row) => {
+        if (normalizeClassificationLabel(row.classification) !== label) return;
+        const category = displayName(row.category);
+        const entry = categoryMap.get(category) ?? { assessed: 0, total: 0 };
+        entry.total += 1;
+        if (row.assessed) entry.assessed += 1;
+        categoryMap.set(category, entry);
+      });
+      const categories = Array.from(categoryMap.entries())
+        .map(([category, counts]) => ({
+          label: category,
+          assessed: counts.assessed,
+          notAssessed: counts.total - counts.assessed,
+          total: counts.total,
+        }))
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+      const totals = categories.reduce(
+        (acc, item) => {
+          acc.assessed += item.assessed;
+          acc.total += item.total;
+          return acc;
+        },
+        { assessed: 0, total: 0 }
+      );
+      setClassificationPopoverSummary({
+        label,
+        assessed: totals.assessed,
+        notAssessed: totals.total - totals.assessed,
+        total: totals.total,
+        categories,
+      });
+      setClassificationPopoverOpen(true);
+    },
+    [filteredCategoryData]
+  );
 
   const filteredData = useMemo(
     () =>
       data.filter((row) => {
         const isDisposed = String(row.record_status || "").toLowerCase() === "disposed";
         if (hideDisposed && isDisposed) return false;
+        if (!visibleLocationCategories.includes(displayName(row.category))) return false;
         return true;
       }),
-    [data, hideDisposed]
+    [data, hideDisposed, visibleLocationCategories]
   );
 
   const handleCreate = useCallback(() => {
@@ -619,69 +721,119 @@ const PcAssessmentRecord: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-3 px-3 pb-3 pt-0">
             {classificationBreakdown.length > 0 ? (
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={classificationBreakdown} margin={{ top: 8, right: 10, left: 0, bottom: 32 }}>
-                    <XAxis
-                      dataKey="label"
-                      tickLine={false}
-                      axisLine={false}
-                      interval={0}
-                      angle={-20}
-                      textAnchor="end"
-                      height={44}
-                      tick={{ fontSize: 11, fill: "#374151" }}
-                    />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        const row = payload[0]?.payload as any;
-                        return (
-                          <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-md">
-                            <div className="mb-2 font-semibold">{label}</div>
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between gap-4">
-                                <span className="flex items-center gap-2">
-                                  <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />
-                                  Assessed
-                                </span>
-                                <span className="font-medium">
-                                  {row.assessed} ({row.assessedPct.toFixed(1)}%)
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between gap-4">
-                                <span className="flex items-center gap-2">
-                                  <span className="inline-block h-2 w-2 rounded-sm bg-amber-400" />
-                                  Not Assessed
-                                </span>
-                                <span className="font-medium">
-                                  {row.notAssessed} ({row.notAssessedPct.toFixed(1)}%)
-                                </span>
-                              </div>
-                              <div className="pt-1 text-[11px] text-muted-foreground">Total: {row.total}</div>
-                            </div>
-                          </div>
-                        );
+              <Popover
+                open={classificationPopoverOpen}
+                onOpenChange={(open) => {
+                  setClassificationPopoverOpen(open);
+                  if (!open) setClassificationPopoverSummary(null);
+                }}
+              >
+                <div className="relative h-64 w-full" ref={classificationContainerRef}>
+                  <PopoverAnchor asChild>
+                    <span
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        top: classificationPopoverPosition ? `${classificationPopoverPosition.top}px` : "50%",
+                        left: classificationPopoverPosition ? `${classificationPopoverPosition.left}px` : "50%",
+                        width: 1,
+                        height: 1,
                       }}
                     />
-                    <Legend />
-                    <Bar
-                      dataKey="assessed"
-                      stackId="a"
-                      name="Assessed"
-                      fill="#10b981"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="notAssessed"
-                      stackId="a"
-                      name="Not Assessed"
-                      fill="#fbbf24"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+                  </PopoverAnchor>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={classificationBreakdown} margin={{ top: 8, right: 10, left: 0, bottom: 32 }}>
+                      <XAxis
+                        dataKey="label"
+                        tickLine={false}
+                        axisLine={false}
+                        interval={0}
+                        angle={-20}
+                        textAnchor="end"
+                        height={44}
+                        tick={{ fontSize: 11, fill: "#374151" }}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const row = payload[0]?.payload as any;
+                          return (
+                            <div className="rounded-md border bg-white px-3 py-2 text-xs shadow-md">
+                              <div className="mb-2 font-semibold">{label}</div>
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="flex items-center gap-2">
+                                    <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />
+                                    Assessed
+                                  </span>
+                                  <span className="font-medium">
+                                    {row.assessed} ({row.assessedPct.toFixed(1)}%)
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="flex items-center gap-2">
+                                    <span className="inline-block h-2 w-2 rounded-sm bg-amber-400" />
+                                    Not Assessed
+                                  </span>
+                                  <span className="font-medium">
+                                    {row.notAssessed} ({row.notAssessedPct.toFixed(1)}%)
+                                  </span>
+                                </div>
+                                <div className="pt-1 text-[11px] text-muted-foreground">Total: {row.total}</div>
+                              </div>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend />
+                      <Bar
+                        dataKey="assessed"
+                        stackId="a"
+                        name="Assessed"
+                        fill="#10b981"
+                        radius={[4, 4, 0, 0]}
+                        onClick={handleClassificationBarClick}
+                      />
+                      <Bar
+                        dataKey="notAssessed"
+                        stackId="a"
+                        name="Not Assessed"
+                        fill="#fbbf24"
+                        radius={[4, 4, 0, 0]}
+                        onClick={handleClassificationBarClick}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <PopoverContent className="w-64 text-xs bg-stone-100 shadow-lg" side="bottom" align="center" sideOffset={8}>
+                  {classificationPopoverSummary ? (
+                    <div className="space-y-2">
+                      <div className="font-semibold">Classification: {classificationPopoverSummary.label}</div>
+                      <div className="flex items-center justify-between text-xs text-blue-600">
+                        <span>Total</span>
+                        <span>
+                          {classificationPopoverSummary.assessed}/{classificationPopoverSummary.total}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {classificationPopoverSummary.categories.map((item) => (
+                          <div key={item.label} className="flex items-center justify-between gap-3">
+                            <span className="truncate">{item.label}</span>
+                            <span className="font-medium">
+                              {item.assessed}/{item.total}
+                            </span>
+                          </div>
+                        ))}
+                        {classificationPopoverSummary.categories.length === 0 && (
+                          <div className="text-[11px] text-muted-foreground">No category data.</div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground">Click a bar to see category breakdown.</div>
+                  )}
+                </PopoverContent>
+              </Popover>
             ) : (
               <Card className="border-dashed">
                 <CardContent className="px-3 py-2 text-sm text-muted-foreground">No classification data</CardContent>
@@ -711,9 +863,11 @@ const PcAssessmentRecord: React.FC = () => {
         dataExport={false}
         onRowDoubleClick={handleOpenRow}
         rowClass={(row) =>
-          row.assessed
-            ? "bg-green-200/50"
-            : "even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800"
+          row.asset_status === "new"
+            ? "bg-amber-100/70"
+            : row.assessed
+              ? "bg-green-200/50"
+              : "even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800"
         }
       />
     </div>

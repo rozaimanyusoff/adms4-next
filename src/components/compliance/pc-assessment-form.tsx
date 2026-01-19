@@ -1496,7 +1496,6 @@ const PcAssessmentForm: React.FC = () => {
       toast.error(`Please attach at least ${attachmentLimits.min} image${attachmentLimits.min > 1 ? "s" : ""}.`);
       return;
     }
-    const assetId = searchParams.get("id");
     const toNum = (v: string | number | null | undefined) => {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -1505,6 +1504,7 @@ const PcAssessmentForm: React.FC = () => {
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
+    const resolvedAssetId = toNum(searchParams.get("id"));
     const brandValue = toId(selectedBrandId) ?? (form.manufacturer || null);
     const modelValue = toId(selectedModelId) ?? (form.model || null);
     const specificSoftwareEntries = specificSoftware.map((name) => {
@@ -1519,7 +1519,7 @@ const PcAssessmentForm: React.FC = () => {
       technician: form.technician,
       overall_score: form.overallScore,
       remarks: form.notes,
-      asset_id: assetId ? Number(assetId) : null,
+      asset_id: resolvedAssetId,
       register_number: form.serialNumber || null,
       category: toNum(form.deviceType) ?? form.deviceType ?? null,
       brand: brandValue,
@@ -1589,6 +1589,11 @@ const PcAssessmentForm: React.FC = () => {
     try {
       const formData = new FormData();
       Object.entries(payload).forEach(([key, value]) => {
+        // Explicitly send "null" for asset_id when missing to satisfy backend nullable integer
+        if (key === "asset_id" && (value === null || value === undefined)) {
+          formData.append(key, "null");
+          return;
+        }
         const normalized =
           typeof value === "boolean"
             ? value
