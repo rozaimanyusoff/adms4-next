@@ -199,7 +199,7 @@ const TelcoAccounts: React.FC = () => {
                             value={newDescription}
                             onChange={e => setNewDescription(e.target.value)}
                             placeholder="Description (optional)"
-                            className="min-h-[80px] border text-sm rounded-lg p-2 shadow"
+                            className="min-h-20 border text-sm rounded-lg p-2 shadow"
                         />
                         <Input
                             type="text"
@@ -243,7 +243,7 @@ const TelcoAccounts: React.FC = () => {
                             value={editDescription}
                             onChange={e => setEditDescription(e.target.value)}
                             placeholder="Describe accounts"
-                            className="min-h-[80px] text-sm border rounded-lg p-2 shadow"
+                            className="min-h-20 text-sm border rounded-lg p-2 shadow"
                         />
                         <Input
                             type="text"
@@ -262,10 +262,10 @@ const TelcoAccounts: React.FC = () => {
                 data={accounts}
                 columns={columns}
                 pageSize={10}
-                pagination={true}
+                pagination={false}
                 inputFilter={false}
                 theme="sm"
-                dataExport={true}
+                dataExport={false}
                 onRowDoubleClick={handleEditAccount}
             />
             {sidebarOpen && (

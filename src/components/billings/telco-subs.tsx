@@ -383,251 +383,250 @@ const TelcoSubs = () => {
                 columns={columns}
                 pageSize={10}
                 inputFilter={false}
-                pagination={true}
+                pagination={false}
                 rowClass={rowClass}
-                columnsVisibleOption={true}
-                dataExport={true}
+                columnsVisibleOption={false}
+                dataExport={false}
                 onRowDoubleClick={handleOpen}
             />
-            {open && (
-                <ActionSidebar
-                    onClose={() => { setReplaceField(null); handleClose(); }}
-                    size={replaceField ? 'md' : 'sm'}
-                    title={editId ? "Edit Subscriber" : "Add Subscriber"}
-                    content={
-                        <div className={replaceField ? "flex flex-row gap-6" : undefined}>
-                            <form onSubmit={handleSubmit} className={replaceField ? "space-y-3 p-4 flex-1" : "space-y-3 p-4"}>
-                                <label className="block">
-                                    <span className="block mb-1">Subscriber Number</span>
-                                    <Input name="sub_no" value={form.sub_no || ""} onChange={handleChange} required />
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Sub Account</span>
-                                    <Input name="account_sub" value={form.account_sub || ""} onChange={handleChange} required />
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Status</span>
-                                    <Input name="status" value={form.status || ""} onChange={handleChange} required />
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Register Date</span>
-                                    <Input name="register_date" type="date" value={form.register_date || ""} onChange={handleChange} required />
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Account Master</span>
-                                    <Select value={form.account?.toString() || ""} onValueChange={handleAccountChange} required>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select account" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {accountsOpt.map(acc => (
-                                                <SelectItem key={acc.id} value={acc.id.toString()}>{acc.account_master}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">SIM Card</span>
-                                    <div className="relative group">
-                                        <Input
-                                            name="simcard"
-                                            className="pr-8 group-focus-within:ring-2"
-                                            value={
-                                                form.simcard
-                                                    ? subscribers.find(s => s.simcard?.id === Number(form.simcard))?.simcard?.sim_sn || form.simcard.toString()
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('simcard')}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace SIM card</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Cost Center</span>
-                                    <div className="relative group">
-                                        <Input
-                                            name="costcenter"
-                                            className="pr-8 group-focus-within:ring-2"
-                                            value={
-                                                form.costcenter
-                                                    ? costCentersOpt.find(cc => cc.id === Number(form.costcenter))?.name || form.costcenter.toString()
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('costcenter')}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace cost center</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Department</span>
-                                    <div className="relative group">
-                                        <Input
-                                            name="department"
-                                            className="pr-8 group-focus-within:ring-2"
-                                            value={
-                                                form.department
-                                                    ? subscribers.find(s => s.department?.id === Number(form.department))?.department?.name || form.department.toString()
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('department')}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace department</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">User</span>
-                                    <div className="relative group">
-                                        <Input
-                                            name="user"
-                                            className="pr-8 group-focus-within:ring-2"
-                                            value={
-                                                form.user
-                                                    ? (userOpt.find(u => u.ramco_id === form.user)?.full_name || "")
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('user')}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace user</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </label>
-                                <label className="block">
-                                    <span className="block mb-1">Asset</span>
-                                    <div className="relative group">
-                                        <Input
-                                            name="asset_id"
-                                            className="pr-8 group-focus-within:ring-2"
-                                            value={
-                                                form.asset_id && assetsOpt.length > 0
-                                                    ? (assetsOpt.find(a => a.id === Number(form.asset_id))?.register_number || "")
-                                                    : ""
-                                            }
-                                            readOnly
-                                            required
-                                        />
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('asset')}>
-                                                        <ArrowBigRight />
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="left">Click to replace asset</TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </label>
-                                <div className="flex gap-2 mt-6">
-                                    <Button type="submit">{editId ? "Update" : "Create"}</Button>
-                                    <Button type="button" variant="destructive" onClick={handleClose}>Cancel</Button>
-                                </div>
-                            </form>
-                            {replaceField && (
-                                <div className="border-l px-4 mt-4 flex-1 min-w-[260px] max-w-md">
-                                    <h3 className="font-semibold mb-2">Select a {replaceField.replace(/([A-Z])/g, ' $1').toLowerCase()}</h3>
+            <ActionSidebar
+                isOpen={open}
+                onClose={() => { setReplaceField(null); handleClose(); }}
+                size={replaceField ? 'md' : 'sm'}
+                title={editId ? "Edit Subscriber" : "Add Subscriber"}
+                content={
+                    <div className={replaceField ? "flex flex-row gap-6" : undefined}>
+                        <form onSubmit={handleSubmit} className={replaceField ? "space-y-3 p-4 flex-1" : "space-y-3 p-4"}>
+                            <label className="block">
+                                <span className="block mb-1">Subscriber Number</span>
+                                <Input name="sub_no" value={form.sub_no || ""} onChange={handleChange} required />
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Sub Account</span>
+                                <Input name="account_sub" value={form.account_sub || ""} onChange={handleChange} required />
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Status</span>
+                                <Input name="status" value={form.status || ""} onChange={handleChange} required />
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Register Date</span>
+                                <Input name="register_date" type="date" value={form.register_date || ""} onChange={handleChange} required />
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Account Master</span>
+                                <Select value={form.account?.toString() || ""} onValueChange={handleAccountChange} required>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select account" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {accountsOpt.map(acc => (
+                                            <SelectItem key={acc.id} value={acc.id.toString()}>{acc.account_master}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">SIM Card</span>
+                                <div className="relative group">
                                     <Input
-                                        placeholder={`Search ${replaceField.replace(/([A-Z])/g, ' $1').toLowerCase()}...`}
-                                        className="mb-3"
-                                        value={optionSearch}
-                                        onChange={e => setOptionSearch(e.target.value)}
+                                        name="simcard"
+                                        className="pr-8 group-focus-within:ring-2"
+                                        value={
+                                            form.simcard
+                                                ? subscribers.find(s => s.simcard?.id === Number(form.simcard))?.simcard?.sim_sn || form.simcard.toString()
+                                                : ""
+                                        }
+                                        readOnly
+                                        required
                                     />
-                                    <div className="max-h-[500px] overflow-y-auto space-y-2">
-                                        {replaceField === 'simcard' && Array.from(new Map(subscribers.filter(s => s.simcard).map(s => [s.simcard.id, s.simcard])).values())
-                                            .filter(sim => sim.sim_sn.toLowerCase().includes(optionSearch.toLowerCase()))
-                                            .map(sim => (
-                                                <div key={sim.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, simcard: sim.id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, simcard: sim.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{sim.sim_sn}</span>
-                                                </div>
-                                            ))}
-                                        {replaceField === 'costcenter' && costCentersOpt
-                                            .filter(cc => cc.name.toLowerCase().includes(optionSearch.toLowerCase()))
-                                            .map(cc => (
-                                                <div key={cc.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, costcenter: cc.id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, costcenter: cc.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{cc.name}</span>
-                                                </div>
-                                            ))}
-                                        {replaceField === 'department' && Array.from(new Map(subscribers.filter(s => s.department).map(s => [s.department.id, s.department])).values())
-                                            .filter(dep => dep.name.toLowerCase().includes(optionSearch.toLowerCase()))
-                                            .map(dep => (
-                                                <div key={dep.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, department: dep.id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, department: dep.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{dep.name}</span>
-                                                </div>
-                                            ))}
-                                        {replaceField === 'user' && userOpt
-                                            .filter(user => user.full_name?.toLowerCase().includes(optionSearch.toLowerCase()))
-                                            .map(user => (
-                                                <div key={user.ramco_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">{user.full_name}
-                                                        <span className="text-gray-700 text-xs">Ramco ID: {user.ramco_id}</span>
-                                                        <span className="text-gray-700 text-xs">Contact: {user.contact}</span>
-                                                        <span className="text-gray-700 text-xs">Email: {user.email}</span>
-                                                        <span className="text-gray-700 text-xs">Department: {user.department?.name}</span>
-                                                        <span className="text-gray-700 text-xs">Position: {user.position?.name}</span>
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        {replaceField === 'asset' && assetsOpt
-                                            .filter(asset => asset.register_number?.toLowerCase().includes(optionSearch.toLowerCase()))
-                                            .map(asset => (
-                                                <div key={asset.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
-                                                    <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} />
-                                                    <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">
-                                                        <span className="text-black">{asset.register_number}</span>
-                                                        <span className="text-gray-700 text-xs">Brand: <span className="uppercase ">{asset.specs && asset.specs.brands ? ` ${asset.specs.brands.name}` : ''}</span></span>
-                                                        <span className="text-gray-700 text-xs">Model: <span className="uppercase text-xs">{asset.specs && asset.specs.models ? ` ${asset.specs.models.name}` : ''}</span></span>
-                                                    </span>
-                                                </div>
-                                            ))}
-                                    </div>
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('simcard')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace SIM card</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
                                 </div>
-                            )}
-                        </div>
-                    }
-                />
-            )}
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Cost Center</span>
+                                <div className="relative group">
+                                    <Input
+                                        name="costcenter"
+                                        className="pr-8 group-focus-within:ring-2"
+                                        value={
+                                            form.costcenter
+                                                ? costCentersOpt.find(cc => cc.id === Number(form.costcenter))?.name || form.costcenter.toString()
+                                                : ""
+                                        }
+                                        readOnly
+                                        required
+                                    />
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('costcenter')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace cost center</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Department</span>
+                                <div className="relative group">
+                                    <Input
+                                        name="department"
+                                        className="pr-8 group-focus-within:ring-2"
+                                        value={
+                                            form.department
+                                                ? subscribers.find(s => s.department?.id === Number(form.department))?.department?.name || form.department.toString()
+                                                : ""
+                                        }
+                                        readOnly
+                                        required
+                                    />
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('department')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace department</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">User</span>
+                                <div className="relative group">
+                                    <Input
+                                        name="user"
+                                        className="pr-8 group-focus-within:ring-2"
+                                        value={
+                                            form.user
+                                                ? (userOpt.find(u => u.ramco_id === form.user)?.full_name || "")
+                                                : ""
+                                        }
+                                        readOnly
+                                        required
+                                    />
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('user')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace user</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </label>
+                            <label className="block">
+                                <span className="block mb-1">Asset</span>
+                                <div className="relative group">
+                                    <Input
+                                        name="asset_id"
+                                        className="pr-8 group-focus-within:ring-2"
+                                        value={
+                                            form.asset_id && assetsOpt.length > 0
+                                                ? (assetsOpt.find(a => a.id === Number(form.asset_id))?.register_number || "")
+                                                : ""
+                                        }
+                                        readOnly
+                                        required
+                                    />
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-500 cursor-pointer" onClick={() => setReplaceField('asset')}>
+                                                    <ArrowBigRight />
+                                                </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">Click to replace asset</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </label>
+                            <div className="flex gap-2 mt-6">
+                                <Button type="submit">{editId ? "Update" : "Create"}</Button>
+                                <Button type="button" variant="destructive" onClick={handleClose}>Cancel</Button>
+                            </div>
+                        </form>
+                        {replaceField && (
+                            <div className="border-l px-4 mt-4 flex-1 min-w-65 max-w-md">
+                                <h3 className="font-semibold mb-2">Select a {replaceField.replace(/([A-Z])/g, ' $1').toLowerCase()}</h3>
+                                <Input
+                                    placeholder={`Search ${replaceField.replace(/([A-Z])/g, ' $1').toLowerCase()}...`}
+                                    className="mb-3"
+                                    value={optionSearch}
+                                    onChange={e => setOptionSearch(e.target.value)}
+                                />
+                                <div className="max-h-125 overflow-y-auto space-y-2">
+                                    {replaceField === 'simcard' && Array.from(new Map(subscribers.filter(s => s.simcard).map(s => [s.simcard.id, s.simcard])).values())
+                                        .filter(sim => sim.sim_sn.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        .map(sim => (
+                                            <div key={sim.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, simcard: sim.id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                <span onClick={() => { setForm({ ...form, simcard: sim.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{sim.sim_sn}</span>
+                                            </div>
+                                        ))}
+                                    {replaceField === 'costcenter' && costCentersOpt
+                                        .filter(cc => cc.name.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        .map(cc => (
+                                            <div key={cc.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, costcenter: cc.id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                <span onClick={() => { setForm({ ...form, costcenter: cc.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{cc.name}</span>
+                                            </div>
+                                        ))}
+                                    {replaceField === 'department' && Array.from(new Map(subscribers.filter(s => s.department).map(s => [s.department.id, s.department])).values())
+                                        .filter(dep => dep.name.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        .map(dep => (
+                                            <div key={dep.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, department: dep.id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                <span onClick={() => { setForm({ ...form, department: dep.id }); setReplaceField(null); setOptionSearch(""); }} className="flex-1 cursor-pointer">{dep.name}</span>
+                                            </div>
+                                        ))}
+                                    {replaceField === 'user' && userOpt
+                                        .filter(user => user.full_name?.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        .map(user => (
+                                            <div key={user.ramco_id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                <span onClick={() => { setForm({ ...form, user: user.ramco_id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">{user.full_name}
+                                                    <span className="text-gray-700 text-xs">Ramco ID: {user.ramco_id}</span>
+                                                    <span className="text-gray-700 text-xs">Contact: {user.contact}</span>
+                                                    <span className="text-gray-700 text-xs">Email: {user.email}</span>
+                                                    <span className="text-gray-700 text-xs">Department: {user.department?.name}</span>
+                                                    <span className="text-gray-700 text-xs">Position: {user.position?.name}</span>
+                                                </span>
+                                            </div>
+                                        ))}
+                                    {replaceField === 'asset' && assetsOpt
+                                        .filter(asset => asset.register_number?.toLowerCase().includes(optionSearch.toLowerCase()))
+                                        .map(asset => (
+                                            <div key={asset.id} className="p-2 border rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2">
+                                                <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} />
+                                                <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">
+                                                    <span className="text-black">{asset.register_number}</span>
+                                                    <span className="text-gray-700 text-xs">Brand: <span className="uppercase ">{asset.specs && asset.specs.brands ? ` ${asset.specs.brands.name}` : ''}</span></span>
+                                                    <span className="text-gray-700 text-xs">Model: <span className="uppercase text-xs">{asset.specs && asset.specs.models ? ` ${asset.specs.models.name}` : ''}</span></span>
+                                                </span>
+                                            </div>
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                }
+            />
         </div>
     );
 };
