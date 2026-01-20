@@ -32,8 +32,13 @@ interface Department {
 interface User {
     ramco_id: string;
     full_name: string;
+    name?: string;
+    contact?: string;
+}
+
+interface Location {
+    id: number;
     name: string;
-    contact: string;
 }
 
 interface Brand {
@@ -44,6 +49,11 @@ interface Brand {
 interface Model {
     id: number;
     name: string;
+}
+
+interface Owner {
+    full_name: string;
+    ramco_id: string;
 }
 
 interface Asset {
@@ -103,6 +113,18 @@ interface Asset {
         district: string | null;
         effective_date: string;
     }>;
+    // Lightweight fields from telco assets listing
+    brand?: Brand | null;
+    model?: Model | null;
+    owner_current?: Owner | null;
+}
+
+interface SubscriberAsset {
+    id: number;
+    register_number: string;
+    brand?: Brand | null;
+    category?: { id: number; name: string } | null;
+    model?: Model | null;
 }
 
 interface Subscriber {
@@ -114,7 +136,8 @@ interface Subscriber {
     simcard: Simcard;
     costcenter: CostCenter;
     department: Department;
-    asset: Asset; // <-- added asset
+    location?: Location;
+    asset: SubscriberAsset;
     user: User;
     register_date: string;
 }
@@ -208,10 +231,11 @@ const TelcoSubs = () => {
     useEffect(() => {
         const fetchAssets = async () => {
             try {
-                const res = await authenticatedApi.get("/api/assets?type=1&status=active");
+                const res = await authenticatedApi.get("/api/assets?manager=1&status=active");
                 const response = res.data as { status: string; message: string; data: Asset[] };
                 if (response?.status === "success") {
-                    setAssetsOpt(response.data.filter(a => a.status === "active"));
+                    // Keep full list; API already scoped by status when provided
+                    setAssetsOpt(response.data || []);
                 }
             } catch (e) {
                 // handle error
@@ -271,21 +295,39 @@ const TelcoSubs = () => {
 
     const columns: ColumnDef<Subscriber>[] = [
         { key: 'id', header: 'ID', sortable: false },
-        { key: 'sub_no', header: 'Subscriber Number', sortable: true, filter: 'input' },
-        { key: 'account_sub', header: 'Sub Account', sortable: true, filter: 'input' },
+        { key: 'sub_no', header: 'Sub Number', sortable: true, filter: 'input' },
+        { key: 'account_sub', header: 'Sub AC', sortable: true, filter: 'input' },
         { key: 'account', header: 'Master AC', filter: 'singleSelect', render: (row: Subscriber) => row.account?.account_master ?? '—' },
         { key: 'provider' as any, header: 'Provider', filter: 'singleSelect', render: (row: Subscriber) => row.account?.provider ?? '—' },
         { key: 'status', header: 'Status', sortable: true, filter: 'singleSelect' },
         { key: 'register_date', header: 'Register Date', sortable: true, render: (row: Subscriber) => new Date(row.register_date).toLocaleDateString() },
-        { key: 'simcard', header: 'SIM Number', filter: 'input', render: (row: Subscriber) => row.simcard?.sim_sn ?? '—' },
-        { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.full_name ?? '—' },
+        {
+            key: 'simcard',
+            header: 'SIM',
+            filter: 'input',
+            filterValue: (row: Subscriber) => row.simcard?.sim_sn ?? '',
+            render: (row: Subscriber) => row.simcard?.sim_sn ?? '—'
+        },
+        {
+            key: 'user',
+            header: 'User',
+            filter: 'input',
+            filterValue: (row: Subscriber) => `${row.user?.full_name ?? ''} ${row.user?.ramco_id ?? ''}`.trim(),
+            render: (row: Subscriber) => row.user?.full_name ?? '—'
+        },
         { key: 'costcenter', header: 'Cost Center', filter: 'singleSelect', render: (row: Subscriber) => row.costcenter?.name ?? '—' },
         { key: 'department', header: 'Department', filter: 'singleSelect', render: (row: Subscriber) => row.department?.name ?? '—' },
-        { key: 'user', header: 'User', render: (row: Subscriber) => row.user?.full_name ?? '—' },
+        { key: 'location', header: 'Location', filter: 'singleSelect', render: (row: Subscriber) => row.location?.name ?? '—' },
         // Asset columns with unique keys
-        { key: 'asset_sn' as any, header: 'Asset S/N', render: (row: Subscriber) => row.asset?.register_number ?? '—' },
-        { key: 'asset_brand' as any, header: 'Asset Brand', render: (row: Subscriber) => row.asset?.specs?.brands?.name ?? '—' },
-        { key: 'asset_model' as any, header: 'Asset Model', render: (row: Subscriber) => row.asset?.specs?.models?.name ?? '—' },
+        {
+            key: 'asset_sn' as any,
+            header: 'Register Number',
+            filter: 'input',
+            filterValue: (row: Subscriber) => row.asset?.register_number ?? '',
+            render: (row: Subscriber) => row.asset?.register_number ?? '—'
+        },
+        { key: 'asset_brand' as any, header: 'Brand', filter: 'singleSelect', render: (row: Subscriber) => row.asset?.brand?.name ?? '—' },
+        { key: 'asset_model' as any, header: 'Model', filter: 'singleSelect', render: (row: Subscriber) => row.asset?.model?.name ?? '—' },
     ];
 
     const rowClass = (row: Subscriber) => {
@@ -414,7 +456,7 @@ const TelcoSubs = () => {
                                 <Input name="register_date" type="date" value={form.register_date || ""} onChange={handleChange} required />
                             </label>
                             <label className="block">
-                                <span className="block mb-1">Account Master</span>
+                                <span className="block mb-1">Master Account</span>
                                 <Select value={form.account?.toString() || ""} onValueChange={handleAccountChange} required>
                                     <SelectTrigger className="w-full">
                                         <SelectValue placeholder="Select account" />
@@ -427,7 +469,7 @@ const TelcoSubs = () => {
                                 </Select>
                             </label>
                             <label className="block">
-                                <span className="block mb-1">SIM Card</span>
+                                <span className="block mb-1">SIM</span>
                                 <div className="relative group">
                                     <Input
                                         name="simcard"
@@ -531,7 +573,7 @@ const TelcoSubs = () => {
                                 </div>
                             </label>
                             <label className="block">
-                                <span className="block mb-1">Asset</span>
+                                <span className="block mb-1">Register Number</span>
                                 <div className="relative group">
                                     <Input
                                         name="asset_id"
@@ -616,8 +658,9 @@ const TelcoSubs = () => {
                                                 <ArrowBigLeft className="text-green-500 cursor-pointer" onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} />
                                                 <span onClick={() => { setForm({ ...form, asset_id: asset.id }); setReplaceField(null); setOptionSearch(""); }} className="flex flex-col cursor-pointer">
                                                     <span className="text-black">{asset.register_number}</span>
-                                                    <span className="text-gray-700 text-xs">Brand: <span className="uppercase ">{asset.specs && asset.specs.brands ? ` ${asset.specs.brands.name}` : ''}</span></span>
-                                                    <span className="text-gray-700 text-xs">Model: <span className="uppercase text-xs">{asset.specs && asset.specs.models ? ` ${asset.specs.models.name}` : ''}</span></span>
+                                                    <span className="text-gray-700 text-xs">Brand: <span className="uppercase ">{asset.brand ? ` ${asset.brand.name}` : '—'}</span></span>
+                                                    <span className="text-gray-700 text-xs">Model: <span className="uppercase text-xs">{asset.model ? ` ${asset.model.name}` : '—'}</span></span>
+                                                    <span className="text-gray-700 text-xs">Owner: {asset.owner_current?.full_name ?? asset.owner?.[0]?.name ?? '—'}</span>
                                                 </span>
                                             </div>
                                         ))}

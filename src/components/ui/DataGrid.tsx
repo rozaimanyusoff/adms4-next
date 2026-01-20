@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/rules-of-hooks */
- 
- 
- 
+
+
+
 
 /* Grid Container */
 const gridContainer = "relative rounded-none w-full transition-all duration-300 ease-in-out min-w-0 lg:min-w-[768px]";
@@ -86,6 +86,8 @@ export interface ColumnDef<T> {
 		options?: Array<string | number>;
 		labelMap?: Record<string | number, string>;
 	};
+	/** Optional override for filter matching (useful for nested values) */
+	filterValue?: (row: T) => string | number | Array<string | number>;
 	/** Static class name for cells in this column */
 	colClass?: string;
 	/** Function to compute class name for a cell based on row data */
@@ -208,7 +210,7 @@ const parseUnknownDate = (value: unknown): Date | null => {
 // 3) Else, attempt common display fields on objects (name/label/title)
 // 4) Fallback to empty string
 const getCellComparableValue = <T,>(row: T, col: ColumnDef<T>): string => {
-	const raw = row[col.key as keyof T] as unknown;
+	const raw = col.filterValue ? col.filterValue(row) : (row[col.key as keyof T] as unknown);
 	if (typeof raw === 'string' || typeof raw === 'number') return String(raw);
 	const rendered = col.render?.(row) as unknown;
 	if (typeof rendered === 'string' || typeof rendered === 'number') return String(rendered);
@@ -571,12 +573,13 @@ const CustomDataGridInner = <T,>({
 
 				// Input filter (default) - contains match
 				const filterVal = String(value).toLowerCase();
-				if (Array.isArray(cellValue)) {
-					return cellValue.some(cv =>
+				const candidate = column?.filterValue ? column.filterValue(row) : cellValue;
+				if (Array.isArray(candidate)) {
+					return candidate.some(cv =>
 						String(cv).toLowerCase().includes(filterVal)
 					);
 				}
-				return String(cellValue ?? '').toLowerCase().includes(filterVal);
+				return String(candidate ?? '').toLowerCase().includes(filterVal);
 			});
 		});
 
@@ -647,17 +650,17 @@ const CustomDataGridInner = <T,>({
 		const table = document.querySelector('table');
 		if (!table) return;
 
-        const newWidths: Record<string, number> = {};
-        flatColumns.forEach((col, index) => {
-            const nodeList = table.querySelectorAll(`tbody tr td:nth-child(${index + 1 + offset})`);
-            // Ignore cells that span multiple columns (e.g., the "No data" cell)
-            const cells = Array.from(nodeList).filter(cell => (cell as HTMLTableCellElement).colSpan === 1);
-            const widths = cells.map(cell => (cell as HTMLElement).scrollWidth);
-            const fallback = col.header.length * 8; // fallback based on header length
-            const max = widths.length > 0 ? Math.max(...widths, fallback) : fallback;
-            newWidths[String(col.key)] = max + 20;
-        });
-        setColumnWidths(prev => ({ ...newWidths, ...prev }));
+		const newWidths: Record<string, number> = {};
+		flatColumns.forEach((col, index) => {
+			const nodeList = table.querySelectorAll(`tbody tr td:nth-child(${index + 1 + offset})`);
+			// Ignore cells that span multiple columns (e.g., the "No data" cell)
+			const cells = Array.from(nodeList).filter(cell => (cell as HTMLTableCellElement).colSpan === 1);
+			const widths = cells.map(cell => (cell as HTMLElement).scrollWidth);
+			const fallback = col.header.length * 8; // fallback based on header length
+			const max = widths.length > 0 ? Math.max(...widths, fallback) : fallback;
+			newWidths[String(col.key)] = max + 20;
+		});
+		setColumnWidths(prev => ({ ...newWidths, ...prev }));
 	}, [flatColumns, columnWidths, rowSelection?.enabled, rowExpandable?.enabled]);
 
 	// Check if content needs vertical scrolling
@@ -891,8 +894,8 @@ const CustomDataGridInner = <T,>({
 		: null;
 
 	return (
-        <>
-            <div className={gridContainer}>
+		<>
+			<div className={gridContainer}>
 				<div className={gridHeader}>
 					{(inputFilter || columnsVisibleOption || dataExport || gridSettings) && (() => {
 						// --- Export dropdown state and logic ---
@@ -1146,7 +1149,7 @@ const CustomDataGridInner = <T,>({
 									const settingsDropdown = openSettingsDropdown && settingsDropdownPosition
 										? createPortal(
 											<div
-												className="settings-dropdown bg-card border border-border rounded-md shadow-lg py-1 z-50 absolute min-w-[150px]"
+												className="settings-dropdown bg-card border border-border rounded-md shadow-lg py-1 z-50 absolute min-w-37.5"
 												style={{
 													top: settingsDropdownPosition.top,
 													left: settingsDropdownPosition.left,
@@ -1421,7 +1424,7 @@ const CustomDataGridInner = <T,>({
 															openMultiSelect[String(col.key)] && buttonRef.current
 																? createPortal(
 																	<div
-																		className="absolute z-50 bg-popover text-popover-foreground border border-border mt-1 w-full min-w-[400px] rounded-xs shadow-xl text-xs"
+																		className="absolute z-50 bg-popover text-popover-foreground border border-border mt-1 w-full min-w-100 rounded-xs shadow-xl text-xs"
 																		style={{
 																			position: 'absolute',
 																			top: dropdownPosition?.top ?? 0,
@@ -1536,7 +1539,7 @@ const CustomDataGridInner = <T,>({
 																value={rangeValues[0] ?? ''}
 																onChange={(e) => {
 																	const next = [...rangeValues];
-                                                                    next[0] = e.target.value || '';
+																	next[0] = e.target.value || '';
 																	updateDateRangeFilter(filterKey, next.filter(Boolean));
 																}}
 															/>
@@ -1546,7 +1549,7 @@ const CustomDataGridInner = <T,>({
 																value={rangeValues[1] ?? ''}
 																onChange={(e) => {
 																	const next = [...rangeValues];
-                                                                    next[1] = e.target.value || '';
+																	next[1] = e.target.value || '';
 																	updateDateRangeFilter(filterKey, next.filter(Boolean));
 																}}
 															/>
@@ -1558,28 +1561,28 @@ const CustomDataGridInner = <T,>({
 									</tr>
 								</thead>
 								<tbody>
-                                {pagedData.length === 0 && (
-                                    <tr>
-                                        {rowSelection?.enabled && (
-                                            <td className={`px-3 py-1 ${checkboxCell} border-t border-r`} />
-                                        )}
-                                        {rowExpandable?.enabled && (
-                                            <td className={`px-3 py-1 ${expandCellCollapsed}`} />
-                                        )}
-                                        <td
-                                            colSpan={flatColumns.filter(col => visibleColumns[String(col.key)]).length}
-                                            className="px-4 py-6 text-center text-muted-foreground border-b border-border"
-                                        >
-                                            No data
-                                        </td>
-                                    </tr>
-                                )}
+									{pagedData.length === 0 && (
+										<tr>
+											{rowSelection?.enabled && (
+												<td className={`px-3 py-1 ${checkboxCell} border-t border-r`} />
+											)}
+											{rowExpandable?.enabled && (
+												<td className={`px-3 py-1 ${expandCellCollapsed}`} />
+											)}
+											<td
+												colSpan={flatColumns.filter(col => visibleColumns[String(col.key)]).length}
+												className="px-4 py-6 text-center text-muted-foreground border-b border-border"
+											>
+												No data
+											</td>
+										</tr>
+									)}
 									{pagedData.map((row, i) => {
 										const key = resolveRowKey(row, i);
 										const displayIndex = (paginationEnabled ? (currentPage - 1) * pageSize : 0) + i + 1;
 										return (
-                                            <React.Fragment key={key}>
-                                                <tr
+											<React.Fragment key={key}>
+												<tr
 													className={
 														`px-3 py-2 ${rowClass?.(row) ?? 'even:bg-gray-50 dark:even:bg-slate-700 dark:odd:bg-slate-800'}`
 														+ ((rowSelection?.isSelectable?.(row) !== false && selectedRowKeys.has(key)) ? ` ${rowSelected}` : '')
@@ -1647,7 +1650,7 @@ const CustomDataGridInner = <T,>({
 														return (
 															<td
 																key={String(col.key)}
-																className={`px-4 border-b ${expandedRows.has(key as number) ? expandedCellBorder : defaultCellBorder} break-words px-3 py-1 ${col.colClass ?? ''} ${col.colClassParams?.(row) ?? ''} ${highlightClass}`}
+																className={`px-4 border-b ${expandedRows.has(key as number) ? expandedCellBorder : defaultCellBorder} wrap-break-word px-3 py-1 ${col.colClass ?? ''} ${col.colClassParams?.(row) ?? ''} ${highlightClass}`}
 																onMouseEnter={() => {
 																	if (rowColHighlight) {
 																		setHoveredRowIndex(i);
@@ -1668,7 +1671,7 @@ const CustomDataGridInner = <T,>({
 														);
 													})}
 												</tr>
-                                                {rowExpandable?.enabled && expandedRows.has(key as number) && (
+												{rowExpandable?.enabled && expandedRows.has(key as number) && (
 													<tr>
 														{rowSelection?.enabled && (
 															<td
@@ -1695,8 +1698,8 @@ const CustomDataGridInner = <T,>({
 														</td>
 													</tr>
 												)}
-                                            </React.Fragment>
-                                        );
+											</React.Fragment>
+										);
 									})}
 								</tbody>
 							</table>
@@ -1712,11 +1715,11 @@ const CustomDataGridInner = <T,>({
 					</div>
 				)}
 			</div>
-            {paginationEnabled && (
+			{paginationEnabled && (
 				<div className={paginationContainer}>
 					<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
 						<div className="flex w-full items-end gap-2">
-							<label htmlFor="pageSize" className={`${textSizeClasses.small} max-w-[100px] text-muted-foreground font-normal`}>Page size:</label>
+							<label htmlFor="pageSize" className={`${textSizeClasses.small} max-w-25 text-muted-foreground font-normal`}>Page size:</label>
 							<Select
 								value={String(pageSize)}
 								onValueChange={(val) => {
@@ -1724,7 +1727,7 @@ const CustomDataGridInner = <T,>({
 									setPageSize(Number(val));
 								}}
 							>
-								<SelectTrigger className={`form-select form-select-sm max-w-[100px] px-1 rounded-xs bg-background truncate text-foreground focus:outline-hidden ${textSizeClasses.small}`}>
+								<SelectTrigger className={`form-select form-select-sm max-w-25 px-1 rounded-xs bg-background truncate text-foreground focus:outline-hidden ${textSizeClasses.small}`}>
 									<SelectValue placeholder="Page size" />
 								</SelectTrigger>
 								<SelectContent searchable searchPlaceholder="Search page size...">
@@ -1844,8 +1847,8 @@ const CustomDataGridInner = <T,>({
 					</div>
 				</div>
 			)}
-        </>
-    );
+		</>
+	);
 };
 
 export const CustomDataGrid = forwardRef(CustomDataGridInner) as <T>(
