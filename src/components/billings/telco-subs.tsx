@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ActionSidebar from "@components/ui/action-aside";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import clsx from "clsx";
 
 interface Account {
     id: number;
@@ -169,6 +171,12 @@ const TelcoSubs = () => {
     const [costCentersOpt, setCostCentersOpt] = useState<CostCenter[]>([]);
     const [replaceField, setReplaceField] = useState<null | 'simcard' | 'costcenter' | 'department' | 'user' | 'asset'>(null);
     const [optionSearch, setOptionSearch] = useState("");
+    type SummaryFilter =
+        | { type: "all" }
+        | { type: "missingUser"; provider?: string }
+        | { type: "missingDevice"; provider?: string }
+        | { type: "status"; provider?: string; status?: string };
+    const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>({ type: "all" });
 
     // Move fetchSubscribers outside useEffect so it can be called after submit
     const fetchSubscribers = async () => {
@@ -244,6 +252,9 @@ const TelcoSubs = () => {
         fetchAssets();
     }, []);
 
+    const isMissingUser = (sub?: Subscriber) => !sub?.user || (!sub.user.full_name && !sub.user.ramco_id);
+    const isMissingDevice = (sub?: Subscriber) => !sub?.asset || !sub.asset?.id;
+
     const sortedSubscribers = React.useMemo(() => {
         if (!sortConfig || !sortConfig.key) return subscribers;
 
@@ -276,14 +287,27 @@ const TelcoSubs = () => {
     const [searchTerm, setSearchTerm] = useState("");
 
     const filteredSubscribers = React.useMemo(() => {
-        if (!searchTerm) return sortedSubscribers;
+        let base = sortedSubscribers;
 
-        return sortedSubscribers.filter((subscriber) =>
+        if (summaryFilter.type === "missingUser") {
+            base = base.filter(sub => isMissingUser(sub));
+            if (summaryFilter.provider) base = base.filter(sub => (sub.account?.provider || "Unknown") === summaryFilter.provider);
+        } else if (summaryFilter.type === "missingDevice") {
+            base = base.filter(sub => isMissingDevice(sub));
+            if (summaryFilter.provider) base = base.filter(sub => (sub.account?.provider || "Unknown") === summaryFilter.provider);
+        } else if (summaryFilter.type === "status") {
+            if (summaryFilter.status) base = base.filter(sub => (sub.status || "Unknown") === summaryFilter.status);
+            if (summaryFilter.provider) base = base.filter(sub => (sub.account?.provider || "Unknown") === summaryFilter.provider);
+        }
+
+        if (!searchTerm) return base;
+
+        return base.filter((subscriber) =>
             Object.values(subscriber).some((value) =>
                 String(value).toLowerCase().includes(searchTerm.toLowerCase())
             )
         );
-    }, [sortedSubscribers, searchTerm]);
+    }, [sortedSubscribers, searchTerm, summaryFilter]);
 
     /* columns filtering params */
     // Remove masterAcOpt since 'account' is now a single object, not an array
@@ -292,6 +316,41 @@ const TelcoSubs = () => {
         () => Array.from(new Set(subscribers.map(s => s.account?.account_master).filter((v): v is string => typeof v === "string"))),
         [subscribers]
     );
+
+    const subSummary = useMemo(() => {
+        let withoutUser = 0;
+        let withoutDevice = 0;
+        const userByProvider = new Map<string, number>();
+        const deviceByProvider = new Map<string, number>();
+        const statusTotals = new Map<string, number>();
+        const statusByProvider = new Map<string, Map<string, number>>();
+        for (const sub of subscribers) {
+            const provider = sub?.account?.provider || "Unknown";
+            const status = sub?.status || "Unknown";
+
+            statusTotals.set(status, (statusTotals.get(status) || 0) + 1);
+            if (!statusByProvider.has(provider)) statusByProvider.set(provider, new Map());
+            const providerStatuses = statusByProvider.get(provider)!;
+            providerStatuses.set(status, (providerStatuses.get(status) || 0) + 1);
+
+            if (isMissingUser(sub)) {
+                withoutUser += 1;
+                userByProvider.set(provider, (userByProvider.get(provider) || 0) + 1);
+            }
+            if (isMissingDevice(sub)) {
+                withoutDevice += 1;
+                deviceByProvider.set(provider, (deviceByProvider.get(provider) || 0) + 1);
+            }
+        }
+        return {
+            withoutUser,
+            withoutDevice,
+            missingUserByProvider: Array.from(userByProvider.entries()),
+            missingDeviceByProvider: Array.from(deviceByProvider.entries()),
+            statusTotals: Array.from(statusTotals.entries()).sort((a, b) => b[1] - a[1]),
+            statusByProvider: Array.from(statusByProvider.entries()).map(([prov, map]) => [prov, Array.from(map.entries())] as const),
+        };
+    }, [subscribers]);
 
     const columns: ColumnDef<Subscriber>[] = [
         { key: 'id', header: 'ID', sortable: false },
@@ -416,10 +475,206 @@ const TelcoSubs = () => {
 
     return (
         <div className="mt-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-xl font-bold mb-4">Subscribers</h1>
-                <Button className="mb-4" onClick={() => handleOpen()}><Plus /></Button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <Card
+                    className={clsx(
+                        "bg-stone-100 cursor-pointer transition-shadow",
+                        summaryFilter.type === "missingUser" && !summaryFilter.provider ? "ring-2 ring-amber-500 shadow-sm" : "hover:shadow"
+                    )}
+                    onClick={() => setSummaryFilter(prev => prev.type === "missingUser" && !prev.provider ? { type: "all" } : { type: "missingUser" })}
+                >
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold">Subs without User</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{subSummary.withoutUser}</div>
+                        <div className="text-xs">
+                            {summaryFilter.type === "missingUser" ? "Filter applied" : "No user linked to subscription number"}
+                        </div>
+                        <div className="mt-2 text-xs space-y-1">
+                            <div className="uppercase tracking-wide text-[11px] text-foreground/70">Provider</div>
+                            {subSummary.missingUserByProvider.length === 0 ? (
+                                <div className="flex justify-between">
+                                    <span>—</span>
+                                    <span>0</span>
+                                </div>
+                            ) : (
+                                subSummary.missingUserByProvider.map(([prov, count]) => {
+                                    const active = summaryFilter.type === "missingUser" && summaryFilter.provider === prov;
+                                    return (
+                                        <div
+                                            key={prov}
+                                            className={clsx(
+                                                "flex justify-between items-center rounded px-2 py-1 cursor-pointer transition-colors",
+                                                active ? "bg-amber-100 font-semibold" : "hover:bg-white/70"
+                                            )}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSummaryFilter(prev =>
+                                                    prev.type === "missingUser" && prev.provider === prov
+                                                        ? { type: "missingUser" }
+                                                        : { type: "missingUser", provider: prov }
+                                                );
+                                            }}
+                                        >
+                                            <span>{prov}</span>
+                                            <span className="font-semibold">{count}</span>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card
+                    className={clsx(
+                        "bg-stone-100 cursor-pointer transition-shadow",
+                        summaryFilter.type === "missingDevice" && !summaryFilter.provider ? "ring-2 ring-amber-500 shadow-sm" : "hover:shadow"
+                    )}
+                    onClick={() => setSummaryFilter(prev => prev.type === "missingDevice" && !prev.provider ? { type: "all" } : { type: "missingDevice" })}
+                >
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold">Subs without Device</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold">{subSummary.withoutDevice}</div>
+                        <div className="text-xs">
+                            {summaryFilter.type === "missingDevice" ? "Filter applied" : "No device/asset linked to subscription number"}
+                        </div>
+                        <div className="mt-2 text-xs space-y-1">
+                            <div className="uppercase tracking-wide text-[11px] text-foreground/70">Provider</div>
+                            {subSummary.missingDeviceByProvider.length === 0 ? (
+                                <div className="flex justify-between">
+                                    <span>—</span>
+                                    <span>0</span>
+                                </div>
+                            ) : (
+                                subSummary.missingDeviceByProvider.map(([prov, count]) => {
+                                    const active = summaryFilter.type === "missingDevice" && summaryFilter.provider === prov;
+                                    return (
+                                        <div
+                                            key={prov}
+                                            className={clsx(
+                                                "flex justify-between items-center rounded px-2 py-1 cursor-pointer transition-colors",
+                                                active ? "bg-amber-100 font-semibold" : "hover:bg-white/70"
+                                            )}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSummaryFilter(prev =>
+                                                    prev.type === "missingDevice" && prev.provider === prov
+                                                        ? { type: "missingDevice" }
+                                                        : { type: "missingDevice", provider: prov }
+                                                );
+                                            }}
+                                        >
+                                            <span>{prov}</span>
+                                            <span className="font-semibold">{count}</span>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-stone-100">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-semibold">Status Breakdown</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-xs space-y-2">
+                            <div>
+                                {subSummary.statusTotals.length === 0 ? (
+                                    <div className="flex justify-between">
+                                        <span>—</span>
+                                        <span>0</span>
+                                    </div>
+                                ) : (
+                                    subSummary.statusTotals.map(([status, count]) => (
+                                        <div key={status} className="flex justify-between">
+                                            <span className="capitalize">{status}</span>
+                                            <span className="font-semibold">{count}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            <div>
+                                <div className="uppercase tracking-wide text-[11px] text-foreground/70 mb-1">By Provider</div>
+                                {subSummary.statusByProvider.length === 0 ? (
+                                    <div className="flex justify-between">
+                                        <span>—</span>
+                                        <span>0</span>
+                                    </div>
+                                ) : (
+                                    subSummary.statusByProvider.map(([prov, statuses]) => {
+                                        const providerTotal = statuses.reduce((sum, [, c]) => sum + c, 0);
+                                        const providerActive = summaryFilter.type === "status" && summaryFilter.provider === prov && !summaryFilter.status;
+                                        return (
+                                            <div key={prov} className="mb-1">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <button
+                                                            type="button"
+                                                            className={clsx(
+                                                                "font-semibold rounded px-2 py-1 text-left transition-colors",
+                                                                providerActive ? "bg-amber-100" : "hover:bg-white/70"
+                                                            )}
+                                                            onClick={() =>
+                                                                setSummaryFilter(prev =>
+                                                                    prev.type === "status" && prev.provider === prov && !prev.status
+                                                                        ? { type: "status" }
+                                                                        : { type: "status", provider: prov }
+                                                                )
+                                                            }
+                                                        >
+                                                            {prov}
+                                                        </button>
+                                                        <div className="flex flex-wrap gap-2 text-[11px] text-foreground/70">
+                                                            {statuses.map(([status, count]) => {
+                                                                const active = summaryFilter.type === "status" && summaryFilter.provider === prov && summaryFilter.status === status;
+                                                                const isTerminated = String(status).toLowerCase() === "terminated";
+                                                                return (
+                                                                    <button
+                                                                        type="button"
+                                                                        key={`${prov}-${status}`}
+                                                                        className={clsx(
+                                                                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full ring-1 ring-foreground/10 cursor-pointer transition-colors",
+                                                                            isTerminated
+                                                                                ? "bg-red-600 text-white hover:bg-red-700"
+                                                                                : "bg-white text-foreground hover:bg-amber-50",
+                                                                            active && !isTerminated && "ring-amber-500 bg-amber-50 font-semibold",
+                                                                            active && isTerminated && "ring-amber-300"
+                                                                        )}
+                                                                        onClick={() =>
+                                                                            setSummaryFilter(prev =>
+                                                                                prev.type === "status" && prev.provider === prov && prev.status === status
+                                                                                    ? { type: "status", provider: prov }
+                                                                                    : { type: "status", provider: prov, status }
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <span className="capitalize">{status}</span>
+                                                                        <span className="font-semibold">{count}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-foreground/70 text-[11px]">{providerTotal}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
+            <div className="flex items-center justify-between mb-4">
+                <h1 className="text-xl font-bold">Subscribers</h1>
+                <Button onClick={() => handleOpen()}><Plus /></Button>
+            </div>
+            
             <CustomDataGrid
                 data={filteredSubscribers}
                 columns={columns}

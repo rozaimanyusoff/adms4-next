@@ -13,9 +13,9 @@ const TelcoBillTab: React.FC = () => {
     const tabTitles = [
         { value: "telco-dash", label: "Dashboard" },
         { value: "telco-bill", label: "Billing" },
-        { value: "telco-accounts", label: "Accounts" },
-        { value: "telco-subs", label: "Subscribers" },
-        { value: "telco-sims", label: "SIMs" },
+        { value: "telco-accounts", label: "Accounts Maintenance" },
+        { value: "telco-subs", label: "Subs Maintenance" },
+        { value: "telco-sims", label: "SIM Maintenance" },
         { value: "devices", label: "Devices" },
     ];
 
@@ -28,13 +28,13 @@ const TelcoBillTab: React.FC = () => {
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        // Retrieve the last active tab from localStorage or default to "assets"
-        return localStorage.getItem("fuelTab") || "vendor";
+        // Retrieve the last active tab from localStorage or default to "telco-dash"
+        return localStorage.getItem("TelcoBillTab") || "telco-bill";
     });
 
     useEffect(() => {
         // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("fuelTab", activeTab);
+        localStorage.setItem("TelcoBillTab", activeTab);
     }, [activeTab]);
 
     return (
