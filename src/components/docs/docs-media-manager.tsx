@@ -19,46 +19,17 @@ type MediaItem = {
     size: number;
     uploadedAt: string;
     previewUrl: string;
+    streamUrl?: string;
     mimeType?: string;
     fromObjectUrl?: boolean;
 };
-
-const starterMedia: MediaItem[] = [
-    {
-        id: 'doc-1',
-        name: 'Vehicle Maintenance Guide.pdf',
-        kind: 'document',
-        size: 1.9 * 1024 * 1024,
-        uploadedAt: '2026-01-08T10:00:00Z',
-        previewUrl: '/assets/docs/vehicle-mtn-guide.pdf',
-        mimeType: 'application/pdf',
-    },
-    {
-        id: 'img-1',
-        name: 'Warehouse-layout.jpeg',
-        kind: 'image',
-        size: 620 * 1024,
-        uploadedAt: '2026-01-15T14:22:00Z',
-        previewUrl: '/assets/images/drag-2.jpeg',
-        mimeType: 'image/jpeg',
-    },
-    {
-        id: 'vid-1',
-        name: 'Induction-clip.mp4',
-        kind: 'video',
-        size: 5.2 * 1024 * 1024,
-        uploadedAt: '2026-01-18T09:10:00Z',
-        previewUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        mimeType: 'video/mp4',
-    },
-];
 
 const kindCopy: Record<MediaKind, { title: string; accent: string; desc: string; accepts: string; helper: string }> = {
     document: {
         title: 'Documents',
         accent: 'from-slate-900 via-slate-800 to-slate-700',
         desc: 'PDF, DOCX, XLSX and other project documents.',
-        accepts: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt',
+        accepts: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv',
         helper: 'Drag a file here or browse',
     },
     image: {
@@ -178,6 +149,8 @@ export const DocsMediaManager = () => {
     const [filter, setFilter] = useState<MediaKind | 'all'>('all');
     const [uploading, setUploading] = useState<{ id: string; progress: number } | null>(null);
     const [isFetching, setIsFetching] = useState<boolean>(false);
+    const [isResolvingPreview, setIsResolvingPreview] = useState<boolean>(false);
+    const [resolvedPreviewUrl, setResolvedPreviewUrl] = useState<string | null>(null);
     const objectUrlsRef = useRef<Set<string>>(new Set());
     const hasLoadedOnce = useRef<boolean>(false);
 
@@ -191,10 +164,11 @@ export const DocsMediaManager = () => {
     const mapApiToMediaItem = (item: any): MediaItem => ({
         id: String(item.id ?? item.fileUrl ?? crypto.randomUUID()),
         name: item.name ?? 'Untitled',
-        kind: item.kind as MediaKind,
+        kind: (item.kind as MediaKind) ?? 'document',
         size: Number(item.size) || 0,
-        uploadedAt: item.created_at || new Date().toISOString(),
+        uploadedAt: item.created_at || item.updated_at || new Date().toISOString(),
         previewUrl: item.file_url || item.fileUrl || '',
+        streamUrl: item.streamUrl,
         mimeType: item.mime_type || item.mimeType,
         fromObjectUrl: false,
     });
@@ -220,11 +194,6 @@ export const DocsMediaManager = () => {
         } catch (error: any) {
             console.error('Failed to fetch media', error);
             toast.error('Could not load media library');
-            // Fall back to starter data if nothing loaded yet
-            if (!hasLoadedOnce.current) {
-                setMediaItems(starterMedia);
-                setSelectedId(starterMedia[0]?.id || '');
-            }
         } finally {
             setIsFetching(false);
         }
@@ -248,38 +217,30 @@ export const DocsMediaManager = () => {
         }, 120);
 
         try {
-            const presignRes = await authenticatedApi.post<{ data: { uploadUrl: string; fileUrl: string } }>('/api/media/presign', {
-                filename: file.name,
-                mimeType: file.type,
-                kind,
-                size: file.size,
-            });
-            const presign = presignRes?.data?.data;
-            if (!presign?.uploadUrl || !presign?.fileUrl) {
-                throw new Error('Presign failed: missing uploadUrl or fileUrl');
-            }
+            const form = new FormData();
+            form.append('file', file);
 
-            await fetch(presign.uploadUrl, {
-                method: 'PUT',
-                body: file,
-                headers: {
-                    'Content-Type': file.type || 'application/octet-stream',
-                },
+            const uploadPath =
+                kind === 'document'
+                    ? '/api/media/upload/document'
+                    : kind === 'image'
+                        ? '/api/media/upload/image'
+                        : '/api/media/upload/video';
+
+            // Use multipart upload; axios sets boundary automatically
+            const uploadRes = await authenticatedApi.post<{ data: any }>(uploadPath, form, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
-            const createRes = await authenticatedApi.post<{ data: any }>('/api/media', {
-                name: file.name,
-                kind,
-                fileUrl: presign.fileUrl,
-                size: file.size,
-                mimeType: file.type,
-            });
-
-            const createdPayload = createRes?.data?.data;
+            const createdPayload = uploadRes?.data?.data;
             if (!createdPayload) {
                 throw new Error('Upload succeeded, but no media data returned.');
             }
+
             const created = mapApiToMediaItem(createdPayload);
+            if (!created) {
+                throw new Error('Upload completed but media record missing.');
+            }
             clearInterval(progressTimer);
             setUploading({ id, progress: 100 });
             setTimeout(() => setUploading(null), 200);
@@ -342,6 +303,62 @@ export const DocsMediaManager = () => {
     }, [mediaItems]);
 
     const selected = mediaItems.find((item) => item.id === selectedId) || filtered[0];
+
+    // Resolve preview URL (use stream endpoint for documents/videos to avoid auth-header issues in iframe/video)
+    useEffect(() => {
+        let cancelled = false;
+        const resolve = async () => {
+            if (!selected) {
+                setResolvedPreviewUrl(null);
+                return;
+            }
+            // Images: use direct URL, but if it needs auth, fetch blob lazily
+            if (selected.kind === 'image') {
+                if (selected.previewUrl) {
+                    setResolvedPreviewUrl(selected.previewUrl);
+                }
+                setIsResolvingPreview(true);
+                try {
+                    const imgRes = await authenticatedApi.get(selected.previewUrl, { responseType: 'blob' });
+                    const blobUrl = URL.createObjectURL(imgRes.data as Blob);
+                    objectUrlsRef.current.add(blobUrl);
+                    if (!cancelled) {
+                        setResolvedPreviewUrl(blobUrl);
+                    }
+                } catch (err) {
+                    console.error('Failed to resolve image preview', err);
+                } finally {
+                    if (!cancelled) setIsResolvingPreview(false);
+                }
+                return;
+            }
+            // Use stream URL for video; keep direct file_url for documents to avoid 404 wrappers
+            if (selected.kind === 'video') {
+                setIsResolvingPreview(true);
+                try {
+                    const res = await authenticatedApi.get<{ data?: { streamUrl?: string } }>(`/api/media/${selected.id}/stream`);
+                    const streamUrl = res?.data?.data?.streamUrl;
+                    if (!cancelled) {
+                        setResolvedPreviewUrl(streamUrl || selected.previewUrl || null);
+                    }
+                } catch (err) {
+                    console.error('Failed to resolve stream URL', err);
+                    if (!cancelled) {
+                        setResolvedPreviewUrl(selected.previewUrl || null);
+                    }
+                } finally {
+                    if (!cancelled) setIsResolvingPreview(false);
+                }
+                return;
+            }
+            // Documents: use direct preview URL (avoids auto-downloading all records)
+            setResolvedPreviewUrl(selected.previewUrl || null);
+        };
+        resolve();
+        return () => {
+            cancelled = true;
+        };
+    }, [selected]);
 
     return (
         <div className="space-y-8">
@@ -422,16 +439,37 @@ export const DocsMediaManager = () => {
                         )}
                         <div className="divide-y rounded-xl border">
                             {filtered.map((item) => (
-                                <button
+                                <div
                                     key={item.id}
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => setSelectedId(item.id)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setSelectedId(item.id);
+                                        }
+                                    }}
                                     className={cn(
                                         'group flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-slate-50',
                                         selected?.id === item.id ? 'bg-slate-50/80' : '',
                                     )}
                                 >
-                                    <div className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-xl">
-                                        {item.kind === 'document' ? '📄' : item.kind === 'image' ? '🖼️' : '🎬'}
+                                    <div className="flex size-12 items-center justify-center rounded-lg bg-slate-100 text-xl overflow-hidden">
+                                        {item.kind === 'image' && item.previewUrl ? (
+                                            <img
+                                                src={item.previewUrl}
+                                                alt={item.name}
+                                                className="h-full w-full object-cover"
+                                                onError={(e) => {
+                                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                }}
+                                            />
+                                        ) : item.kind === 'video' ? (
+                                            '🎬'
+                                        ) : (
+                                            '📄'
+                                        )}
                                     </div>
                                     <div className="flex flex-1 flex-col gap-1">
                                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -460,7 +498,7 @@ export const DocsMediaManager = () => {
                                             🗑️
                                         </Button>
                                     </div>
-                                </button>
+                                </div>
                             ))}
                         </div>
                     </CardContent>
@@ -506,7 +544,7 @@ export const DocsMediaManager = () => {
                                     )}
                                     {selected.kind === 'document' && (
                                         <iframe
-                                            src={selected.previewUrl}
+                                            src={resolvedPreviewUrl || selected.previewUrl}
                                             title={selected.name}
                                             className="h-105 w-full bg-white"
                                         />
@@ -515,7 +553,7 @@ export const DocsMediaManager = () => {
                                         <video
                                             controls
                                             className="h-105 w-full bg-black"
-                                            src={selected.previewUrl}
+                                            src={resolvedPreviewUrl || selected.previewUrl}
                                             poster="/assets/images/coming-soon.svg"
                                         >
                                             Your browser does not support the video tag.
