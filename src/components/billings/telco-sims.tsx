@@ -12,6 +12,7 @@ import { Plus, ArrowLeftRight } from "lucide-react";
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import ExcelTelcoSims from "./excel-telco-sims";
 
 interface SimCard {
     id: number;
@@ -486,7 +487,10 @@ const TelcoSims: React.FC = () => {
             </div>
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">SIM Cards</h2>
-                <Button onClick={handleCreate} variant="default"><Plus /></Button>
+                <div className="flex items-center gap-2">
+                    <ExcelTelcoSims />
+                    <Button onClick={handleCreate} variant="default"><Plus /></Button>
+                </div>
             </div>
             
             <CustomDataGrid

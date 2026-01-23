@@ -11,6 +11,7 @@ import ActionSidebar from "@components/ui/action-aside";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import clsx from "clsx";
 import { AuthContext } from "@/store/AuthContext";
+import ExcelTelcoSubs from "./excel-telco-subs";
 
 interface Account {
 	id: number;
@@ -740,7 +741,10 @@ const TelcoSubs = () => {
 			</div>
 			<div className="flex items-center justify-between mb-4">
 				<h1 className="text-xl font-bold">Subscribers</h1>
-				<Button onClick={() => handleOpen()}><Plus /></Button>
+				<div className="flex items-center gap-2">
+					<ExcelTelcoSubs />
+					<Button onClick={() => handleOpen()}><Plus /></Button>
+				</div>
 			</div>
 
 			<CustomDataGrid
