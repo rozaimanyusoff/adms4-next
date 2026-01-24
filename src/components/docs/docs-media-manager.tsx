@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
@@ -62,10 +63,10 @@ function formatDate(iso: string) {
 
 type UploadTileProps = {
     kind: MediaKind;
-    onFile: (file: File) => void;
+    onChoose: (file: File) => void;
 };
 
-const UploadTile = ({ kind, onFile }: UploadTileProps) => {
+const UploadTile = ({ kind, onChoose }: UploadTileProps) => {
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [dragActive, setDragActive] = useState(false);
 
@@ -73,7 +74,7 @@ const UploadTile = ({ kind, onFile }: UploadTileProps) => {
 
     const handleSelect = (fileList: FileList | null) => {
         if (!fileList?.length) return;
-        onFile(fileList[0]);
+        onChoose(fileList[0]);
         if (inputRef.current) {
             inputRef.current.value = '';
         }
@@ -148,6 +149,7 @@ export const DocsMediaManager = () => {
     const [selectedId, setSelectedId] = useState<string>('');
     const [filter, setFilter] = useState<MediaKind | 'all'>('all');
     const [uploading, setUploading] = useState<{ id: string; progress: number } | null>(null);
+    const [pendingUpload, setPendingUpload] = useState<{ file: File; kind: MediaKind } | null>(null);
     const [isFetching, setIsFetching] = useState<boolean>(false);
     const [isResolvingPreview, setIsResolvingPreview] = useState<boolean>(false);
     const [resolvedPreviewUrl, setResolvedPreviewUrl] = useState<string | null>(null);
@@ -202,6 +204,10 @@ export const DocsMediaManager = () => {
     useEffect(() => {
         fetchMedia(filter);
     }, [fetchMedia, filter]);
+
+    const queueUpload = (kind: MediaKind, file: File) => {
+        setPendingUpload({ kind, file });
+    };
 
     const handleUpload = async (kind: MediaKind, file: File) => {
         const id = `${kind}-${Date.now()}`;
@@ -362,6 +368,37 @@ export const DocsMediaManager = () => {
 
     return (
         <div className="space-y-8">
+            <AlertDialog
+                open={!!pendingUpload}
+                onOpenChange={(open) => {
+                    if (!open) setPendingUpload(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm upload</AlertDialogTitle>
+                        <AlertDialogDescription className='text-sm text-black'>
+                            {pendingUpload
+                                ? `Upload "${pendingUpload.file.name}" (${formatBytes(pendingUpload.file.size)}) as ${kindCopy[pendingUpload.kind].title}?`
+                                : ''}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setPendingUpload(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (pendingUpload) {
+                                    handleUpload(pendingUpload.kind, pendingUpload.file);
+                                    setPendingUpload(null);
+                                }
+                            }}
+                        >
+                            Yes, upload
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             <section className="overflow-hidden rounded-3xl border bg-linear-to-r from-slate-900 via-slate-800 to-indigo-800 text-white shadow-2xl">
                 <div className="grid gap-6 px-8 py-10 md:grid-cols-[1.3fr_1fr] items-center">
                     <div className="space-y-4">
@@ -396,7 +433,7 @@ export const DocsMediaManager = () => {
 
             <section className="grid gap-4 md:grid-cols-3">
                 {(['document', 'image', 'video'] as MediaKind[]).map((kind) => (
-                    <UploadTile key={kind} kind={kind} onFile={(file) => handleUpload(kind, file)} />
+                    <UploadTile key={kind} kind={kind} onChoose={(file) => queueUpload(kind, file)} />
                 ))}
             </section>
 
