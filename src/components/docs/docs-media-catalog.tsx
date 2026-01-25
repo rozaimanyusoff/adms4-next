@@ -10,11 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RefreshCw, Play, FileText, LayoutGrid, Rows, Upload, FileVideo2, FileImage, FileText as FileTextIcon, Search, MoreVertical, Download } from 'lucide-react';
+import { RefreshCw, Play, FileText, LayoutGrid, Rows, Upload, FileVideo2, FileImage, FileText as FileTextIcon, Search, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 type MediaKind = 'document' | 'image' | 'video';
 
@@ -56,7 +54,7 @@ const mapApiToMediaItem = (item: any): MediaItem => ({
     projectId: item.project_id ?? item.projectId ?? null,
 });
 
-const MediaCard = ({ item, onEdit, onPlay }: { item: MediaItem; onEdit: (item: MediaItem) => void; onPlay: (item: MediaItem) => void }) => {
+const MediaCard = ({ item, onPlay }: { item: MediaItem; onPlay: (item: MediaItem) => void }) => {
     const palette =
         item.kind === 'image'
             ? { bg: 'bg-gradient-to-br from-emerald-50 to-cyan-50', icon: <FileImage className="h-6 w-6 text-emerald-600" /> }
@@ -87,19 +85,7 @@ const MediaCard = ({ item, onEdit, onPlay }: { item: MediaItem; onEdit: (item: M
                         {formatBytes(item.size)} • {formatDate(item.uploadedAt)}
                     </div>
                 </div>
-                <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(item);
-                        }}
-                    >
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </div>
+                <div className="flex gap-1 opacity-0 transition group-hover:opacity-100" />
             </div>
         </div>
     );
@@ -111,14 +97,6 @@ export const DocsMediaCatalog = () => {
     const [filter, setFilter] = useState<MediaKind | 'all'>('all');
     const [search, setSearch] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(false);
-    const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
-    const [saving, setSaving] = useState<boolean>(false);
-    const [formState, setFormState] = useState<{ name: string; kind: MediaKind; tags: string; projectId: string }>({
-        name: '',
-        kind: 'document',
-        tags: '',
-        projectId: '',
-    });
     const [playerItem, setPlayerItem] = useState<MediaItem | null>(null);
 
     const fetchMedia = useCallback(async (kind: MediaKind | 'all') => {
@@ -146,17 +124,6 @@ export const DocsMediaCatalog = () => {
         fetchMedia(filter);
     }, [fetchMedia, filter]);
 
-    useEffect(() => {
-        if (editingItem) {
-            setFormState({
-                name: editingItem.name,
-                kind: editingItem.kind,
-                tags: (editingItem.tags ?? []).join(', '),
-                projectId: editingItem.projectId ? String(editingItem.projectId) : '',
-            });
-        }
-    }, [editingItem]);
-
     const filtered = useMemo(() => {
         return mediaItems.filter((item) => {
             const matchesKind = filter === 'all' ? true : item.kind === filter;
@@ -168,35 +135,6 @@ export const DocsMediaCatalog = () => {
         });
     }, [filter, mediaItems, search]);
 
-
-    const handleEditSave = async () => {
-        if (!editingItem) return;
-        setSaving(true);
-        try {
-            const payload = {
-                name: formState.name,
-                kind: formState.kind,
-                tags: formState.tags
-                    .split(',')
-                    .map((t) => t.trim())
-                    .filter(Boolean),
-                projectId: formState.projectId ? Number(formState.projectId) : undefined,
-            };
-            const res = await authenticatedApi.put<{ data: any }>(`/api/media/${editingItem.id}`, payload);
-            const updatedRaw = res?.data?.data ?? { ...editingItem, ...payload };
-            const updated = mapApiToMediaItem(updatedRaw);
-            setMediaItems((prev) => prev.map((m) => (m.id === editingItem.id ? updated : m)));
-            setPlayerItem((prev) => (prev?.id === editingItem.id ? updated : prev));
-            setEditingItem(null);
-            toast.success('Media updated');
-        } catch (error: any) {
-            console.error('Update failed', error);
-            const message = error?.response?.data?.message || error?.message || 'Update failed';
-            toast.error(message);
-        } finally {
-            setSaving(false);
-        }
-    };
 
     const columns = useMemo<ColumnDef<MediaItem>[]>(() => [
         {
@@ -248,9 +186,6 @@ export const DocsMediaCatalog = () => {
                         {row.kind === 'video' ? <Play className="mr-2 h-4 w-4" /> : <FileText className="mr-2 h-4 w-4" />}
                         {row.kind === 'video' ? 'Play' : 'View'}
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setEditingItem(row)}>
-                        Edit
-                    </Button>
                 </div>
             ),
         },
@@ -301,10 +236,6 @@ export const DocsMediaCatalog = () => {
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         Showing {filtered.length} of {mediaItems.length} files
                     </div>
-                    <Button variant="default" className="gap-2" onClick={() => window.location.href = '/docs/manager'}>
-                        <Upload className="h-4 w-4" />
-                        Upload Files
-                    </Button>
                 </div>
             </div>
 
@@ -318,7 +249,7 @@ export const DocsMediaCatalog = () => {
                 filtered.length ? (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {filtered.map((item) => (
-                            <MediaCard key={item.id} item={item} onEdit={setEditingItem} onPlay={setPlayerItem} />
+                            <MediaCard key={item.id} item={item} onPlay={setPlayerItem} />
                         ))}
                     </div>
                 ) : (
@@ -388,67 +319,6 @@ export const DocsMediaCatalog = () => {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Edit media</DialogTitle>
-                        <DialogDescription>Update the display name and kind. Changes save immediately.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <div className="space-y-2">
-                            <Label htmlFor="media-name">Name</Label>
-                            <Input
-                                id="media-name"
-                                value={formState.name}
-                                onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
-                                placeholder="Enter file name"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Kind</Label>
-                            <Select
-                                value={formState.kind}
-                                onValueChange={(v) => setFormState((prev) => ({ ...prev, kind: v as MediaKind }))}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="document">Document</SelectItem>
-                                    <SelectItem value="image">Image</SelectItem>
-                                    <SelectItem value="video">Video</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="media-tags">Tags (comma separated)</Label>
-                            <Input
-                                id="media-tags"
-                                value={formState.tags}
-                                onChange={(e) => setFormState((prev) => ({ ...prev, tags: e.target.value }))}
-                                placeholder="design, proposal"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="project-id">Project ID</Label>
-                            <Input
-                                id="project-id"
-                                type="number"
-                                min={1}
-                                value={formState.projectId}
-                                onChange={(e) => setFormState((prev) => ({ ...prev, projectId: e.target.value }))}
-                                placeholder="e.g. 1"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter className="gap-2">
-                        <Button variant="secondary" onClick={() => setEditingItem(null)} disabled={saving}>Cancel</Button>
-                        <Button onClick={handleEditSave} disabled={saving || !formState.name.trim()}>
-                            {saving ? 'Saving…' : 'Save changes'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 };

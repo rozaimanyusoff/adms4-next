@@ -7,6 +7,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EllipsisVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
@@ -23,6 +28,7 @@ type MediaItem = {
     streamUrl?: string;
     mimeType?: string;
     fromObjectUrl?: boolean;
+    tags?: string[];
 };
 
 const kindCopy: Record<MediaKind, { title: string; accent: string; desc: string; accepts: string; helper: string }> = {
@@ -155,6 +161,13 @@ export const DocsMediaManager = () => {
     const [resolvedPreviewUrl, setResolvedPreviewUrl] = useState<string | null>(null);
     const objectUrlsRef = useRef<Set<string>>(new Set());
     const hasLoadedOnce = useRef<boolean>(false);
+    const [editingItem, setEditingItem] = useState<MediaItem | null>(null);
+    const [saving, setSaving] = useState<boolean>(false);
+    const [formState, setFormState] = useState<{ name: string; kind: MediaKind; tags: string }>({
+        name: '',
+        kind: 'document',
+        tags: '',
+    });
 
     useEffect(() => {
         return () => {
@@ -168,12 +181,17 @@ export const DocsMediaManager = () => {
         name: item.name ?? 'Untitled',
         kind: (item.kind as MediaKind) ?? 'document',
         size: Number(item.size) || 0,
-        uploadedAt: item.created_at || item.updated_at || new Date().toISOString(),
-        previewUrl: item.file_url || item.fileUrl || '',
-        streamUrl: item.streamUrl,
-        mimeType: item.mime_type || item.mimeType,
-        fromObjectUrl: false,
-    });
+    uploadedAt: item.created_at || item.updated_at || new Date().toISOString(),
+    previewUrl: item.file_url || item.fileUrl || '',
+    streamUrl: item.streamUrl,
+    mimeType: item.mime_type || item.mimeType,
+    fromObjectUrl: false,
+    tags: Array.isArray(item.tags)
+        ? item.tags
+        : typeof item.tags === 'string'
+            ? item.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+            : [],
+});
 
     const fetchMedia = useCallback(async (kind: MediaKind | 'all') => {
         setIsFetching(true);
@@ -204,6 +222,20 @@ export const DocsMediaManager = () => {
     useEffect(() => {
         fetchMedia(filter);
     }, [fetchMedia, filter]);
+
+    useEffect(() => {
+        if (editingItem) {
+            setFormState({
+                name: editingItem.name,
+                kind: editingItem.kind,
+                tags: Array.isArray(editingItem.tags)
+                    ? editingItem.tags.join(', ')
+                    : typeof editingItem.tags === 'string'
+                        ? editingItem.tags
+                        : '',
+            });
+        }
+    }, [editingItem]);
 
     const queueUpload = (kind: MediaKind, file: File) => {
         setPendingUpload({ kind, file });
@@ -286,6 +318,34 @@ export const DocsMediaManager = () => {
             console.error('Delete failed', error);
             const message = error?.response?.data?.message || error?.message || 'Delete failed';
             toast.error(message);
+        }
+    };
+
+    const handleEditSave = async () => {
+        if (!editingItem) return;
+        setSaving(true);
+        try {
+            const payload = {
+                name: formState.name,
+                kind: formState.kind,
+                tags: formState.tags
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter(Boolean),
+            };
+            const res = await authenticatedApi.put<{ data: any }>(`/api/media/${editingItem.id}`, payload);
+            const updatedRaw = res?.data?.data ?? { ...editingItem, ...payload };
+            const updated = mapApiToMediaItem(updatedRaw);
+            setMediaItems((prev) => prev.map((m) => (m.id === editingItem.id ? updated : m)));
+            setSelectedId((prev) => (prev === editingItem.id ? updated.id : prev));
+            toast.success('Media updated');
+            setEditingItem(null);
+        } catch (error: any) {
+            console.error('Update failed', error);
+            const message = error?.response?.data?.message || error?.message || 'Update failed';
+            toast.error(message);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -396,11 +456,60 @@ export const DocsMediaManager = () => {
                             Yes, upload
                         </AlertDialogAction>
                     </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            </AlertDialogContent>
+        </AlertDialog>
 
-            <section className="overflow-hidden rounded-3xl border bg-linear-to-r from-slate-900 via-slate-800 to-indigo-800 text-white shadow-2xl">
-                <div className="grid gap-6 px-8 py-10 md:grid-cols-[1.3fr_1fr] items-center">
+            <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit media</DialogTitle>
+                        <DialogDescription>Update name, kind, and tags. Changes save via PUT /api/media/{'{id}'}.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Name</label>
+                            <Input
+                                value={formState.name}
+                                onChange={(e) => setFormState((prev) => ({ ...prev, name: e.target.value }))}
+                                placeholder="Enter file name"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Kind</label>
+                            <Select
+                                value={formState.kind}
+                                onValueChange={(v) => setFormState((prev) => ({ ...prev, kind: v as MediaKind }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="document">Document</SelectItem>
+                                    <SelectItem value="image">Image</SelectItem>
+                                    <SelectItem value="video">Video</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Tags (comma separated)</label>
+                            <Input
+                                value={formState.tags}
+                                onChange={(e) => setFormState((prev) => ({ ...prev, tags: e.target.value }))}
+                                placeholder="design, proposal"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="secondary" onClick={() => setEditingItem(null)} disabled={saving}>Cancel</Button>
+                        <Button onClick={handleEditSave} disabled={saving || !formState.name.trim()}>
+                            {saving ? 'Saving…' : 'Save changes'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+        <section className="overflow-hidden rounded-3xl border bg-linear-to-r from-slate-900 via-slate-800 to-indigo-800 text-white shadow-2xl">
+            <div className="grid gap-6 px-8 py-10 md:grid-cols-[1.3fr_1fr] items-center">
                     <div className="space-y-4">
                         <p className="text-xs uppercase tracking-[0.15em] text-white/70">Documents & Media</p>
                         <h1 className="text-3xl font-semibold leading-tight md:text-4xl">
@@ -520,20 +629,38 @@ export const DocsMediaManager = () => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setSelectedId(item.id); }}>
-                                            Preview
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            aria-label="Delete"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                removeItem(item.id);
-                                            }}
-                                        >
-                                            🗑️
-                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    aria-label="Actions"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <EllipsisVertical className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" sideOffset={4} onClick={(e) => e.stopPropagation()}>
+                                                <DropdownMenuItem
+                                                    onSelect={(e) => {
+                                                        e.preventDefault();
+                                                        setSelectedId(item.id);
+                                                        setEditingItem(item);
+                                                    }}
+                                                >
+                                                    Edit
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    className="text-destructive"
+                                                    onSelect={(e) => {
+                                                        e.preventDefault();
+                                                        removeItem(item.id);
+                                                    }}
+                                                >
+                                                    Delete
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </div>
                                 </div>
                             ))}
