@@ -166,8 +166,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const [returnToAssetManager, setReturnToAssetManager] = React.useState<{ [key: number]: boolean }>({});
 	const [itemEffectiveDates, setItemEffectiveDates] = React.useState<{ [key: string]: string }>({});
 	const [sidebarOpen, setSidebarOpen] = React.useState(false);
+	const [sidebarTab, setSidebarTab] = React.useState<'assets' | 'employees'>('assets');
 	const [employeeSearch, setEmployeeSearch] = React.useState('');
 	const [assetSearch, setAssetSearch] = React.useState('');
+	const [employeeFilter, setEmployeeFilter] = React.useState<{ ramco_id: string; name: string } | null>(null);
 	const [dateRequest, setDateRequest] = React.useState('');
 	const [itemTransferDetails, setItemTransferDetails] = React.useState<any>({});
 	const [employees, setEmployees] = React.useState<any[]>([]);
@@ -221,6 +223,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		const idKey = id ? String(id) : 'new';
 		return `asset-transfer-draft:${userKey}:${idKey}`;
 	}, [user?.username, id]);
+
+	// Reset sidebar context when it closes to avoid stale filters
+	useEffect(() => {
+		if (!sidebarOpen) {
+			setSidebarTab('assets');
+			setEmployeeFilter(null);
+			setEmployeeSearch('');
+		}
+	}, [sidebarOpen]);
 	const skipNextDraftSaveRef = React.useRef(false);
 
 	// Convert a date-like value into YYYY-MM-DD in the user's local timezone (avoids UTC off-by-one).
@@ -526,12 +537,14 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		}
 		setSelectedItems((prev: any[]) => {
 			const isEmployee = !!(item.full_name || item.ramco_id);
+			if (isEmployee && isEmployeeSelected(item)) return prev;
 			let newList;
 			if (item.full_name && item.ramco_id) {
 				newList = [
 					...prev,
 					{
 						...item,
+						id: item.id ?? item.ramco_id, // ensure accordion renders
 						transfer_type: 'Employee',
 						register_number: '',
 						asset_code: '',
@@ -893,6 +906,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		const key = String(asset?.register_number || asset?.entry_code || '').toLowerCase();
 		if (!key) return false;
 		return selectedItems.some(si => String(si?.register_number || si?.entry_code || '').toLowerCase() === key);
+	}
+
+	function isEmployeeSelected(emp: any): boolean {
+		const key = String(emp?.ramco_id || '').toLowerCase();
+		if (!key) return false;
+		return selectedItems.some(si =>
+			si.transfer_type === 'Employee' &&
+			String(si?.ramco_id || '').toLowerCase() === key
+		);
 	}
 
 	function isAssetLockedByPendingTransfer(asset: any): boolean {
@@ -1494,10 +1516,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	<div className="mb-2">
 																		<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 																			<div className="font-semibold">Transfer Details</div>
-																			<div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-																				<div className="font-medium whitespace-nowrap">Return to Asset Manager</div>
-																				<Switch disabled={isAcceptedItem} checked={!!returnToAssetManager[item.id]} onCheckedChange={(checked: boolean) => setReturnToAssetManagerFor(item.id, checked)} className="shrink-0" />
-																			</div>
+																			{!isEmployee && (
+																				<div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+																					<div className="font-medium whitespace-nowrap">Return to Asset Manager</div>
+																					<Switch
+																						disabled={isAcceptedItem}
+																						checked={!!returnToAssetManager[item.id]}
+																						onCheckedChange={(checked: boolean) => setReturnToAssetManagerFor(item.id, checked)}
+																						className="shrink-0"
+																					/>
+																				</div>
+																			)}
 																		</div>
 																		{/* Show only Transfer Details error for this item */}
 																		{submitError && submitError.includes(item.register_number || item.full_name || item.asset_code || item.id)
@@ -1810,54 +1839,136 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 														</div>
 													);
 												}
-												if (applicationOption === 'resignation') {
-													// For resignation, group assets by owner
-													const allAssets = Array.isArray(supervised) ? supervised : [];
-													const ownerGroups: Record<string, any[]> = {};
-
-													allAssets.forEach(a => {
-														const ownerKey = a.owner?.ramco_id || 'unassigned';
-														if (!ownerGroups[ownerKey]) {
-															ownerGroups[ownerKey] = [];
-														}
-														ownerGroups[ownerKey].push(a);
+												const renderEmployees = () => {
+													const list = Array.isArray(employees) ? employees : [];
+													const filteredEmployees = list.filter(emp => {
+														if (!employeeSearch) return true;
+														const search = employeeSearch.toLowerCase();
+														const matches = (v?: string) => !!v && v.toLowerCase().includes(search);
+														return (
+															matches(emp.full_name) ||
+															matches(emp.name) ||
+															matches(emp.ramco_id) ||
+															matches(emp.department?.name) ||
+															matches(emp.location?.name)
+														);
 													});
 
 													return (
-														<>
-															<div className="mb-4 font-semibold flex flex-col gap-2">
-																<span>Owners ({Object.keys(ownerGroups).length})</span>
+														<div className="flex flex-col gap-3">
+															<div className="font-semibold flex flex-col gap-2">
+																<span>Employees ({filteredEmployees.length})</span>
 																<Input
 																	type="text"
-																	placeholder="Search owners..."
+																	placeholder="Search employees..."
 																	className="border rounded px-2 py-1 w-full text-sm"
-																	value={assetSearch}
-																	onChange={e => setAssetSearch(e.target.value)}
+																	value={employeeSearch}
+																	onChange={e => setEmployeeSearch(e.target.value)}
 																/>
 															</div>
-															<ul className="space-y-3">
-																{Object.entries(ownerGroups)
-																	.filter(([ownerKey, assets]) => {
-																		if (!assetSearch) return true;
-																		const search = assetSearch.toLowerCase();
-																		const firstAsset = assets[0];
-																		const ownerName = firstAsset.owner?.full_name || '';
-																		const ownerId = firstAsset.owner?.ramco_id || '';
-																		const matches = (v?: string) => !!v && v.toLowerCase().includes(search);
-																		// Match owner or any asset details under the owner
-																		const assetMatches = assets.some(a => (
-																			matches(a.register_number) ||
-																			matches(a.entry_code) ||
-																			matches(getAssetCategoryName(a)) ||
-																			matches(getAssetBrandName(a)) ||
-																			matches(getAssetModelName(a)) ||
-																			matches(getAssetTypeName(a)) ||
-																			matches(getAssetDepartmentName(a)) ||
-																			matches(getAssetCostCenterName(a))
-																		));
-																		return matches(ownerName) || matches(ownerId) || assetMatches;
-																	})
-																	.map(([ownerKey, assets]) => {
+															{filteredEmployees.length === 0 ? (
+																<div className="text-sm text-muted-foreground">No employees found.</div>
+															) : (
+																<ul className="space-y-2">
+																	{filteredEmployees.map((emp, idx) => {
+																		const name = emp.full_name || emp.name || emp.ramco_id;
+																		const dept = emp.department?.name || '';
+																		const loc = emp.location?.name || '';
+																		const cost = emp.costcenter?.name || emp.cost_center?.name || '';
+																		const alreadySelected = isEmployeeSelected(emp);
+																		return (
+																			<li key={emp.ramco_id || idx} className="rounded-lg border border-slate-200 bg-white dark:bg-gray-700 px-3 py-2">
+																				<div className="flex items-start justify-between gap-3">
+																					<div className="flex-1">
+																						<div className="font-semibold text-blue-800 dark:text-blue-200">{name}</div>
+																						<div className="text-sm text-gray-600 dark:text-gray-300">{emp.ramco_id}</div>
+																						<div className="text-xs text-gray-500 dark:text-gray-300 mt-1 space-y-0.5">
+																							{dept && <div>Dept: {dept}</div>}
+																							{cost && <div>Cost Center: {cost}</div>}
+																							{loc && <div>Location: {loc}</div>}
+																						</div>
+																					</div>
+																					<div className="flex items-center gap-2">
+																						<Button
+																							variant="ghost"
+																							size="icon"
+																							disabled={alreadySelected}
+																							title={alreadySelected ? 'Already added' : 'Add employee'}
+																							onClick={() => addSelectedItem(emp)}
+																						>
+																							<CirclePlus className="w-5 h-5" />
+																						</Button>
+																					</div>
+																				</div>
+																			</li>
+																		);
+																	})}
+																</ul>
+															)}
+														</div>
+													);
+												};
+
+												const renderAssets = () => {
+													if (applicationOption === 'resignation') {
+														// For resignation, group assets by owner
+														const allAssets = Array.isArray(supervised) ? supervised : [];
+														const ownerGroups: Record<string, any[]> = {};
+
+														allAssets.forEach(a => {
+															const ownerKey = a.owner?.ramco_id || 'unassigned';
+															if (!ownerGroups[ownerKey]) {
+																ownerGroups[ownerKey] = [];
+															}
+															ownerGroups[ownerKey].push(a);
+														});
+
+														const filteredOwners = Object.entries(ownerGroups).filter(([ownerKey, assets]) => {
+															if (employeeFilter && employeeFilter.ramco_id !== ownerKey) return false;
+															if (!assetSearch) return true;
+															const search = assetSearch.toLowerCase();
+															const firstAsset = assets[0];
+															const ownerName = firstAsset.owner?.full_name || '';
+															const ownerId = firstAsset.owner?.ramco_id || '';
+															const matches = (v?: string) => !!v && v.toLowerCase().includes(search);
+															// Match owner or any asset details under the owner
+															const assetMatches = assets.some(a => (
+																matches(a.register_number) ||
+																matches(a.entry_code) ||
+																matches(getAssetCategoryName(a)) ||
+																matches(getAssetBrandName(a)) ||
+																matches(getAssetModelName(a)) ||
+																matches(getAssetTypeName(a)) ||
+																matches(getAssetDepartmentName(a)) ||
+																matches(getAssetCostCenterName(a))
+															));
+															return matches(ownerName) || matches(ownerId) || assetMatches;
+														});
+
+														return (
+															<>
+																<div className="mb-4 font-semibold flex flex-col gap-2">
+																	<span>Owners ({filteredOwners.length})</span>
+																	<Input
+																		type="text"
+																		placeholder="Search owners..."
+																		className="border rounded px-2 py-1 w-full text-sm"
+																		value={assetSearch}
+																		onChange={e => setAssetSearch(e.target.value)}
+																	/>
+																	{employeeFilter && (
+																		<div className="flex items-center gap-2 text-xs text-gray-600">
+																			<Badge variant="secondary" className="bg-slate-100 text-slate-700">
+																				Filtered by {employeeFilter.name} ({employeeFilter.ramco_id})
+																			</Badge>
+																			<Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)}>
+																				Clear
+																			</Button>
+																		</div>
+																	)}
+																</div>
+																<ul className="space-y-3">
+																	{filteredOwners.map(([ownerKey, assets]) => {
 																		const firstAsset = assets[0];
 																		const ownerName = firstAsset.owner?.full_name || 'Unassigned';
 																		const ownerRamcoId = firstAsset.owner?.ramco_id || '';
@@ -1931,16 +2042,33 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																				</div>
 																			</li>
 																		);
-																	})
-																}
-															</ul>
-														</>
-													);
-												} else {
+																	})}
+																</ul>
+															</>
+														);
+													}
+
 													// Regular asset list for internal transfer
 													const allAssets = Array.isArray(supervised) ? supervised : [];
+													const filteredAssets = allAssets.filter((a: any) => {
+														if (employeeFilter && String(a?.owner?.ramco_id || '') !== employeeFilter.ramco_id) return false;
+														if (!assetSearch) return true;
+														const search = assetSearch.toLowerCase();
+														const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
+														return (
+															matches(a.register_number) ||
+															matches(a.entry_code) ||
+															matches(getAssetCategoryName(a)) ||
+															matches(getAssetTypeName(a)) ||
+															matches(getAssetDepartmentName(a)) ||
+															matches(getAssetCostCenterName(a)) ||
+															matches(a?.owner?.full_name) ||
+															matches(a?.owner?.ramco_id)
+														);
+													});
+
 													const typeCounts: Record<string, number> = {};
-													allAssets.forEach(a => {
+													filteredAssets.forEach(a => {
 														const typeName = getAssetTypeName(a);
 														const key = typeName && typeName.trim() ? typeName : '(Unspecified)';
 														typeCounts[key] = (typeCounts[key] || 0) + 1;
@@ -1950,7 +2078,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 													return (
 														<>
 															<div className="mb-4 font-semibold flex flex-col gap-2">
-																<span>Assets ({summary})</span>
+																<span>Assets ({summary || '0'})</span>
 																<Input
 																	type="text"
 																	placeholder="Search assets..."
@@ -1958,26 +2086,20 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																	value={assetSearch}
 																	onChange={e => setAssetSearch(e.target.value)}
 																/>
+																{employeeFilter && (
+																	<div className="flex items-center gap-2 text-xs text-gray-600">
+																		<Badge variant="secondary" className="bg-slate-100 text-slate-700">
+																			Filtered by {employeeFilter.name} ({employeeFilter.ramco_id})
+																		</Badge>
+																		<Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)}>
+																			Clear
+																		</Button>
+																	</div>
+																)}
 															</div>
-														<ul className="space-y-2">
-															{allAssets
-																.filter((a: any) => {
-																	if (!assetSearch) return true;
-																	const search = assetSearch.toLowerCase();
-																	const matches = (value?: string) => !!value && value.toLowerCase().includes(search);
-																	return (
-																		matches(a.register_number) ||
-																		matches(a.entry_code) ||
-																		matches(getAssetCategoryName(a)) ||
-																		matches(getAssetTypeName(a)) ||
-																		matches(getAssetDepartmentName(a)) ||
-																		matches(getAssetCostCenterName(a)) ||
-																		matches(a?.owner?.full_name) ||
-																		matches(a?.owner?.ramco_id)
-																	);
-																})
-																.map((a: any, j: any) => {
-																	const assetType = getAssetTypeName(a);
+															<ul className="space-y-2">
+																{filteredAssets.map((a: any, j: any) => {
+																	const assetType = getAssetTypeName(a) || '';
 																	const lowerType = assetType.toLowerCase();
 																	let typeIcon = null;
 																	if (lowerType.includes('motor')) {
@@ -2047,12 +2169,25 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																			</li>
 																		</React.Fragment>
 																	);
-																})
-															}
-														</ul>
+																})}
+															</ul>
 														</>
 													);
-												}
+												};
+
+												return (
+													<>
+														<Tabs value={sidebarTab} onValueChange={(val) => setSidebarTab(val as 'assets' | 'employees')}>
+															<TabsList>
+																<TabsTrigger value="assets">Assets</TabsTrigger>
+																<TabsTrigger value="employees">Employees</TabsTrigger>
+															</TabsList>
+														</Tabs>
+														<div className="mt-3">
+															{sidebarTab === 'employees' ? renderEmployees() : renderAssets()}
+														</div>
+													</>
+												);
 											})()}
 										</div>
 									}
