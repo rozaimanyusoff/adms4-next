@@ -521,7 +521,7 @@ export default function AssetTranserRecords() {
                     role="button"
                     tabIndex={0}
                     onClick={() => toggleFilter('submitted')}
-                    className={`cursor-pointer transition ${statusFilter === 'submitted' ? 'ring-2 ring-blue-500' : 'ring-0'}`}
+                    className={`cursor-pointer transition bg-stone-100 ${statusFilter === 'submitted' ? 'ring-2 ring-blue-500' : 'ring-0'}`}
                 >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Submitted</CardTitle>
@@ -536,7 +536,7 @@ export default function AssetTranserRecords() {
                     role="button"
                     tabIndex={0}
                     onClick={() => toggleFilter('approved')}
-                    className={`cursor-pointer transition ${statusFilter === 'approved' ? 'ring-2 ring-green-500' : 'ring-0'}`}
+                    className={`cursor-pointer transition bg-stone-100 ${statusFilter === 'approved' ? 'ring-2 ring-green-500' : 'ring-0'}`}
                 >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Approved</CardTitle>
@@ -551,7 +551,7 @@ export default function AssetTranserRecords() {
                     role="button"
                     tabIndex={0}
                     onClick={() => toggleFilter('completed')}
-                    className={`cursor-pointer transition ${statusFilter === 'completed' ? 'ring-2 ring-emerald-500' : 'ring-0'}`}
+                    className={`cursor-pointer transition bg-stone-100 ${statusFilter === 'completed' ? 'ring-2 ring-emerald-500' : 'ring-0'}`}
                 >
                     <CardHeader>
                         <CardTitle className="text-sm font-medium">Completed</CardTitle>

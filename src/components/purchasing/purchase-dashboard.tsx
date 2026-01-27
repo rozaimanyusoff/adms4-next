@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   ShoppingCart,
   Package,
@@ -13,6 +14,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 // Format number for RM display: thousand separators + 2 decimals
 const fmtRM = (value: number) => {
@@ -23,12 +26,23 @@ const fmtRM = (value: number) => {
 };
 
 const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => void }> = ({ purchases = [], onFilter }) => {
+  const [costcenterFilter, setCostcenterFilter] = useState<string>('all');
+  const [costcenterComboboxOpen, setCostcenterComboboxOpen] = useState(false);
+
+  const filteredPurchases = useMemo(() => {
+    if (costcenterFilter === 'all') return purchases;
+    return purchases.filter(p => {
+      const cc = p.request?.costcenter || p.costcenter;
+      if (!cc) return false;
+      return String(cc.id) === String(costcenterFilter);
+    });
+  }, [purchases, costcenterFilter]);
 
   // stats memo
   const stats = useMemo(() => {
-    const total = purchases.length;
+    const total = filteredPurchases.length;
     // compute per-purchase amount: prefer total_price if available, else qty * unit_price
-    const amounts = purchases.map(p => {
+    const amounts = filteredPurchases.map(p => {
       const totalPrice = Number((p as any).total_price ?? NaN);
       if (!Number.isFinite(totalPrice)) {
         const qty = Number((p as any).qty) || 0;
@@ -56,7 +70,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
       return 'draft';
     };
 
-    const counts: Record<ProcStatus, number> = purchases.reduce((acc, p) => {
+    const counts: Record<ProcStatus, number> = filteredPurchases.reduce((acc, p) => {
       const st = deriveStatus(p);
       acc[st] = (acc[st] || 0) + 1;
       return acc;
@@ -69,9 +83,9 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     const completed = 0;
 
     // Request type breakdown
-    const capex = purchases.filter(p => (p.request?.request_type || p.request_type) === 'CAPEX').length;
-    const opex = purchases.filter(p => (p.request?.request_type || p.request_type) === 'OPEX').length;
-    const services = purchases.filter(p => (p.request?.request_type || p.request_type) === 'SERVICES').length;
+    const capex = filteredPurchases.filter(p => (p.request?.request_type || p.request_type) === 'CAPEX').length;
+    const opex = filteredPurchases.filter(p => (p.request?.request_type || p.request_type) === 'OPEX').length;
+    const services = filteredPurchases.filter(p => (p.request?.request_type || p.request_type) === 'SERVICES').length;
 
     // Highest / lowest purchase amounts (replace avg)
     const highest = amounts.length > 0 ? Math.max(...amounts) : 0;
@@ -80,7 +94,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     // Recent activity (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentRequests = purchases.filter(p => {
+    const recentRequests = filteredPurchases.filter(p => {
       const d = p.request?.pr_date || p.pr_date;
       return d && new Date(d) >= thirtyDaysAgo;
     }).length;
@@ -100,14 +114,14 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
       lowest,
       recentRequests
     };
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   const completionRate = 0;
 
   // Yearly breakdown by PR date
   const yearly = useMemo(() => {
     const buckets: Record<string, { count: number; total: number; highest: number; lowest: number }> = {};
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       const pd = p.request?.pr_date || p.pr_date;
       if (!pd) return;
       const d = new Date(pd);
@@ -129,12 +143,12 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     const rows = Object.keys(buckets).map(y => ({ year: y, ...buckets[y] }));
     rows.sort((a, b) => Number(b.year) - Number(a.year));
     return rows;
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Breakdown by Item Type (total amount to date)
   const byType = useMemo(() => {
     const map: Record<string, { count: number; total: number }> = {};
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       const typeName = typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || 'Unknown';
       const totalPrice = Number((p as any).total_price ?? NaN);
       const amount = Number.isFinite(totalPrice)
@@ -149,7 +163,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     const rows = Object.keys(map).map(k => ({ type: k, ...map[k] }));
     rows.sort((a, b) => b.total - a.total);
     return rows;
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Status breakdown by Item Type (undelivered / unregistered / handed over)
   const statusByType = useMemo(() => {
@@ -164,7 +178,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
       if (!hasDeliveries) return 'undelivered';
       return 'unregistered';
     };
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       const t = typeof p.type === 'string' ? p.type : (p.type && (p.type as any).name) || 'Unknown';
       if (!map[t]) map[t] = { undelivered: 0, unregistered: 0, registered: 0, total: 0 };
       const st = derive(p);
@@ -174,14 +188,14 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     Object.keys(map).forEach(k => rows.push({ type: k, ...map[k] } as any));
     rows.sort((a, b) => b.total - a.total);
     return rows;
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Years present (from PR dates) and per-type per-year totals
   const typeYearRows = useMemo(() => {
     const yearsSet = new Set<string>();
     const map: Record<string, { total: number; perYear: Record<string, number> }> = {};
 
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       // determine year (if any)
       let year: string | null = null;
       const pd = p.request?.pr_date || p.pr_date;
@@ -209,12 +223,12 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     const rows = Object.keys(map).map(t => ({ type: t, total: map[t].total, perYear: map[t].perYear }));
     rows.sort((a, b) => b.total - a.total);
     return { years, rows };
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Chart data for purchases overview (by year) with stacked CAPEX + OPEX amounts
   const chartData = useMemo(() => {
     const map: Record<string, { count: number; capex: number; opex: number; total: number }> = {};
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       const pd = p.request?.pr_date || p.pr_date;
       if (!pd) return;
       const d = new Date(pd);
@@ -234,7 +248,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     });
     const years = Object.keys(map).sort((a, b) => Number(a) - Number(b));
     return years.map(y => ({ year: y, ...map[y] }));
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Request Type totals per year (CAPEX/OPEX/SERVICES)
   const requestTypeYearRows = useMemo(() => {
@@ -242,7 +256,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
     const types = ['CAPEX', 'OPEX', 'SERVICES'];
     const map: Record<string, { total: number; perYear: Record<string, number> }> = {};
 
-    purchases.forEach(p => {
+    filteredPurchases.forEach(p => {
       let year: string | null = null;
       const pd = p.request?.pr_date || p.pr_date;
       if (pd) {
@@ -272,7 +286,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
       perYear: map[type]?.perYear || {}
     }));
     return { years, rows };
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   // Random color themes for cards (shuffled once per mount)
   const palettes = [
@@ -304,9 +318,9 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
       return out;
     };
 
-    const seed = purchases.reduce((s, p) => s + (Number((p as any).id) || 0), 0) + purchases.length;
+    const seed = filteredPurchases.reduce((s, p) => s + (Number((p as any).id) || 0), 0) + filteredPurchases.length;
     return seededShuffle(palettes, seed);
-  }, [purchases]);
+  }, [filteredPurchases]);
 
   const pick = (i: number) => shuffledPalettes[i % shuffledPalettes.length];
 
@@ -317,21 +331,122 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
   const totalByRequestTypes = useMemo(() => {
     return requestTypeYearRows.rows.reduce((sum, row) => sum + (Number((row as any).total) || 0), 0);
   }, [requestTypeYearRows]);
+  const requestTypeYearTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    requestTypeYearRows.rows.forEach(r => {
+      requestTypeYearRows.years.forEach(y => {
+        totals[y] = (totals[y] || 0) + (r.perYear?.[y] || 0);
+      });
+    });
+    return totals;
+  }, [requestTypeYearRows]);
+  const typeYearTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    typeYearRows.rows.forEach(r => {
+      typeYearRows.years.forEach(y => {
+        totals[y] = (totals[y] || 0) + (r.perYear?.[y] || 0);
+      });
+    });
+    return totals;
+  }, [typeYearRows]);
+  const statusByTypeTotals = useMemo(() => {
+    return statusByType.reduce(
+      (acc, row) => {
+        acc.undelivered += row.undelivered || 0;
+        acc.unregistered += row.unregistered || 0;
+        acc.registered += row.registered || 0;
+        return acc;
+      },
+      { undelivered: 0, unregistered: 0, registered: 0 }
+    );
+  }, [statusByType]);
+
+  // Cost center options derived from request.costcenter
+  const costcenterOptions = useMemo(() => {
+    const set = new Map<string, string>();
+    purchases.forEach(p => {
+      const cc = p.request?.costcenter || p.costcenter;
+      if (cc?.id) {
+        set.set(String(cc.id), cc.name || String(cc.id));
+      }
+    });
+    return Array.from(set.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [purchases]);
+
+  const costcenterLabel = useMemo(() => {
+    if (costcenterFilter === 'all') return 'All cost centers';
+    return costcenterOptions.find(o => o.value === costcenterFilter)?.label || 'All cost centers';
+  }, [costcenterFilter, costcenterOptions]);
+
+  const handleCostcenterChange = (value: string) => {
+    setCostcenterFilter(value);
+    if (onFilter) {
+      if (value === 'all') onFilter({ costcenter_id: undefined });
+      else onFilter({ costcenter_id: Number(value) || value });
+    }
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 px-1">
+      <div className="flex flex-wrap items-center gap-3 px-1 justify-between">
         <h2 className="text-lg font-semibold">Purchase Dashboard</h2>
-        {stats.total > 0 && (
-          <span className="text-sm text-muted-foreground">{stats.total} records • RM {fmtRM(stats.totalValue)}</span>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Cost Center</span>
+          <Popover open={costcenterComboboxOpen} onOpenChange={setCostcenterComboboxOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-52 justify-between">
+                <span className="truncate">{costcenterLabel}</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-64" align="end">
+              <Command>
+                <CommandInput placeholder="Search cost center..." />
+                <CommandEmpty>No cost center found.</CommandEmpty>
+                <CommandList>
+                  <CommandGroup>
+                    <CommandItem
+                      value="all"
+                      onSelect={() => {
+                        handleCostcenterChange('all');
+                        setCostcenterComboboxOpen(false);
+                      }}
+                    >
+                      All cost centers
+                    </CommandItem>
+                    {costcenterOptions.map(opt => (
+                      <CommandItem
+                        key={opt.value}
+                        value={opt.label}
+                        onSelect={() => {
+                          handleCostcenterChange(opt.value);
+                          setCostcenterComboboxOpen(false);
+                        }}
+                      >
+                        {opt.label}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Purchases summary (count + value) */}
-            <Card className={`${pick(0).border} md:col-span-2`}>
+            <Card className={`${pick(0).border} md:col-span-2 bg-stone-100`}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-(length:--text-size-base) font-medium">Purchases Overview</CardTitle>
+                <div>
+                  <CardTitle className="text-(length:--text-size-base) font-medium">Purchases Overview</CardTitle>
+                  {stats.total > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {stats.total} records • RM {fmtRM(stats.totalValue)}
+                    </p>
+                  )}
+                </div>
                 <ShoppingCart className={`h-4 w-4 ${pick(0).icon}`} />
               </CardHeader>
               <CardContent>
@@ -363,7 +478,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
             </Card>
 
             {/* Request by Item Types (table with per-year breakdown) */}
-            <Card className={`md:col-span-2 ${pick(1).border}`}>
+            <Card className={`md:col-span-2 ${pick(1).border} bg-stone-100`}>
               <CardHeader>
                 <CardTitle className="text-(length:--text-size-base) font-medium">
                   Request by Item Types
@@ -397,6 +512,13 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
                             <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
                           </tr>
                         ))}
+                        <tr className="border-t font-medium bg-muted/30">
+                          <td className="py-2 text-right pr-2">Total</td>
+                          {typeYearRows.years.map(y => (
+                            <td key={y} className="py-2 text-right">RM {fmtRM(typeYearTotals[y] || 0)}</td>
+                          ))}
+                          <td className="py-2 text-right">RM {fmtRM(totalByItemTypes)}</td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -407,7 +529,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
             {/* Completion Rate & Pending Items removed — covered in Process Status */}
 
             {/* Status Breakdown */}
-            <Card className={`md:col-span-2 ${pick(2).border}`}>
+            <Card className={`md:col-span-2 ${pick(2).border} bg-stone-100`}>
               <CardHeader>
                 <CardTitle className="text-(length:--text-size-base) font-medium">Process Status</CardTitle>
               </CardHeader>
@@ -479,6 +601,12 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
                               <td className="px-2 py-1 text-right">{row.registered}</td>
                             </tr>
                           ))}
+                          <tr className="border-t font-medium bg-muted/30">
+                            <td className="px-2 py-1 text-right">Total</td>
+                            <td className="px-2 py-1 text-right">{statusByTypeTotals.undelivered}</td>
+                            <td className="px-2 py-1 text-right">{statusByTypeTotals.unregistered}</td>
+                            <td className="px-2 py-1 text-right">{statusByTypeTotals.registered}</td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
@@ -488,7 +616,7 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
             </Card>
 
             {/* Request Type Breakdown */}
-            <Card className={`md:col-span-2 ${pick(3).border}`}>
+            <Card className={`md:col-span-2 ${pick(3).border} bg-stone-100`}>
               <CardHeader>
                 <CardTitle className="text-(length:--text-size-base) font-medium">
                   Request Types
@@ -498,32 +626,39 @@ const PurchaseDashboard: React.FC<{ purchases?: any[]; onFilter?: (f: any) => vo
               <CardContent>
                 {requestTypeYearRows.years.length > 0 ? (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-(length:--text-size-base) table-auto">
-                      <thead>
-                        <tr className="text-left bg-muted/50">
-                          <th className="pb-2">Request Type</th>
-                          {requestTypeYearRows.years.map(y => (
-                            <th key={y} className="pb-2 text-right">{y}</th>
-                          ))}
-                          <th className="pb-2 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {requestTypeYearRows.rows.map(r => (
-                          <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ request_type: r.type })}>
-                            <td className="py-2 text-gray-700">{r.type}</td>
+                      <table className="w-full text-(length:--text-size-base) table-auto">
+                        <thead>
+                          <tr className="text-left bg-muted/50">
+                            <th className="pb-2">Request Type</th>
                             {requestTypeYearRows.years.map(y => (
-                              <td key={y} className="py-2 text-right">{
-                                r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
-                              }</td>
+                              <th key={y} className="pb-2 text-right">{y}</th>
                             ))}
-                            <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
+                            <th className="pb-2 text-right">Total</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
+                        </thead>
+                        <tbody>
+                          {requestTypeYearRows.rows.map(r => (
+                            <tr key={r.type} className="border-t hover:cursor-pointer hover:bg-accent/20" onClick={() => onFilter?.({ request_type: r.type })}>
+                              <td className="py-2 text-gray-700">{r.type}</td>
+                              {requestTypeYearRows.years.map(y => (
+                                <td key={y} className="py-2 text-right">{
+                                  r.perYear && r.perYear[y] ? `RM ${fmtRM(r.perYear[y])}` : '-'
+                                }</td>
+                              ))}
+                              <td className="py-2 text-right font-medium">RM {fmtRM(r.total)}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t font-medium bg-muted/30">
+                            <td className="py-2 text-right pr-2">Total</td>
+                            {requestTypeYearRows.years.map(y => (
+                              <td key={y} className="py-2 text-right">RM {fmtRM(requestTypeYearTotals[y] || 0)}</td>
+                            ))}
+                            <td className="py-2 text-right">RM {fmtRM(totalByRequestTypes)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">

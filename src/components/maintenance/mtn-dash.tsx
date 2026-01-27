@@ -105,17 +105,23 @@ const MaintenanceDash = () => {
         { month: 'Jun', requests: 67, approved: 58 },
       ];
 
-      // Top workshops
-      const workshopCounts: { [key: string]: number } = {};
+      // Top workshops (cover multiple possible fields)
+      const workshopCounts: Record<string, number> = {};
       allData.forEach((item: any) => {
-        if (item.workshop?.name) {
-          workshopCounts[item.workshop.name] = (workshopCounts[item.workshop.name] || 0) + 1;
-        }
+        const name =
+          item?.workshop?.name ||
+          item?.workshop_name ||
+          item?.workshop?.title ||
+          item?.workshop ||
+          null;
+        const key = name && typeof name === 'string' ? name.trim() : 'Unknown';
+        workshopCounts[key] = (workshopCounts[key] || 0) + 1;
       });
       const topWorkshops = Object.entries(workshopCounts)
-        .map(([name, requests]) => ({ name, requests }))
+        .map(([name, requests]) => ({ name, requests: Number(requests) || 0 }))
+        .filter(w => w.requests > 0)
         .sort((a, b) => b.requests - a.requests)
-        .slice(0, 5);
+        .slice(0, 8);
 
       // Service type distribution
       const serviceTypeCounts: { [key: string]: number } = {};
@@ -168,7 +174,7 @@ const MaintenanceDash = () => {
   }, [timeRange]);
 
   const StatCard = ({ title, value, icon: Icon, color, description, trend }: any) => (
-    <Card>
+    <Card className="bg-stone-100">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">
           {title}
@@ -280,7 +286,7 @@ const MaintenanceDash = () => {
       {/* Charts Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly Trend */}
-        <Card>
+        <Card className="bg-stone-100">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
@@ -319,7 +325,7 @@ const MaintenanceDash = () => {
         </Card>
 
         {/* Status Distribution */}
-        <Card>
+        <Card className="bg-stone-100">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart className="h-5 w-5" />
@@ -353,7 +359,7 @@ const MaintenanceDash = () => {
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Workshops */}
-        <Card>
+        <Card className="bg-stone-100">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5" />
@@ -361,11 +367,20 @@ const MaintenanceDash = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.topWorkshops} layout="horizontal">
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart
+                data={stats.topWorkshops}
+                margin={{ top: 10, right: 10, left: 0, bottom: 60 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" width={100} />
+                <XAxis
+                  dataKey="name"
+                  angle={-45}
+                  textAnchor="end"
+                  interval={0}
+                  height={80}
+                />
+                <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Bar dataKey="requests" fill="#3b82f6" />
               </BarChart>
@@ -374,7 +389,7 @@ const MaintenanceDash = () => {
         </Card>
 
         {/* Service Type Distribution */}
-        <Card>
+        <Card className="bg-stone-100">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wrench className="h-5 w-5" />
@@ -396,7 +411,7 @@ const MaintenanceDash = () => {
       </div>
 
       {/* Cost Center Activity */}
-      <Card>
+      <Card className="bg-stone-100">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />

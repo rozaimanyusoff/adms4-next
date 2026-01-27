@@ -216,7 +216,7 @@ const DashEmp: React.FC = () => {
 
         return (
             <div className="flex w-full gap-4">
-                <div className="w-1/2 max-h-[220px] overflow-auto pr-2">
+                <div className="w-1/2 max-h-55 overflow-auto pr-2 hover-scroll">
                     <ul className="space-y-1 text-xs">
                         {data.map(d => (
                             <li key={d.name}>
@@ -262,25 +262,46 @@ const DashEmp: React.FC = () => {
 
     return (
         <div className="mt-4 space-y-6">
+            <style jsx>{`
+                :global(.hover-scroll) {
+                    scrollbar-width: thin;
+                    scrollbar-color: #94a3b8 transparent;
+                }
+                :global(.hover-scroll::-webkit-scrollbar) {
+                    width: 8px;
+                    opacity: 0;
+                    transition: opacity 0.2s ease;
+                }
+                :global(.hover-scroll:hover::-webkit-scrollbar) {
+                    opacity: 1;
+                }
+                :global(.hover-scroll::-webkit-scrollbar-thumb) {
+                    background: #94a3b8;
+                    border-radius: 999px;
+                }
+                :global(.hover-scroll::-webkit-scrollbar-track) {
+                    background: transparent;
+                }
+            `}</style>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
+                <Card className="bg-stone-100">
                     <CardHeader><CardTitle>Total Employees</CardTitle></CardHeader>
                     <CardContent><div className="text-3xl font-bold">{total}</div></CardContent>
                 </Card>
-                <Card>
+                <Card className="bg-stone-100">
                     <CardHeader><CardTitle>Active</CardTitle></CardHeader>
                     <CardContent><div className="text-3xl font-bold text-green-600">{active}</div></CardContent>
                 </Card>
-                <Card>
+                <Card className="bg-stone-100">
                     <CardHeader><CardTitle>Resigned</CardTitle></CardHeader>
                     <CardContent><div className="text-3xl font-bold text-red-500">{resigned}</div></CardContent>
                 </Card>
             </div>
             {/* Combo Chart: Hired vs Resigned by Year */}
-            <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+            <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                 <h3 className="text-lg font-semibold mb-4">Hired vs Resigned by Year</h3>
                 <div className="relative">
-                    <ChartContainer config={comboConfig} className="max-h-[260px] w-full">
+                    <ChartContainer config={comboConfig} className="max-h-65 w-full">
                         <ComposedChart data={comboData} height={260}>
                             <CartesianGrid vertical={false} horizontal={false} />
                             <XAxis dataKey="year" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(v) => String(v)} stroke={axisColor} />
@@ -353,31 +374,31 @@ const DashEmp: React.FC = () => {
 
             {/* Donut Charts: Org breakdowns */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-6">
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">By Cost Center</h3>
                     <DonutWithLegend data={donutCostCenter} />
                 </div>
 
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">By Department</h3>
                     <DonutWithLegend data={donutDepartment} />
                 </div>
 
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">By Position</h3>
                     <DonutWithLegend data={donutPosition} />
                 </div>
 
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">By Location</h3>
                     <DonutWithLegend data={donutLocation} />
                 </div>
 
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">Service Length (Active)</h3>
                     <DonutWithLegend data={donutService} />
                 </div>
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-4">
+                <div className="bg-stone-100 dark:bg-gray-900 rounded-lg shadow p-4">
                     <h3 className="text-lg font-semibold mb-4 text-center">By Gender</h3>
                     <DonutWithLegend
                         data={donutGender}

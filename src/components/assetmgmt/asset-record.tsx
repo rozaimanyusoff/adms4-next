@@ -379,9 +379,9 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         }
     };
 
-    // Summary stats by classification for specific types (excluding personal)
+    // Summary stats by classification for specific types (respecting toggles)
     const getCountsByClassification = (typeName: string) => {
-        const typeData = transformedData.filter(a => (a as any).asset_type === typeName);
+        const typeData = filteredData.filter(a => (a as any).asset_type === typeName);
         return {
             asset: typeData.filter(a => a.classification === 'asset').length,
             rental: typeData.filter(a => a.classification === 'rental').length,
@@ -392,12 +392,12 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
 
     // Get unique types from data (excluding personal)
     const availableTypes = Array.from(new Set(
-        transformedData
+        filteredData
             .map(a => a.asset_type)
             .filter(typeName => typeName && String(typeName).toLowerCase() !== 'personal')
     )).sort();
 
-    const heading = title || (selectedTypeName ? `${selectedTypeName} Assets` : "Assets");
+    const heading = title || (selectedTypeName ? `${selectedTypeName} Assets` : "Assets Master Record");
 
     const handleRowDoubleClick = (row: any) => {
         window.open(`/assetdata/assets/${row.id}`, '_blank');
@@ -416,8 +416,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
                         return (
                             <Card
                                 key={typeName}
-                                className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-50' : ''
-                                    }`}
+                                className={`cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-blue-500 bg-blue-50' : 'bg-stone-100'}`}
                                 onClick={() => handleTypeCardClick(typeName)}
                             >
                                 <CardHeader>

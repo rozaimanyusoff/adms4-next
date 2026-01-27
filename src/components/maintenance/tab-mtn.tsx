@@ -35,7 +35,7 @@ const TabMaintenance = () => {
         },
         { value: 'workshop', label: 'Workshop', icon: Wrench, content: <Workshop /> },
         { value: 'insurance', label: 'Insurance', icon: Wrench, content: <InsuranceModule /> },
-        { value: 'workflows', label: 'Authorization Workflows', icon: Activity, content: <Workflows /> },
+        //{ value: 'workflows', label: 'Authorization Workflows', icon: Activity, content: <Workflows /> },
     ];
 
     const tabValues = tabs.map(t => t.value);

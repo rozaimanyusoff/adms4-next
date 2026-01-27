@@ -8,6 +8,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { AuthContext } from '@/store/AuthContext';
 import { can } from '@/utils/permissions';
 import MaintenanceRequestExcelButton from './excel-maintenancerequest-report';
@@ -486,107 +487,104 @@ const VehicleMaintenanceAdmin = () => {
 
       {/* Status Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-6">
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'total' ? 'ring-2 ring-gray-500 bg-gray-50 dark:bg-gray-700' : ''
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'total' ? 'ring-2 ring-gray-500' : ''
           }`}
           onClick={() => handleCardClick('total')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">Total</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total</p>
               <p className="text-2xl font-bold">{getStatusCount('total')}</p>
             </div>
-            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+            <div className="w-8 h-8 bg-gray-200 flex items-center justify-center rounded-md">
               <Search className="w-4 h-4 text-gray-600" />
             </div>
-          </div>
-        </div>
-        
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'pendingVerification' ? 'ring-2 ring-yellow-500 bg-yellow-50 dark:bg-yellow-900/20' : ''
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'pendingVerification' ? 'ring-2 ring-yellow-500' : ''
           }`}
           onClick={() => handleCardClick('pendingVerification')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-yellow-700">Pending Verification</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-yellow-600">Pending Verification</p>
-              <p className="text-2xl font-bold text-yellow-700">{getStatusCount('pendingVerification')}</p>
+              <p className="text-2xl font-bold text-yellow-800">{getStatusCount('pendingVerification')}</p>
             </div>
-            <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'pendingRecommendation' ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'pendingRecommendation' ? 'ring-2 ring-blue-500' : ''
           }`}
           onClick={() => handleCardClick('pendingRecommendation')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-blue-700">Pending Recommendation</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-600">Pending Recommendation</p>
               <p className="text-2xl font-bold text-blue-700">{getStatusCount('pendingRecommendation')}</p>
             </div>
-            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'pendingApproval' ? 'ring-2 ring-purple-500 bg-purple-50 dark:bg-purple-900/20' : ''
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'pendingApproval' ? 'ring-2 ring-purple-500' : ''
           }`}
           onClick={() => handleCardClick('pendingApproval')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-700">Pending Approval</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-purple-600">Pending Approval</p>
               <p className="text-2xl font-bold text-purple-700">{getStatusCount('pendingApproval')}</p>
             </div>
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'rejected' ? 'ring-2 ring-rose-500 bg-rose-50 dark:bg-rose-900/20' : ''
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'rejected' ? 'ring-2 ring-rose-500' : ''
           }`}
           onClick={() => handleCardClick('rejected')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-rose-700">Rejected</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-rose-600">Rejected</p>
               <p className="text-2xl font-bold text-rose-700">{getStatusCount('rejected')}</p>
             </div>
-            <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-rose-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div 
-          className={`bg-white dark:bg-gray-800 p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all ${
-            activeCard === 'cancelled' ? 'ring-2 ring-red-500 bg-red-50 dark:bg-red-900/20' : ''
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+            activeCard === 'cancelled' ? 'ring-2 ring-red-500' : ''
           }`}
           onClick={() => handleCardClick('cancelled')}
         >
-          <div className="flex items-center justify-between">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-red-700">Cancelled</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-red-600">Cancelled</p>
               <p className="text-2xl font-bold text-red-700">{getStatusCount('cancelled')}</p>
             </div>
-            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Data grid within scrollable card to avoid page overspan */}

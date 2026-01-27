@@ -1,12 +1,13 @@
 'use client';
 import React, { useContext, useEffect } from 'react';
 import { AuthContext, AuthProvider } from '@/store/AuthContext';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
 const AuthLayout = ({ children }: { children: React.ReactNode }) => {
     const router = useRouter();
     const authContext = useContext(AuthContext);
     const pathname = usePathname();
+    const searchParams = useSearchParams();
 
     useEffect(() => {
         // Define paths that don't require authentication
@@ -33,9 +34,12 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
         if (!authContext?.authData && !isPublicPath) {
             // Store the intended path in sessionStorage before redirecting
             if (typeof window !== 'undefined') {
-                sessionStorage.setItem('redirectAfterLogin', pathname ?? '');
+                const target = `${pathname ?? ''}${searchParams?.toString() ? `?${searchParams.toString()}` : ''}`;
+                sessionStorage.setItem('redirectAfterLogin', target);
+                try { localStorage.setItem('postLoginRedirect', target); } catch { /* ignore */ }
             }
-            router.push('/auth/login');
+            const targetEncoded = encodeURIComponent(`${pathname ?? ''}${searchParams?.toString() ? `?${searchParams.toString()}` : ''}`);
+            router.push(`/auth/login?redirect=${targetEncoded}`);
         }
 
         // If authenticated and trying to access auth pages, redirect to dashboard

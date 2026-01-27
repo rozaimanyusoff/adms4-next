@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 // import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 // Removed Excel importer – creating records directly in-app
 
@@ -1243,6 +1244,60 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   return (
     <div className="space-y-6">
 
+      {/* Status summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => handleSummaryClick('undelivered')}
+          className={`cursor-pointer transition ${statusFilter === 'undelivered' ? 'ring-2 ring-red-500' : ''} bg-stone-100`}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription>Undelivered</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              <CardTitle className="text-2xl font-semibold">{statusSummary.undelivered}</CardTitle>
+              <span className="text-sm text-muted-foreground">{statusSummary.pctUndelivered}%</span>
+            </div>
+            <p className="text-xs text-red-700 dark:text-red-300">No delivery record or missing delivery file</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => handleSummaryClick('unregistered')}
+          className={`cursor-pointer transition ${statusFilter === 'unregistered' ? 'ring-2 ring-amber-500' : ''} bg-stone-100`}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription>Unregistered</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              <CardTitle className="text-2xl font-semibold">{statusSummary.unregistered}</CardTitle>
+              <span className="text-sm text-muted-foreground">{statusSummary.pctUnregistered}%</span>
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300">Delivered but asset registry not completed</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => handleSummaryClick('registered')}
+          className={`cursor-pointer transition ${statusFilter === 'registered' ? 'ring-2 ring-emerald-500' : ''} bg-stone-100`}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription>Handed Over</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              <CardTitle className="text-2xl font-semibold">{statusSummary.registered}</CardTitle>
+              <span className="text-sm text-muted-foreground">{statusSummary.pctRegistered}%</span>
+            </div>
+            <p className="text-xs text-emerald-800 dark:text-emerald-300">Delivery complete and asset registry updated</p>
+          </CardContent>
+        </Card>
+      </div>
       {/* Header with Search and Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
@@ -1296,45 +1351,6 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         </div>
       </div>
 
-      {/* Status summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <button
-          type="button"
-          onClick={() => handleSummaryClick('undelivered')}
-          className={`rounded-lg border bg-red-200/50 dark:bg-slate-900 p-4 text-left ${statusFilter === 'undelivered' ? 'ring-2 ring-red-500' : ''}`}
-        >
-          <div className="text-sm text-muted-foreground">Undelivered</div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-semibold">{statusSummary.undelivered}</span>
-            <span className="text-sm text-muted-foreground">{statusSummary.pctUndelivered}%</span>
-          </div>
-          <div className="text-xs text-red-700 dark:text-red-300 mt-1">No delivery record or missing delivery file</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSummaryClick('unregistered')}
-          className={`rounded-lg border bg-amber-200/50 dark:bg-slate-900 p-4 text-left ${statusFilter === 'unregistered' ? 'ring-2 ring-amber-500' : ''}`}
-        >
-          <div className="text-sm text-muted-foreground">Unregistered</div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-semibold">{statusSummary.unregistered}</span>
-            <span className="text-sm text-muted-foreground">{statusSummary.pctUnregistered}%</span>
-          </div>
-          <div className="text-xs text-amber-800 dark:text-amber-300 mt-1">Delivered but asset registry not completed</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSummaryClick('registered')}
-          className={`rounded-lg border bg-emerald-100 dark:bg-slate-900 p-4 text-left ${statusFilter === 'registered' ? 'ring-2 ring-emerald-500' : ''}`}
-        >
-          <div className="text-sm text-muted-foreground">Handed Over</div>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-semibold">{statusSummary.registered}</span>
-            <span className="text-sm text-muted-foreground">{statusSummary.pctRegistered}%</span>
-          </div>
-          <div className="text-xs text-emerald-800 dark:text-emerald-300 mt-1">Delivery complete and asset registry updated</div>
-        </button>
-      </div>
 
       {/* Content Area */}
       <div className="space-y-4">

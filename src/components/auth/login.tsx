@@ -3,7 +3,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import React, { useState, useContext, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
 import { Checkbox } from "@components/ui/checkbox";
@@ -71,6 +71,7 @@ type AccountResponse = {
 
 const ComponentLogin = () => {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [showPassword, setShowPassword] = useState(false);
     const [responseMessage, setResponseMessage] = useState<string | null>(null);
     const [rememberMe, setRememberMe] = useState(false);
@@ -350,8 +351,20 @@ const ComponentLogin = () => {
                     console.error('AuthContext is not properly initialized.');
                 }
 
-                // Safely access lastNav or fallback to /analytics
-                const redirectPath = response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/users/profile';
+                const qsRedirect = searchParams?.get('redirect');
+                const storedRedirect = (() => {
+                    try { return localStorage.getItem('postLoginRedirect'); } catch { return null; }
+                })();
+                const candidate = qsRedirect || storedRedirect;
+                const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                const isSafe = (p: string | null) => !!p && (p.startsWith('/') || (origin && p.startsWith(origin)));
+                const normalizedCandidate = candidate && origin && candidate.startsWith(origin)
+                    ? candidate.replace(origin, '')
+                    : candidate;
+                const redirectPath = isSafe(candidate)
+                    ? (normalizedCandidate || '/users/profile')
+                    : (response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/users/profile');
+                try { localStorage.removeItem('postLoginRedirect'); } catch { /* ignore */ }
                 router.push(redirectPath);
                 setRateLimit({ blocked: false, blockedUntilMs: null });
                 setCountdownMs(0);

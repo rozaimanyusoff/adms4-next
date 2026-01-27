@@ -8,6 +8,8 @@ import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +77,7 @@ const FleetCardList: React.FC = () => {
     const [replacementMode, setReplacementMode] = useState<'new' | 'replacement'>('new');
     const [replacementOptions, setReplacementOptions] = useState<FleetCard[]>([]);
     const [replacementSelection, setReplacementSelection] = useState<string>('');
+    const [replacementComboboxOpen, setReplacementComboboxOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [showAssetReplaceConfirm, setShowAssetReplaceConfirm] = useState<{
         assetId: number | null;
@@ -181,6 +184,36 @@ const FleetCardList: React.FC = () => {
     }, [cards]);
 
     const duplicatedCount = duplicatedAssetIds.size;
+
+    const cardNumberSharedCount = React.useMemo(() => {
+        const map = new Map<string, Set<number>>();
+        cards.forEach(card => {
+            if (!card.card_no) return;
+            const set = map.get(card.card_no) || new Set<number>();
+            if (card.asset?.id) set.add(card.asset.id);
+            map.set(card.card_no, set);
+        });
+        let reused = 0;
+        map.forEach(set => {
+            if (set.size > 1) reused++;
+        });
+        return reused;
+    }, [cards]);
+
+    const cardNumberSharedAssetTotal = React.useMemo(() => {
+        const map = new Map<string, Set<number>>();
+        cards.forEach(card => {
+            if (!card.card_no || !card.asset?.id) return;
+            const set = map.get(card.card_no) || new Set<number>();
+            set.add(card.asset.id);
+            map.set(card.card_no, set);
+        });
+        let assetCount = 0;
+        map.forEach(set => {
+            if (set.size > 1) assetCount += set.size;
+        });
+        return assetCount;
+    }, [cards]);
 
     const statusStats = React.useMemo(() => {
         const today = new Date();
@@ -542,12 +575,19 @@ const FleetCardList: React.FC = () => {
                 <AlertDialogContent className="max-w-3xl bg-amber-50 border border-amber-300 shadow-2xl">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-xl font-bold text-amber-900">Action needed on fleet cards</AlertDialogTitle>
-                        <AlertDialogDescription className="text-amber-900 space-y-2 text-lg">
-                            <div>
-                                Assets with duplicate cards: <span className="font-semibold text-red-600">{duplicatedCount}</span>.
-                                Total cards: <span className="font-semibold text-amber-800">{cards.length}</span> vs unique assets: <span className="font-semibold text-amber-800">{new Set(cards.map(c => c.asset?.id).filter(Boolean)).size}</span>.
-                            </div>
-                            <div>Please resolve by updating card status or reassigning duplicates.</div>
+                        <AlertDialogDescription className="text-amber-900 space-y-2 text-sm">
+                            <ul className="list-disc pl-5 space-y-1">
+                                <li>
+                                    Jumlah kenderaan yang didaftarkan dengan lebih dari satu kad: <span className="font-semibold text-red-600">{duplicatedCount}</span>.
+                                </li>
+                                <li>
+                                    Jumlah kad aktif: <span className="font-semibold text-red-500">{cards.length}</span> melebihi jumlah kenderaan: <span className="font-semibold text-blue-500">{new Set(cards.map(c => c.asset?.id).filter(Boolean)).size}</span>.
+                                </li>
+                                <li>
+                                    Jumlah kenderaan yang berkongsi nombor kad yang sama: <span className="font-semibold text-red-500">{cardNumberSharedAssetTotal}</span>.
+                                </li>
+                            </ul>
+                            <div className="text-red-500 font-semibold">Please resolve by updating card status or reassigning duplicates!!!</div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -604,12 +644,15 @@ const FleetCardList: React.FC = () => {
                     </CardContent>
                 </Card>
                 <Card className="bg-stone-100 shadow-sm">
-                    <CardHeader className="pb-1">
-                        <CardDescription>Expiring (&lt; 3 months)</CardDescription>
-                        <CardTitle className="text-2xl text-amber-600">{statusStats.expiringSoon}</CardTitle>
+                    <CardHeader className="pb-2">
+                        <CardDescription>Card number reuse</CardDescription>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        <p className="text-xs text-muted-foreground">Renew soon to avoid downtime.</p>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-semibold text-amber-700">{cardNumberSharedCount}</span>
+                            <span className="text-xs text-muted-foreground">card numbers reused by multiple assets</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">Investigate reused numbers to avoid billing mix-ups.</p>
                     </CardContent>
                 </Card>
                 <TooltipProvider>
@@ -626,10 +669,12 @@ const FleetCardList: React.FC = () => {
                             >
                                 <CardHeader className="pb-1">
                                     <CardDescription>Assets with duplicate cards</CardDescription>
-                                    <CardTitle className="text-2xl text-red-500">{duplicatedCount}</CardTitle>
                                 </CardHeader>
                                 <CardContent className="pt-0">
-                                    <div className="text-xs text-muted-foreground">Click to filter rows</div>
+                                    <div className="flex flex-col mb-2">
+                                        <span className="text-2xl font-semibold text-red-500">{duplicatedCount}</span>
+                                        <span className="text-xs text-muted-foreground">Click to filter rows</span>
+                                    </div>
                                 </CardContent>
                             </Card>
                         </TooltipTrigger>
@@ -646,12 +691,21 @@ const FleetCardList: React.FC = () => {
                     role="button"
                     aria-pressed={filterActiveWithoutAsset}
                 >
-                    <CardHeader className="pb-1">
+                    <CardHeader>
                         <CardDescription>Active cards without asset</CardDescription>
-                        <CardTitle className="text-2xl text-blue-600">{activeWithoutAsset}</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                        <div className="text-xs text-muted-foreground">Click to filter the grid to these cards.</div>
+                        <div className="space-y-2">
+                            <div className="flex items-baseline justify-between px-3">
+                                <span className="text-xs text-muted-foreground">Active cards without asset</span>
+                                <span className="text-2xl font-semibold text-blue-600">{activeWithoutAsset}</span>
+                            </div>
+                            <div className="flex items-baseline justify-between px-3">
+                                <span className="text-xs text-muted-foreground">Expiring (&lt; 3 months)</span>
+                                <span className="text-2xl font-semibold text-amber-600">{statusStats.expiringSoon}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">Click to filter the grid to these cards.</div>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -747,46 +801,74 @@ const FleetCardList: React.FC = () => {
                                         </RadioGroup>
                                     </div>
                                     {replacementMode === 'replacement' && (
-                                        <div>
-                                            <label className="block text-sm font-medium mb-1">Replacement Fleet</label>
-                                            <Select
-                                                value={replacementSelection}
-                                                onValueChange={v => {
-                                                    setReplacementSelection(v);
-                                                    const selected = replacementOptions.find(opt => String(opt.id) === v);
-                                                    if (selected?.asset?.id) {
-                                                        setForm(f => ({
-                                                            ...f,
-                                                            asset_id: String(selected.asset!.id),
-                                                            replacement_card_id: Number(v),
-                                                            purpose: selected.asset?.purpose?.toLowerCase() || f.purpose,
-                                                            costcenter_id: selected.asset?.costcenter?.id ? String(selected.asset.costcenter.id) : f.costcenter_id,
-                                                        }));
-                                                    }
-                                                    setErrors(prev => ({ ...prev, asset_id: undefined }));
-                                                }}
-                                            >
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="Select active fleet" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {replacementOptions.map(opt => (
-                                                        <SelectItem key={opt.id} value={String(opt.id)}>
-                                                            <div className="flex flex-col">
-                                                                <span className="font-medium">{opt.card_no}</span>
-                                                                <span className="text-xs text-muted-foreground">
-                                                                    {opt.asset?.register_number || '-'} • {opt.asset?.costcenter?.name || '-'}
-                                                                </span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                            <p className="text-xs text-amber-700 mt-1">Selecting a fleet will assign its asset to this card.</p>
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Replacement Fleet</label>
+                                        <Popover open={replacementComboboxOpen} onOpenChange={setReplacementComboboxOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="w-full justify-between"
+                                                >
+                                                    {replacementSelection
+                                                        ? (() => {
+                                                            const selected = replacementOptions.find(opt => String(opt.id) === replacementSelection);
+                                                            return selected ? (
+                                                                <div className="flex flex-col items-start">
+                                                                    <span className="font-medium">{selected.card_no}</span>
+                                                                    <span className="text-xs text-muted-foreground">
+                                                                        {selected.asset?.register_number || '-'} • {selected.asset?.costcenter?.name || '-'} • {(selected.asset?.purpose || '-').toLowerCase()}
+                                                                    </span>
+                                                                </div>
+                                                            ) : 'Select active fleet';
+                                                        })()
+                                                        : 'Select active fleet'}
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="p-0 w-[320px]" align="start">
+                                                <Command>
+                                                    <CommandInput placeholder="Search card, register no, cost center, purpose" />
+                                                    <CommandEmpty>No active fleet matches.</CommandEmpty>
+                                                    <CommandList>
+                                                        <CommandGroup>
+                                                            {replacementOptions.map(opt => (
+                                                                <CommandItem
+                                                                    key={opt.id}
+                                                                    value={`${opt.card_no} ${opt.asset?.register_number || ''} ${opt.asset?.costcenter?.name || ''} ${opt.asset?.purpose || ''}`}
+                                                                    onSelect={() => {
+                                                                        const v = String(opt.id);
+                                                                        setReplacementSelection(v);
+                                                                        if (opt.asset?.id) {
+                                                                            setForm(f => ({
+                                                                                ...f,
+                                                                                asset_id: String(opt.asset!.id),
+                                                                                replacement_card_id: Number(v),
+                                                                                purpose: opt.asset?.purpose?.toLowerCase() || f.purpose,
+                                                                                costcenter_id: opt.asset?.costcenter?.id ? String(opt.asset.costcenter.id) : f.costcenter_id,
+                                                                            }));
+                                                                        }
+                                                                        setErrors(prev => ({ ...prev, asset_id: undefined }));
+                                                                        setReplacementComboboxOpen(false);
+                                                                    }}
+                                                                >
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-medium">{opt.card_no}</span>
+                                                                        <span className="text-xs text-muted-foreground">
+                                                                            {opt.asset?.register_number || '-'} • {opt.asset?.costcenter?.name || '-'} • {(opt.asset?.purpose || '-').toLowerCase()}
+                                                                        </span>
+                                                                    </div>
+                                                                </CommandItem>
+                                                            ))}
+                                                        </CommandGroup>
+                                                    </CommandList>
+                                                </Command>
+                                            </PopoverContent>
+                                        </Popover>
+                                        <p className="text-xs text-amber-700 mt-1">Selecting a fleet will assign its asset to this card.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
                             <div>
                                 <label className="block text-sm font-medium mb-1">PIN</label>
                                 <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />

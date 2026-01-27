@@ -42,7 +42,14 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
     useEffect(() => {
         const userId = authContext?.authData?.user?.id;
         if (!userId) {
-            router.push('/auth/login');
+            const target = typeof window !== 'undefined'
+                ? `${window.location.pathname}${window.location.search}`
+                : pathname || '/';
+            try {
+                localStorage.setItem('postLoginRedirect', target);
+            } catch { /* ignore */ }
+            const redirectParam = encodeURIComponent(target);
+            router.push(`/auth/login?redirect=${redirectParam}`);
             return;
         }
         authenticatedApi.put('/api/admin/nav/track-route', { path: pathname, userId })
