@@ -826,15 +826,21 @@ const FleetCardList: React.FC = () => {
                                                 </Button>
                                             </PopoverTrigger>
                                             <PopoverContent className="p-0 w-[320px]" align="start">
-                                                <Command>
-                                                    <CommandInput placeholder="Search card, register no, cost center, purpose" />
+                                                <Command
+                                                    filter={(value, search) =>
+                                                        value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
+                                                    }
+                                                >
+                                                    <CommandInput
+                                                        placeholder="Search card number"
+                                                    />
                                                     <CommandEmpty>No active fleet matches.</CommandEmpty>
                                                     <CommandList>
                                                         <CommandGroup>
                                                             {replacementOptions.map(opt => (
                                                                 <CommandItem
                                                                     key={opt.id}
-                                                                    value={`${opt.card_no} ${opt.asset?.register_number || ''} ${opt.asset?.costcenter?.name || ''} ${opt.asset?.purpose || ''}`}
+                                                                    value={opt.card_no}
                                                                     onSelect={() => {
                                                                         const v = String(opt.id);
                                                                         setReplacementSelection(v);
