@@ -102,21 +102,47 @@ export default function AssetTranserRecords() {
     const [resendLoading, setResendLoading] = useState<Record<string, boolean>>({});
     const [resendAcceptanceLoading, setResendAcceptanceLoading] = useState<Record<string, boolean>>({});
     const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved' | 'completed'>('all');
+    const [isAssetManager, setIsAssetManager] = useState(false);
     const auth = useContext(AuthContext);
     const username = auth?.authData?.user?.username;
     const fullName = auth?.authData?.user?.name || username || '-';
 
+    // Discover whether current user is listed as an asset manager; managers can view all transfers
+    useEffect(() => {
+        if (!username) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const res: any = await authenticatedApi.get('/api/assets/managers');
+                const list: any[] = res?.data?.data || res?.data || [];
+                const match = list.find((m: any) => {
+                    const ramco = m?.ramco_id || m?.employee?.ramco_id;
+                    const activeFlag = String(m?.is_active ?? '').toLowerCase();
+                    const isActive = activeFlag === '1' || activeFlag === 'true' || m?.is_active === 1 || m?.is_active === true;
+                    return isActive && ramco && String(ramco) === String(username);
+                });
+                if (!cancelled) setIsAssetManager(Boolean(match));
+            } catch {
+                if (!cancelled) setIsAssetManager(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [username]);
+
     const refreshTransfers = React.useCallback(() => {
         if (!username) return;
         setLoading(true);
+        const url = isAssetManager
+            ? `/api/assets/transfers`
+            : `/api/assets/transfers?ramco=${encodeURIComponent(username)}`;
         authenticatedApi
-            .get(`/api/assets/transfers?ramco=${encodeURIComponent(username)}`)
+            .get(url)
             .then((res: any) => {
                 setData(res?.data?.data || []);
             })
             .catch(() => { /* ignore */ })
             .then(() => setLoading(false));
-    }, [username]);
+    }, [username, isAssetManager]);
 
     useEffect(() => {
         refreshTransfers();
@@ -133,8 +159,8 @@ export default function AssetTranserRecords() {
                 const transfers = res?.data?.data || [];
                 const flattened = Array.isArray(transfers)
                     ? transfers.flatMap((t: any) => {
-                        const items = Array.isArray(t?.items) ? t.items : [];
-                        return items.map((item: any) => ({
+                        const details = Array.isArray(t?.details) ? t.details : Array.isArray(t?.items) ? t.items : [];
+                        return details.map((item: any) => ({
                             ...item,
                             transfer_id: t?.id,
                             transfer_by: t?.transfer_by,
@@ -190,10 +216,11 @@ export default function AssetTranserRecords() {
 
     // Precompute filtered datasets so hooks order remains stable
     const transferToRows = React.useMemo(() => {
+        // Asset managers see all transfers; others only those they initiated
+        if (isAssetManager) return data || [];
         const me = String(username || '');
-        // Rows I initiated (make asset transfer to new owner)
         return (data || []).filter((row: any) => String(row?.transfer_by?.ramco_id || '') === me);
-    }, [data, username]);
+    }, [data, username, isAssetManager]);
 
     const transferByRows = React.useMemo(() => {
         // Backend already filters by new_owner=me; show all returned items
@@ -258,13 +285,19 @@ export default function AssetTranserRecords() {
         return <Badge variant="secondary" className="truncate bg-amber-500 hover:bg-amber-600 text-white">Pending Approval</Badge>;
     };
 
+    const getTransferDetails = (row: any) => {
+        if (Array.isArray(row?.details)) return row.details;
+        if (Array.isArray(row?.items)) return row.items;
+        return [];
+    };
+
     function computeTransferStatus(row: any) {
         const approvalStatus = String(row?.approval_status || '').toLowerCase();
         const approvedDate = row?.approved_date ? new Date(row.approved_date) : null;
-        const items = Array.isArray(row?.items) ? row.items : [];
-        const allItemsAccepted = items.length > 0 && items.every((item: any) => item?.acceptance_by && item?.acceptance_date);
+        const details = getTransferDetails(row);
+        const allItemsAccepted = details.length > 0 && details.every((item: any) => item?.acceptance_by && item?.acceptance_date);
         const latestAcceptanceDate = (() => {
-            const dates = items
+            const dates = details
                 .map((item: any) => (item?.acceptance_date ? new Date(item.acceptance_date) : null))
                 .filter((d: Date | null) => d && !isNaN(d.getTime()));
             if (!dates.length) return null;
@@ -319,7 +352,7 @@ export default function AssetTranserRecords() {
     const columnsTransferTo: ColumnDef<any>[] = [
         { key: "id", header: "Transfer ID" },
         { key: "new_owner", header: "New Owner", filter: 'input', render: renderNewOwners },
-        { key: "total_items", header: "Items", render: row => row.total_items ?? 0 },
+        { key: "total_items", header: "Items", render: row => row.total_items ?? (Array.isArray(row.details) ? row.details.length : Array.isArray(row.items) ? row.items.length : 0) },
         { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
         { key: "approval_status", header: "Transfer Status", render: renderTransferStatus },
         {
@@ -381,13 +414,24 @@ export default function AssetTranserRecords() {
         fetchReceiveItem(transferIdValue, paramItem);
     }, [searchParams, transferByRows, fetchReceiveItem]);
 
+    const renderIdentifier = (row: any) => {
+        const tt = String(row?.transfer_type || '').toLowerCase();
+        const ti = row?.transfer_item || {};
+        if (tt === 'employee') {
+            return ti.full_name || ti.ramco_id || row.ramco_id || row.employee?.ramco_id || "-";
+        }
+        // asset transfer: prefer register number, then id
+        return ti.register_number || ti.id || row.asset?.register_number || row.asset?.id || row.register_number || "-";
+    };
+
     const columnsTransferByItems: ColumnDef<any>[] = [
         { key: "transfer_id", header: "Transfer ID" },
         { key: "id", header: "Items", render: row => itemOrdinalLookup[String(row.id)] || row.id },
         { key: "transfer_by", header: "Transfer By", colClass: "truncate", filter: 'input', render: row => row.transfer_by?.full_name || row.transfer_by?.name || row.transfer_by?.ramco_id || "-" },
         { key: "transfer_date", header: "Application Date", render: renderApplicationDate },
-        { key: "type", header: "Type", filter: 'singleSelect', render: row => row.asset?.type?.name || row.type?.name || "-" },
-        { key: "asset", header: "Register Number", render: row => row.asset?.register_number || row.asset?.id || "-" },
+        { key: "transfer_type", header: "Transfer Type", filter: 'singleSelect', render: row => row.transfer_type || "-" },
+        { key: "asset", header: "Transfer Item", render: renderIdentifier },
+        { key: "item_type", header: "Item Type", filter: 'singleSelect', render: row => row?.transfer_item?.type?.name || "-" },
         { key: "current_owner", header: "Current Owner", render: row => row.current_owner?.full_name || row.current_owner?.name || row.current_owner?.ramco_id || "-" },
         { key: "effective_date", header: "Effective Date", render: row => row.effective_date ? new Date(row.effective_date).toLocaleDateString() : "-" },
         { key: "status", header: "Status", render: renderAcceptanceStatus },

@@ -198,6 +198,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	// Track which items' accordions are expanded so we can apply the approval-level visual style
 	const [expandedItems, setExpandedItems] = React.useState<Record<number, boolean>>({});
 	const [pendingAssetLocks, setPendingAssetLocks] = React.useState<Record<number, boolean>>({});
+	const [pendingEmployeeLocks, setPendingEmployeeLocks] = React.useState<Record<string, boolean>>({});
 	const [pendingAssetAcceptance, setPendingAssetAcceptance] = React.useState<Record<number, boolean>>({});
 	// Application type/purpose: resignation reporting vs transfer to someone else
 	// This form defaults to resignation flow; transfer type selector removed
@@ -212,8 +213,6 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const authContext = useContext(AuthContext);
 	const user = authContext?.authData?.user;
 	const formRef = useRef<HTMLFormElement>(null);
-	// Prevent duplicate asset-loaded toasts when effects run multiple times (e.g. StrictMode)
-	const assetLoadToastKeyRef = useRef<string | null>(null);
 	// Cache keys to avoid re-fetching sidebars when data already present
 	const lastSupervisorFetchKeyRef = useRef<string | null>(null);
 	const lastManagerFetchKeyRef = useRef<string | null>(null);
@@ -346,11 +345,23 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			const reason = [includeOwnership ? 'Transfer ownership' : null, ...selectedReasonLabels]
 				.filter(Boolean)
 				.join(', ');
+			const remarks = [
+				typeof (reasons as any).othersText === 'string' ? (reasons as any).othersText.trim() : '',
+				typeof (reasons as any).comment === 'string' ? (reasons as any).comment.trim() : '',
+			].filter(Boolean).join(' ').trim();
+
+			const transfer_type = item.transfer_type || (item.register_number ? 'Asset' : 'Employee');
+			// Keep ID as string to preserve leading zeros (e.g., Ramco IDs like "000396")
+			const asset_id = transfer_type === 'Employee'
+				? String(item.ramco_id || item.owner?.ramco_id || item.curr_owner?.ramco_id || '')
+				: String(item.id ?? '');
+			const type_id = transfer_type === 'Asset' ? (item.type?.id || item.types?.id || null) : null;
 
 			return {
+				transfer_type,
 				effective_date: effectiveDate,
-				asset_id: item.id ?? null,
-				type_id: item.type?.id || item.types?.id || null,
+				asset_id,
+				type_id,
 				current_owner: current_owner || '',
 				current_costcenter_id,
 				current_department_id,
@@ -361,7 +372,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				new_location_id,
 				return_to_asset_manager: !!returnToAssetManager[item.id],
 				reason,
-				remarks: (reasons as any).othersText || '',
+				remarks,
 			};
 		});
 
@@ -477,6 +488,17 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		});
 	}
 
+	// Free-text remarks per item (e.g., "Other Reason" notes)
+	function handleItemCommentInput(itemId: string | number, value: string) {
+		setItemReasons((prev: any) => ({
+			...prev,
+			[itemId]: {
+				...(prev?.[itemId] || {}),
+				comment: value,
+			},
+		}));
+	}
+
 	// Helper to set Return to Asset Manager with optional bulk apply from first item
 	function setReturnToAssetManagerFor(itemId: number, checked: boolean) {
 		setReturnToAssetManager(prev => {
@@ -533,6 +555,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	// AddSelectedItem handler (internalized)
 	function addSelectedItem(item: any) {
 		if (item?.id && pendingAssetLocks[Number(item.id)]) {
+			return;
+		}
+		// Block employees that are already in a pending transfer
+		if ((item?.ramco_id || item?.full_name) && isEmployeeLocked(item)) {
 			return;
 		}
 		setSelectedItems((prev: any[]) => {
@@ -746,20 +772,59 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			const pendingRes: any = await authenticatedApi.get('/api/assets/transfers?status=pending');
 			const transfers: any[] = Array.isArray(pendingRes?.data?.data) ? pendingRes.data.data : [];
 			const lockMap: Record<number, boolean> = {};
+			const employeeLockMap: Record<string, boolean> = {};
 			transfers.forEach((transfer: any) => {
 				const approvalPending = !transfer?.approved_by && !transfer?.approved_date;
 				(transfer?.items || []).forEach((item: any) => {
 					const waitingAcceptance = !item?.acceptance_date && !item?.acceptance_by;
-					const assetId = Number(item?.asset?.id);
-					if (assetId && (approvalPending || waitingAcceptance)) {
+					const rawAssetId = item?.asset?.id;
+					const assetId = rawAssetId ? Number(rawAssetId) : NaN;
+					const transferType = String(item?.transfer_type || item?.asset_type || '').toLowerCase();
+					const isEmployeeTransfer =
+						transferType === 'employee' ||
+						(!rawAssetId && !!item?.employee) ||
+						(!rawAssetId && !!item?.ramco_id) ||
+						(!rawAssetId && !!item?.asset_id) ||
+						(!rawAssetId && !!item?.employee_id);
+
+					if (!isNaN(assetId) && assetId && (approvalPending || waitingAcceptance)) {
 						lockMap[assetId] = true;
+					}
+
+					if (isEmployeeTransfer && (approvalPending || waitingAcceptance)) {
+						const possibleKeys = [
+							item?.employee?.ramco_id,
+							item?.employee?.id,
+							item?.employee_id,
+							item?.ramco_id,
+							item?.asset_id && String(item.asset_id),
+							item?.asset?.id && String(item.asset.id),
+							item?.asset?.register_number && String(item.asset.register_number),
+							item?.owner?.ramco_id,
+							item?.curr_owner?.ramco_id,
+							item?.new_owner?.ramco_id,
+							item?.current_owner,
+							item?.new_owner,
+						].filter(Boolean);
+
+						possibleKeys.forEach(k => {
+							const keyStr = String(k || '').trim();
+							if (!keyStr) return;
+							const lower = keyStr.toLowerCase();
+							employeeLockMap[lower] = true;
+							// also store numeric form for IDs that may drop leading zeros
+							const numForm = String(parseInt(lower, 10));
+							if (numForm && numForm !== 'nan') employeeLockMap[numForm] = true;
+						});
 					}
 				});
 			});
 			setPendingAssetLocks(lockMap);
+			setPendingEmployeeLocks(employeeLockMap);
 		} catch (err) {
 			console.error('Error fetching pending transfers:', err);
 			setPendingAssetLocks({});
+			setPendingEmployeeLocks({});
 		}
 	}, []);
 
@@ -801,14 +866,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 			setSupervised(assets);
 			lastSupervisorFetchKeyRef.current = String(param);
 			await loadPendingAssetLocks();
-			const toastKey = `${String(param)}-${assets.length}`;
-			if (assetLoadToastKeyRef.current !== toastKey && assets.length > 0) {
-				toast.success(`${assets.length} asset(s) loaded. Click + to select.`);
-				assetLoadToastKeyRef.current = toastKey;
-			} else if (assetLoadToastKeyRef.current !== toastKey && assets.length === 0) {
-				toast.info('No assets found for this supervisor');
-				assetLoadToastKeyRef.current = toastKey;
-			}
+			// Quiet load; no toast on counts
 		} catch (err) {
 			console.error('Error fetching assets:', err);
 			toast.error('Failed to load assets');
@@ -929,6 +987,18 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 		return !!pendingAssetAcceptance[assetId];
 	}
 
+	function isEmployeeLocked(emp: any): boolean {
+		const key = String(
+			emp?.ramco_id ||
+			emp?.id ||
+			emp?.owner?.ramco_id ||
+			emp?.employee?.ramco_id ||
+			emp?.asset_id
+		).trim().toLowerCase();
+		if (!key) return false;
+		return !!pendingEmployeeLocks[key] || !!pendingEmployeeLocks[String(Number(key))]; // handle numeric/zero-padded ids
+	}
+
 	// Fetch data for cost center, departments, and locations from their respective APIs and populate the dropdowns.
 	useEffect(() => {
 		async function fetchDropdownData() {
@@ -971,10 +1041,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 				if (!cancelled) setEmployees(res.data?.data || []);
 			} catch (err) {
 				if (!cancelled) setEmployees([]);
+			} finally {
+				// Refresh pending locks after employees are loaded so the list re-filters with latest locks
+				try { await loadPendingAssetLocks(); } catch { /* ignore */ }
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [form?.requestor?.department?.id, managerId]);
+	}, [form?.requestor?.department?.id, managerId, loadPendingAssetLocks]);
 
 	// Require at least one reason per selected item before enabling submit
 	const allItemsHaveReason = React.useMemo(() => {
@@ -1395,9 +1468,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 										const typeLabel = isEmployee ? 'Employee' : 'Asset';
 										const isAcceptedItem = Boolean(item.acceptance_date && item.acceptance_by);
 										// Find employee details for Employee accordions
-										const allEmployees = supervised.flatMap(g => g.employee || []);
+										const sidebarEmployees = Array.isArray(employees) ? employees : [];
+										const supervisedEmployees = Array.isArray(supervised) ? supervised.flatMap(g => g.employee || []) : [];
+										const allEmployees = [...sidebarEmployees, ...supervisedEmployees];
 										const employeeDetails = allEmployees.find(e =>
-											e.ramco_id === item.ramco_id || e.full_name === item.full_name
+											String(e.ramco_id) === String(item.ramco_id) || e.full_name === item.full_name
 										);
 										return (
 											<Accordion
@@ -1782,7 +1857,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		<div className="flex flex-col md:flex-row justify-between gap-10 items-start mt-2">
 																			<div className="flex-1">
 																				<Label className="font-semibold mb-1">Other Reason</Label>
-																				<Textarea className="w-full min-h-22.5 border rounded px-2 py-1 text-sm bg-stone-100" placeholder="Add your comment here..." disabled={isAcceptedItem}/>
+																				<Textarea
+																					className="w-full min-h-22.5 border rounded px-2 py-1 text-sm bg-stone-100"
+																					placeholder="Add your comment here..."
+																					disabled={isAcceptedItem}
+																					value={itemReasons[item.id]?.comment || ''}
+																					onChange={e => handleItemCommentInput(item.id, e.target.value)}
+																				/>
 																			</div>
 																			<div className="flex-1 bg-stone-100">
 																				<Label className="font-semibold mb-1">Attachments</Label>
@@ -1852,7 +1933,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 															matches(emp.department?.name) ||
 															matches(emp.location?.name)
 														);
-													});
+													}).filter(emp => !isEmployeeLocked(emp));
 
 													return (
 														<div className="flex flex-col gap-3">
@@ -1876,8 +1957,9 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		const loc = emp.location?.name || '';
 																		const cost = emp.costcenter?.name || emp.cost_center?.name || '';
 																		const alreadySelected = isEmployeeSelected(emp);
+																		const locked = isEmployeeLocked(emp);
 																		return (
-																			<li key={emp.ramco_id || idx} className="rounded-lg border border-slate-200 bg-white dark:bg-gray-700 px-3 py-2">
+																			<li key={emp.ramco_id || idx} className={`rounded-lg border px-3 py-2 ${locked ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white dark:bg-gray-700'}`}>
 																				<div className="flex items-start justify-between gap-3">
 																					<div className="flex-1">
 																						<div className="font-semibold text-blue-800 dark:text-blue-200">{name}</div>
@@ -1887,13 +1969,19 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																							{cost && <div>Cost Center: {cost}</div>}
 																							{loc && <div>Location: {loc}</div>}
 																						</div>
+																						{locked && (
+																							<div className="mt-1 text-xs font-semibold text-amber-700">
+																								Pending transfer approval
+																							</div>
+																						)}
 																					</div>
 																					<div className="flex items-center gap-2">
 																						<Button
+																							type="button"
 																							variant="ghost"
 																							size="icon"
-																							disabled={alreadySelected}
-																							title={alreadySelected ? 'Already added' : 'Add employee'}
+																							disabled={alreadySelected || locked}
+																							title={locked ? 'Pending transfer in progress' : (alreadySelected ? 'Already added' : 'Add employee')}
 																							onClick={() => addSelectedItem(emp)}
 																						>
 																							<CirclePlus className="w-5 h-5" />
@@ -1991,6 +2079,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																						</div>
 																					</div>
 																					<Button
+																						type="button"
 																						size="sm"
 																						onClick={() => {
 																							// Add all this owner's remaining assets to current selection
@@ -2091,7 +2180,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 																		<Badge variant="secondary" className="bg-slate-100 text-slate-700">
 																			Filtered by {employeeFilter.name} ({employeeFilter.ramco_id})
 																		</Badge>
-																		<Button variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)}>
+																		<Button type="button" variant="ghost" size="sm" onClick={() => setEmployeeFilter(null)}>
 																			Clear
 																		</Button>
 																	</div>
