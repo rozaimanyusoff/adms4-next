@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
 import { SingleSelect } from '@/components/ui/combobox';
 import { Separator } from '@radix-ui/react-select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // Helper function to construct logo URL
 const getLogoUrl = (logoPath: string | null): string => {
@@ -167,6 +168,13 @@ const UtilityBill = () => {
   const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [beneficiaryFilter, setBeneficiaryFilter] = useState<string>('');
+  const [batchBillPopoverOpen, setBatchBillPopoverOpen] = useState(false);
+  const [batchBillMonth, setBatchBillMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [batchBillGenerating, setBatchBillGenerating] = useState(false);
+  const [batchBillIds, setBatchBillIds] = useState<number[]>([]);
   const [yearFilter, setYearFilter] = useState<string>(() => {
     const current = String(new Date().getFullYear());
     if (typeof window === 'undefined') return current;
@@ -214,6 +222,16 @@ const UtilityBill = () => {
       // ignore and fall back
     }
     return { preparedByName: fallbackName, preparedByTitle: fallbackTitle };
+  };
+
+  const formatMonthLabel = (value: string) => {
+    if (!value) return '';
+    const [yearStr, monthStr] = value.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr) - 1;
+    const d = new Date(year, month >= 0 ? month : 0, 1);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, { month: 'long', year: 'numeric' });
   };
 
   // Dialog state for delete confirmation
@@ -945,41 +963,93 @@ const UtilityBill = () => {
                   className="w-full py-0"
                 />
               </div>
-              <Button
-                variant="default"
-                onClick={async () => {
-                  try {
-                    // If user selected rows, export those; otherwise export currently filtered (displayed) rows
-                    const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
-                      ? selectedRowIds
-                      : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
-
-                    if (!idsToExport || idsToExport.length === 0) {
-                      toast.error('No bills to export');
-                      return;
-                    }
-
-                    // Determine whether any of the bills selected are printing-related
-                    const rowsForIds = (displayedRows || []).filter((r: any) => idsToExport.includes(r.util_id));
-                    const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
-                    if (anyPrinting) {
-                      const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
-                      await exportPrintingBillSummary(beneficiaryFilter || null, idsToExport);
-                    } else {
-                      const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
-                      const preparedBy = await getPreparedBy();
-                      await exportUtilityBillSummary(beneficiaryFilter || null, idsToExport, preparedBy);
-                    }
-                  } catch (err) {
-                    console.error('Failed to export utility PDF batch', err);
-                    toast.error('Failed to export PDF.');
-                  }
-                }}
-                // Keep legacy behavior: require beneficiary for bill batch export
-                disabled={!canExport || !beneficiaryFilter}
-              >
-                <Printer size={16} className="mr-1" /> Batch Bill Print
-              </Button>
+              <Popover open={batchBillPopoverOpen} onOpenChange={(open) => setBatchBillPopoverOpen(open)}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      if (!beneficiaryFilter) {
+                        toast.error('Select a beneficiary first.');
+                        setBatchBillPopoverOpen(false);
+                        return;
+                      }
+                      // Prefer selected rows; otherwise export all displayed rows
+                      const idsToExport = (selectedRowIds && selectedRowIds.length > 0)
+                        ? selectedRowIds
+                        : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
+                      if (!idsToExport || idsToExport.length === 0) {
+                        toast.error('No bills to export');
+                        setBatchBillPopoverOpen(false);
+                        return;
+                      }
+                      setBatchBillIds(idsToExport.map(Number));
+                      setBatchBillPopoverOpen(true);
+                    }}
+                    disabled={!canExport}
+                  >
+                    <Printer size={16} className="mr-1" /> Batch Bill Print
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="batch-bill-month">Billing month</Label>
+                    <Input
+                      id="batch-bill-month"
+                      type="month"
+                      value={batchBillMonth}
+                      onChange={(e) => setBatchBillMonth(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Defaults to current month.</p>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBatchBillPopoverOpen(false)}
+                      disabled={batchBillGenerating}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          setBatchBillGenerating(true);
+                          const ids = batchBillIds.length > 0
+                            ? batchBillIds
+                            : (selectedRowIds && selectedRowIds.length > 0)
+                              ? selectedRowIds
+                              : (displayedRows || []).map((r: any) => r.util_id).filter(Boolean);
+                          if (!ids || ids.length === 0) {
+                            toast.error('No bills to export');
+                            return;
+                          }
+                          const rowsForIds = (displayedRows || []).filter((r: any) => ids.includes(r.util_id));
+                          const anyPrinting = rowsForIds.some((r: any) => isPrintingService(r.account?.service || r.service || r.account?.category || r.service));
+                          if (anyPrinting) {
+                            const { exportPrintingBillSummary } = await import('./pdfreport-printing-costcenter');
+                            await exportPrintingBillSummary(beneficiaryFilter || null, ids);
+                          } else {
+                            const { exportUtilityBillSummary } = await import('./pdfreport-utility-costcenter');
+                            const preparedBy = await getPreparedBy();
+                            const label = formatMonthLabel(batchBillMonth) || undefined;
+                            await exportUtilityBillSummary(beneficiaryFilter || null, ids, { ...preparedBy, billMonthYear: label });
+                          }
+                          setBatchBillPopoverOpen(false);
+                        } catch (err) {
+                          console.error('Failed to export utility PDF batch', err);
+                          toast.error('Failed to export PDF.');
+                        } finally {
+                          setBatchBillGenerating(false);
+                        }
+                      }}
+                      disabled={batchBillGenerating || !batchBillMonth}
+                    >
+                      {batchBillGenerating ? (<><Loader2 className="mr-1 h-4 w-4 animate-spin" /> Exporting…</>) : 'Export'}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <p className="mt-1 text-xs text-red-500 dark:text-gray-400 w-100">
               *Used for print multiple bills from single beneficiary like utilities & printing

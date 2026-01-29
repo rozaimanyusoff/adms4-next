@@ -19,7 +19,7 @@ function formatDate(dateInput: string | Date | undefined): string {
 export async function exportUtilityBillSummary(
     beneficiaryId: string | number | null,
     utilIds: number[],
-    options?: { preparedByName?: string; preparedByTitle?: string }
+    options?: { preparedByName?: string; preparedByTitle?: string; billMonthYear?: string }
 ) {
     if (!utilIds || utilIds.length === 0) return;
     try {
@@ -87,10 +87,17 @@ export async function exportUtilityBillSummary(
         doc.text('Of      : Ranhill Technologies Sdn Bhd', pageWidth - 95, 52, { align: 'left' });
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-    // Show previous month and current year per request
-    const now = new Date();
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const billMonthYear = `${prev.toLocaleString(undefined, { month: 'long' })} ${now.getFullYear()}`;
+        // Determine month/year label: prefer caller override, otherwise use latest bill date (fallback to today)
+        const referenceDate = (() => {
+            const timestamps = (Array.isArray(bills) ? bills : [])
+                .map((b: any) => (b?.ubill_date ? new Date(b.ubill_date).getTime() : NaN))
+                .filter((t): t is number => Number.isFinite(t));
+            if (timestamps.length === 0) return new Date();
+            return new Date(Math.max(...timestamps));
+        })();
+        const billMonthYear = options?.billMonthYear
+            ? options.billMonthYear
+            : `${referenceDate.toLocaleString(undefined, { month: 'long' })} ${referenceDate.getFullYear()}`;
         doc.text(`UTILITY BILLS - ${billMonthYear}`, 15, 64);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);

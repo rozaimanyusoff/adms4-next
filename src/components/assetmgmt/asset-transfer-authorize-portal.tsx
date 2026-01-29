@@ -19,6 +19,17 @@ type TransferItem = {
   id: number;
   transfer_id?: number;
   effective_date?: string | null;
+  transfer_item?: {
+    id?: number | string;
+    register_number?: string;
+    type?: { id: number; name: string } | null;
+    category?: { id: number; name: string } | null;
+    brand?: { id: number; name: string } | null;
+    model?: { id: number; name: string } | null;
+    serial_number?: string | null;
+    full_name?: string;
+    ramco_id?: string;
+  } | null;
   asset?: {
     id: number;
     register_number?: string;
@@ -49,6 +60,7 @@ type TransferData = {
   department?: { id: number; code?: string } | null;
   total_items?: number;
   items: TransferItem[];
+  details?: TransferItem[];
 };
 
 function fmtDate(val?: string | null) {
@@ -176,7 +188,16 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
           `/api/assets/transfers/${encodeURIComponent(String(transferId))}/items`,
           { headers: authHeaders, params: { new_owner: newOwnerParam } }
         );
-        const items = (((res as any).data?.data) || (res as any).data || []) as TransferItem[];
+        const itemsRaw = (((res as any).data?.data) || (res as any).data || []) as TransferItem[];
+        const items = Array.isArray(itemsRaw)
+          ? itemsRaw.map((it) => {
+              const asset = it.asset || it.transfer_item;
+              return {
+                ...it,
+                asset: asset ? { ...asset, id: Number(asset.id) || 0 } : null,
+              };
+            })
+          : [];
         const synthetic: TransferData = {
           id: Number(transferId) || (transferId as any),
           items: Array.isArray(items) ? items : [],
@@ -188,12 +209,41 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
           params: { dept: deptParam, status: statusParam || 'pending' },
         });
         const list = ((((res as any).data?.data) || (res as any).data) ?? []) as TransferData[];
-        const normalized = Array.isArray(list) ? list.map((t) => ({ ...t, items: Array.isArray(t.items) ? t.items : [] })) : [];
+        const normalized = Array.isArray(list)
+          ? list.map((t) => {
+              const items = Array.isArray(t.items)
+                ? t.items
+                : Array.isArray(t.details)
+                  ? t.details
+                  : [];
+              const mapped = items.map((it) => {
+                const asset = it.asset || it.transfer_item;
+                return { ...it, asset: asset ? { ...asset, id: Number(asset.id) || 0 } : null };
+              });
+              return { ...t, items: mapped, total_items: t.total_items ?? mapped.length };
+            })
+          : [];
         setDataList(normalized);
       } else {
         const res = await authenticatedApi.get(`/api/assets/transfers/${encodeURIComponent(String(transferId))}` as string, { headers: authHeaders });
         const t = (((res as any).data?.data) || (res as any).data) as TransferData;
-        setDataList(t ? [{ ...t, items: Array.isArray(t.items) ? t.items : [] }] : []);
+        if (t) {
+          const items = Array.isArray(t.items)
+            ? t.items
+            : Array.isArray(t.details)
+              ? t.details
+              : [];
+          const mapped = items.map((it) => {
+            const asset = it.asset || it.transfer_item;
+            return {
+              ...it,
+              asset: asset ? { ...asset, id: Number(asset.id) || 0 } : null,
+            };
+          });
+          setDataList([{ ...t, items: mapped, total_items: t.total_items ?? mapped.length }]);
+        } else {
+          setDataList([]);
+        }
       }
     } catch (e) {
       toast.error('Failed to load transfer details');
@@ -636,8 +686,8 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                             />
                             <div className="flex flex-wrap items-center gap-2 text-sm min-w-0">
                               <span className="font-medium truncate">
-                                S/N: {item.asset?.register_number || '-'}{' '}
-                                <span className="text-blue-600">[ {item.asset?.type?.name || '-'} ]</span>
+                                S/N: {(item.asset || item.transfer_item)?.register_number || '-'}{' '}
+                                <span className="text-blue-600">[ {(item.asset || item.transfer_item)?.type?.name || '-'} ]</span>
                               </span>
                               <span className="text-xs text-muted-foreground whitespace-nowrap">Item {itemOrdinal}/{totalItems || '-'}</span>
                             </div>
@@ -679,9 +729,9 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                   <div>Effective Date</div>
                                   <div className="font-medium">{fmtDate(item.effective_date)}</div>
                                   <div>Asset Type</div>
-                                  <div className="font-medium">{item.asset?.type?.name || '-'}</div>
+                                  <div className="font-medium">{(item.asset || item.transfer_item)?.type?.name || '-'}</div>
                                   <div>Register Number</div>
-                                  <div className="font-medium">{item.asset?.register_number || '-'}</div>
+                                  <div className="font-medium">{(item.asset || item.transfer_item)?.register_number || '-'}</div>
                                   <div>Reason</div>
                                   <div className="font-medium">{(item as any).reason || '-'}</div>
                                 </div>
@@ -795,9 +845,9 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                 </div>
                               )}
                             </div>
-                            {mode === 'acceptance' && item.asset?.type?.id && (
+                            {mode === 'acceptance' && (item.asset || item.transfer_item)?.type?.id && (
                               <div className="space-y-2 md:col-span-2">
-                                <Popover onOpenChange={(open) => { if (open) fetchChecklist(item.asset?.type?.id); }}>
+                                <Popover onOpenChange={(open) => { if (open) fetchChecklist((item.asset || item.transfer_item)?.type?.id); }}>
                                   <PopoverTrigger asChild>
                                     <button
                                       type="button"
@@ -809,7 +859,7 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                     </button>
                                   </PopoverTrigger>
                                   <PopoverContent className="text-xs min-w-120 bg-white border border-stone-200 shadow-lg" side="right" align="center">
-                                    {checklistLoading[String(item.asset?.type?.id)] ? (
+                                    {checklistLoading[String((item.asset || item.transfer_item)?.type?.id)] ? (
                                       <div className="flex items-center gap-2 text-gray-600">
                                         <Loader2 className="w-4 h-4 animate-spin" />
                                         Loading checklist...
@@ -817,14 +867,14 @@ export default function AssetTransferPortal({ transferId, title, mode = 'approva
                                     ) : (
                                       <div className="space-y-2">
                                         <div className="font-semibold text-gray-800">Transfer Checklist</div>
-                                        {(checklistsByType[String(item.asset?.type?.id)] || []).length === 0 ? (
+                                        {(checklistsByType[String((item.asset || item.transfer_item)?.type?.id)] || []).length === 0 ? (
                                           <div className="text-gray-500">No checklist items.</div>
                                         ) : (
                                           <div className="space-y-1">
-                                            {(checklistsByType[String(item.asset?.type?.id)] || []).map((cl, idx) => {
+                                            {(checklistsByType[String((item.asset || item.transfer_item)?.type?.id)] || []).map((cl, idx) => {
                                               const num = idx + 1;
                                               return (
-                                                <div key={`${item.asset?.type?.id}-${idx}`} className="flex items-center justify-between gap-2">
+                                                <div key={`${(item.asset || item.transfer_item)?.type?.id}-${idx}`} className="flex items-center justify-between gap-2">
                                                   <span className="text-gray-700">{num}. {cl}</span>
                                                   <div className="flex items-center gap-2">
                                                     <span className="text-gray-500 text-[11px]">N/A</span>
