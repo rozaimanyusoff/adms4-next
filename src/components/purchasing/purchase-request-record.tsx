@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Textarea } from '@/components/ui/textarea';
+import { Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface RequestPerson {
    ramco_id?: string;
@@ -65,6 +67,13 @@ interface Props {
    /** If data is already available, pass it to avoid fetch */
    data?: PurchaseRequest | null;
    className?: string;
+   /**
+    * Scope of records to load. `all` shows every request (admin view), `mine`
+    * limits the list to the logged-in requester using `ramco` filter.
+    */
+   scope?: 'all' | 'mine';
+   /** Optional destination for the "Create" button (e.g. `/purchase/form`). */
+   createHref?: string;
 }
 
 const fmtDate = (s?: string | null) => (s ? String(s).split('T')[0] : '');
@@ -127,7 +136,8 @@ const getItemTypeCardClass = (typeName?: string) => {
    }
 };
 
-const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) => {
+const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className, scope = 'all', createHref }) => {
+   const router = useRouter();
    // List of requests for the grid
    const [requests, setRequests] = useState<PurchaseRequest[]>([]);
    const [gridLoading, setGridLoading] = useState<boolean>(false);
@@ -143,6 +153,7 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
    const auth = useContext(AuthContext);
    const username = auth?.authData?.user?.username;
    const [managerTypeIds, setManagerTypeIds] = useState<number[]>([]);
+   const requesterOnly = scope === 'mine';
 
    // Fetch asset manager assignments for this user when sidebar opens
    useEffect(() => {
@@ -164,7 +175,18 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
    const loadRequests = async () => {
       setGridLoading(true);
       try {
-         const res: any = await authenticatedApi.get('/api/purchases/requests');
+         if (requesterOnly && !username) {
+            // Wait for username to be available before requesting "mine" scope
+            setRequests([]);
+            setGridLoading(false);
+            return;
+         }
+
+         const endpoint = requesterOnly && username
+            ? `/api/purchases/requests?ramco=${encodeURIComponent(username)}`
+            : '/api/purchases/requests';
+
+         const res: any = await authenticatedApi.get(endpoint);
          const list = res?.data?.data || res?.data || [];
          setRequests(Array.isArray(list) ? list : []);
       } catch (err) {
@@ -205,7 +227,8 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
          })();
       }
        
-   }, []);
+   // Re-run when scope or username changes so requester view refreshes
+   }, [scope, username]);
 
    const loadRequestById = async (requestId?: number | string) => {
       if (!requestId) return;
@@ -300,16 +323,29 @@ const PurchaseRequestRecord: React.FC<Props> = ({ id, prNo, data, className }) =
    }, [requests, selectedType, selectedYear]);
 
    const handleRowDoubleClick = (row: PurchaseRequest) => {
+      if (requesterOnly) {
+         router.push(`/purchase/form?id=${row.id}`);
+         return;
+      }
       loadRequestById(row.id);
       setSidebarOpen(true);
    };
 
    return (
       <div className={className}>
-         <h2 className="text-lg font-bold my-6">Purchase Requests</h2>
+         <div className="flex items-center justify-between gap-3 my-6">
+            <h2 className="text-lg font-bold">{requesterOnly ? 'My Purchase Requests' : 'Purchase Requests'}</h2>
+            {createHref && (
+               <Button asChild size="sm" className="gap-2">
+                  <a href={createHref}>
+                     <Plus className="h-4 w-4" />
+                  </a>
+               </Button>
+            )}
+         </div>
 
          {/* Item-type summary cards (one card per item type). Each card shows per-year counts with current year first. */}
-         {requests && requests.length > 0 && (
+         {!requesterOnly && requests && requests.length > 0 && (
             <div className="mb-4 overflow-x-auto">
                <div className="flex gap-3">
                   {(() => {

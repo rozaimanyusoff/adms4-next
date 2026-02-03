@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { authenticatedApi } from "@/config/api";
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from "@components/ui/action-aside";
@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import ExcelFleetRecord from "./excel-fleet-record";
 import { toast } from "sonner";
+import { AuthContext } from "@/store/AuthContext";
 
 interface FleetCard {
     id: number;
@@ -41,6 +42,14 @@ interface FleetCard {
     expiry?: string | null;
 }
 
+interface AssetOption {
+    id: number;
+    register_number?: string;
+    costcenter?: { id: number; name: string };
+    purpose?: string;
+    fuel_type?: string;
+}
+
 interface VendorOption {
     id: number;
     name: string;
@@ -49,13 +58,14 @@ interface VendorOption {
 }
 
 const FleetCardList: React.FC = () => {
+    const authContext = useContext(AuthContext);
     const [cards, setCards] = useState<FleetCard[]>([]);
     const [vendors, setVendors] = useState<VendorOption[]>([]);
-    const [assets, setAssets] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string }; purpose?: string }[]>([]);
+    const [assets, setAssets] = useState<AssetOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-    const [assetOptions, setAssetOptions] = useState<{ id: number; register_number?: string; costcenter?: { id: number; name: string }; purpose?: string }[]>([]);
+    const [assetOptions, setAssetOptions] = useState<AssetOption[]>([]);
     const [assetSearch, setAssetSearch] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [editingCard, setEditingCard] = useState<FleetCard | null>(null);
@@ -68,6 +78,7 @@ const FleetCardList: React.FC = () => {
         card_no?: string;
         asset_id?: string;
         fuel_id?: string;
+        fuel_type?: string;
         status?: string;
         reg_date?: string;
         expiry_date?: string;
@@ -85,7 +96,7 @@ const FleetCardList: React.FC = () => {
     }>({ assetId: null, cardNo: null });
     const [pendingAssetSelection, setPendingAssetSelection] = useState<(() => void) | null>(null);
 
-    const handleAssetSelect = (a: { id: number; register_number?: string; costcenter?: { id: number; name: string }; purpose?: string }) => {
+    const handleAssetSelect = (a: AssetOption) => {
         const existingCard = cards.find(c => c.asset?.id === a.id);
         const applySelection = () => {
             setForm(f => ({
@@ -93,6 +104,7 @@ const FleetCardList: React.FC = () => {
                 asset_id: String(a.id),
                 purpose: (a.purpose || f.purpose || '').toLowerCase(),
                 costcenter_id: a.costcenter?.id ? String(a.costcenter.id) : f.costcenter_id,
+                fuel_type: (a.fuel_type || f.fuel_type || '').toLowerCase(),
                 assignment: existingCard ? 'replacement' : f.assignment,
                 replacement_card_id: existingCard ? existingCard.id : f.replacement_card_id,
             }));
@@ -100,7 +112,7 @@ const FleetCardList: React.FC = () => {
                 setReplacementMode('replacement');
                 setReplacementSelection(String(existingCard.id));
             }
-            setErrors(prev => ({ ...prev, asset_id: undefined }));
+            setErrors(prev => ({ ...prev, asset_id: undefined, fuel_type: undefined }));
             setAssetPickerOpen(false);
             setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
             setPendingAssetSelection(null);
@@ -118,6 +130,7 @@ const FleetCardList: React.FC = () => {
         card_no: string;
         asset_id: string;
         fuel_id: string;
+        fuel_type: string;
         pin: string;
         status: string;
         reg_date: string;
@@ -133,6 +146,7 @@ const FleetCardList: React.FC = () => {
         card_no: '',
         asset_id: '',
         fuel_id: '',
+        fuel_type: '',
         pin: '',
         status: 'active',
         reg_date: '',
@@ -156,10 +170,16 @@ const FleetCardList: React.FC = () => {
             setCards(fetched);
             setVendors(vendorsRes.data?.data || []);
             // derive unique assets from cards so form can show register_number
-            const uniqueAssetsMap = new Map<number, { id: number; register_number?: string; costcenter?: { id: number; name: string }; purpose?: string }>();
+            const uniqueAssetsMap = new Map<number, AssetOption>();
             fetched.forEach(c => {
                 if (c.asset && c.asset.id != null && !uniqueAssetsMap.has(c.asset.id)) {
-                    uniqueAssetsMap.set(c.asset.id, { id: c.asset.id, register_number: c.asset.register_number, costcenter: c.asset.costcenter, purpose: c.asset.purpose });
+                    uniqueAssetsMap.set(c.asset.id, {
+                        id: c.asset.id,
+                        register_number: c.asset.register_number,
+                        costcenter: c.asset.costcenter,
+                        purpose: c.asset.purpose,
+                        fuel_type: c.asset.fuel_type,
+                    });
                 }
             });
             setAssets(Array.from(uniqueAssetsMap.values()));
@@ -455,6 +475,7 @@ const FleetCardList: React.FC = () => {
                 card_no: card.card_no || '',
                 asset_id: card.asset?.id ? String(card.asset.id) : '',
                 fuel_id: vendorId != null ? String(vendorId) : '',
+                fuel_type: card.asset?.fuel_type ? card.asset.fuel_type.toLowerCase() : '',
                 pin: card.pin_no || '',
                 status: (card.status || 'active').toLowerCase(),
                 reg_date: card.reg_date ? card.reg_date.slice(0, 10) : '',
@@ -470,7 +491,7 @@ const FleetCardList: React.FC = () => {
         } else {
             setEditingCard(null);
             const today = new Date().toISOString().slice(0, 10);
-            setForm({ card_no: '', asset_id: '', fuel_id: '', pin: '', status: 'active', reg_date: today, expiry_date: '', remarks: '', assignment: 'new', purpose: '', costcenter_id: '', replacement_card_id: null });
+            setForm({ card_no: '', asset_id: '', fuel_id: '', fuel_type: '', pin: '', status: 'active', reg_date: today, expiry_date: '', remarks: '', assignment: 'new', purpose: '', costcenter_id: '', replacement_card_id: null });
             setReplacementMode('new');
             setReplacementSelection('');
         }
@@ -484,7 +505,7 @@ const FleetCardList: React.FC = () => {
         if (!assetPickerOpen) return;
         // if we already have options, use cached list to avoid duplicate requests
         if (assetOptions.length > 0) return;
-        authenticatedApi.get<{ data: { id: number; register_number?: string; costcenter?: { id: number; name: string }; purpose?: string }[] }>("/api/assets", { params: { manager: 2, status: 'active' } })
+        authenticatedApi.get<{ data: AssetOption[] }>("/api/assets", { params: { manager: 2, status: 'active' } })
             .then(res => setAssetOptions(res.data?.data || []))
             .catch(() => {
                 toast.error('Failed to load assets');
@@ -505,6 +526,7 @@ const FleetCardList: React.FC = () => {
         if (!form.card_no) newErrors.card_no = 'Card number is required';
         if (!form.fuel_id) newErrors.fuel_id = 'Vendor is required';
         if (!form.asset_id) newErrors.asset_id = 'Asset is required';
+        if (!form.fuel_type) newErrors.fuel_type = 'Fuel product is required';
         if (!form.costcenter_id) newErrors.costcenter_id = 'Cost center is required';
         if (!form.status) newErrors.status = 'Status is required';
         if (!form.reg_date) newErrors.reg_date = 'Registration date is required';
@@ -533,10 +555,12 @@ const FleetCardList: React.FC = () => {
             reg_date: form.reg_date || null,
             expiry_date: form.expiry_date || null,
             remarks: form.remarks,
+            fuel_type: form.fuel_type || null,
             assignment: replacementMode,
             replacement_card_id: replacementMode === 'replacement' ? (form.replacement_card_id ?? null) : null,
             purpose: form.purpose,
             costcenter_id: form.costcenter_id ? Number(form.costcenter_id) : null,
+            updated_by: authContext?.authData?.user?.username || null,
         };
         try {
             setFormLoading(true);
@@ -851,6 +875,7 @@ const FleetCardList: React.FC = () => {
                                                                                 replacement_card_id: Number(v),
                                                                                 purpose: opt.asset?.purpose?.toLowerCase() || f.purpose,
                                                                                 costcenter_id: opt.asset?.costcenter?.id ? String(opt.asset.costcenter.id) : f.costcenter_id,
+                                                                                fuel_type: opt.asset?.fuel_type?.toLowerCase() || f.fuel_type,
                                                                             }));
                                                                         }
                                                                         setErrors(prev => ({ ...prev, asset_id: undefined }));
@@ -958,6 +983,25 @@ const FleetCardList: React.FC = () => {
                                     </SelectContent>
                                 </Select>
                                 {errors.purpose && <p className="mt-1 text-sm text-red-600">{errors.purpose}</p>}
+                            </div>
+                            <div>
+                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                    Fuel Product <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                </label>
+                                <Select
+                                    value={form.fuel_type}
+                                    onValueChange={v => { setForm(f => ({ ...f, fuel_type: v })); setErrors(prev => ({ ...prev, fuel_type: undefined })); }}
+                                    required
+                                >
+                                    <SelectTrigger className={`w-full ${errors.fuel_type ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                                        <SelectValue placeholder="Select fuel product" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="petrol">Petrol</SelectItem>
+                                        <SelectItem value="diesel">Diesel</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {errors.fuel_type && <p className="mt-1 text-sm text-red-600">{errors.fuel_type}</p>}
                             </div>
                             <div>
                                 <label className="flex items-center gap-1 text-sm font-medium mb-1">

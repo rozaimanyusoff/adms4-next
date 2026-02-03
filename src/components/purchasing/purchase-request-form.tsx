@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useContext, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 
@@ -35,6 +37,9 @@ interface RequestItem {
 }
 
 const PurchaseRequestForm: React.FC = () => {
+  const searchParams = useSearchParams();
+  const existingRequestId = searchParams.get('id');
+
   // Form state
   const [formData, setFormData] = useState<PurchaseRequestFormData>({
     request_type: '',
@@ -48,6 +53,7 @@ const PurchaseRequestForm: React.FC = () => {
   const [items, setItems] = useState<RequestItem[]>([]);
   const [itemErrors, setItemErrors] = useState<Array<Record<string, string>>>([]);
   const [openItems, setOpenItems] = useState<string[]>([]);
+  const [loadingExisting, setLoadingExisting] = useState(false);
 
   // Dropdown data
   const [costcenters, setCostcenters] = useState<Option[]>([]);
@@ -139,6 +145,44 @@ const PurchaseRequestForm: React.FC = () => {
     if (errors[field as string]) setErrors((prev) => ({ ...prev, [field]: '' }));
   };
 
+  // Prefill when ?id=<requestId> is provided
+  useEffect(() => {
+    if (!existingRequestId) return;
+    (async () => {
+      setLoadingExisting(true);
+      try {
+        const res: any = await authenticatedApi.get(`/api/purchases/requests/${existingRequestId}`);
+        const data = res?.data?.data || res?.data;
+        if (!data) return;
+        setFormData((prev) => ({
+          ...prev,
+          request_type: data.request_type || '',
+          pr_date: data.pr_date ? String(data.pr_date).split('T')[0] : prev.pr_date,
+          costcenter: data.costcenter?.id ? String(data.costcenter.id) : prev.costcenter,
+          department_id: data.department?.id ? String(data.department.id) : prev.department_id,
+          position_id: prev.position_id, // keep existing fallback
+        }));
+        const mappedItems: RequestItem[] = Array.isArray(data.items)
+          ? data.items.map((it: any) => ({
+              id: String(it.id ?? crypto.randomUUID?.() ?? Date.now()),
+              type_id: it.type?.id ? String(it.type.id) : '',
+              category_id: it.category?.id ? String(it.category.id) : '',
+              description: it.description || '',
+              qty: Number(it.qty ?? 1) || 1,
+              purpose: it.purpose || '',
+            }))
+          : [];
+        setItems(mappedItems.length ? mappedItems : [{ id: String(Date.now()), type_id: '', category_id: '', description: '', qty: 1, purpose: '' }]);
+        setItemErrors(mappedItems.map(() => ({})));
+      } catch (err) {
+        console.error('Failed to load existing purchase request', err);
+      } finally {
+        setLoadingExisting(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingRequestId]);
+
   // Basic validation for user request
   const validate = (): boolean => {
     const e: Record<string, string> = {};
@@ -205,9 +249,16 @@ const PurchaseRequestForm: React.FC = () => {
 
   return (
     <div className="p-4">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Purchase Request</h1>
-        <p className="text-sm text-gray-500">Create a new purchase request</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Purchase Request</h1>
+          <p className="text-sm text-gray-500">
+            {existingRequestId ? 'Review or update an existing request' : 'Create a new purchase request'}
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/purchase/request/my">View My Requests</Link>
+        </Button>
       </div>
       <Card>
         <CardHeader>
