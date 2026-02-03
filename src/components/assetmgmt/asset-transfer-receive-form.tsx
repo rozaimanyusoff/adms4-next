@@ -134,11 +134,13 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
 
   // When item has acceptance_checklist_items, pre-check those items
   React.useEffect(() => {
-    if (!item?.acceptance_checklist_items || item.acceptance_checklist_items.length === 0) return;
-    const acceptedIds = new Set(item.acceptance_checklist_items.map(ci => Number(ci.id)));
+    const ac = item?.acceptance_checklist_items;
+    if (!ac) return;
+    const arr = Array.isArray(ac) ? ac : [];
+    if (arr.length === 0) return;
+    const acceptedIds = new Set(arr.map(ci => Number((ci as any)?.id)));
     setCheckState(prev => {
       const next: typeof prev = { ...prev };
-      // Ensure we touch all checklist ids and set accepted ones to done
       checklist.forEach(c => {
         const id = Number(c.id);
         const accepted = acceptedIds.has(id);
@@ -240,18 +242,18 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
   }, [onAccepted, onClose]);
 
   return (
-    <Card className='shadow-none'>
-      <CardHeader className="flex flex-row items-center gap-4">
+    <Card className='shadow-sm border border-border/60 bg-white'>
+      <CardHeader className="flex flex-row items-center gap-3 py-3">
         <div className="flex-1">
-          <CardTitle className="text-base">Asset Receive & Acceptance Form</CardTitle>
+          <CardTitle className="text-sm font-semibold tracking-tight">Asset Receive & Acceptance Form</CardTitle>
         </div>
         <div className="flex-1 flex justify-center">
           {awaitingApproval ? (
-            <Badge className="px-3 text-sm bg-amber-500 text-white">Pending Approval</Badge>
+            <Badge className="px-2.5 py-1 text-xs bg-amber-500/90 text-white rounded-full shadow-sm">Pending Approval</Badge>
           ) : isAccepted ? (
-            <Badge className="px-3 text-sm bg-green-600">Accepted</Badge>
+            <Badge className="px-2.5 py-1 text-xs bg-emerald-600 text-white rounded-full shadow-sm">Accepted</Badge>
           ) : (
-            <Badge variant="secondary" className="px-3">Pending Acceptance</Badge>
+            <Badge variant="secondary" className="px-2.5 py-1 text-xs rounded-full">Pending Acceptance</Badge>
           )}
         </div>
         <div className="flex-1 flex justify-end gap-2">
@@ -277,7 +279,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-8">
+      <CardContent className="space-y-4">
 
       {awaitingApproval && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -288,13 +290,13 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
       {error && <div className="text-red-600 text-sm">{error}</div>}
 
       {/* Overview + Asset cards side by side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="shadow-none bg-stone-50">
-          <CardHeader className="pb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card className="shadow-xs bg-stone-50/70 border border-border/60 rounded-lg">
+          <CardHeader className="pb-2 px-4 pt-3">
             <CardTitle className="text-sm">Transfer Overview</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <CardContent className="space-y-3 px-4 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-foreground/90">
               <div>
                 <div className="text-xs uppercase text-muted-foreground">Transfer ID</div>
                 <div className="font-semibold text-gray-900">{item?.transfer_id ?? '-'}</div>
@@ -314,8 +316,8 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                 <div className="font-semibold text-gray-900">{transferByName}</div>
               </div>
             </div>
-            <div className="border-t pt-3 text-sm">
-              <div className="text-xs uppercase text-muted-foreground mb-1">Approved</div>
+            <div className="border-t border-border/60 pt-2 text-sm">
+              <div className="text-xs uppercase text-muted-foreground mb-0.5">Approved</div>
               {item?.approved_date ? (
                 <div className="font-semibold text-gray-900">
                   {`By ${item?.approved_by || '-'}`} on {new Date(item.approved_date).toLocaleString()}
@@ -327,12 +329,12 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
           </CardContent>
         </Card>
 
-        <Card className="shadow-none bg-stone-50">
-          <CardHeader className="pb-3">
+        <Card className="shadow-xs bg-stone-50/70 border border-border/60 rounded-lg">
+          <CardHeader className="pb-2 px-4 pt-3">
             <CardTitle className="text-sm">Asset</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          <CardContent className="px-4 pb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm text-foreground/90">
               <div>
                 <div className="text-xs uppercase text-muted-foreground">Register Number</div>
                 <div className="font-semibold text-gray-900">{label(item?.asset?.register_number)}</div>
@@ -351,9 +353,9 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
       </div>
 
       {/* Current vs New compact matrix */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-muted-foreground">Ownership & Assignment</h3>
-        <div className="overflow-hidden rounded-md border border-border">
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Ownership & Assignment</h3>
+        <div className="overflow-hidden rounded-lg border border-border/60 bg-white">
           <div className="grid grid-cols-3 bg-muted text-xs uppercase tracking-wide text-muted-foreground">
             <div className="px-3 py-2">Field</div>
             <div className="px-3 py-2">{isAccepted ? 'Previous' : 'Current'}</div>
@@ -369,23 +371,23 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
             { label: 'Department', current: label(item?.current_department && (item?.current_department as any)?.name), next: label(item?.new_department?.name) },
             { label: 'Location', current: label(item?.current_location?.name), next: label(item?.new_location?.name) },
           ].map((row) => (
-            <div key={row.label} className="grid grid-cols-3 border-t border-border text-sm">
-              <div className="px-3 py-2 text-muted-foreground">{row.label}</div>
-              <div className="px-3 py-2">{row.current}</div>
-              <div className="px-3 py-2 font-medium">{row.next}</div>
+            <div key={row.label} className="grid grid-cols-3 border-t border-border/60 text-sm">
+              <div className="px-3 py-1.5 text-muted-foreground">{row.label}</div>
+              <div className="px-3 py-1.5">{row.current}</div>
+              <div className="px-3 py-1.5 font-medium text-foreground">{row.next}</div>
             </div>
           ))}
           {/* Reason row spans current + new for readability */}
-          <div className="grid grid-cols-3 border-t border-border text-sm">
-            <div className="px-3 py-2 text-muted-foreground">Reason</div>
-            <div className="px-3 py-2 col-span-2">{label(item?.reason)}</div>
+          <div className="grid grid-cols-3 border-t border-border/60 text-sm bg-muted/40">
+            <div className="px-3 py-1.5 text-muted-foreground">Reason</div>
+            <div className="px-3 py-1.5 col-span-2">{label(item?.reason)}</div>
           </div>
         </div>
       </section>
 
       {/* Acknowledgement card */}
-      <Card className='shadow-none bg-stone-50'>
-        <CardHeader>
+      <Card className='shadow-xs bg-stone-50/70 border border-border/60 rounded-lg'>
+        <CardHeader className="pb-2 px-4 pt-3">
           <CardTitle className="text-sm">Acknowledgement</CardTitle>
           {Boolean(item?.acceptance_date || item?.acceptance_by) && (
             <div className="mt-1 space-y-1">
@@ -396,8 +398,8 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
             </div>
           )}
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <CardContent className="px-4 pb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-3">
               <div>
                 <Label className="text-sm font-semibold">Transfer Checklist</Label>
@@ -406,7 +408,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                     <div className="text-xs text-muted-foreground">No checklist for this asset type.</div>
                   )}
                   {checklist.map(c => (
-                    <div key={c.id} className="flex items-start gap-2 p-2 rounded border border-border">
+                    <div key={c.id} className="flex items-start gap-2 p-2 rounded-md border border-border/70 bg-white">
                       <Checkbox id={`chk_${c.id}`} checked={!!checkState[c.id]?.done} disabled={isReadOnly} onCheckedChange={(val) => setCheckState(s => ({ ...s, [c.id]: { ...s[c.id], done: !!val } }))} />
                       <div className="flex-1">
                         <Label htmlFor={`chk_${c.id}`} className="text-sm my-0">
@@ -414,7 +416,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
                           {c.is_required && <span className="ml-1 text-red-600">*</span>}
                         </Label>
                         <Textarea
-                          className="form-textarea mt-4"
+                          className="form-textarea mt-2 h-18 text-sm"
                           placeholder="Remarks (optional)"
                           value={isAccepted ? (checkState[c.id]?.remarks || item?.acceptance_remarks || '') : (checkState[c.id]?.remarks || '')}
                           onChange={e => setCheckState(s => ({ ...s, [c.id]: { ...s[c.id], remarks: e.target.value } }))}
@@ -456,9 +458,9 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
         </CardContent>
       </Card>
         {/* Actions at bottom */}
-        <div className="flex justify-end gap-2 pt-4">
-          <Button variant="outline" onClick={onClose}>Back</Button>
-          <Button disabled={loading || !item || !allRequiredComplete || isReadOnly} onClick={handleAcknowledge}>Submit Acceptance</Button>
+        <div className="flex justify-end gap-2 pt-3">
+          <Button size="sm" variant="outline" onClick={onClose}>Back</Button>
+          <Button size="sm" disabled={loading || !item || !allRequiredComplete || isReadOnly} onClick={handleAcknowledge}>Submit Acceptance</Button>
         </div>
       </CardContent>
       <AlertDialog open={successDialogOpen} onOpenChange={(open) => {
