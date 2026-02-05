@@ -290,7 +290,7 @@ const TrainingRecordList = () => {
                             ) : (
                                 <Plus className="size-4" />
                             )}
-                            {showForm ? 'Back' : 'Register Training'}
+                            {showForm ? 'Back' : ''}
                         </Button>
                     </div>
                 )}

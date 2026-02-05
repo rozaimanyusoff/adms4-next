@@ -289,10 +289,16 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 			base = base.filter((p) => trainingParticipantIdSet.has(p.id));
 		}
 		if (!query) return base;
-		return base.filter((participant) =>
-			[participant.name, participant.department, participant.role, participant.location]
-				.some((value) => value.toLowerCase().includes(query)),
-		);
+		return base.filter((participant) => {
+			const haystack = [
+				participant.name,
+				participant.department,
+				participant.role,
+				participant.location,
+				participant.ramco_id ?? '',
+			];
+			return haystack.some((value) => value && value.toLowerCase().includes(query));
+		});
 	}, [participantSearch, participantDirectory, isEditing, showAllParticipants, trainingParticipantIdSet]);
 
 	// Selected details overlay removed; no need to compute separate selected list here
@@ -792,14 +798,14 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 												</div>
 											</div>
 											<div className="relative">
-												<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-												<Input
-													id="participantSearch"
-													className="pl-10"
-													placeholder="Search by name, position, department, or location"
-													value={participantSearch}
-													onChange={(event) => setParticipantSearch(event.target.value)}
-												/>
+													<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+													<Input
+														id="participantSearch"
+														className="pl-10"
+														placeholder="Search by name, position, department, location, or RAMCO ID"
+														value={participantSearch}
+														onChange={(event) => setParticipantSearch(event.target.value)}
+													/>
 											</div>
 											{isEditing && !showAllParticipants && (
 												<p className="text-xs text-muted-foreground">
@@ -807,7 +813,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 												</p>
 											)}
 											<div>
-												<div className="max-h-[420px] space-y-2 overflow-y-auto rounded-2xl border border-dashed bg-white/70 p-3">
+												<div className="max-h-105 space-y-2 overflow-y-auto rounded-2xl border border-dashed bg-white/70 p-3">
 													{participantLoading ? (
 														<div className="flex items-center gap-2 text-sm text-muted-foreground">
 															<Loader2 className="size-4 animate-spin" />
