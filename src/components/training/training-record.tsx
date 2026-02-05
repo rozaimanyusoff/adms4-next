@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, FileDown, CornerUpLeft, FileSpreadsheet } from 'lucide-react';
+import { Plus, Loader2, FileDown, FileSpreadsheet } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
@@ -14,13 +14,13 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
-import TrainingForm from '@/components/training/training-form';
 import {
     TrainingRecord,
     normalizeTrainingRecord,
     formatDateTime,
     parseDateTime,
 } from '@/components/training/utils';
+import { useRouter } from 'next/navigation';
 
 const TrainingRecordList = () => {
     const [records, setRecords] = useState<TrainingRecord[]>([]);
@@ -29,8 +29,7 @@ const TrainingRecordList = () => {
     const [participantYear, setParticipantYear] = useState<string>('all');
     const [participantReport, setParticipantReport] = useState<any[]>([]);
     const [participantLoading, setParticipantLoading] = useState(false);
-    const [showForm, setShowForm] = useState(false);
-    const [editingId, setEditingId] = useState<number | null>(null);
+    const router = useRouter();
 
     const loadRecords = useCallback(async () => {
         setLoading(true);
@@ -54,10 +53,8 @@ const TrainingRecordList = () => {
     }, [loadRecords]);
 
     const handleRowDoubleClick = useCallback((record: TrainingRecord) => {
-        // Open form in edit mode and let the form fetch by id
-        setEditingId(record.training_id);
-        setShowForm(true);
-    }, []);
+        router.push(`/training/form/${record.training_id}`);
+    }, [router]);
 
     const YEAR_OPTIONS = Array.from({ length: 5 }, (_, index) => String(new Date().getFullYear() - index));
     useEffect(() => {
@@ -243,96 +240,63 @@ const TrainingRecordList = () => {
 
     return (
         <div className="space-y-4">
-            <div className={`flex flex-col gap-2 sm:flex-row sm:items-center ${showForm ? 'sm:justify-end' : 'sm:justify-between'}`}>
-                {!showForm && (
-                    <div>
-                        <h2 className="text-lg font-semibold">Training Records</h2>
-                        <p className="text-sm text-muted-foreground">
-                            Review scheduled trainings and double-click any row to edit in the form.
-                        </p>
-                    </div>
-                )}
-                {!showForm && (
-                    <div className="flex items-center gap-2 sm:justify-end">
-                        <Select value={participantYear} onValueChange={(value) => setParticipantYear(value)}>
-                            <SelectTrigger className="h-10 text-sm">
-                                <SelectValue placeholder="Year" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All years</SelectItem>
-                                {YEAR_OPTIONS.map((year) => (
-                                    <SelectItem key={year} value={year}>
-                                        {year}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Button
-                            variant="outline"
-                            onClick={() => void exportParticipants()}
-                            disabled={!participantReport.length || participantLoading}
-                        >
-                            <FileSpreadsheet className="size-4 text-green-600" />
-                            Export Records
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={() => {
-                                // Toggle form; when manually opening form, clear edit state for a fresh form
-                                setEditingId(null);
-                                setShowForm((prev) => !prev);
-                            }}
-                        >
-                            {loading ? (
-                                <Loader2 className="size-4 animate-spin" />
-                            ) : showForm ? (
-                                <CornerUpLeft className="size-4" />
-                            ) : (
-                                <Plus className="size-4" />
-                            )}
-                            {showForm ? 'Back' : ''}
-                        </Button>
-                    </div>
-                )}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 className="text-lg font-semibold">Training Records</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Review scheduled trainings and double-click any row to edit in the form.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 sm:justify-end">
+                    <Select value={participantYear} onValueChange={(value) => setParticipantYear(value)}>
+                        <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder="Year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All years</SelectItem>
+                            {YEAR_OPTIONS.map((year) => (
+                                <SelectItem key={year} value={year}>
+                                    {year}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button
+                        variant="outline"
+                        onClick={() => void exportParticipants()}
+                        disabled={!participantReport.length || participantLoading}
+                    >
+                        <FileSpreadsheet className="size-4 text-green-600" />
+                        Export Records
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={() => router.push('/training/form')}
+                    >
+                        {loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                    </Button>
+                </div>
             </div>
 
-            {showForm ? (
-                <div className="space-y-4">
-                    <TrainingForm
-                        trainingId={editingId ?? undefined}
-                        onSuccess={() => {
-                            setShowForm(false);
-                            setEditingId(null);
-                        }}
-                        onCancel={() => {
-                            setShowForm(false);
-                            setEditingId(null);
-                        }}
-                    />
+            {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+            {loading && (
+                <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Loading training records...
                 </div>
-            ) : (
-                <>
-                    {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
-                    {loading && (
-                        <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="size-4 animate-spin" />
-                            Loading training records...
-                        </div>
-                    )}
-                    <CustomDataGrid
-                        data={records}
-                        columns={columns}
-                        pagination={false}
-                        pageSize={10}
-                        inputFilter={false}
-                        onRowDoubleClick={handleRowDoubleClick}
-                        dataExport={false}
-                        rowColHighlight={false}
-                        columnsVisibleOption={false}
-                        gridSettings={false}
-                    />
-                </>
             )}
+            <CustomDataGrid
+                data={records}
+                columns={columns}
+                pagination={false}
+                pageSize={10}
+                inputFilter={false}
+                onRowDoubleClick={handleRowDoubleClick}
+                dataExport={false}
+                rowColHighlight={false}
+                columnsVisibleOption={false}
+                gridSettings={false}
+            />
         </div>
     );
 };

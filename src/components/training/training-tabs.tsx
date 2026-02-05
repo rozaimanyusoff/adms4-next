@@ -12,11 +12,22 @@ const TrainingTabs = () => {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
+    const LAST_TAB_KEY = 'training-tabs-last';
 
     const allowed = ['dashboard', 'records', 'participants', 'courses'] as const;
     const [activeTab, setActiveTab] = useState<string>(() => {
-        const tab = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : searchParams?.get('tab')) ?? '';
-        return (allowed as readonly string[]).includes(tab) ? tab : 'dashboard';
+        const getInitial = () => {
+            const tabFromUrl = typeof window !== 'undefined'
+                ? new URLSearchParams(window.location.search).get('tab')
+                : searchParams?.get('tab');
+            if (tabFromUrl && (allowed as readonly string[]).includes(tabFromUrl)) return tabFromUrl;
+            if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(LAST_TAB_KEY);
+                if (stored && (allowed as readonly string[]).includes(stored)) return stored;
+            }
+            return 'dashboard';
+        };
+        return getInitial();
     });
 
     const tabTitles = [
@@ -42,6 +53,12 @@ const TrainingTabs = () => {
         router.replace(`${pathname}?${params.toString()}`);
          
     }, [activeTab, pathname, router]);
+
+    // Persist last selected tab
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem(LAST_TAB_KEY, activeTab);
+    }, [activeTab]);
 
     return (
         <>
