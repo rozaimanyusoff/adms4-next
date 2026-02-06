@@ -12,14 +12,15 @@ import { useRouter } from 'next/navigation';
 
 interface TelcoAccount {
     id: number;
-    account_master: string;
-    provider: string;
-    description: string;
-    old_id: number;
+    account_master?: string;
+    account_no?: string;
+    provider?: string;
+    description?: string;
+    old_id?: number;
 }
 
 interface TelcoBillDetail {
-    util_id: number;
+    id: number;
     bfcy_id: number;
     account: TelcoAccount;
     bill_date: string;
@@ -29,33 +30,27 @@ interface TelcoBillDetail {
     rounding: string;
     grand_total: string;
     status: string;
+    reference?: string | null;
+    summary?: { cc_amount: number; costcenter: { id: number; name: string } }[];
     details: TelcoBillDetailItem[];
 }
 
 interface TelcoBillDetailItem {
-    util2_id: number;
-    util_id_copy2: number;
-    util_id: number;
-    bill_id: number;
-    sim_id: number;
-    loc_id: number;
-    costcenter_id: number;
-    sim_user_id: string;
-    cc_no: string;
-    cc_user: string;
-    plan: string;
-    usage: string;
-    discount: string;
-    amount: string;
-    cc_dt: string;
+    id?: number;
+    bill_id?: number;
+    account_id?: number;
+    sim_id?: number;
+    old_sim_id?: number;
+    new_sim_id?: number;
+    plan?: string;
+    usage?: string;
+    discount?: string;
+    amount?: string;
+    cc_dt?: string;
     costcenter?: { id: number; name: string };
-    user?: { ramco_id: string; full_name: string };
-    district?: { id: number; name: string };
+    user?: { ramco_id: string; full_name: string } | null;
     subs?: { id: number; sub_no: string };
-    sim?: {
-        id: number;
-        no: string;
-    }
+    sim?: { id: number; no: string };
 }
 
 interface TelcoBillFormProps {
@@ -93,6 +88,8 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
     const [billDate, setBillDate] = useState('');
     // Set default status for create mode
     const [status, setStatus] = useState((!utilId || utilId <= 0) ? 'Unpaid' : '');
+    // Convenience flag for edit mode; declare early to avoid init issues in effects
+    const isEditMode = !!(utilId && utilId > 0);
     const navigateBack = React.useCallback(() => {
         router.push('/billings/telco');
     }, [router]);
@@ -192,13 +189,13 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             rounding: rounding,
             grand_total: grandTotal,
             status: (!utilId || utilId <= 0) ? status : (data?.status || ''),
-            details: (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || []).map((detail: any) => {
-                const editKey = String(detail.util2_id || detail.id);
+            details: (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || []).map((detail: any, idx: number) => {
+                const editKey = String(detail.id ?? detail.subs?.id ?? detail.sim_id ?? idx);
                 const usage = detailsEdits[editKey]?.usage ?? detail.usage ?? '0.00';
                 const disc = detailsEdits[editKey]?.disc ?? detail.discount ?? '0.00';
-                let plan = (!utilId || utilId <= 0) ? accountInfo?.plan ?? '0.00' : detail.plan ?? '0.00';
-                let subsId = null;
-                let costcenterId = null;
+                const plan = (!utilId || utilId <= 0) ? (accountInfo?.plan ?? '0.00') : (detail.plan ?? '0.00');
+                let subsId: number | null = null;
+                let costcenterId: number | null = null;
                 if (!utilId || utilId <= 0) {
                     // Create mode: from accountSubs structure
                     subsId =
@@ -222,9 +219,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                     costcenterId = detail.costcenter?.id ?? null;
                 }
                 return {
-                    util2_id: detail.util2_id || null,
-                    old_sim_id: detail.sim_id || null,
-                    new_sim_id: detail.sim?.id || null,
+                    id: detail.id ?? null,
+                    bill_id: detail.bill_id ?? data?.id ?? utilId ?? null,
+                    old_sim_id: detail.old_sim_id ?? detail.sim_id ?? null,
+                    new_sim_id: detail.new_sim_id ?? detail.sim?.id ?? detail.sim_id ?? null,
                     plan: plan,
                     usage: usage,
                     discount: disc,
@@ -298,41 +296,66 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             setBillNo(data.bill_no ?? '');
             setBillDate(data.bill_date ?? '');
         }
+        // If API already supplies summary, prefer it to avoid mismatched client math
+        if (isEditMode && data?.summary && Array.isArray(data.summary) && data.summary.length > 0) {
+            const serverSummary: Record<string, number> = {};
+            data.summary.forEach(item => {
+                const name = item.costcenter?.name || '-';
+                serverSummary[name] = (serverSummary[name] || 0) + (item.cc_amount || 0);
+            });
+            setCostCenterSummary(serverSummary);
+        } else {
+            let total = 0;
+            const summary: Record<string, number> = {};
+            detailsSource.forEach((detail: any, idx: number) => {
+                const editKey = String(detail.id ?? detail.subs?.id ?? detail.sim_id ?? idx);
+                // Get values from edits or fallback to detail
+                const usage = parseFloat(detailsEdits[editKey]?.usage ?? detail.usage ?? detail.usage ?? '0') || 0;
+                const disc = parseFloat(detailsEdits[editKey]?.disc ?? detail.discount ?? detail.disc ?? '0') || 0;
+                let plan = 0;
+                if (!utilId || utilId <= 0) {
+                    plan = parseFloat(accountInfo?.plan ?? '0') || 0;
+                } else {
+                    plan = parseFloat(detail.plan ?? '0') || 0;
+                }
+                const amt = (plan + usage) - disc;
+                total += amt;
+                let ccName = '-';
+                if (detail.costcenter && detail.costcenter.name) {
+                    ccName = detail.costcenter.name;
+                } else if (detail.cc_name) {
+                    ccName = detail.cc_name;
+                } else if (detail.costcenter_name) {
+                    ccName = detail.costcenter_name;
+                }
+                if (!summary[ccName]) summary[ccName] = 0;
+                summary[ccName] += amt;
+            });
+            // sub-total = sum of row amounts
+            setSubTotal(total.toFixed(2) === '' ? '0.00' : total.toFixed(2));
+            // grand total = sub-total + tax + rounding
+            const grand = (parseFloat(total.toFixed(2) === '' ? '0.00' : total.toFixed(2)) + parseFloat(tax === '' ? '0.00' : tax) + parseFloat(rounding === '' ? '0.00' : rounding)).toFixed(2);
+            setGrandTotal(prev => prev !== grand ? grand : prev);
+            setCostCenterSummary(prev => {
+                const prevStr = JSON.stringify(prev);
+                const nextStr = JSON.stringify(summary);
+                return prevStr !== nextStr ? summary : prev;
+            });
+            return;
+        }
+        // sub-total and grand total still need to be computed even when using server summary
         let total = 0;
-        const summary: Record<string, number> = {};
-        detailsSource.forEach((detail: any) => {
-            const editKey = String(detail.util2_id || detail.id);
-            // Get values from edits or fallback to detail
-            const usage = parseFloat(detailsEdits[editKey]?.usage ?? detail.usage ?? detail.usage ?? '0') || 0;
-            const disc = parseFloat(detailsEdits[editKey]?.disc ?? detail.discount ?? detail.disc ?? '0') || 0;
-            let plan = 0;
-            if (!utilId || utilId <= 0) {
-                plan = parseFloat(accountInfo?.plan ?? '0') || 0;
-            } else {
-                plan = parseFloat(detail.plan ?? '0') || 0;
-            }
-            const amt = (plan + usage) - disc;
-            total += amt;
-            let ccName = '-';
-            if (detail.costcenter && detail.costcenter.name) {
-                ccName = detail.costcenter.name;
-            } else if (detail.cc_name) {
-                ccName = detail.cc_name;
-            }
-            if (!summary[ccName]) summary[ccName] = 0;
-            summary[ccName] += amt;
+        detailsSource.forEach((detail: any, idx: number) => {
+            const editKey = String(detail.id ?? detail.subs?.id ?? detail.sim_id ?? idx);
+            const usage = parseFloat(detailsEdits[editKey]?.usage ?? detail.usage ?? '0') || 0;
+            const disc = parseFloat(detailsEdits[editKey]?.disc ?? detail.discount ?? '0') || 0;
+            const plan = (!utilId || utilId <= 0) ? parseFloat(accountInfo?.plan ?? '0') || 0 : parseFloat(detail.plan ?? '0') || 0;
+            total += (plan + usage) - disc;
         });
-        // sub-total = sum of row amounts
         setSubTotal(total.toFixed(2) === '' ? '0.00' : total.toFixed(2));
-        // grand total = sub-total + tax + rounding
         const grand = (parseFloat(total.toFixed(2) === '' ? '0.00' : total.toFixed(2)) + parseFloat(tax === '' ? '0.00' : tax) + parseFloat(rounding === '' ? '0.00' : rounding)).toFixed(2);
         setGrandTotal(prev => prev !== grand ? grand : prev);
-        setCostCenterSummary(prev => {
-            const prevStr = JSON.stringify(prev);
-            const nextStr = JSON.stringify(summary);
-            return prevStr !== nextStr ? summary : prev;
-        });
-    }, [detailsSource, detailsEdits, accountInfo, utilId, tax, data, rounding]);
+    }, [detailsSource, detailsEdits, accountInfo, utilId, tax, data, rounding, isEditMode]);
 
     useEffect(() => {
         setError(null);
@@ -349,7 +372,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                     if (res.data.data.details && Array.isArray(res.data.data.details) && Object.keys(detailsEdits).length === 0) {
                         const initialEdits: Record<string, { usage: string; disc: string; amt: string }> = {};
                         res.data.data.details.forEach((detail: any) => {
-                            const editKey = String(detail.util2_id || detail.id);
+                            const editKey = String(detail.id ?? detail.subs?.id ?? detail.sim_id ?? '0');
                             initialEdits[editKey] = {
                                 usage: detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00',
                                 disc: detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00',
@@ -450,7 +473,6 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
         !isNaN(parseFloat(grandTotal)) && parseFloat(grandTotal) > 0
     );
 
-    const isEditMode = !!(utilId && utilId > 0);
     const cancelWarningText = hasFormData
         ? 'You have unsaved changes. Leaving now will discard them.'
         : 'The form is empty. Leave without saving?';
@@ -553,7 +575,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                                                     className={`px-3 py-2 cursor-pointer hover:bg-indigo-100 dark:hover:bg-gray-800 ${highlightClass}`}
                                                     onClick={() => setSelectedAccountId(acc.id)}
                                                 >
-                                                    {acc.account_master} - {acc.description}
+                                                    {acc.account_master || acc.account_no || 'Unknown'} - {acc.description || acc.provider || ''}
                                                 </li>
                                             );
                                         })}
@@ -678,7 +700,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                         <h3 className="text-xl font-semibold flex items-center gap-2">Details</h3>
                         <input
                             type="text"
-                            placeholder="Search Cost Center..."
+                            placeholder="Search sub / cost center / user..."
                             value={costCenterFilter}
                             onChange={e => setCostCenterFilter(e.target.value)}
                             className="sm:ml-4 px-2 py-1 border rounded text-sm w-full sm:w-56"
@@ -691,6 +713,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                                     <th className="border px-2 py-1.5">#</th>
                                     <th className="border px-2 py-1.5">Sub Number</th>
                                     <th className="border px-2 py-1.5">Costcenter</th>
+                                    <th className="border px-2 py-1.5">User</th>
                                     <th className="border px-2 py-1.5">Plan</th>
                                     <th className="border px-2 py-1.5">Usage</th>
                                     <th className="border px-2 py-1.5">Discount/Adj.</th>
@@ -701,11 +724,14 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                                 {(
                                     (selectedAccountId && accountSubs.length > 0 ? accountSubs : data?.details || [])
                                         .filter((detail: any) => {
-                                            const subNo = detail.subs?.sub_no || detail.sub_no || '';
-                                            return subNo.toLowerCase().includes(costCenterFilter.toLowerCase());
+                                            const query = costCenterFilter.toLowerCase();
+                                            const subNo = (detail.subs?.sub_no || detail.sub_no || '').toLowerCase();
+                                            const ccName = (detail.costcenter?.name || detail.cc_name || detail.costcenter_name || '').toLowerCase();
+                                            const userName = (detail.user?.full_name || '').toLowerCase();
+                                            return subNo.includes(query) || ccName.includes(query) || userName.includes(query);
                                         })
                                 ).map((detail: any, idx: number) => {
-                                    const editKey = String(detail.util2_id || detail.id);
+                                    const editKey = String(detail.id ?? detail.subs?.id ?? detail.sim_id ?? idx);
                                     const usageVal = detailsEdits[editKey]?.usage ?? (detail.usage !== undefined && detail.usage !== null ? String(detail.usage) : '0.00');
                                     const discVal = detailsEdits[editKey]?.disc ?? (detail.discount !== undefined && detail.discount !== null ? String(detail.discount) : '0.00');
                                     // Calculate amount for each row
@@ -718,7 +744,13 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                                         <tr key={editKey}>
                                             <td className="border px-2 text-center">{idx + 1}</td>
                                             <td className="border px-2">{detail.subs?.sub_no || detail.sub_no || '-'}</td>
-                                            <td className="border px-2">{detail.costcenter?.name || '-'}</td>
+                                            <td className="border px-2">{detail.costcenter?.name || detail.costcenter_name || detail.cc_name || '-'}</td>
+                                            <td className="border px-2">
+                                                <div className="flex flex-col leading-tight">
+                                                    <span>{detail.user?.full_name || '-'}</span>
+                                                    <span className="text-xs text-gray-500">{detail.user?.ramco_id || '-'}</span>
+                                                </div>
+                                            </td>
                                             <td className="border px-2 text-right">{planVal}</td>
                                             <td className="border px-2 text-right">
                                         <Input
@@ -782,7 +814,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             <div className="w-full lg:max-w-sm space-y-6">
                 <Card className="w-full md:w-72 lg:w-80 xl:w-96 h-fit shadow-none bg-stone-50 dark:bg-stone-800">
                     <CardHeader className="pb-2">
-                        <CardTitle>Amount by Cost Center</CardTitle>
+                        <CardTitle>Cost Center Breakdown</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {selectedAccountId && accountInfo && (

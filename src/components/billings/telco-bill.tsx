@@ -126,7 +126,7 @@ const TelcoBill = () => {
                 }
               }}
             >
-              <Download size={16} className="mr-1" /> Export PDF
+              <Download size={16} className="mr-1" /> Payment Memo
             </Button>
           )}
           {canDelete && selectedRowIds.length > 0 && (
