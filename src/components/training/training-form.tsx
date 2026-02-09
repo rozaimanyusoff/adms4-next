@@ -117,6 +117,8 @@ type TrainingFormProps = {
 
 export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormProps) {
 	const [supportingDocument, setSupportingDocument] = useState<File | null>(null);
+	const [existingAttendanceUpload, setExistingAttendanceUpload] = useState<string | null>(null);
+	const [supportingDocumentPreviewUrl, setSupportingDocumentPreviewUrl] = useState<string | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [participantDirectory, setParticipantDirectory] = useState<ParticipantRecord[]>([]);
 	const [participantLoading, setParticipantLoading] = useState(false);
@@ -270,6 +272,18 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	}, [watch, persistDraft]);
 
 	useEffect(() => {
+		if (!supportingDocument) {
+			setSupportingDocumentPreviewUrl(null);
+			return;
+		}
+		const objectUrl = URL.createObjectURL(supportingDocument);
+		setSupportingDocumentPreviewUrl(objectUrl);
+		return () => {
+			URL.revokeObjectURL(objectUrl);
+		};
+	}, [supportingDocument]);
+
+	useEffect(() => {
 		persistDraft(getValues(), costItems);
 	}, [costItems, getValues, persistDraft]);
 
@@ -289,6 +303,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 		let ignore = false;
 		const loadForEdit = async () => {
 			if (!trainingId) {
+				setExistingAttendanceUpload(null);
 				return;
 			}
 			setEditLoading(true);
@@ -323,6 +338,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 				setInitialTitle(rec.course_title || '');
 				setCourseId(rec.course_id ?? undefined);
 				setSelectedCourseTitle(rec.course_title || '');
+				setExistingAttendanceUpload(rec.attendance_upload ?? null);
 				// Seed costing rows from API if available
 				const seeded: CostItem[] = [];
 				const pushIf = (label: string, value: any) => {
@@ -525,7 +541,18 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 
 	const handleDocumentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.target.files?.[0];
-		setSupportingDocument(file ?? null);
+		if (!file) {
+			setSupportingDocument(null);
+			return;
+		}
+		const isPdfMime = file.type === 'application/pdf';
+		const isPdfByName = file.name.toLowerCase().endsWith('.pdf');
+		if (!isPdfMime && !isPdfByName) {
+			toast.error('Only PDF files are allowed for attendance upload.');
+			event.target.value = '';
+			return;
+		}
+		setSupportingDocument(file);
 	};
 
 	const upsertRecent = (list: ParticipantRecord[], next: ParticipantRecord, max = 10) => {
@@ -555,6 +582,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	const handleReset = () => {
 		reset(TRAINING_FORM_DEFAULTS);
 		setSupportingDocument(null);
+		setExistingAttendanceUpload(null);
 		setCourseSuggestions([]);
 		setCourseError(null);
 		setCourseId(undefined);
@@ -585,6 +613,8 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	const toMoneyString = (n: number) => n.toFixed(2);
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [dialogMessage, setDialogMessage] = useState('');
+	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+	const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 	const openSuccessDialog = (message: string) => {
 		setDialogMessage(message);
 		setDialogOpen(true);
@@ -597,6 +627,23 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	const handleCancel = () => {
 		clearDraft();
 		onCancel?.();
+	};
+	const handleDelete = async () => {
+		if (!trainingId) return;
+		try {
+			setDeleteSubmitting(true);
+			const res = await authenticatedApi.delete(`/api/training/${trainingId}`);
+			const message = (res as any)?.data?.message || 'Training deleted';
+			toast.success(message);
+			setDeleteDialogOpen(false);
+			clearDraft();
+			onSuccess?.();
+		} catch (err: any) {
+			const message = err?.response?.data?.message || 'Failed to delete training';
+			toast.error(message);
+		} finally {
+			setDeleteSubmitting(false);
+		}
 	};
 
 	const onSubmit = async (values: TrainingFormValues) => {
@@ -659,9 +706,11 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 					}
 				});
 				if (supportingDocument) {
-					formData.append('attendance_uploaded', supportingDocument);
+					formData.append('attendance_upload', supportingDocument, supportingDocument.name);
 				}
-				const res = await authenticatedApi.put(`/api/training/${trainingId}`, formData);
+				const res = await authenticatedApi.put(`/api/training/${trainingId}`, formData, {
+					headers: { 'Content-Type': 'multipart/form-data' },
+				});
 				const message = (res as any)?.data?.message || 'Training updated';
 				clearDraft();
 				openSuccessDialog(message);
@@ -697,6 +746,16 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 							<Button type="submit" disabled={isSubmitting || !isValid}>
 								{isSubmitting ? 'Saving…' : isEditing ? 'Update' : 'Save'}
 							</Button>
+							{isEditing && (
+								<Button
+									type="button"
+									variant="destructive"
+									onClick={() => setDeleteDialogOpen(true)}
+									disabled={isSubmitting || deleteSubmitting}
+								>
+									{deleteSubmitting ? 'Deleting…' : 'Delete'}
+								</Button>
+							)}
 						</div>
 					</CardHeader>
 					<CardContent className="p-2">
@@ -831,18 +890,22 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 										</div>
 										<div className="rounded-lg border border-dashed p-4">
 											<div className="flex flex-wrap items-center gap-4">
-												<div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-													<FileText className="size-6" />
-												</div>
-												<div className="flex-1">
-													<p className="font-medium">Upload supporting document</p>
-													<p className="text-sm text-muted-foreground">Attach the agenda, attendance list, or approvals.</p>
-													{supportingDocument ? (
-														<p className="mt-1 text-sm text-primary">{supportingDocument.name}</p>
-													) : (
-														<p className="mt-1 text-sm text-muted-foreground">No document selected</p>
-													)}
-												</div>
+												{!(existingAttendanceUpload && !supportingDocument) && (
+													<>
+														<div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+															<FileText className="size-6" />
+														</div>
+														<div className="flex-1">
+															<p className="font-medium">Upload supporting document</p>
+															<p className="text-sm text-muted-foreground">Attendance upload supports PDF only.</p>
+															{supportingDocument ? (
+																<p className="mt-1 text-sm text-primary">{supportingDocument.name}</p>
+															) : (
+																<p className="mt-1 text-sm text-muted-foreground">No document selected</p>
+															)}
+														</div>
+													</>
+												)}
 												<div className="flex gap-2">
 													{supportingDocument && (
 														<Button
@@ -862,10 +925,37 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 													</Button>
 												</div>
 											</div>
+											{(supportingDocumentPreviewUrl || existingAttendanceUpload) && (
+												<div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-start">
+													<div className="h-36 w-28 overflow-hidden rounded border bg-white">
+														<object
+															data={supportingDocumentPreviewUrl || existingAttendanceUpload || undefined}
+															type="application/pdf"
+															className="h-full w-full"
+															aria-label="Attendance PDF preview"
+														>
+															<div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">PDF</div>
+														</object>
+													</div>
+													<div className="min-w-0 flex-1">
+														<p className="truncate text-sm font-medium">
+															{supportingDocument ? supportingDocument.name : 'Current attendance PDF'}
+														</p>
+														<a
+															href={supportingDocumentPreviewUrl || existingAttendanceUpload || '#'}
+															target="_blank"
+															rel="noreferrer"
+															className="text-xs text-primary hover:underline"
+														>
+															Open full PDF
+														</a>
+													</div>
+												</div>
+											)}
 											<input
 												ref={fileInputRef}
 												type="file"
-												accept=".pdf,.doc,.docx,.xls,.xlsx"
+												accept="application/pdf,.pdf"
 												className="hidden"
 												onChange={handleDocumentChange}
 											/>
@@ -1184,6 +1274,34 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 					<DialogFooter>
 						<Button type="button" onClick={handleDialogClose}>
 							Back to records
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete training record?</DialogTitle>
+						<DialogDescription>
+							This action cannot be undone. The selected training record will be permanently deleted.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setDeleteDialogOpen(false)}
+							disabled={deleteSubmitting}
+						>
+							Cancel
+						</Button>
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={handleDelete}
+							disabled={deleteSubmitting}
+						>
+							{deleteSubmitting ? 'Deleting…' : 'Delete'}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
