@@ -62,6 +62,19 @@ interface TelcoBillFormProps {
 
 const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved, onLeaveHandlerReady }) => {
     const router = useRouter();
+    const normalizeBillDate = React.useCallback((value: string) => {
+        const raw = (value || '').trim();
+        if (!raw) return '';
+        // Already in date-only or ISO date-time format.
+        if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+        // Support dd/mm/yyyy if returned by API in that format.
+        const dmy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+        const parsed = new Date(raw);
+        if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+        return '';
+    }, []);
+
     // Track edits for details table
     const [detailsEdits, setDetailsEdits] = useState<Record<string, { usage: string; disc: string; amt: string }>>({});
     const [grandTotal, setGrandTotal] = useState('0.00');
@@ -131,7 +144,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                 if (draft.selectedAccountId) setSelectedAccountId(draft.selectedAccountId);
                 if (typeof draft.accountSearch === 'string') setAccountSearch(draft.accountSearch);
                 if (typeof draft.billNo === 'string') setBillNo(draft.billNo);
-                if (typeof draft.billDate === 'string') setBillDate(draft.billDate);
+                if (typeof draft.billDate === 'string') setBillDate(normalizeBillDate(draft.billDate));
                 if (typeof draft.status === 'string') setStatus(draft.status);
                 if (typeof draft.tax === 'string') setTax(draft.tax);
                 if (typeof draft.rounding === 'string') setRounding(draft.rounding);
@@ -142,7 +155,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
         } finally {
             setDraftLoaded(true);
         }
-    }, [draftKey]);
+    }, [draftKey, normalizeBillDate]);
 
     useEffect(() => {
         if (!draftKey || !draftLoaded) return;
@@ -166,11 +179,12 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
     // Save handler for form submission
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        const normalizedBillDate = normalizeBillDate(billDate);
         // Basic client-side validations with toast feedback
         const errs: string[] = [];
         if (!selectedAccountId) errs.push('Please select an account.');
         if (!billNo || billNo.trim() === '') errs.push('Bill No is required.');
-        if (!billDate || String(billDate).trim() === '') errs.push('Bill Date is required.');
+        if (!normalizedBillDate) errs.push('Bill Date is required.');
         if (isNaN(parseFloat(subTotal)) || parseFloat(subTotal) <= 0) errs.push('Sub-Total must be greater than 0.');
         if (isNaN(parseFloat(grandTotal)) || parseFloat(grandTotal) <= 0) errs.push('Grand Total must be greater than 0.');
         if (errs.length > 0) {
@@ -183,7 +197,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             account_id: selectedAccountId,
             account_master: selectedAccount?.account_master ?? '',
             bill_no: billNo,
-            bill_date: billDate,
+            bill_date: normalizedBillDate,
             subtotal: subTotal,
             tax: tax,
             rounding: rounding,
@@ -289,12 +303,6 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             setGrandTotal(prev => prev === '' ? '0.00' : prev);
             setBillNo(prev => prev === '' ? '' : prev);
             setBillDate(prev => prev === '' ? '' : prev);
-        } else if (data) {
-            // Edit mode: set tax, rounding, billNo, billDate from API data
-            setTax(data.tax !== undefined && data.tax !== null && data.tax !== '' ? data.tax : '0.00');
-            setRounding(data.rounding !== undefined && data.rounding !== null && data.rounding !== '' ? data.rounding : '0.00');
-            setBillNo(data.bill_no ?? '');
-            setBillDate(data.bill_date ?? '');
         }
         // If API already supplies summary, prefer it to avoid mismatched client math
         if (isEditMode && data?.summary && Array.isArray(data.summary) && data.summary.length > 0) {
@@ -383,7 +391,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                     }
                     // Set Bill No and Bill Date from API
                     setBillNo(res.data.data.bill_no ?? '');
-                    setBillDate(res.data.data.bill_date ?? '');
+                    setBillDate(normalizeBillDate(res.data.data.bill_date ?? ''));
+                    // Initialize tax/rounding once from API in edit mode.
+                    setTax(res.data.data.tax !== undefined && res.data.data.tax !== null && res.data.data.tax !== '' ? res.data.data.tax : '0.00');
+                    setRounding(res.data.data.rounding !== undefined && res.data.data.rounding !== null && res.data.data.rounding !== '' ? res.data.data.rounding : '0.00');
                     setLoading(false);
                 })
                 .catch((err) => {
@@ -398,7 +409,7 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
             setData(null);
             setLoading(false);
         }
-    }, [draftKey, draftLoaded, utilId]);
+    }, [draftKey, draftLoaded, normalizeBillDate, utilId]);
 
     // Fetch accounts for select
     useEffect(() => {
