@@ -104,6 +104,9 @@ interface BillingAccount {
   account: string;
   category?: string;
   description?: string;
+  desc?: string;
+  bill_desc?: string;
+  bill_description?: string;
   status?: string;
   contract_start?: string | null;
   contract_end?: string | null;
@@ -374,7 +377,10 @@ const UtilityBill = () => {
         (account.category?.toLowerCase() || '').includes(searchLower) ||
         (account.beneficiary?.name?.toLowerCase() || '').includes(searchLower) ||
         (account.account?.toLowerCase() || '').includes(searchLower) ||
-        (account.description?.toLowerCase() || '').includes(searchLower)
+        (account.description?.toLowerCase() || '').includes(searchLower) ||
+        (account.desc?.toLowerCase() || '').includes(searchLower) ||
+        (account.bill_desc?.toLowerCase() || '').includes(searchLower) ||
+        (account.bill_description?.toLowerCase() || '').includes(searchLower)
       );
 
       // Sort with provider matches first
@@ -1215,70 +1221,74 @@ const UtilityBill = () => {
                 )}
 
                 <div className="max-h-150 overflow-y-auto space-y-2 px-2">
-                  {filteredAccountsWithLogos.map((account) => (
-                    <div
-                      key={account.bill_id}
-                      className={`px-3 py-1 border rounded-lg cursor-pointer transition-colors bg-gray-50 hover:bg-amber-100 dark:hover:bg-gray-800 ${selectedAccount?.bill_id === account.bill_id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
-                        }`}
-                      onClick={() => handleAccountSelect(account)}
-                    >
-                      <div className="flex items-center space-x-3">
-                        {/* Logo on the left */}
-                        <div className="shrink-0">
-                          <img
-                            src={
-                              ((account as any).beneficiary?.logo) ? getLogoUrl((account as any).beneficiary.logo) : (account.logoUrl || getLogoUrl(account.beneficiary?.logo || null))
-                            }
-                            alt={account.beneficiary?.name || 'Provider'}
-                            className="w-15 rounded-0 object-cover bg-gray-100 dark:bg-gray-800"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement;
-                              // Only set fallback once to prevent infinite loops
-                              if (!img.src.includes('Logo-RTech.jpeg')) {
-                                img.src = '/assets/images/Logo-RTech.jpeg';
-                              }
-                            }}
-                          />
-                        </div>
-
-                        {/* Provider details stacked on the right */}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                            {account.beneficiary?.name || 'Unknown Provider'}
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                            Account: {account.account || 'N/A'}
-                          </p>
-                          <p className="text-xs text-blue-600 dark:text-blue-400 truncate">
-                            {account.category || account.description || 'Unknown Service'}
-                          </p>
-                          <p className="text-xs text-blue-600 dark:text-blue-300 truncate">
-                            {account.costcenter?.name || 'N/A'}
-                          </p>
-                          <p className="text-xs text-blue-600 dark:text-blue-300 truncate">
-                            {account.location?.name || 'N/A'}
-                          </p>
-                        </div>
-
-                        {sidebarSize === 'sm' && (
-                          <ChevronRight className="w-8 h-8 text-gray-600" />
-                        )}
-
-                        {/* Selected indicator */}
-                        {selectedAccount?.bill_id === account.bill_id && (
+                  {filteredAccountsWithLogos.map((account) => {
+                    const serviceLabel = account.category || 'Unknown Service';
+                    const descriptionLabel = account.description || account.desc || account.bill_desc || account.bill_description || '-';
+                    return (
+                      <div
+                        key={account.bill_id}
+                        className={`px-3 py-1 border rounded-lg cursor-pointer transition-colors bg-gray-50 hover:bg-amber-100 dark:hover:bg-gray-800 ${selectedAccount?.bill_id === account.bill_id
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700'
+                          }`}
+                        onClick={() => handleAccountSelect(account)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {/* Logo on the left */}
                           <div className="shrink-0">
-                            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                            </div>
+                            <img
+                              src={
+                                ((account as any).beneficiary?.logo) ? getLogoUrl((account as any).beneficiary.logo) : (account.logoUrl || getLogoUrl(account.beneficiary?.logo || null))
+                              }
+                              alt={account.beneficiary?.name || 'Provider'}
+                              className="w-15 rounded-0 object-cover bg-gray-100 dark:bg-gray-800"
+                              onError={(e) => {
+                                const img = e.target as HTMLImageElement;
+                                // Only set fallback once to prevent infinite loops
+                                if (!img.src.includes('Logo-RTech.jpeg')) {
+                                  img.src = '/assets/images/Logo-RTech.jpeg';
+                                }
+                              }}
+                            />
                           </div>
-                        )}
+
+                          {/* Provider details stacked on the right */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                              {account.beneficiary?.name || 'Unknown Provider'}
+                            </p>
+                            <p className="text-xs truncate">
+                              Account: <span className=' font-semibold text-blue-600 dark:text-blue-400'>{account.account || 'N/A'}</span>
+                            </p>
+                            <p className="text-xs truncate">
+                              Service: <span className=' font-semibold text-blue-600 dark:text-blue-400'>{serviceLabel}</span>
+                            </p>
+                            <p className="text-xs truncate">
+                              Description: <span className=' font-semibold text-blue-600 dark:text-blue-400'>{descriptionLabel}</span>
+                            </p>
+                            <p className="text-xs truncate">
+                              {account.costcenter?.name || 'N/A'}, {account.location?.name || 'N/A'}
+                            </p>
+                          </div>
+
+                          {sidebarSize === 'sm' && (
+                            <ChevronRight className="w-8 h-8 text-gray-600" />
+                          )}
+
+                          {/* Selected indicator */}
+                          {selectedAccount?.bill_id === account.bill_id && (
+                            <div className="shrink-0">
+                              <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {filteredAccountsWithLogos.length === 0 && (
                     <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                       {searchTerm ? (
