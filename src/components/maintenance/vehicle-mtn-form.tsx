@@ -14,6 +14,7 @@ import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,6 +75,11 @@ interface AssessmentDetail {
   adt_image?: string | null;
 }
 
+interface EmployeeSearchResult {
+  ramco_id: string;
+  full_name: string;
+}
+
 function pad2(value: number) {
   return String(value).padStart(2, '0');
 }
@@ -126,6 +132,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
   const auth = React.useContext(AuthContext);
   const user = auth?.authData?.user;
   const authData = auth?.authData;
+  const isAdmin = Number(user?.role?.id) === 1;
 
   const [loading, setLoading] = React.useState<boolean>(false);
   const [existing, setExisting] = React.useState<any>(null);
@@ -139,6 +146,12 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     department: null as any,
     location: null as any,
   });
+
+  // Admin-only: employee search + selection for requestor override
+  const [employeeSearchQuery, setEmployeeSearchQuery] = React.useState<string>('');
+  const [employeeSearchLoading, setEmployeeSearchLoading] = React.useState<boolean>(false);
+  const [employeeSearchResults, setEmployeeSearchResults] = React.useState<EmployeeSearchResult[]>([]);
+  const [employeeLookupLoading, setEmployeeLookupLoading] = React.useState<boolean>(false);
 
   // Vehicle selection
   const [vehicleOptions, setVehicleOptions] = React.useState<ComboboxOption[]>([]);
@@ -544,17 +557,99 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
       .then((res: any) => {
         const data = res?.data?.data;
         if (!data) return;
-        setRequestor((s: any) => ({
-          ...s,
-          name: data.full_name || s.name,
-          ramco_id: data.ramco_id || s.ramco_id,
-          contact: data.contact || s.contact,
-          department: data.department || null,
-          location: data.location || null,
-        }));
+        setRequestor((s: any) => {
+          // If admin already selected another employee, don't overwrite.
+          if (isAdmin && s?.ramco_id && String(s.ramco_id) !== String(username)) return s;
+          return {
+            ...s,
+            name: data.full_name || s.name,
+            ramco_id: data.ramco_id || s.ramco_id,
+            contact: data.contact || s.contact,
+            department: data.department || null,
+            location: data.location || null,
+          };
+        });
       })
       .catch(() => { /* silent */ });
-  }, [id, user?.username]);
+  }, [id, user?.username, isAdmin]);
+
+  // Admin: search employees by name (debounced)
+  React.useEffect(() => {
+    if (!isAdmin || id) return; // only create mode
+    const q = employeeSearchQuery.trim();
+    if (q.length < 2) {
+      setEmployeeSearchResults([]);
+      setEmployeeSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const t = setTimeout(() => {
+      (async () => {
+        try {
+          setEmployeeSearchLoading(true);
+          const res: any = await authenticatedApi.get('/api/assets/employees/search', {
+            params: { q },
+          });
+          const payload = res?.data ?? {};
+          const list: any[] = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.result)
+              ? payload.result
+              : Array.isArray(payload?.items)
+                ? payload.items
+                : [];
+
+          const normalized: EmployeeSearchResult[] = list
+            .map((item: any) => ({
+              ramco_id: String(item?.ramco_id ?? item?.employee_id ?? item?.id ?? '').trim(),
+              full_name: String(item?.full_name ?? item?.name ?? '').trim(),
+            }))
+            .filter((item) => item.ramco_id && item.full_name);
+
+          if (!cancelled) setEmployeeSearchResults(normalized);
+        } catch {
+          if (!cancelled) setEmployeeSearchResults([]);
+        } finally {
+          if (!cancelled) setEmployeeSearchLoading(false);
+        }
+      })();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [employeeSearchQuery, isAdmin, id]);
+
+  const handleAdminEmployeeSelect = React.useCallback(async (ramcoId: string) => {
+    const val = String(ramcoId || '').trim();
+    if (!val) return;
+    setEmployeeLookupLoading(true);
+    try {
+      const res: any = await authenticatedApi.get(`/api/assets/employees/lookup/${encodeURIComponent(val)}`);
+      const data = res?.data?.data ?? null;
+      if (!data) {
+        toast.error('Employee not found');
+        return;
+      }
+      setRequestor((s: any) => ({
+        ...s,
+        name: data.full_name || data.name || s.name,
+        ramco_id: data.ramco_id || val,
+        contact: data.contact || data.phone || s.contact,
+        department: data.department || null,
+        location: data.location || null,
+      }));
+      // Clear search for the next selection
+      setEmployeeSearchQuery('');
+      setEmployeeSearchResults([]);
+    } catch {
+      toast.error('Failed to load employee details');
+    } finally {
+      setEmployeeLookupLoading(false);
+    }
+  }, []);
 
   // Fetch vehicle list for the user (respect exclusionUser)
   React.useEffect(() => {
@@ -1391,7 +1486,49 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 </div>
                 <div>
                   <Label>Name</Label>
-                  <Input readOnly value={requestor.name} />
+                  {isAdmin && !isReadOnly ? (
+                    <Select value={String(requestor?.ramco_id || '')} onValueChange={handleAdminEmployeeSelect}>
+                      <SelectTrigger className="w-full" disabled={employeeLookupLoading}>
+                        <SelectValue placeholder="Search employee name..." />
+                      </SelectTrigger>
+                      <SelectContent
+                        searchable
+                        searchPlaceholder="Type employee name..."
+                        onSearchChange={setEmployeeSearchQuery}
+                        className="max-h-70"
+                      >
+                        {/* Ensure the currently selected requestor always exists as an option for proper rendering */}
+                        {requestor?.ramco_id && requestor?.name && (
+                          <SelectItem value={String(requestor.ramco_id)}>
+                            {String(requestor.name)} ({String(requestor.ramco_id)})
+                          </SelectItem>
+                        )}
+                        {employeeSearchQuery.trim().length < 2 ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            Type at least 2 characters to search.
+                          </div>
+                        ) : employeeSearchLoading ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            Searching...
+                          </div>
+                        ) : employeeSearchResults.length === 0 ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            No employees found.
+                          </div>
+                        ) : (
+                          employeeSearchResults
+                            .filter((emp) => String(emp.ramco_id) !== String(requestor?.ramco_id || ''))
+                            .map((emp) => (
+                              <SelectItem key={emp.ramco_id} value={emp.ramco_id}>
+                                {emp.full_name} ({emp.ramco_id})
+                              </SelectItem>
+                            ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input readOnly value={requestor.name} />
+                  )}
                 </div>
                 <div>
                   <Label>Ramco ID</Label>
