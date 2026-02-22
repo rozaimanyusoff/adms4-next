@@ -1,13 +1,11 @@
 'use client';
 
-import { Metadata } from 'next';
 import Link from 'next/link';
 import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
 import { Checkbox } from "@components/ui/checkbox";
-import Footer from '@components/layouts/footer';
 import { api } from '@/config/api';
 import { Eye, EyeOff } from "lucide-react";
 import { AuthContext } from '@/store/AuthContext';
@@ -73,15 +71,17 @@ const ComponentLogin = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [showPassword, setShowPassword] = useState(false);
-    const [responseMessage, setResponseMessage] = useState<string | null>(null);
+    const defaultMessage = 'Login to your ADMS account.';
+    const [responseMessage, setResponseMessage] = useState<string>(defaultMessage);
+    const [responseType, setResponseType] = useState<'default' | 'success' | 'error'>('default');
     const [rememberMe, setRememberMe] = useState(false);
     const [credentials, setCredentials] = useState({ emailOrUsername: '', password: '' });
     const [showSecurityWarning, setShowSecurityWarning] = useState(false);
     const authContext = useContext(AuthContext);
     const RATE_LIMIT_ROUTE = '/api/auth/login';
     const [rateLimit, setRateLimit] = useState<{ blocked: boolean; blockedUntilMs: number | null }>({ blocked: false, blockedUntilMs: null });
-    const [countdownMs, setCountdownMs] = useState(0);
-    const [attempts, setAttempts] = useState<{ remaining: number; limit: number; current?: number; resetAt?: number } | null>(null);
+    const [, setCountdownMs] = useState(0);
+    const [, setAttempts] = useState<{ remaining: number; limit: number; current?: number; resetAt?: number } | null>(null);
 
     const parseBlockedUntilMs = useCallback((payload: any, retryAfterHeader?: string | null): number | null => {
         const now = Date.now();
@@ -190,21 +190,11 @@ const ComponentLogin = () => {
     }, [rateLimit.blocked, fetchRateLimitStatus]);
 
     useEffect(() => {
-        if (!rateLimit.blocked && responseMessage && responseMessage.includes('Too many login attempts')) {
-            setResponseMessage(null);
+        if (!rateLimit.blocked && responseMessage.toLowerCase().includes('too many')) {
+            setResponseType('default');
+            setResponseMessage(defaultMessage);
         }
     }, [rateLimit.blocked, responseMessage]);
-
-    const formatCountdown = (ms: number) => {
-        if (ms <= 0) return '0s';
-        const totalSeconds = Math.ceil(ms / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        if (minutes > 0) {
-            return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
-        }
-        return `${seconds}s`;
-    };
 
     useEffect(() => {
         // Redirect to lastNav if user is already authenticated
@@ -277,16 +267,6 @@ const ComponentLogin = () => {
         return null;
     }
 
-    const getMessageClass = (message: string | null) => {
-        if (message?.toLowerCase().includes('error') || message?.toLowerCase().includes('invalid')) {
-            return 'text-rose-200';
-        } else if (message?.toLowerCase().includes('success')) {
-            return 'text-emerald-200';
-        } else {
-            return 'text-white';
-        }
-    };
-
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
@@ -303,6 +283,8 @@ const ComponentLogin = () => {
             });
 
             if (response.data.token) {
+                setResponseType('success');
+                setResponseMessage('Login successful. Redirecting...');
                 // Handle Remember Me functionality with enhanced security
                 if (rememberMeChecked) {
                     console.log('💾 Saving credentials (Remember Me checked) - USERNAME ONLY for security');
@@ -386,9 +368,11 @@ const ComponentLogin = () => {
                 const status = await fetchRateLimitStatus();
                 const a = (status as any)?.attempts;
                 if (a && typeof a.remaining === 'number' && typeof a.limit === 'number') {
+                    setResponseType('error');
                     setResponseMessage(`Too many attempts. Try again later. Attempts left: ${a.remaining}/${a.limit}`);
                 } else {
                     const apiMessage = error.response?.data?.message;
+                    setResponseType('error');
                     setResponseMessage(apiMessage || 'Too many login attempts. Please wait before trying again.');
                 }
             } else {
@@ -397,9 +381,11 @@ const ComponentLogin = () => {
                 const status = await fetchRateLimitStatus();
                 const a = (status as any)?.attempts;
                 if (a && typeof a.remaining === 'number' && typeof a.limit === 'number') {
+                    setResponseType('error');
                     setResponseMessage(`Invalid username or password. Attempts left: ${a.remaining}/${a.limit}`);
                 } else {
                     const errorMessage = error.response?.data?.message || 'Invalid username or password.';
+                    setResponseType('error');
                     setResponseMessage(errorMessage);
                 }
             }
@@ -407,7 +393,17 @@ const ComponentLogin = () => {
     };
 
     return (
-        <AuthTemplate title="Sign in" description={responseMessage || "Login to your ADMS account."}>
+        <AuthTemplate
+            title="Sign in"
+            description={responseMessage || defaultMessage}
+            descriptionClassName={
+                responseType === 'success'
+                    ? 'mb-6 text-center text-green-300 font-semibold text-xs'
+                    : responseType === 'error'
+                        ? 'mb-6 text-center text-yellow-200 font-semibold text-xs'
+                        : 'mb-6 text-center text-sm text-white/75'
+            }
+        >
             <form className="space-y-6" onSubmit={handleLogin}>
                 <div>
                     <label htmlFor="emailOrUsername" className="block text-sm font-semibold text-white/90 mb-1">Email or Username</label>
@@ -524,11 +520,6 @@ const ComponentLogin = () => {
                         <Link href="/auth/forgot-password" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-4 hover:underline">Lost your password?</Link>
                     </div>
                 )}
-                {rateLimit.blocked && (
-                    <p className="text-xs text-amber-200 text-center font-medium">
-                        Too many attempts. Try again in {formatCountdown(Math.max(countdownMs, 0))}.
-                    </p>
-                )}
                 <Button
                     type="submit"
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition disabled:opacity-60 disabled:cursor-not-allowed"
@@ -538,7 +529,7 @@ const ComponentLogin = () => {
                 </Button>
                 <div className="text-center mt-4">
                     <span className="text-sm text-white/80">Not a member? </span>
-                    <Link href="/auth/register" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-4 hover:underline font-semibold">Sign up</Link>
+                    <Link href="/auth/register" className="text-sm text-blue-300 hover:text-blue-200 underline-offset-4 hover:underline font-semibold">Request access</Link>
                 </div>
             </form>
         </AuthTemplate>

@@ -6,8 +6,8 @@ import { Plus, Trash2, MinusCircle, Check } from "lucide-react";
 import { Button } from "@components/ui/button";
 import { Checkbox } from "@components/ui/checkbox";
 import { Card } from "@components/ui/card";
-import { Switch } from "@components/ui/switch";
 import { Input } from "@components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Removed Select imports (no longer needed after removing individual invite form)
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 // Removed dropdown menu imports (no longer used after simplifying Invite button)
@@ -39,15 +39,18 @@ interface UsersApiResponse {
 // Pending user type and API response
 interface PendingUser {
     id: number;
+    username: string | null;
     fname: string;
     email: string;
     contact: string | null;
     user_type: number;
+    activation_code: string | null;
     created_at: string;
     ip: string;
     user_agent: string;
     status: number;
-    method?: string;
+    method: string;
+    about: string | null;
 }
 interface PendingUsersApiResponse {
     status: string;
@@ -96,6 +99,11 @@ const UserManagement = () => {
         return null;
     });
     const [summaryLoading, setSummaryLoading] = useState(false);
+    const [recordsTab, setRecordsTab] = useState<'active' | 'pending'>(() => (summaryFilter === 'pending' ? 'pending' : 'active'));
+    const [lastNonPendingSummaryFilter, setLastNonPendingSummaryFilter] = useState<null | 'active' | 'inactive' | 'suspended'>(() => {
+        if (summaryFilter && summaryFilter !== 'pending') return summaryFilter;
+        return null;
+    });
     // Add state for pending users and loading
     const [pendingUsers, setPendingUsers] = useState<(PendingUser & { row_number: number })[]>([]);
     const [pendingLoading, setPendingLoading] = useState(false);
@@ -231,6 +239,19 @@ const UserManagement = () => {
             localStorage.setItem(SUMMARY_FILTER_KEY, summaryFilter);
         } else {
             localStorage.removeItem(SUMMARY_FILTER_KEY);
+        }
+    }, [summaryFilter]);
+
+    useEffect(() => {
+        if (summaryFilter === 'pending') {
+            setRecordsTab('pending');
+            return;
+        }
+        setRecordsTab('active');
+        if (summaryFilter === 'active' || summaryFilter === 'inactive' || summaryFilter === 'suspended') {
+            setLastNonPendingSummaryFilter(summaryFilter);
+        } else if (summaryFilter === null) {
+            setLastNonPendingSummaryFilter(null);
         }
     }, [summaryFilter]);
 
@@ -411,18 +432,29 @@ const UserManagement = () => {
     // Columns for pending approval grid
     const pendingColumns: ColumnDef<PendingUser & { row_number: number }>[] = [
         { key: "row_number", header: "#", render: row => row.row_number },
-        { key: "method", header: " Reg. Method", sortable: true, filter: "singleSelect", render: row => row.method || '-' },
+        {
+            key: "method",
+            header: " Reg. Method",
+            sortable: true,
+            filter: "singleSelect",
+            render: row => row.method === 'self-register' ? 'Self Register' : (row.method || '-')
+        },
         { key: "fname", header: "Full Name", sortable: true, filter: "input" },
         { key: "email", header: "Email", sortable: true, filter: "input" },
         { key: "contact", header: "Contact", sortable: true, filter: "input" },
+        { key: "about", header: "About", sortable: true, filter: "input", render: row => row.about || '-' },
         { key: "user_type", header: "User Type", sortable: true, render: row => row.user_type === 1 ? 'Employee' : 'Non-Employee' },
         { key: "created_at", header: "Registered At", sortable: true, render: row => formatTimeAgo(row.created_at) },
         {
-            key: "status", header: "Status", sortable: true, render: row => (
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${row.status === 1 ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'}`}>
-                    {row.status === 1 ? 'Active' : 'Pending'}
-                </span>
-            )
+            key: "status", header: "Status", sortable: true, render: row => {
+                const label = row.status === 1 ? 'Pending' : row.status === 2 ? 'Approved' : `Status ${row.status}`;
+                const cls = row.status === 1
+                    ? 'bg-amber-200 text-amber-800'
+                    : row.status === 2
+                        ? 'bg-green-200 text-green-800'
+                        : 'bg-gray-200 text-gray-800';
+                return <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cls}`}>{label}</span>;
+            }
         },
     ];
 
@@ -897,6 +929,20 @@ const UserManagement = () => {
         }
     };
 
+    const handleRecordsTabChange = (value: string) => {
+        if (value === 'pending') {
+            if (summaryFilter !== 'pending') {
+                if (summaryFilter === 'active' || summaryFilter === 'inactive' || summaryFilter === 'suspended') {
+                    setLastNonPendingSummaryFilter(summaryFilter);
+                }
+                setSummaryFilter('pending');
+            }
+            return;
+        }
+
+        setSummaryFilter(lastNonPendingSummaryFilter);
+    };
+
     // Shared invite function
     const inviteUsers = async (users: any[], onSuccess?: (feedback?: string) => void) => {
         setInviteLoading(true);
@@ -1159,13 +1205,22 @@ const UserManagement = () => {
                     <span className="text-gray-700 dark:text-gray-200">Suspended</span>
                 </Card>
             </div>
-            <div className="flex items-center justify-between my-4">
-                <div className="flex items-center gap-2">
-                    <h1 className="text-lg font-bold mr-3">User Account Management</h1>
-                    <Switch id="showPending" checked={summaryFilter === 'pending'} onCheckedChange={checked => setSummaryFilter(checked ? 'pending' : null)} />
-                    <label htmlFor="showPending" className="text-sm text-gray-700 dark:text-gray-200 cursor-pointer select-none my-1">
-                        Show pending approval
-                    </label>
+            <div className="flex items-start justify-between my-4">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-lg font-bold">User Account Management</h1>
+                    <Tabs value={recordsTab} onValueChange={handleRecordsTabChange}>
+                        <TabsList className="h-9">
+                            <TabsTrigger value="active" className="text-xs">Active Records</TabsTrigger>
+                            <TabsTrigger value="pending" className="text-xs">
+                                Pending Approval
+                                {summaryCounts.pending > 0 && (
+                                    <span className="ml-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                        {summaryCounts.pending}
+                                    </span>
+                                )}
+                            </TabsTrigger>
+                        </TabsList>
+                    </Tabs>
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1209,6 +1264,19 @@ const UserManagement = () => {
                     />
                 );
             })()}
+            {summaryFilter === 'pending' && (
+                <div className="mt-3 rounded-md border border-gray-200 bg-white/70 px-3 py-2 text-xs text-gray-700">
+                    <span className="font-semibold mr-2">Legend:</span>
+                    <span className="inline-flex items-center mr-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-200 text-green-800 mr-2">Approved</span>
+                        Admin approved access request but the account is pending activation.
+                    </span>
+                    <span className="inline-flex items-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-200 text-amber-800 mr-2">Pending</span>
+                        Waiting for admin review and approval.
+                    </span>
+                </div>
+            )}
             {/* Pending mode sidebar */}
             {summaryFilter === 'pending' && showPendingSidebar && pendingSelectedUsers.length > 0 && (
                 <ActionSidebar
@@ -1279,7 +1347,7 @@ const UserManagement = () => {
                                         }}
                                         ref={el => {
                                             const some = pendingSidebarCheckedIds.length > 0 && pendingSidebarCheckedIds.length < pendingSelectedUsers.length;
-                                            if (el && 'indeterminate' in el) (el as HTMLInputElement).indeterminate = some;
+                                            if (el && 'indeterminate' in el) (el as unknown as HTMLInputElement).indeterminate = some;
                                         }}
                                     />
                                     <span className="text-sm">Select all</span>

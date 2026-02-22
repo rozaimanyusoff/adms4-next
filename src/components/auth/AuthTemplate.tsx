@@ -13,7 +13,8 @@ import useMaintenanceMode from "@/hooks/useMaintenanceMode";
 interface AuthTemplateProps {
     children: React.ReactNode;
     title: string;
-    description?: string;
+    description?: React.ReactNode;
+    descriptionClassName?: string;
     allowDuringMaintenance?: boolean;
 }
 
@@ -27,7 +28,8 @@ interface InfoItem {
     };
 }
 
-const getDescriptionClass = (description?: string) => {
+const getDescriptionClass = (description?: React.ReactNode) => {
+    if (typeof description !== "string") return "text-white/75";
     if (!description) return "text-white/75";
     const desc = description.toLowerCase();
     if (desc.includes("error") || desc.includes("fail") || desc.includes("invalid")) return "text-red-300";
@@ -95,7 +97,7 @@ const InfoTimeline = ({ className, items = infoItems }: { className?: string; it
     </Card>
 );
 
-const AuthTemplate = ({ children, title, description, allowDuringMaintenance = false }: AuthTemplateProps) => {
+const AuthTemplate = ({ children, title, description, descriptionClassName, allowDuringMaintenance = false }: AuthTemplateProps) => {
     const { maintenance, isActive } = useMaintenanceMode();
     const logoSrc = process.env.NEXT_PUBLIC_BRAND_LOGO_DARK;
     const [showInfo, setShowInfo] = useState(false);
@@ -190,7 +192,7 @@ const AuthTemplate = ({ children, title, description, allowDuringMaintenance = f
                     ) : null}
                     <div className={showInfo ? "relative z-10 hidden flex-col lg:flex" : "relative z-10 flex flex-col"}>
                         <h2 className="text-3xl font-bold mb-6 text-white text-center drop-shadow-md">{title}</h2>
-                        {description && <p className={"mb-6 text-center text-sm " + getDescriptionClass(description)}>{description}</p>}
+                        {description && <p className={descriptionClassName || ("mb-6 text-center text-sm " + getDescriptionClass(description))}>{description}</p>}
                         {children}
                         <div className="mt-8 text-xs text-center text-white/70">
                             By using ADMS you agree to <Link href="#" className="underline">Terms of Service</Link> | <Link href="#" className="underline">Privacy Policy</Link>

@@ -1,39 +1,77 @@
 'use client';
 
-import { Metadata } from 'next';
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
+import { Textarea } from '@components/ui/textarea';
 import AuthTemplate from './AuthTemplate';
-import Footer from '@components/layouts/footer';
 import { api } from '@/config/api';
-import { Eye, EyeOff } from 'lucide-react';
+import { CircleHelp } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@components/ui/select';
 
 interface RegisterResponse {
     message: string;
 }
 
+interface RegisterPayload {
+    name: string;
+    email: string;
+    contact: string;
+    userType: number;
+    username: string | null; // Ramco ID for Employee
+    about: string | null; // Background for Non-Employee
+    ip: string | null;
+    userAgent: string | null;
+}
+
 const ComponentRegister = () => {
     const router = useRouter();
-    const [responseMessage, setResponseMessage] = useState<string | null>('Create your account by filling the form below');
+    const defaultMessage = 'Complete the form below to request access.';
+    const [responseMessage, setResponseMessage] = useState<string>(defaultMessage);
+    const [responseType, setResponseType] = useState<'default' | 'success' | 'error'>('default');
 
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         contact: '',
         userType: '',
-        username: '', // employee Ramco ID after verification
+        username: '', // employee Ramco ID
+        about: '', // non-employee background info
     });
-    const [verifying, setVerifying] = useState(false);
-    const [matched, setMatched] = useState(false); // backend matched (name+email+contact)
-    const [verifyError, setVerifyError] = useState<string | null>(null);
-    const [serverRamcoId, setServerRamcoId] = useState<string>('');
-    const [employeeFullName, setEmployeeFullName] = useState<string>('');
-    const [nameLocked, setNameLocked] = useState<boolean>(false);
-    // Captcha temporarily disabled; rely on RAMCO validation instead
+    const [showUserTypeHelp, setShowUserTypeHelp] = useState(false);
+    const [showEmailHelp, setShowEmailHelp] = useState(false);
+    const [showContactHelp, setShowContactHelp] = useState(false);
+
+    const getClientIp = async (): Promise<string | null> => {
+        const ipApis = [
+            'https://api.ipify.org?format=json',
+            'https://ipv4.icanhazip.com',
+        ];
+
+        for (const url of ipApis) {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeout);
+                if (!res.ok) continue;
+
+                if (url.includes('ipify')) {
+                    const data = await res.json();
+                    if (data?.ip && typeof data.ip === 'string') return data.ip;
+                } else {
+                    const text = (await res.text()).trim();
+                    if (text) return text;
+                }
+            } catch {
+                // Fallback to next endpoint; IP is optional
+            }
+        }
+
+        return null;
+    };
 
     const handleChange = (e: { target: { id: string; value: string } }) => {
         const { id, value } = e.target;
@@ -49,87 +87,81 @@ const ComponentRegister = () => {
         return !/(@gmail|@yahoo|@hotmail|@outlook)\./i.test(email);
     };
 
-    const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string; contact?: string }>({});
-
     const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const { name, email, contact, userType, username } = formData;
-        let errors: typeof fieldErrors = {};
-        if (!name.trim()) errors.name = 'Please enter your full name.';
-        if (!/^[a-zA-Z\s'.-]+$/.test(name)) errors.name = 'Use a valid full name.';
-        if (!email.trim()) errors.email = 'Please enter your email.';
-        if (userType === '1' && !isCompanyEmail(email)) errors.email = 'Please use your company email for Employee registration.';
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'Enter a valid email address.';
-        if (!contact.trim()) errors.contact = 'Please enter your contact number.';
-        if (!/^[0-9]{10,11}$/.test(contact)) errors.contact = 'Contact must be 10-11 digits.';
-        setFieldErrors(errors);
-        if (Object.keys(errors).length > 0) return;
+        const { name, email, contact, userType, username, about } = formData;
+        if (!name.trim()) {
+            setResponseType('error');
+            setResponseMessage('Please enter your full name.');
+            return;
+        }
+        if (!/^[a-zA-Z\s'.-]+$/.test(name)) {
+            setResponseType('error');
+            setResponseMessage('Use a valid full name.');
+            return;
+        }
+        if (!email.trim()) {
+            setResponseType('error');
+            setResponseMessage('Please enter your email.');
+            return;
+        }
+        if (userType === '1' && !isCompanyEmail(email)) {
+            setResponseType('error');
+            setResponseMessage('Please use your company email for Employee registration.');
+            return;
+        }
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            setResponseType('error');
+            setResponseMessage('Enter a valid email address.');
+            return;
+        }
+        if (!contact.trim()) {
+            setResponseType('error');
+            setResponseMessage('Please enter your contact number.');
+            return;
+        }
+        if (!/^[0-9]{10,11}$/.test(contact)) {
+            setResponseType('error');
+            setResponseMessage('Contact must be 10-11 digits.');
+            return;
+        }
+        if (userType === '1' && !username.trim()) {
+            setResponseType('error');
+            setResponseMessage('Please enter your Ramco ID.');
+            return;
+        }
+        if (userType === '2' && !about.trim()) {
+            setResponseType('error');
+            setResponseMessage('Please tell us more about yourself.');
+            return;
+        }
 
         try {
             const isEmployee = userType === '1';
-            const payload: any = { name, email, contact, userType };
-            if (isEmployee) {
-                payload.username = username; // Employee can login with username (Ramco ID) OR email
-            }
+            const ip = await getClientIp();
+            const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : null;
+            const payload: RegisterPayload = {
+                name: name.trim(),
+                email: email.trim().toLowerCase(),
+                contact: contact.trim(),
+                userType: Number(userType),
+                username: isEmployee ? username.trim() : null,
+                about: isEmployee ? null : about.trim(),
+                ip,
+                userAgent,
+            };
             const response = await api.post<RegisterResponse>('/api/auth/register', payload);
-            if (response.data.message) {
-                const successMsg = isEmployee
-                    ? 'Registration successful! You may login using your Ramco ID or email.'
-                    : 'Registration successful! You may login using your email.';
-                setResponseMessage(successMsg);
+            if (response.data.message || (response as any)?.data?.status === 'success') {
+                setResponseType('success');
+                setResponseMessage(response.data.message || 'Registration successful.');
                 setTimeout(() => router.push('/auth/login'), 2200);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Registration failed:', error);
-            setResponseMessage('Registration failed. Please try again.');
+            setResponseType('error');
+            setResponseMessage(error?.response?.data?.message || 'Registration failed. Please try again.');
         }
     };
-
-    // Auto verification effect: trigger when contact changes and prerequisites filled
-    useEffect(() => {
-        const ready = formData.userType === '1' && formData.name.trim() && formData.email.trim() && formData.contact.trim();
-        if (!ready) {
-            setMatched(false);
-            setServerRamcoId('');
-            if (formData.username) setFormData(p => ({ ...p, username: '' }));
-            return;
-        }
-        let cancelled = false;
-        setVerifying(true);
-        setVerifyError(null);
-        const t = setTimeout(async () => {
-            try {
-                const res = await api.post<{ status: string; message?: string; data?: { matched?: boolean; ramco_id?: string; confidence?: string; employee_full_name?: string } }>(
-                    '/api/auth/register/verifyme',
-                    { name: formData.name.trim(), email: formData.email.trim(), contact: formData.contact.trim() }
-                );
-
-                if (!cancelled) {
-                    if (res.data.status === 'success' && res.data.data?.matched && res.data.data?.ramco_id) {
-                        setMatched(true);
-                        setServerRamcoId(res.data.data.ramco_id);
-                        setEmployeeFullName(res.data.data.employee_full_name || formData.name);
-                        setResponseMessage('Employee verified. Please confirm your Ramco ID.');
-                    } else {
-                        setMatched(false);
-                        setServerRamcoId('');
-                        setEmployeeFullName('');
-                        setVerifyError(res.data.message || 'Could not verify employee. Please check your details.');
-                    }
-                }
-            } catch (err: any) {
-                if (!cancelled) {
-                    setMatched(false);
-                    setServerRamcoId('');
-                    setEmployeeFullName('');
-                    setVerifyError(err.response?.data?.message || 'Verification failed. Please try again later.');
-                }
-            } finally {
-                if (!cancelled) setVerifying(false);
-            }
-        }, 500); // debounce
-        return () => { cancelled = true; clearTimeout(t); };
-    }, [formData.userType, formData.name, formData.email, formData.contact]);
 
     const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
         const charCode = e.key;
@@ -138,31 +170,31 @@ const ComponentRegister = () => {
         }
     };
 
-    // Auto-fill name when Ramco ID matches server-provided ID
-    useEffect(() => {
-        if (formData.userType === '1' && matched && formData.username === serverRamcoId && serverRamcoId && employeeFullName) {
-            const clean = employeeFullName.trim();
-            if (formData.name !== clean) {
-                setFormData(prev => ({ ...prev, name: clean }));
-            }
-            setNameLocked(true);
-        } else {
-            setNameLocked(false);
-        }
-    }, [formData.userType, matched, formData.username, serverRamcoId, employeeFullName]);
-
     return (
-        <AuthTemplate title="Register" description={responseMessage || "Create your account by filling the form below"}>
+        <AuthTemplate
+            title="Request for Access"
+            description={responseMessage || defaultMessage}
+            descriptionClassName={
+                responseType === 'success'
+                    ? 'mb-6 text-center text-green-300 font-semibold text-xs'
+                    : responseType === 'error'
+                        ? 'mb-6 text-center text-yellow-200 font-semibold text-xs'
+                        : 'mb-6 text-center text-sm text-white/75'
+            }
+        >
             <form className="space-y-6" onSubmit={handleRegister}>
-                <div>
+                <div className="relative">
                     <Select
                         value={formData.userType}
-                        onValueChange={value => setFormData(prev => ({ ...prev, userType: value }))}
+                        onValueChange={value => {
+                            setFormData(prev => ({ ...prev, userType: value }));
+                            setShowUserTypeHelp(false);
+                        }}
                     >
                         <SelectTrigger
                             id="userType"
                             name="userType"
-                            className="w-full border-white/40 bg-white/10 text-white focus-visible:ring-white/45 focus-visible:border-white/70 data-placeholder:text-white/70"
+                            className="w-full pr-16 border-white/40 bg-white/10 text-white focus-visible:ring-white/45 focus-visible:border-white/70 data-placeholder:text-white/70"
                         >
                             <SelectValue placeholder="Select user type" />
                         </SelectTrigger>
@@ -171,6 +203,19 @@ const ComponentRegister = () => {
                             <SelectItem value="2">Non-Employee</SelectItem>
                         </SelectContent>
                     </Select>
+                    <button
+                        type="button"
+                        aria-label="User type help"
+                        onClick={() => setShowUserTypeHelp(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-white/80 hover:text-white transition"
+                    >
+                        <CircleHelp className="size-4" />
+                    </button>
+                    {showUserTypeHelp && (
+                        <div className="absolute right-0 top-full mt-2 z-20 w-64 rounded-md border border-white/25 bg-slate-900/95 text-white text-xs px-3 py-2 shadow-lg">
+                            Select non-employee if you are an agent or protege
+                        </div>
+                    )}
                 </div>
                 <div>
                     <div className="relative">
@@ -181,20 +226,14 @@ const ComponentRegister = () => {
                             type="text"
                             required
                             value={formData.name}
-                            onChange={e => { if (!nameLocked) handleChange(e); }}
+                            onChange={handleChange}
                             placeholder="Enter your full name"
-                            disabled={!formData.userType || nameLocked}
-                            className={nameLocked ? 'pr-24' : ''}
+                            disabled={!formData.userType}
+                            className='capitalize'
                         />
-                        {nameLocked && (
-                            <span className="absolute top-1/2 -translate-y-1/2 right-2 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded border border-green-300 font-medium">
-                                verified
-                            </span>
-                        )}
                     </div>
-                    {fieldErrors.name && <div className="text-xs text-red-600 mt-1">{fieldErrors.name}</div>}
                 </div>
-                <div>
+                <div className="relative">
                     <Input
                         variant="translucent"
                         id="email"
@@ -205,10 +244,23 @@ const ComponentRegister = () => {
                         onChange={handleChange}
                         placeholder="Enter your email"
                         disabled={!formData.name.trim() || !formData.userType}
+                        className="pr-10"
                     />
-                    {fieldErrors.email && <div className="text-xs text-red-600 mt-1">{fieldErrors.email}</div>}
+                    <button
+                        type="button"
+                        aria-label="Email help"
+                        onClick={() => setShowEmailHelp(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-white/80 hover:text-white transition"
+                    >
+                        <CircleHelp className="size-4" />
+                    </button>
+                    {showEmailHelp && (
+                        <div className="absolute right-0 top-full mt-2 z-20 w-72 rounded-md border border-white/25 bg-slate-900/95 text-white text-xs px-3 py-2 shadow-lg">
+                            Prefer using your personal email. If you already have a company email, you can use that too.
+                        </div>
+                    )}
                 </div>
-                <div>
+                <div className="relative">
                     <Input
                         variant="translucent"
                         id="contact"
@@ -222,10 +274,23 @@ const ComponentRegister = () => {
                         onChange={handleChange}
                         onKeyPress={handleKeyPress}
                         disabled={!formData.email.trim()}
+                        className="pr-10"
                     />
-                    {fieldErrors.contact && <div className="text-xs text-red-600 mt-1">{fieldErrors.contact}</div>}
+                    <button
+                        type="button"
+                        aria-label="Contact help"
+                        onClick={() => setShowContactHelp(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-white/80 hover:text-white transition"
+                    >
+                        <CircleHelp className="size-4" />
+                    </button>
+                    {showContactHelp && (
+                        <div className="absolute right-0 top-full mt-2 z-20 w-72 rounded-md border border-white/25 bg-slate-900/95 text-white text-xs px-3 py-2 shadow-lg">
+                            Provide a valid contact number that admin can reach to verify your registration.
+                        </div>
+                    )}
                 </div>
-                {formData.userType === '1' && matched && (
+                {formData.userType === '1' && (
                     <div className="space-y-1">
                         <Input
                             variant="translucent"
@@ -234,22 +299,24 @@ const ComponentRegister = () => {
                             type="text"
                             value={formData.username}
                             onChange={handleChange}
-                            maxLength={serverRamcoId.length || 12}
+                            maxLength={6}
                             placeholder="Enter your Ramco ID"
+                            disabled={!formData.contact.trim()}
                         />
-                        {formData.username && formData.username !== serverRamcoId && (
-                            <div className="text-xs text-red-600">Ramco ID must match verified record.</div>
-                        )}
-                        {formData.username && formData.username === serverRamcoId && (
-                            <div className="text-xs text-green-600 font-semibold">Ramco ID matched.</div>
-                        )}
-                        {verifying && <div className="text-xs text-white/70">Re-verifying...</div>}
-                        {verifyError && !matched && <div className="text-xs text-red-600">{verifyError}</div>}
                     </div>
                 )}
-                {formData.userType === '1' && !matched && (formData.name || formData.email || formData.contact) && (
-                    <div className="text-xs text-white/70 -mt-2">
-                        {verifying ? 'Verifying employee details...' : (verifyError || 'Fill all fields to verify as employee.')}
+                {formData.userType === '2' && (
+                    <div className="space-y-1">
+                        <Textarea
+                            id="about"
+                            name="about"
+                            value={formData.about}
+                            onChange={handleChange}
+                            rows={4}
+                            placeholder="Tell us more about who you are and why you need access (e.g., Saya adalah Protege/Agent dari Jabatan NRW. Mula bekerja pada Januari 2020 sebagai...)."
+                            className="border-white/40 bg-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/45 focus-visible:border-white/70"
+                            disabled={!formData.contact.trim()}
+                        />
                     </div>
                 )}
 
@@ -259,7 +326,7 @@ const ComponentRegister = () => {
                     size="default"
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded transition"
                     disabled={!((formData.name.trim() && formData.email.trim() && formData.contact.trim() && formData.userType) &&
-                        (formData.userType !== '1' ? true : (matched && formData.username === serverRamcoId && !!serverRamcoId)))}
+                        (formData.userType === '1' ? !!formData.username.trim() : !!formData.about.trim()))}
                 >
                     Register
                 </Button>
