@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ExcelJS from 'exceljs';
 import { CustomDataGrid, ColumnDef } from "@components/ui/DataGrid";
 import { authenticatedApi } from "../../config/api";
@@ -8,6 +8,7 @@ import { Plus, FileSpreadsheet } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { SingleSelect, type ComboboxOption } from "@/components/ui/combobox";
@@ -20,6 +21,7 @@ interface CostCenter { id: number; name: string; }
 interface Employee {
     id: number;
     ramco_id: string;
+    account?: string | null;
     full_name: string;
     email: string;
     contact: string;
@@ -49,11 +51,9 @@ const OrgEmp: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
     const [costcenters, setCostcenters] = useState<CostCenter[]>([]);
     const [hideResigned, setHideResigned] = useState(true);
-    const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
-    const [bulkResignationDate, setBulkResignationDate] = useState("");
-    const [isBulkUpdating, setIsBulkUpdating] = useState(false);
     const emptyForm: Partial<Employee> = {
         ramco_id: '',
+        account: '',
         full_name: '',
         email: '',
         contact: '',
@@ -71,8 +71,6 @@ const OrgEmp: React.FC = () => {
         costcenter: undefined,
     };
     const [formData, setFormData] = useState<Partial<Employee>>({ ...emptyForm });
-
-    const dataGridRef = useRef<{ deselectRow: (key: string | number) => void; clearSelectedRows: () => void } | null>(null);
 
     const departmentOptions = useMemo<ComboboxOption[]>(() =>
         departments
@@ -157,7 +155,6 @@ const OrgEmp: React.FC = () => {
             setPositions([]);
             setLocations([]);
             setCostcenters([]);
-            setSelectedEmployees([]);
         } finally {
             setLoading(false);
         }
@@ -254,78 +251,6 @@ const OrgEmp: React.FC = () => {
     useEffect(() => {
         setData(filterEmployees(allEmployees));
     }, [allEmployees, filterEmployees]);
-
-    const employeeById = useMemo(() => {
-        const map = new Map<string, Employee>();
-        data.forEach(emp => {
-            map.set(String(emp.id), emp);
-        });
-        return map;
-    }, [data]);
-
-    const updateSelectedEmployees = useCallback((keys: (string | number)[], rows?: Employee[]) => {
-        if (Array.isArray(rows) && rows.length) {
-            setSelectedEmployees(rows);
-            return;
-        }
-        const next = (keys ?? [])
-            .map(key => employeeById.get(String(key)))
-            .filter((emp): emp is Employee => Boolean(emp));
-        setSelectedEmployees(next);
-    }, [employeeById]);
-
-    const selectedCount = selectedEmployees.length;
-    const hasSelection = selectedCount > 0;
-    const canBulkUpdate = hasSelection && Boolean(bulkResignationDate) && !isBulkUpdating;
-
-    const handleDateChange = (value: string) => {
-        if (!value) {
-            setBulkResignationDate("");
-            return;
-        }
-        const parts = value.split("-");
-        if (parts.length === 3) {
-            const [yyyy, mm, dd] = parts;
-            if (yyyy && mm && dd) {
-                setBulkResignationDate(`${yyyy}-${mm}-${dd}`);
-                return;
-            }
-        }
-        setBulkResignationDate(value);
-    };
-
-    const handleBulkResignationUpdate = async () => {
-        if (!hasSelection) {
-            toast.error("Select at least one employee to update.");
-            return;
-        }
-        if (!bulkResignationDate) {
-            toast.error("Choose a resignation date.");
-            return;
-        }
-        const ramcoIds = selectedEmployees.map(emp => emp.ramco_id).filter(Boolean);
-        if (ramcoIds.length === 0) {
-            toast.error("Selected employees are missing Ramco IDs.");
-            return;
-        }
-        setIsBulkUpdating(true);
-        try {
-            await authenticatedApi.put("/api/assets/employees/update-resign", {
-                ramco_id: ramcoIds,
-                resignation_date: bulkResignationDate,
-                employment_status: "resigned",
-            });
-            await fetchData();
-            setSelectedEmployees([]);
-            dataGridRef.current?.clearSelectedRows?.();
-            toast.success("Resignation date updated.");
-        } catch (error) {
-            console.error("Failed to update resignation dates", error);
-            toast.error("Failed to update resignation dates.");
-        } finally {
-            setIsBulkUpdating(false);
-        }
-    };
 
     // Export Employees (full API dataset) to Excel
     const exportEmployeesExcel = async () => {
@@ -426,6 +351,21 @@ const OrgEmp: React.FC = () => {
         { key: "id", header: "ID" },
         { key: "ramco_id", header: "Ramco ID", filter: 'input' },
         {
+            key: "account",
+            header: "ADMS Account",
+            filter: 'input',
+            render: (row: Employee) => {
+                const account = String(row.account || "").trim().toLowerCase();
+                if (account === "registered") {
+                    return <Badge className="bg-emerald-600 text-white hover:bg-emerald-700">Registered</Badge>;
+                }
+                if (account === "unregistered") {
+                    return <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">Unregistered</Badge>;
+                }
+                return <Badge variant="outline">-</Badge>;
+            },
+        },
+        {
             key: "nameSearch" as keyof Employee,
             header: "Full Name",
             filter: 'input',
@@ -457,6 +397,19 @@ const OrgEmp: React.FC = () => {
         { key: "resignation_date", header: "Resignation Date", render: (row: Employee) => isValidResignationDate(row.resignation_date, row.employment_status) ? formatDateDMY(row.resignation_date) : "-" },
     ], [positionFilterOptions]);
 
+    const accountSummary = useMemo(() => {
+        return data.reduce(
+            (acc, emp) => {
+                const account = String(emp.account || "").trim().toLowerCase();
+                if (account === "registered") acc.registered += 1;
+                else if (account === "unregistered") acc.unregistered += 1;
+                else acc.unknown += 1;
+                return acc;
+            },
+            { registered: 0, unregistered: 0, unknown: 0 }
+        );
+    }, [data]);
+
     const hideResignedSwitchId = "hide-resigned-switch";
     return (
         <div className="mt-4">
@@ -477,47 +430,29 @@ const OrgEmp: React.FC = () => {
                         <FileSpreadsheet size={22} className="text-green-500" />
                         Export
                     </Button>
-                    <Button onClick={() => openSidebarWithData()} className="bg-blue-600 hover:bg-blue-700">
+                    <Button onClick={() => openSidebarWithData()} variant={'default'}>
                         <Plus size={22} />
                     </Button>
                 </div>
             </div>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-                {hasSelection ? (
-                    <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
-                ) : (
-                    <span className="text-sm text-muted-foreground">Select employees to update resignation date.</span>
-                )}
-                <Input
-                    type="date"
-                    value={bulkResignationDate}
-                    onChange={e => handleDateChange(e.target.value)}
-                    className="w-48"
-                    disabled={isBulkUpdating}
-                />
-                <Button
-                    onClick={handleBulkResignationUpdate}
-                    disabled={!canBulkUpdate}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                >
-                    {isBulkUpdating ? "Updating..." : "Update Resignation Date"}
-                </Button>
-            </div>
             {loading ? <p>Loading...</p> : (
-                <CustomDataGrid
-                    ref={dataGridRef}
-                    columns={columns}
-                    data={data}
-                    inputFilter={false}
-                    pagination={false}
-                    onRowDoubleClick={(row: Employee) => openSidebarWithData(row)}
-                    rowSelection={{
-                        enabled: true,
-                        getRowId: (row: Employee) => row.id,
-                        onSelect: (keys, rows) => updateSelectedEmployees(keys, rows as Employee[]),
-                    }}
-                    onRowSelected={(keys, rows) => updateSelectedEmployees(keys, rows as Employee[])}
-                />
+                <>
+                    <CustomDataGrid
+                        columns={columns}
+                        data={data}
+                        inputFilter={false}
+                        pagination={false}
+                        onRowDoubleClick={(row: Employee) => openSidebarWithData(row)}
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                        <span className="text-muted-foreground">ADMS Account Summary:</span>
+                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-700">Registered: {accountSummary.registered}</Badge>
+                        <Badge variant="secondary" className="bg-amber-500 text-white hover:bg-amber-600">Unregistered: {accountSummary.unregistered}</Badge>
+                        {accountSummary.unknown > 0 ? (
+                            <Badge variant="outline">Unknown: {accountSummary.unknown}</Badge>
+                        ) : null}
+                    </div>
+                </>
             )}
             <ActionSidebar
                 isOpen={isSidebarOpen}
@@ -686,7 +621,7 @@ const OrgEmp: React.FC = () => {
                         </div>
                         <div className="md:col-span-2 flex justify-end pt-2 gap-2">
                             <Button variant="outline" type="button" onClick={closeSidebar}>Cancel</Button>
-                            <Button type="submit" className="min-w-[120px]">Submit</Button>
+                            <Button type="submit" className="min-w-30">Submit</Button>
                         </div>
                     </form>
                 }

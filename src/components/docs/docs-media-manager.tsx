@@ -321,6 +321,29 @@ export const DocsMediaManager = () => {
         }
     };
 
+    const downloadItem = async (item: MediaItem) => {
+        if (!item.previewUrl) {
+            toast.error('No file URL available for download');
+            return;
+        }
+        try {
+            const res = await authenticatedApi.get(item.previewUrl, { responseType: 'blob' });
+            const blob = res.data as Blob;
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = item.name || `media-${item.id}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error: any) {
+            console.error('Download failed', error);
+            const message = error?.response?.data?.message || error?.message || 'Download failed';
+            toast.error(message);
+        }
+    };
+
     const handleEditSave = async () => {
         if (!editingItem) return;
         setSaving(true);
@@ -644,6 +667,14 @@ export const DocsMediaManager = () => {
                                                 <DropdownMenuItem
                                                     onSelect={(e) => {
                                                         e.preventDefault();
+                                                        downloadItem(item);
+                                                    }}
+                                                >
+                                                    Download
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onSelect={(e) => {
+                                                        e.preventDefault();
                                                         setSelectedId(item.id);
                                                         setEditingItem(item);
                                                     }}
@@ -688,15 +719,24 @@ export const DocsMediaManager = () => {
                                             {selected.kind.toUpperCase()} • {formatBytes(selected.size)} • {formatDate(selected.uploadedAt)}
                                         </div>
                                     </div>
-                                    {selected.kind !== 'video' && (
+                                    <div className="flex items-center gap-2">
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => window.open(selected.previewUrl, '_blank', 'noreferrer')}
+                                            onClick={() => downloadItem(selected)}
                                         >
-                                            Open
+                                            Download
                                         </Button>
-                                    )}
+                                        {selected.kind !== 'video' && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => window.open(selected.previewUrl, '_blank', 'noreferrer')}
+                                            >
+                                                Open
+                                            </Button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="overflow-hidden rounded-xl border bg-slate-50">
                                     {selected.kind === 'image' && (
