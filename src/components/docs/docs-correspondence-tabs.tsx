@@ -1,40 +1,74 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import CorrespondenceRegister from './docs-correspondence-register';
-import { Direction, seedCorrespondenceRecords } from './correspondence-tracking-data';
+import CorrespondenceDashboardView from './docs-correspondence-dashboard';
+import { seedCorrespondenceRecords } from './correspondence-tracking-data';
+
+type CorrespondenceTab = 'dashboard' | 'records';
+const TAB_STORAGE_KEY = 'docs.correspondence.active-tab.v1';
 
 type CorrespondenceTabsProps = {
-    value: 'all' | Direction;
-    onValueChange: (value: 'all' | Direction) => void;
+    value: CorrespondenceTab;
+    onValueChange: (value: CorrespondenceTab) => void;
 };
 
 export const CorrespondenceTabs = ({ value, onValueChange }: CorrespondenceTabsProps) => {
     return (
-        <Tabs value={value} onValueChange={(next) => onValueChange(next as 'all' | Direction)} className="w-full">
+        <Tabs value={value} onValueChange={(next) => onValueChange(next as CorrespondenceTab)} className="w-full">
             <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="incoming">Incoming</TabsTrigger>
-                <TabsTrigger value="outgoing">Outgoing</TabsTrigger>
+                <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+                <TabsTrigger value="records">Records</TabsTrigger>
             </TabsList>
         </Tabs>
     );
 };
 
 export const DocsCorrespondenceTabs = () => {
-    const [directionTab, setDirectionTab] = useState<'all' | Direction>('all');
+    const [activeTab, setActiveTab] = useState<CorrespondenceTab>('dashboard');
+    const hydratedRef = useRef(false);
+    const pathname = usePathname();
+    const router = useRouter();
+    const searchParams = useSearchParams();
 
-    const filteredRecords = useMemo(() => {
-        return seedCorrespondenceRecords.filter((record) => {
-            return directionTab === 'all' ? true : record.direction === directionTab;
-        });
-    }, [directionTab]);
+    useEffect(() => {
+        if (hydratedRef.current) return;
+        const tabFromUrl = searchParams.get('tab');
+        const hasFormQuery = searchParams.has('form') || searchParams.has('edit');
+        const storedTab = localStorage.getItem(TAB_STORAGE_KEY);
+        if (tabFromUrl === 'dashboard' || tabFromUrl === 'records') {
+            setActiveTab(tabFromUrl);
+        } else if (hasFormQuery) {
+            setActiveTab('records');
+        } else if (storedTab === 'dashboard' || storedTab === 'records') {
+            setActiveTab(storedTab);
+        }
+        hydratedRef.current = true;
+    }, [searchParams]);
+
+    useEffect(() => {
+        if (!hydratedRef.current) return;
+        localStorage.setItem(TAB_STORAGE_KEY, activeTab);
+        const params = new URLSearchParams(window.location.search);
+        params.set('tab', activeTab);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }, [activeTab, pathname, router]);
 
     return (
         <div className="space-y-6">
-            <CorrespondenceTabs value={directionTab} onValueChange={setDirectionTab} />
-            <CorrespondenceRegister records={filteredRecords} />
+            <div className="space-y-1">
+                <h1 className="text-2xl font-semibold text-slate-900">Correspondence Tracking</h1>
+                <p className="text-sm text-muted-foreground">Monitor workflow, activity, and records in one module.</p>
+            </div>
+            <CorrespondenceTabs value={activeTab} onValueChange={setActiveTab} />
+            {activeTab === 'dashboard' ? (
+                <CorrespondenceDashboardView records={seedCorrespondenceRecords} />
+            ) : (
+                <CorrespondenceRegister records={seedCorrespondenceRecords} />
+            )}
         </div>
     );
 };

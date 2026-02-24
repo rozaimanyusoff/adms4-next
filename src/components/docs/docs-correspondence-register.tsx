@@ -1,12 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import { Inbox, Send, Clock3, Archive, Plus } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
 import { CorrespondenceRecord, Priority, RegisterStatus } from './correspondence-tracking-data';
+import CorrespondenceForm, { type CorrespondenceFormValues } from './docs-correspondence-form';
 
 const formatDate = (value?: string) => {
     if (!value) return '-';
@@ -39,7 +41,7 @@ type CorrespondenceDashboardProps = {
     records: CorrespondenceRecord[];
 };
 
-const CorrespondenceDashboard = ({ records }: CorrespondenceDashboardProps) => {
+export const CorrespondenceDashboard = ({ records }: CorrespondenceDashboardProps) => {
     const now = new Date();
     const summary = useMemo(() => {
         const incoming = records.filter((r) => r.direction === 'incoming').length;
@@ -104,9 +106,10 @@ const CorrespondenceDashboard = ({ records }: CorrespondenceDashboardProps) => {
 
 type CorrespondenceRecordsGridProps = {
     records: CorrespondenceRecord[];
+    onCreateNew: () => void;
 };
 
-const CorrespondenceRecordsGrid = ({ records }: CorrespondenceRecordsGridProps) => {
+export const CorrespondenceRecordsGrid = ({ records, onCreateNew }: CorrespondenceRecordsGridProps) => {
     const columns = useMemo<ColumnDef<CorrespondenceRecord>[]>(
         () => [
             {
@@ -175,7 +178,7 @@ const CorrespondenceRecordsGrid = ({ records }: CorrespondenceRecordsGridProps) 
                     <h2 className="text-xl font-semibold text-slate-900">Correspondence Register</h2>
                     <p className="text-sm text-muted-foreground">Incoming and outgoing mail records with status tracking.</p>
                 </div>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={onCreateNew}>
                     <Plus className="mr-2 h-4 w-4" />
                     New Registry
                 </Button>
@@ -198,11 +201,182 @@ type CorrespondenceRegisterProps = {
     records: CorrespondenceRecord[];
 };
 
+const FORM_STATE_STORAGE_KEY = 'docs.correspondence.form-state.v1';
+
+const EMPTY_FORM_VALUES: CorrespondenceFormValues = {
+    reference_no: '',
+    sender: '',
+    sender_ref: '',
+    subject: '',
+    correspondent: '',
+    direction: 'incoming',
+    department: '',
+    owner: '',
+    priority: 'normal',
+    date_received: '',
+    due_date: '',
+    remarks: '',
+};
+
+const toSlug = (value: string) =>
+    value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+const toDateInputValue = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+};
+
+const toFormValues = (record: CorrespondenceRecord): CorrespondenceFormValues => ({
+    reference_no: record.reference_no,
+    sender: record.correspondent,
+    sender_ref: '',
+    subject: record.subject,
+    correspondent: record.correspondent,
+    direction: record.direction,
+    department: record.department,
+    owner: record.owner,
+    priority: record.priority,
+    date_received: toDateInputValue(record.received_at),
+    due_date: toDateInputValue(record.due_date),
+    remarks: '',
+});
+
 export const CorrespondenceRegister = ({ records }: CorrespondenceRegisterProps) => {
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
+    const [editSlug, setEditSlug] = useState<string | null>(null);
+    const [formValues, setFormValues] = useState<CorrespondenceFormValues>(EMPTY_FORM_VALUES);
+    const hydratedRef = useRef(false);
+    const pathname = usePathname();
+    const router = useRouter();
+
+    const updateUrl = (mode: 'create' | 'edit' | 'closed', slug?: string) => {
+        const params = new URLSearchParams(window.location.search);
+        params.set('tab', 'records');
+        params.delete('form');
+        params.delete('edit');
+        if (mode === 'create') params.set('form', 'new');
+        if (mode === 'edit' && slug) params.set('edit', slug);
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    };
+
+    const openCreateForm = () => {
+        setIsFormOpen(true);
+        setFormMode('create');
+        setEditSlug(null);
+        setFormValues(EMPTY_FORM_VALUES);
+        updateUrl('create');
+    };
+
+    const openEditForm = (slug: string) => {
+        const record = records.find((item) => {
+            const slugCandidates = [toSlug(item.id), toSlug(item.reference_no)];
+            return slugCandidates.includes(slug);
+        });
+        if (!record) return;
+        setIsFormOpen(true);
+        setFormMode('edit');
+        setEditSlug(slug);
+        setFormValues(toFormValues(record));
+        updateUrl('edit', slug);
+    };
+
+    const closeForm = () => {
+        setIsFormOpen(false);
+        setFormMode('create');
+        setEditSlug(null);
+        setFormValues(EMPTY_FORM_VALUES);
+        localStorage.removeItem(FORM_STATE_STORAGE_KEY);
+        updateUrl('closed');
+    };
+
+    useEffect(() => {
+        if (hydratedRef.current) return;
+        hydratedRef.current = true;
+
+        const params = new URLSearchParams(window.location.search);
+        const editParam = params.get('edit');
+        const formParam = params.get('form');
+
+        if (editParam) {
+            openEditForm(editParam);
+            return;
+        }
+        if (formParam === 'new') {
+            openCreateForm();
+            return;
+        }
+
+        const raw = localStorage.getItem(FORM_STATE_STORAGE_KEY);
+        if (!raw) return;
+
+        try {
+            const saved = JSON.parse(raw) as {
+                isFormOpen?: boolean;
+                mode?: 'create' | 'edit';
+                slug?: string | null;
+                values?: CorrespondenceFormValues;
+            };
+            if (!saved.isFormOpen) return;
+            if (saved.mode === 'edit' && saved.slug) {
+                const record = records.find((item) => {
+                    const slugCandidates = [toSlug(item.id), toSlug(item.reference_no)];
+                    return slugCandidates.includes(saved.slug as string);
+                });
+                if (!record) return;
+                setIsFormOpen(true);
+                setFormMode('edit');
+                setEditSlug(saved.slug);
+                setFormValues(saved.values ?? toFormValues(record));
+                updateUrl('edit', saved.slug);
+                return;
+            }
+            setIsFormOpen(true);
+            setFormMode('create');
+            setEditSlug(null);
+            setFormValues(saved.values ?? EMPTY_FORM_VALUES);
+            updateUrl('create');
+        } catch {
+            localStorage.removeItem(FORM_STATE_STORAGE_KEY);
+        }
+    }, [records]);
+
+    useEffect(() => {
+        if (!isFormOpen) return;
+        localStorage.setItem(
+            FORM_STATE_STORAGE_KEY,
+            JSON.stringify({
+                isFormOpen: true,
+                mode: formMode,
+                slug: editSlug,
+                values: formValues,
+            }),
+        );
+    }, [isFormOpen, formMode, editSlug, formValues]);
+
     return (
         <div className="space-y-6">
-            <CorrespondenceDashboard records={records} />
-            <CorrespondenceRecordsGrid records={records} />
+            {isFormOpen ? (
+                <CorrespondenceForm
+                    mode={formMode}
+                    recordSlug={editSlug ?? undefined}
+                    initialValues={formValues}
+                    onValuesChange={setFormValues}
+                    onCancel={closeForm}
+                    onSubmit={closeForm}
+                />
+            ) : (
+                <>
+                    <CorrespondenceDashboard records={records} />
+                    <CorrespondenceRecordsGrid records={records} onCreateNew={openCreateForm} />
+                </>
+            )}
         </div>
     );
 };
