@@ -14,6 +14,12 @@ type CorrespondenceDashboardViewProps = {
 
 export const CorrespondenceDashboardView = ({ records }: CorrespondenceDashboardViewProps) => {
     const now = new Date();
+    const getRecordTimestamp = (record: CorrespondenceRecord) => {
+        const candidate = record.received_at ?? record.sent_at ?? record.due_date;
+        if (!candidate) return 0;
+        const date = new Date(candidate);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    };
 
     const metrics = useMemo(() => {
         const total = records.length;
@@ -37,7 +43,7 @@ export const CorrespondenceDashboardView = ({ records }: CorrespondenceDashboard
 
     const recentActivities = useMemo(() => {
         return [...records]
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
             .slice(0, 6);
     }, [records]);
 
