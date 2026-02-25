@@ -178,9 +178,8 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew }: Corresponden
                     <h2 className="text-xl font-semibold text-slate-900">Correspondence Register</h2>
                     <p className="text-sm text-muted-foreground">Incoming and outgoing mail records with status tracking.</p>
                 </div>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={onCreateNew}>
+                <Button size="sm" variant={'default'} onClick={onCreateNew}>
                     <Plus className="mr-2 h-4 w-4" />
-                    New Registry
                 </Button>
             </div>
             <CustomDataGrid
@@ -207,14 +206,19 @@ const EMPTY_FORM_VALUES: CorrespondenceFormValues = {
     reference_no: '',
     sender: '',
     sender_ref: '',
+    document_cover_page: false,
+    document_full_letters: false,
+    document_claim_attachment: false,
+    document_others: false,
+    document_others_specify: '',
     subject: '',
     correspondent: '',
     direction: 'incoming',
     department: '',
-    owner: '',
+    letter_type: '',
+    category: '',
     priority: 'normal',
     date_received: '',
-    due_date: '',
     remarks: '',
 };
 
@@ -235,14 +239,19 @@ const toFormValues = (record: CorrespondenceRecord): CorrespondenceFormValues =>
     reference_no: record.reference_no,
     sender: record.correspondent,
     sender_ref: '',
+    document_cover_page: false,
+    document_full_letters: false,
+    document_claim_attachment: false,
+    document_others: false,
+    document_others_specify: '',
     subject: record.subject,
     correspondent: record.correspondent,
     direction: record.direction,
     department: record.department,
-    owner: record.owner,
+    letter_type: '',
+    category: '',
     priority: record.priority,
     date_received: toDateInputValue(record.received_at),
-    due_date: toDateInputValue(record.due_date),
     remarks: '',
 });
 

@@ -1,75 +1,40 @@
 {
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "baseUrl": "./src",
-    "paths": {
-      "@app/*": [
-        "app/*"
-      ],
-      "@components/*": [
-        "components/*"
-      ],
-      "@store/*": [
-        "store/*"
-      ],
-      "@styles/*": [
-        "styles/*"
-      ],
-      "@/*": [
-        "*"
-      ],
-      "@/components/*": [
-        "components/*"
-      ],
-      "@/store/*": [
-        "store/*"
-      ],
-      "@/styles/*": [
-        "styles/*"
-      ],
-      "@/i18n": [
-        "../i18n"
-      ],
-      "@/App": [
-        "../App"
-      ],
-      "@/theme.config": [
-        "../theme.config"
-      ]
+    "compilerOptions": {
+        "target": "ES2017",
+        "lib": ["dom", "dom.iterable", "esnext"],
+        "ignoreDeprecations": "6.0",
+        "allowJs": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "jsx": "react-jsx",
+        "incremental": true,
+        "baseUrl": "./src",
+        "paths": {
+            "@app/*": ["app/*"],
+            "@components/*": ["components/*"],
+            "@store/*": ["store/*"],
+            "@styles/*": ["styles/*"],
+            "@/*": ["*"],
+            "@/components/*": ["components/*"],
+            "@/store/*": ["store/*"],
+            "@/styles/*": ["styles/*"],
+            "@/i18n": ["../i18n"],
+            "@/App": ["../App"],
+            "@/theme.config": ["../theme.config"]
+        },
+        "plugins": [
+            {
+                "name": "next"
+            }
+        ]
     },
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
-  },
-  "include": [
-    "**/*.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    "next-env.d.ts",
-    "ni18n.config.ts.js",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+    "include": ["**/*.d.ts", "**/*.ts", "**/*.tsx", "next-env.d.ts", "ni18n.config.ts.js", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+    "exclude": ["node_modules"]
 }
