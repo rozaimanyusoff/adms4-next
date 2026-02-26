@@ -33,16 +33,16 @@ export type CorrespondenceFormValues = {
     remarks: string;
 };
 
-export type CorrespondenceAttachmentPayload = {
-    file: File;
-    filename: string;
-    mime_type: string;
-    size: number;
-    pdf_page_count: number;
-};
-
 export type CorrespondenceFormSubmitPayload = CorrespondenceFormValues & {
-    attachment: CorrespondenceAttachmentPayload | null;
+    registered_at: string | null;
+    registered_by: string | null;
+    disseminated_at: string | null;
+    disseminated_by: string | null;
+    attachment_filename: string | null;
+    attachment_mime_type: string | null;
+    attachment_size: number | null;
+    attachment_pdf_page_count: number | null;
+    attachment_file_path: string | null;
 };
 
 type AttachmentItem = {
@@ -195,12 +195,12 @@ export const CorrespondenceForm = ({
                 const list: any[] = Array.isArray(raw?.data)
                     ? raw.data
                     : Array.isArray(raw?.items)
-                      ? raw.items
-                      : Array.isArray(raw?.data?.items)
-                        ? raw.data.items
-                        : Array.isArray(raw)
-                          ? raw
-                          : [];
+                        ? raw.items
+                        : Array.isArray(raw?.data?.items)
+                            ? raw.data.items
+                            : Array.isArray(raw)
+                                ? raw
+                                : [];
                 if (ignore) return;
                 const unique = new Set<string>();
                 const options: EmployeeOption[] = [];
@@ -293,18 +293,17 @@ export const CorrespondenceForm = ({
     const submitHandler = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const currentAttachment = attachments[0];
-        const attachmentPayload: CorrespondenceAttachmentPayload | null = currentAttachment
-            ? {
-                  file: currentAttachment.file,
-                  filename: currentAttachment.file.name,
-                  mime_type: currentAttachment.file.type,
-                  size: currentAttachment.file.size,
-                  pdf_page_count: currentAttachment.pdfPageCount || 1,
-              }
-            : null;
         onSubmit?.({
             ...values,
-            attachment: attachmentPayload,
+            registered_at: null,
+            registered_by: null,
+            disseminated_at: null,
+            disseminated_by: null,
+            attachment_filename: currentAttachment?.file.name ?? null,
+            attachment_mime_type: currentAttachment?.file.type ?? null,
+            attachment_size: currentAttachment?.file.size ?? null,
+            attachment_pdf_page_count: currentAttachment?.pdfPageCount ?? null,
+            attachment_file_path: null,
         });
     };
 
@@ -420,8 +419,8 @@ export const CorrespondenceForm = ({
                                                             rel="noreferrer"
                                                             onClick={(event) => event.stopPropagation()}
                                                             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${item.previewUrl
-                                                                    ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                                                                    : 'pointer-events-none border-slate-200 bg-slate-100 text-slate-400'
+                                                                ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                                                                : 'pointer-events-none border-slate-200 bg-slate-100 text-slate-400'
                                                                 }`}
                                                         >
                                                             Preview
@@ -668,11 +667,11 @@ export const CorrespondenceForm = ({
                                                             const nextRows = qaRows.map((entry) =>
                                                                 entry.id === row.id
                                                                     ? {
-                                                                          ...entry,
-                                                                          recipientRamcoId: value,
-                                                                          departmentId: selected?.departmentId ?? entry.departmentId,
-                                                                          departmentCode: selected?.departmentCode ?? entry.departmentCode,
-                                                                      }
+                                                                        ...entry,
+                                                                        recipientRamcoId: value,
+                                                                        departmentId: selected?.departmentId ?? entry.departmentId,
+                                                                        departmentCode: selected?.departmentCode ?? entry.departmentCode,
+                                                                    }
                                                                     : entry,
                                                             );
                                                             syncQaRowsToValues(nextRows);
@@ -754,3 +753,99 @@ export const CorrespondenceForm = ({
 };
 
 export default CorrespondenceForm;
+
+
+//CRETE TABLE
+/* 
+-- MySQL 8+
+CREATE TABLE `correspondences` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+
+  `reference_no` VARCHAR(100) NOT NULL,
+  `sender` VARCHAR(255) NOT NULL,
+  `sender_ref` VARCHAR(100) NULL,
+
+  `document_cover_page` TINYINT(1) NOT NULL DEFAULT 0,
+  `document_full_letters` TINYINT(1) NOT NULL DEFAULT 0,
+  `document_claim_attachment` TINYINT(1) NOT NULL DEFAULT 0,
+  `document_others` TINYINT(1) NOT NULL DEFAULT 0,
+  `document_others_specify` VARCHAR(255) NULL,
+
+  `subject` TEXT NOT NULL,
+  `correspondent` TEXT NOT NULL,
+  `direction` ENUM('incoming','outgoing') NOT NULL,
+  `department` TEXT NOT NULL,
+  `letter_type` VARCHAR(100) NULL,
+  `category` VARCHAR(100) NULL,
+  `priority` ENUM('low','normal','high') NOT NULL DEFAULT 'normal',
+  `date_received` DATE NULL,
+  `remarks` TEXT NULL,
+
+  `registered_at` DATETIME NULL,
+  `registered_by` VARCHAR(100) NULL,
+  `disseminated_at` DATETIME NULL,
+  `disseminated_by` VARCHAR(100) NULL,
+
+  `attachment_filename` VARCHAR(255) NULL,
+  `attachment_mime_type` VARCHAR(100) NULL,
+  `attachment_size` BIGINT NULL,
+  `attachment_pdf_page_count` INT NULL,
+  `attachment_file_path` TEXT NULL,
+
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (`id`),
+  KEY `idx_correspondences_reference_no` (`reference_no`),
+  KEY `idx_correspondences_direction` (`direction`),
+  KEY `idx_correspondences_priority` (`priority`),
+  KEY `idx_correspondences_date_received` (`date_received`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+
+-- PostgreSQL
+CREATE TABLE IF NOT EXISTS correspondences (
+    id BIGSERIAL PRIMARY KEY,
+
+    reference_no VARCHAR(100) NOT NULL,
+    sender VARCHAR(255) NOT NULL,
+    sender_ref VARCHAR(100),
+
+    document_cover_page BOOLEAN NOT NULL DEFAULT FALSE,
+    document_full_letters BOOLEAN NOT NULL DEFAULT FALSE,
+    document_claim_attachment BOOLEAN NOT NULL DEFAULT FALSE,
+    document_others BOOLEAN NOT NULL DEFAULT FALSE,
+    document_others_specify VARCHAR(255),
+
+    subject TEXT NOT NULL,
+    correspondent TEXT NOT NULL,
+    direction VARCHAR(20) NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
+    department TEXT NOT NULL,
+    letter_type VARCHAR(100),
+    category VARCHAR(100),
+    priority VARCHAR(20) NOT NULL CHECK (priority IN ('low', 'normal', 'high')),
+    date_received DATE,
+    remarks TEXT,
+
+    registered_at TIMESTAMP NULL,
+    registered_by VARCHAR(100) NULL,
+    disseminated_at TIMESTAMP NULL,
+    disseminated_by VARCHAR(100) NULL,
+
+    attachment_filename VARCHAR(255),
+    attachment_mime_type VARCHAR(100),
+    attachment_size BIGINT,
+    attachment_pdf_page_count INT,
+    attachment_file_path TEXT,
+
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_correspondences_reference_no ON correspondences(reference_no);
+CREATE INDEX IF NOT EXISTS idx_correspondences_direction ON correspondences(direction);
+CREATE INDEX IF NOT EXISTS idx_correspondences_priority ON correspondences(priority);
+CREATE INDEX IF NOT EXISTS idx_correspondences_date_received ON correspondences(date_received);
+
+*/
