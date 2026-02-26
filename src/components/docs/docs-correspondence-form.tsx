@@ -8,9 +8,20 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { authenticatedApi } from '@/config/api';
 import { FileText, Minus, Plus, UploadCloud, X } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Direction, Priority } from './correspondence-tracking-data';
 
 export type CorrespondenceFormValues = {
@@ -33,7 +44,8 @@ export type CorrespondenceFormValues = {
     remarks: string;
 };
 
-export type CorrespondenceFormSubmitPayload = CorrespondenceFormValues & {
+export type CorrespondenceFormSubmitPayload = Omit<CorrespondenceFormValues, 'reference_no'> & {
+    reference_no: string | null;
     registered_at: string | null;
     registered_by: string | null;
     disseminated_at: string | null;
@@ -54,10 +66,12 @@ type AttachmentItem = {
 
 type CorrespondenceFormProps = {
     mode?: 'create' | 'edit';
+    recordId?: string | number;
     recordSlug?: string;
+    showCardHeader?: boolean;
     initialValues?: CorrespondenceFormValues;
     onCancel: () => void;
-    onSubmit?: (payload: CorrespondenceFormSubmitPayload) => void;
+    onSubmit?: (payload: CorrespondenceFormSubmitPayload) => void | Promise<void>;
     onValuesChange?: (values: CorrespondenceFormValues) => void;
 };
 
@@ -112,6 +126,8 @@ type EmployeeOption = ComboboxOption & {
     departmentCode: string;
 };
 
+const CREATE_DRAFT_STORAGE_KEY = 'docs.correspondence.create-draft.v1';
+
 const createQaRow = (recipientRamcoId = '', departmentId = '', departmentCode = ''): QaRow => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     recipientRamcoId,
@@ -131,6 +147,14 @@ const parseList = (value: string) =>
         .map((entry) => entry.trim())
         .filter(Boolean);
 
+const appendFormValue = (formData: FormData, key: string, value: string | number | boolean | null | undefined) => {
+    if (value === null || value === undefined) {
+        formData.append(key, '');
+        return;
+    }
+    formData.append(key, String(value));
+};
+
 const buildQaRowsFromValues = (formValues: CorrespondenceFormValues, recipientOptions: EmployeeOption[] = []): QaRow[] => {
     const correspondences = parseList(formValues.correspondent);
     const departments = parseList(formValues.department);
@@ -149,7 +173,9 @@ const buildQaRowsFromValues = (formValues: CorrespondenceFormValues, recipientOp
 
 export const CorrespondenceForm = ({
     mode = 'create',
+    recordId,
     recordSlug,
+    showCardHeader = true,
     initialValues,
     onCancel,
     onSubmit,
@@ -157,6 +183,7 @@ export const CorrespondenceForm = ({
 }: CorrespondenceFormProps) => {
     const attachmentInputRef = useRef<HTMLInputElement | null>(null);
     const localUpdateRef = useRef(false);
+    const draftHydratedRef = useRef(false);
     const [recipientOptions, setRecipientOptions] = useState<EmployeeOption[]>([]);
     const [values, setValues] = useState<CorrespondenceFormValues>({
         ...emptyFormValues,
@@ -164,19 +191,42 @@ export const CorrespondenceForm = ({
     });
     const [qaRows, setQaRows] = useState<QaRow[]>(buildQaRowsFromValues({ ...emptyFormValues, ...(initialValues ?? {}) }));
     const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('Correspondence saved successfully.');
+    const [pendingPayload, setPendingPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
+    const [submittedPayload, setSubmittedPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
 
     useEffect(() => {
         if (localUpdateRef.current) {
             localUpdateRef.current = false;
             return;
         }
-        const nextValues = {
+        let nextValues = {
             ...emptyFormValues,
             ...(initialValues ?? {}),
         };
+        if (mode === 'create' && !draftHydratedRef.current) {
+            draftHydratedRef.current = true;
+            try {
+                const raw = localStorage.getItem(CREATE_DRAFT_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw) as Partial<CorrespondenceFormValues>;
+                    nextValues = { ...nextValues, ...parsed };
+                }
+            } catch {
+                localStorage.removeItem(CREATE_DRAFT_STORAGE_KEY);
+            }
+        }
         setValues(nextValues);
         setQaRows(buildQaRowsFromValues(nextValues, recipientOptions));
-    }, [initialValues, recipientOptions]);
+    }, [initialValues, recipientOptions, mode]);
+
+    useEffect(() => {
+        if (mode !== 'create') return;
+        localStorage.setItem(CREATE_DRAFT_STORAGE_KEY, JSON.stringify(values));
+    }, [mode, values]);
 
     useEffect(() => {
         return () => {
@@ -290,11 +340,11 @@ export const CorrespondenceForm = ({
         });
     };
 
-    const submitHandler = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+    const buildPayload = (): CorrespondenceFormSubmitPayload => {
         const currentAttachment = attachments[0];
-        onSubmit?.({
+        return {
             ...values,
+            reference_no: mode === 'create' ? null : values.reference_no.trim() || null,
             registered_at: null,
             registered_by: null,
             disseminated_at: null,
@@ -304,7 +354,80 @@ export const CorrespondenceForm = ({
             attachment_size: currentAttachment?.file.size ?? null,
             attachment_pdf_page_count: currentAttachment?.pdfPageCount ?? null,
             attachment_file_path: null,
-        });
+        };
+    };
+
+    const submitHandler = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (isSubmitting) return;
+        setPendingPayload(buildPayload());
+        setConfirmDialogOpen(true);
+    };
+
+    const confirmSubmit = async () => {
+        if (!pendingPayload || isSubmitting) return;
+        const payload = pendingPayload;
+
+        try {
+            setIsSubmitting(true);
+            setConfirmDialogOpen(false);
+            const selectedAttachment = attachments[0]?.file;
+            const formData = new FormData();
+            appendFormValue(formData, 'reference_no', payload.reference_no);
+            appendFormValue(formData, 'sender', payload.sender);
+            appendFormValue(formData, 'sender_ref', payload.sender_ref);
+            appendFormValue(formData, 'document_cover_page', payload.document_cover_page);
+            appendFormValue(formData, 'document_full_letters', payload.document_full_letters);
+            appendFormValue(formData, 'document_claim_attachment', payload.document_claim_attachment);
+            appendFormValue(formData, 'document_others', payload.document_others);
+            appendFormValue(formData, 'document_others_specify', payload.document_others_specify);
+            appendFormValue(formData, 'subject', payload.subject);
+            appendFormValue(formData, 'correspondent', payload.correspondent);
+            appendFormValue(formData, 'direction', payload.direction);
+            appendFormValue(formData, 'department', payload.department);
+            appendFormValue(formData, 'letter_type', payload.letter_type);
+            appendFormValue(formData, 'category', payload.category);
+            appendFormValue(formData, 'priority', payload.priority);
+            appendFormValue(formData, 'date_received', payload.date_received);
+            appendFormValue(formData, 'remarks', payload.remarks);
+            appendFormValue(formData, 'registered_at', payload.registered_at);
+            appendFormValue(formData, 'registered_by', payload.registered_by);
+            appendFormValue(formData, 'disseminated_at', payload.disseminated_at);
+            appendFormValue(formData, 'disseminated_by', payload.disseminated_by);
+            appendFormValue(formData, 'attachment_filename', payload.attachment_filename);
+            appendFormValue(formData, 'attachment_mime_type', payload.attachment_mime_type);
+            appendFormValue(formData, 'attachment_size', payload.attachment_size);
+            appendFormValue(formData, 'attachment_pdf_page_count', payload.attachment_pdf_page_count);
+            appendFormValue(formData, 'attachment_file_path', payload.attachment_file_path);
+            if (selectedAttachment) {
+                formData.append('file', selectedAttachment);
+            }
+
+            if (mode === 'edit') {
+                if (!recordId) {
+                    toast.error('Unable to resolve correspondence ID for update');
+                    return;
+                }
+                await authenticatedApi.put(`/api/media/correspondence/${recordId}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                setSuccessMessage('Correspondence updated successfully.');
+            } else {
+                await authenticatedApi.post('/api/media/correspondence', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                localStorage.removeItem(CREATE_DRAFT_STORAGE_KEY);
+                setSuccessMessage('Correspondence created successfully.');
+            }
+            setSubmittedPayload(payload);
+            setSuccessDialogOpen(true);
+        } catch (error: any) {
+            const message = error?.response?.data?.message || error?.message || 'Failed to save correspondence';
+            toast.error(message);
+        } finally {
+            setIsSubmitting(false);
+            setPendingPayload(null);
+        }
     };
 
     const openFilePicker = () => {
@@ -334,14 +457,16 @@ export const CorrespondenceForm = ({
 
     return (
         <Card className="mx-auto max-w-7xl">
-            <CardHeader>
-                <CardTitle>{mode === 'edit' ? 'Edit Correspondence Registry' : 'Create Correspondence Registry'}</CardTitle>
-                <CardDescription>
-                    {mode === 'edit'
-                        ? `Update registry details${recordSlug ? ` for ${recordSlug}` : ''}.`
-                        : 'Register new incoming or outgoing correspondence details.'}
-                </CardDescription>
-            </CardHeader>
+            {showCardHeader ? (
+                <CardHeader>
+                    <CardTitle>{mode === 'edit' ? 'Edit Correspondence Registry' : 'Create Correspondence Registry'}</CardTitle>
+                    <CardDescription>
+                        {mode === 'edit'
+                            ? `Update registry details${recordSlug ? ` for ${recordSlug}` : ''}.`
+                            : 'Register new incoming or outgoing correspondence details.'}
+                    </CardDescription>
+                </CardHeader>
+            ) : null}
             <CardContent>
                 <form onSubmit={submitHandler} className="space-y-4">
                     <div className="grid gap-6 xl:grid-cols-[minmax(320px,1fr)_minmax(0,2fr)] xl:items-stretch">
@@ -453,9 +578,8 @@ export const CorrespondenceForm = ({
                                             <Input
                                                 id="reference-no"
                                                 value={values.reference_no}
-                                                onChange={(event) => updateValues({ ...values, reference_no: event.target.value })}
-                                                placeholder="IN/FIN/2026/0013"
-                                                required
+                                                readOnly
+                                                placeholder={mode === 'create' ? 'Auto-generated by system' : 'Reference number'}
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -492,6 +616,7 @@ export const CorrespondenceForm = ({
                                                 value={values.sender}
                                                 onChange={(event) => updateValues({ ...values, sender: event.target.value })}
                                                 placeholder="Name of sender"
+                                                className='uppercase placeholder:normal-case'
                                             />
                                         </div>
                                         <div className="space-y-2">
@@ -501,6 +626,7 @@ export const CorrespondenceForm = ({
                                                 value={values.sender_ref}
                                                 onChange={(event) => updateValues({ ...values, sender_ref: event.target.value })}
                                                 placeholder="Sender reference number"
+                                                className='uppercase placeholder:normal-case'
                                             />
                                         </div>
                                     </div>
@@ -589,6 +715,7 @@ export const CorrespondenceForm = ({
                                             placeholder="Enter correspondence subject matters"
                                             rows={3}
                                             required
+                                            className='uppercase placeholder:normal-case'
                                         />
                                     </div>
                                 </CardContent>
@@ -742,12 +869,47 @@ export const CorrespondenceForm = ({
                         <Button type="button" variant="outline" onClick={onCancel}>
                             Cancel
                         </Button>
-                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                            Save Registry
+                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+                            {isSubmitting ? 'Saving...' : 'Save Registry'}
                         </Button>
                     </div>
                 </form>
             </CardContent>
+            <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to submit this correspondence record?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void confirmSubmit()} disabled={isSubmitting}>
+                            {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Submission Successful</AlertDialogTitle>
+                        <AlertDialogDescription>{successMessage}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (submittedPayload) {
+                                    void onSubmit?.(submittedPayload);
+                                }
+                            }}
+                        >
+                            Return to Records
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Card>
     );
 };
