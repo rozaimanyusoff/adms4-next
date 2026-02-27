@@ -95,7 +95,21 @@ export function determineStatementLabel(d: any) {
         const dt = new Date(pickDate);
         if (!isNaN(dt.getTime())) return `${dt.toLocaleString('default', { month: 'long' }).toUpperCase()} ${dt.getFullYear()}`;
     }
-    // 5) fallback to last month
+    // 5) try common single date fields used by billing modules
+    const dateCandidates = [
+        d?.stmt_date,
+        d?.bill_date,
+        d?.ubill_date,
+        d?.reg_date,
+    ];
+    for (const candidate of dateCandidates) {
+        if (!candidate) continue;
+        const dt = new Date(candidate);
+        if (!isNaN(dt.getTime())) {
+            return `${dt.toLocaleString('default', { month: 'long' }).toUpperCase()} ${dt.getFullYear()}`;
+        }
+    }
+    // 6) fallback to last month
     const last = new Date();
     last.setMonth(last.getMonth() - 1);
     return `${last.toLocaleString('default', { month: 'long' }).toUpperCase()} ${last.getFullYear()}`;
