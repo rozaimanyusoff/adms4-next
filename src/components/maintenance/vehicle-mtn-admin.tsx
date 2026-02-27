@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { authenticatedApi } from '@/config/api';
 import { Button } from '@/components/ui/button';
-import { Download, Loader2, Search, Filter, Calendar } from 'lucide-react';
+import { Download, Calendar, RefreshCw } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
@@ -100,6 +100,14 @@ const VehicleMaintenanceAdmin = () => {
   const canUpdate = can('update', authData);
   const canCreate = can('create', authData);
   const [rows, setRows] = useState<MaintenanceRequest[]>([]);
+  const [rowsByCard, setRowsByCard] = useState<Record<SummaryCardKey, MaintenanceRequest[]>>({
+    total: [],
+    pendingVerification: [],
+    pendingRecommendation: [],
+    pendingApproval: [],
+    rejected: [],
+    cancelled: [],
+  });
   // Summary counts by card
   const [counts, setCounts] = useState<Record<SummaryCardKey, number>>({
     total: 0,
@@ -110,94 +118,98 @@ const VehicleMaintenanceAdmin = () => {
     cancelled: 0,
   });
   const [loading, setLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
   // Default to Pending Verification card
   const [activeCard, setActiveCard] = useState<SummaryCardKey>('pendingVerification');
   const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [yearTotals, setYearTotals] = useState<Record<number, number>>({});
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   
-  // Fetch rows for grid from backend using year + activeCard
-  const fetchGridRows = async (year?: number, card?: SummaryCardKey) => {
-    setLoading(true);
-    try {
-      const params: Record<string, any> = {};
-      if (year) params.year = year;
-      const key = card ?? activeCard;
-      if (key && key !== 'total') {
-        const q = cardQuery[key];
-        if (q) params[q.type] = q.value;
-      }
-      const response = await authenticatedApi.get('/api/mtn/request', { params });
-      let data = (response.data as { data?: MaintenanceRequest[] })?.data || [];
-      // Exclude cancelled items only for pending cards; include them for Total
-      if (key === 'pendingVerification' || key === 'pendingRecommendation' || key === 'pendingApproval') {
-        data = data.filter(item => (item.status || '').toLowerCase() !== 'cancelled');
-      }
-      // Process data for display
-      const processed = data.map((item, idx) => {
-        const workshopName = (() => {
-          const w: any = (item as any).workshop;
-          if (!w) return (item as any).workshop_name || 'N/A';
-          if (typeof w === 'string') return w || 'N/A';
-          return w.name || (item as any).workshop_name || 'N/A';
-        })();
-        return ({
-          ...item,
-          rowNumber: idx + 1,
-          service_types: item.svc_type?.map(type => type.name).join(', ') || 'N/A',
-          requester_name: item.requester?.name || 'N/A',
-          register_number: item.asset?.register_number || item.vehicle?.register_number || 'N/A',
-          costcenter_name: item.costcenter?.name || 'N/A',
-          workshop_name: workshopName,
-          req_date: item.req_date ? new Date(item.req_date).toLocaleDateString() : 'N/A',
-          approval_date: item.approval_date ? new Date(item.approval_date).toLocaleDateString() : 'N/A',
-          verification_date: item.verification_date ? new Date(item.verification_date).toLocaleDateString() : 'N/A',
-          recommendation_date: item.recommendation_date ? new Date(item.recommendation_date).toLocaleDateString() : 'N/A',
-        });
+  const processRows = (data: MaintenanceRequest[], key: SummaryCardKey): MaintenanceRequest[] => {
+    const filtered = (
+      key === 'pendingVerification' || key === 'pendingRecommendation' || key === 'pendingApproval'
+    )
+      ? data.filter(item => (item.status || '').toLowerCase() !== 'cancelled')
+      : data;
+
+    return filtered.map((item, idx) => {
+      const workshopName = (() => {
+        const w: any = (item as any).workshop;
+        if (!w) return (item as any).workshop_name || 'N/A';
+        if (typeof w === 'string') return w || 'N/A';
+        return w.name || (item as any).workshop_name || 'N/A';
+      })();
+      return ({
+        ...item,
+        rowNumber: idx + 1,
+        service_types: item.svc_type?.map(type => type.name).join(', ') || 'N/A',
+        requester_name: item.requester?.name || 'N/A',
+        register_number: item.asset?.register_number || item.vehicle?.register_number || 'N/A',
+        costcenter_name: item.costcenter?.name || 'N/A',
+        workshop_name: workshopName,
+        req_date: item.req_date ? new Date(item.req_date).toLocaleDateString() : 'N/A',
+        approval_date: item.approval_date ? new Date(item.approval_date).toLocaleDateString() : 'N/A',
+        verification_date: item.verification_date ? new Date(item.verification_date).toLocaleDateString() : 'N/A',
+        recommendation_date: item.recommendation_date ? new Date(item.recommendation_date).toLocaleDateString() : 'N/A',
       });
-      setRows(processed);
-    } catch (error) {
-      console.error('Error fetching grid rows:', error);
-      toast.error('Failed to fetch maintenance requests');
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  // Fetch summary counts for each card from backend
-  const fetchSummaryCounts = async (year?: number) => {
+  // Fetch all card datasets once per year, then switch cards from memory only.
+  const fetchYearData = async (year?: number, cardToShow?: SummaryCardKey) => {
+    setLoading(true);
     try {
       const base = year ? { year } : {};
       const [totalRes, verRes, recRes, apprRes, rejRes, cancelRes] = await Promise.all([
-        authenticatedApi.get('/api/mtn/request', { params: base }),
+        authenticatedApi.get('/api/mtn/request', { params: { ...base, status: 'approved' } }),
         authenticatedApi.get('/api/mtn/request', { params: { ...base, [cardQuery.pendingVerification.type]: cardQuery.pendingVerification.value } }),
         authenticatedApi.get('/api/mtn/request', { params: { ...base, [cardQuery.pendingRecommendation.type]: cardQuery.pendingRecommendation.value } }),
         authenticatedApi.get('/api/mtn/request', { params: { ...base, [cardQuery.pendingApproval.type]: cardQuery.pendingApproval.value } }),
         authenticatedApi.get('/api/mtn/request', { params: { ...base, [cardQuery.rejected.type]: cardQuery.rejected.value } }),
         authenticatedApi.get('/api/mtn/request', { params: { ...base, [cardQuery.cancelled.type]: cardQuery.cancelled.value } }),
       ]);
-      const getLen = (res: any, key: SummaryCardKey) => {
-        const arr: any[] = ((res?.data as { data?: any[] })?.data || []);
-        if (key === 'pendingVerification' || key === 'pendingRecommendation' || key === 'pendingApproval') {
-          return arr.filter(item => (item?.status || '').toLowerCase() !== 'cancelled').length;
-        }
-        return arr.length;
+
+      const raw: Record<SummaryCardKey, MaintenanceRequest[]> = {
+        total: ((totalRes.data as { data?: MaintenanceRequest[] })?.data || []),
+        pendingVerification: ((verRes.data as { data?: MaintenanceRequest[] })?.data || []),
+        pendingRecommendation: ((recRes.data as { data?: MaintenanceRequest[] })?.data || []),
+        pendingApproval: ((apprRes.data as { data?: MaintenanceRequest[] })?.data || []),
+        rejected: ((rejRes.data as { data?: MaintenanceRequest[] })?.data || []),
+        cancelled: ((cancelRes.data as { data?: MaintenanceRequest[] })?.data || []),
       };
+
+      const processed: Record<SummaryCardKey, MaintenanceRequest[]> = {
+        total: processRows(raw.total, 'total'),
+        pendingVerification: processRows(raw.pendingVerification, 'pendingVerification'),
+        pendingRecommendation: processRows(raw.pendingRecommendation, 'pendingRecommendation'),
+        pendingApproval: processRows(raw.pendingApproval, 'pendingApproval'),
+        rejected: processRows(raw.rejected, 'rejected'),
+        cancelled: processRows(raw.cancelled, 'cancelled'),
+      };
+
+      setRowsByCard(processed);
       setCounts({
-        total: getLen(totalRes, 'total'),
-        pendingVerification: getLen(verRes, 'pendingVerification'),
-        pendingRecommendation: getLen(recRes, 'pendingRecommendation'),
-        pendingApproval: getLen(apprRes, 'pendingApproval'),
-        rejected: getLen(rejRes, 'rejected'),
-        cancelled: getLen(cancelRes, 'cancelled'),
+        total: processed.total.length,
+        pendingVerification: processed.pendingVerification.length,
+        pendingRecommendation: processed.pendingRecommendation.length,
+        pendingApproval: processed.pendingApproval.length,
+        rejected: processed.rejected.length,
+        cancelled: processed.cancelled.length,
       });
+
+      const active = cardToShow ?? activeCard;
+      setRows(processed[active] || []);
+      setLastUpdatedAt(new Date());
     } catch (error) {
-      console.error('Error fetching summary counts:', error);
-      // Keep existing counts; no toast to avoid noise
+      console.error('Error fetching maintenance requests:', error);
+      toast.error('Failed to fetch maintenance requests');
+      setRows([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -253,13 +265,20 @@ const VehicleMaintenanceAdmin = () => {
 
   useEffect(() => {
     if (!canView) return;
-    // On mount, try to discover available years from backend using total fetch without year
-    // Also set initial rows and summary counts
+    // On mount, discover available years from backend.
+    // Initial dataset loading is handled by the year-based effect.
     const init = async () => {
       try {
         const res = await authenticatedApi.get('/api/mtn/request');
         const data = (res.data as { data?: MaintenanceRequest[] })?.data || [];
         // Discover years present
+        const totalsByYear = data.reduce<Record<number, number>>((acc, item) => {
+          const year = item.req_date ? new Date(item.req_date).getFullYear() : new Date().getFullYear();
+          acc[year] = (acc[year] || 0) + 1;
+          return acc;
+        }, {});
+        setYearTotals(totalsByYear);
+
         const years = [...new Set(data.map(item => {
           if (item.req_date) return new Date(item.req_date).getFullYear();
           return new Date().getFullYear();
@@ -273,28 +292,29 @@ const VehicleMaintenanceAdmin = () => {
       } catch (e) {
         // ignore
       }
-      await fetchSummaryCounts(yearFilter);
-      await fetchGridRows(yearFilter, activeCard);
     };
     init();
      
   }, [canView]);
 
-  // Refresh grid rows and counts when year or card changes
+  // Refetch only when year changes; card switching uses in-memory rows.
   useEffect(() => {
     if (!canView) return;
-    fetchSummaryCounts(yearFilter);
-    fetchGridRows(yearFilter, activeCard);
+    fetchYearData(yearFilter, activeCard);
      
-  }, [yearFilter, activeCard, canView]);
+  }, [yearFilter, canView]);
+
+  // Update visible rows immediately from cached card data.
+  useEffect(() => {
+    setRows(rowsByCard[activeCard] || []);
+  }, [activeCard, rowsByCard]);
 
   // If returning from detail with ?refresh=1, reload data once and clean the URL
   useEffect(() => {
     if (!canView) return;
     const shouldRefresh = searchParams?.get('refresh') === '1';
     if (shouldRefresh) {
-      fetchSummaryCounts(yearFilter);
-      fetchGridRows(yearFilter, activeCard);
+      fetchYearData(yearFilter, activeCard);
       // Remove the refresh flag from URL to avoid repeated reloads
       try {
         const params = new URLSearchParams(searchParams?.toString());
@@ -444,70 +464,41 @@ const VehicleMaintenanceAdmin = () => {
         <div className="mt-2 -mx-1 px-1 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 overflow-x-auto whitespace-nowrap">
           <Select 
             value={yearFilter.toString()} 
-            onValueChange={(value) => handleYearFilterChange(parseInt(value))}
+            onValueChange={(value) => handleYearFilterChange(parseInt(value, 10))}
           >
-            <SelectTrigger className="w-full sm:w-36">
+            <SelectTrigger className="w-full sm:w-44">
               <Calendar size={16} className="mr-2" />
               <SelectValue placeholder="Year" />
             </SelectTrigger>
             <SelectContent>
               {availableYears.map(year => (
                 <SelectItem key={year} value={year.toString()}>
-                  {year}
+                  {year} ({yearTotals[year] || 0})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select value={activeCard} onValueChange={(v) => setActiveCard(v as SummaryCardKey)}>
-            <SelectTrigger className="w-full sm:w-56">
-              <Filter size={16} className="mr-2" />
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="total">Total ({getStatusCount('total')})</SelectItem>
-              <SelectItem value="pendingVerification">Pending Verification ({getStatusCount('pendingVerification')})</SelectItem>
-              <SelectItem value="pendingRecommendation">Pending Recommendation ({getStatusCount('pendingRecommendation')})</SelectItem>
-              <SelectItem value="pendingApproval">Pending Approval ({getStatusCount('pendingApproval')})</SelectItem>
-              <SelectItem value="rejected">Rejected ({getStatusCount('rejected')})</SelectItem>
-              <SelectItem value="cancelled">Cancelled ({getStatusCount('cancelled')})</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            onClick={() => { fetchSummaryCounts(yearFilter); fetchGridRows(yearFilter, activeCard); }}
-            disabled={loading}
-            className="shrink-0"
-          >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
-            Refresh
-          </Button>
           <MaintenanceRequestExcelButton />
+          <div className="sm:ml-auto flex items-center gap-2">
+            <div className="text-xs text-blue-600 self-center">
+              Last updated: {lastUpdatedAt ? lastUpdatedAt.toLocaleString() : 'Not loaded'}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => { fetchYearData(yearFilter, activeCard); }}
+              disabled={loading}
+              className="shrink-0 text-blue-500 border-blue-500 hover:bg-blue-50 disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              <RefreshCw className={loading ? 'animate-spin' : ''} size={18} />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Status Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-6">
         <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
-            activeCard === 'total' ? 'ring-2 ring-gray-500' : ''
-          }`}
-          onClick={() => handleCardClick('total')}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">Total</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold">{getStatusCount('total')}</p>
-            </div>
-            <div className="w-8 h-8 bg-gray-200 flex items-center justify-center rounded-md">
-              <Search className="w-4 h-4 text-gray-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
             activeCard === 'pendingVerification' ? 'ring-2 ring-yellow-500' : ''
           }`}
           onClick={() => handleCardClick('pendingVerification')}
@@ -515,15 +506,13 @@ const VehicleMaintenanceAdmin = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-yellow-700">Pending Verification</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold text-yellow-800">{getStatusCount('pendingVerification')}</p>
-            </div>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold text-yellow-800">{getStatusCount('pendingVerification')}</p>
           </CardContent>
         </Card>
 
         <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
             activeCard === 'pendingRecommendation' ? 'ring-2 ring-blue-500' : ''
           }`}
           onClick={() => handleCardClick('pendingRecommendation')}
@@ -531,15 +520,13 @@ const VehicleMaintenanceAdmin = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-blue-700">Pending Recommendation</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold text-blue-700">{getStatusCount('pendingRecommendation')}</p>
-            </div>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold text-blue-700">{getStatusCount('pendingRecommendation')}</p>
           </CardContent>
         </Card>
 
         <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
             activeCard === 'pendingApproval' ? 'ring-2 ring-purple-500' : ''
           }`}
           onClick={() => handleCardClick('pendingApproval')}
@@ -547,15 +534,13 @@ const VehicleMaintenanceAdmin = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-purple-700">Pending Approval</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold text-purple-700">{getStatusCount('pendingApproval')}</p>
-            </div>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold text-purple-700">{getStatusCount('pendingApproval')}</p>
           </CardContent>
         </Card>
 
         <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
             activeCard === 'rejected' ? 'ring-2 ring-rose-500' : ''
           }`}
           onClick={() => handleCardClick('rejected')}
@@ -563,15 +548,13 @@ const VehicleMaintenanceAdmin = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-rose-700">Rejected</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold text-rose-700">{getStatusCount('rejected')}</p>
-            </div>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold text-rose-700">{getStatusCount('rejected')}</p>
           </CardContent>
         </Card>
 
         <Card
-          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md ${
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
             activeCard === 'cancelled' ? 'ring-2 ring-red-500' : ''
           }`}
           onClick={() => handleCardClick('cancelled')}
@@ -579,10 +562,22 @@ const VehicleMaintenanceAdmin = () => {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-red-700">Cancelled</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <div>
-              <p className="text-2xl font-bold text-red-700">{getStatusCount('cancelled')}</p>
-            </div>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold text-red-700">{getStatusCount('cancelled')}</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`bg-stone-100 border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-h-32 ${
+            activeCard === 'total' ? 'ring-2 ring-gray-500' : ''
+          }`}
+          onClick={() => handleCardClick('total')}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-300">Approved</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 mt-auto">
+            <p className="text-2xl font-bold">{getStatusCount('total')}</p>
           </CardContent>
         </Card>
       </div>

@@ -1,19 +1,23 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
 import { Inbox, Send, Clock3, Archive, Pencil, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { CorrespondenceRecord, Priority, RegisterStatus } from './correspondence-tracking-data';
+import { authenticatedApi } from '@/config/api';
+import type { CorrespondenceRecord, Priority, RegisterStatus } from './correspondence-tracking-data';
 
 const formatDate = (value?: string) => {
     if (!value) return '-';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
 };
 
 const getStatusBadge = (status: RegisterStatus) => {
@@ -158,9 +162,9 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
                 render: (row) => getPriorityBadge(row.priority),
             },
             {
-                key: 'due_date',
-                header: 'Due Date',
-                render: (row) => <span className="text-sm text-muted-foreground">{formatDate(row.due_date)}</span>,
+                key: 'received_at',
+                header: 'Date Received',
+                render: (row) => <span className="text-sm text-muted-foreground">{formatDate(row.received_at)}</span>,
             },
             {
                 key: 'owner',
@@ -211,8 +215,40 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
     );
 };
 
-type CorrespondenceRegisterProps = {
-    records: CorrespondenceRecord[];
+type ApiCorrespondenceRow = {
+    id: number;
+    reference_no: string;
+    sender: string | null;
+    subject: string;
+    correspondent: string;
+    direction: 'incoming' | 'outgoing';
+    department: string;
+    priority: 'low' | 'normal' | 'high';
+    date_received: string | null;
+    disseminated_at: string | null;
+    registered_by: string | null;
+};
+
+type CorrespondenceApiResponse = {
+    data?: {
+        total?: number;
+        limit?: number;
+        offset?: number;
+        rows?: ApiCorrespondenceRow[];
+    };
+};
+
+type CorrespondenceQueryParams = {
+    direction?: 'incoming' | 'outgoing';
+    priority?: 'low' | 'normal' | 'high';
+    category?: string;
+    letter_type?: string;
+    department?: string;
+    search?: string;
+    date_from?: string;
+    date_to?: string;
+    limit?: number;
+    offset?: number;
 };
 
 const toSlug = (value: string) =>
@@ -221,8 +257,35 @@ const toSlug = (value: string) =>
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-export const CorrespondenceRegister = ({ records }: CorrespondenceRegisterProps) => {
+const toRecordStatus = (row: ApiCorrespondenceRow): RegisterStatus => {
+    if (row.disseminated_at) return 'completed';
+    return 'registered';
+};
+
+const toRecordPriority = (value: ApiCorrespondenceRow['priority']): Priority => {
+    if (value === 'high' || value === 'normal' || value === 'low') return value;
+    return 'normal';
+};
+
+const mapApiRowToRecord = (row: ApiCorrespondenceRow): CorrespondenceRecord => ({
+    id: String(row.id),
+    reference_no: row.reference_no,
+    subject: row.subject || '-',
+    direction: row.direction,
+    correspondent: row.correspondent || row.sender || '-',
+    department: row.department || '-',
+    medium: 'letter',
+    received_at: row.date_received || undefined,
+    due_date: row.date_received || undefined,
+    status: toRecordStatus(row),
+    priority: toRecordPriority(row.priority),
+    owner: row.registered_by || '-',
+});
+
+export const CorrespondenceRegister = () => {
     const router = useRouter();
+    const [records, setRecords] = useState<CorrespondenceRecord[]>([]);
+    const [loading, setLoading] = useState(false);
 
     const openCreatePage = () => {
         router.push('/docs/correspondence/new');
@@ -232,8 +295,32 @@ export const CorrespondenceRegister = ({ records }: CorrespondenceRegisterProps)
         router.push(`/docs/correspondence/${slug}/edit`);
     };
 
+    useEffect(() => {
+        const fetchRecords = async () => {
+            setLoading(true);
+            try {
+                const params: CorrespondenceQueryParams = {
+                    limit: 200,
+                    offset: 0,
+                };
+                const response = await authenticatedApi.get('/api/media/correspondence', { params });
+                const payload = (response.data as CorrespondenceApiResponse)?.data;
+                const rows = payload?.rows || [];
+                setRecords(rows.map(mapApiRowToRecord));
+            } catch (error) {
+                console.error('Failed to fetch correspondence records:', error);
+                setRecords([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchRecords();
+    }, []);
+
     return (
         <div className="space-y-6">
+            {loading && <p className="text-sm text-muted-foreground">Loading correspondence records...</p>}
             <CorrespondenceDashboard records={records} />
             <CorrespondenceRecordsGrid records={records} onCreateNew={openCreatePage} onEditRecord={openEditPage} />
         </div>

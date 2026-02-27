@@ -67,7 +67,7 @@ export const DocsCorrespondenceTabs = () => {
             {activeTab === 'dashboard' ? (
                 <CorrespondenceDashboardView records={seedCorrespondenceRecords} />
             ) : (
-                <CorrespondenceRegister records={seedCorrespondenceRecords} />
+                <CorrespondenceRegister />
             )}
         </div>
     );
