@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CustomDataGrid, type ColumnDef } from '@/components/ui/DataGrid';
-import { Inbox, Send, Clock3, Archive, Pencil, Plus } from 'lucide-react';
+import { Inbox, Send, Clock3, Archive, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { authenticatedApi } from '@/config/api';
 import type { CorrespondenceRecord, Priority, RegisterStatus } from './correspondence-tracking-data';
@@ -145,11 +145,6 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
                     ),
             },
             {
-                key: 'department',
-                header: 'Department',
-                filter: 'singleSelect',
-            },
-            {
                 key: 'status',
                 header: 'Status',
                 filter: 'singleSelect',
@@ -166,28 +161,8 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
                 header: 'Date Received',
                 render: (row) => <span className="text-sm text-muted-foreground">{formatDate(row.received_at)}</span>,
             },
-            {
-                key: 'owner',
-                header: 'Owner',
-                filter: 'input',
-            },
-            {
-                key: 'reference_no' as const,
-                header: 'Actions',
-                render: (row) => (
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onEditRecord(toSlug(row.id || row.reference_no))}
-                    >
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        Edit
-                    </Button>
-                ),
-            },
         ],
-        [onEditRecord],
+        [],
     );
 
     return (
@@ -210,6 +185,7 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
                 dataExport={false}
                 columnsVisibleOption={false}
                 persistenceKey="correspondenceTrackingRecords"
+                onRowDoubleClick={(row) => onEditRecord(toSlug(row.id || row.reference_no))}
             />
         </section>
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useContext, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,6 +23,7 @@ import { authenticatedApi } from '@/config/api';
 import { FileText, Minus, Plus, UploadCloud, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Direction, Priority } from './correspondence-tracking-data';
+import { AuthContext } from '@/store/AuthContext';
 
 export type CorrespondenceFormValues = {
     reference_no: string;
@@ -57,11 +58,39 @@ export type CorrespondenceFormSubmitPayload = Omit<CorrespondenceFormValues, 're
     attachment_file_path: string | null;
 };
 
+export type CorrespondenceRegistryPayload = Omit<
+    CorrespondenceFormSubmitPayload,
+    'correspondent' | 'department' | 'letter_type' | 'category' | 'priority' | 'remarks'
+>;
+
+export type CorrespondenceQaPayload = {
+    letter_type: string;
+    category: string;
+    priority: Priority;
+    remarks: string;
+    recipients: Array<{
+        recipient_ramco_id: string;
+        department_id: string;
+    }>;
+};
+
 type AttachmentItem = {
     id: string;
-    file: File;
+    file?: File;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
     previewUrl?: string;
     pdfPageCount?: number;
+    fromObjectUrl?: boolean;
+};
+
+type CorrespondenceInitialAttachment = {
+    filePath: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    fileSize?: number | null;
+    pdfPageCount?: number | null;
 };
 
 type CorrespondenceFormProps = {
@@ -70,6 +99,7 @@ type CorrespondenceFormProps = {
     recordSlug?: string;
     showCardHeader?: boolean;
     initialValues?: CorrespondenceFormValues;
+    initialAttachment?: CorrespondenceInitialAttachment | null;
     onCancel: () => void;
     onSubmit?: (payload: CorrespondenceFormSubmitPayload) => void | Promise<void>;
     onValuesChange?: (values: CorrespondenceFormValues) => void;
@@ -113,6 +143,73 @@ const LETTER_TYPE_OPTIONS = [
 ] as const;
 
 const CATEGORY_OPTIONS = ['Application', 'Notice', 'Finance', 'Invitation'] as const;
+
+const stripQaValues = (formValues: CorrespondenceFormValues): CorrespondenceFormValues => ({
+    ...formValues,
+    correspondent: '',
+    department: '',
+    letter_type: '',
+    category: '',
+    priority: 'normal',
+    remarks: '',
+});
+
+const buildRegistryPayload = (payload: CorrespondenceFormSubmitPayload): CorrespondenceRegistryPayload => ({
+    reference_no: payload.reference_no,
+    sender: payload.sender,
+    sender_ref: payload.sender_ref,
+    document_cover_page: payload.document_cover_page,
+    document_full_letters: payload.document_full_letters,
+    document_claim_attachment: payload.document_claim_attachment,
+    document_others: payload.document_others,
+    document_others_specify: payload.document_others_specify,
+    subject: payload.subject,
+    direction: payload.direction,
+    date_received: payload.date_received,
+    registered_at: payload.registered_at,
+    registered_by: payload.registered_by,
+    disseminated_at: payload.disseminated_at,
+    disseminated_by: payload.disseminated_by,
+    attachment_filename: payload.attachment_filename,
+    attachment_mime_type: payload.attachment_mime_type,
+    attachment_size: payload.attachment_size,
+    attachment_pdf_page_count: payload.attachment_pdf_page_count,
+    attachment_file_path: payload.attachment_file_path,
+});
+
+const buildQaPayload = (payload: CorrespondenceFormSubmitPayload): CorrespondenceQaPayload => {
+    const formValues: CorrespondenceFormValues = {
+        reference_no: payload.reference_no || '',
+        sender: payload.sender,
+        sender_ref: payload.sender_ref,
+        document_cover_page: payload.document_cover_page,
+        document_full_letters: payload.document_full_letters,
+        document_claim_attachment: payload.document_claim_attachment,
+        document_others: payload.document_others,
+        document_others_specify: payload.document_others_specify,
+        subject: payload.subject,
+        correspondent: payload.correspondent,
+        direction: payload.direction,
+        department: payload.department,
+        letter_type: payload.letter_type,
+        category: payload.category,
+        priority: payload.priority,
+        date_received: payload.date_received,
+        remarks: payload.remarks,
+    };
+    return {
+        letter_type: payload.letter_type,
+        category: payload.category,
+        priority: payload.priority,
+        remarks: payload.remarks,
+        recipients: buildQaRowsFromValues(formValues)
+            .map((row) => ({
+                recipient_ramco_id: row.recipientRamcoId.trim(),
+                department_id: row.departmentId.trim(),
+            }))
+            .filter((row) => row.recipient_ramco_id),
+    };
+};
 
 type QaRow = {
     id: string;
@@ -177,6 +274,7 @@ export const CorrespondenceForm = ({
     recordSlug,
     showCardHeader = true,
     initialValues,
+    initialAttachment,
     onCancel,
     onSubmit,
     onValuesChange,
@@ -184,6 +282,8 @@ export const CorrespondenceForm = ({
     const attachmentInputRef = useRef<HTMLInputElement | null>(null);
     const localUpdateRef = useRef(false);
     const draftHydratedRef = useRef(false);
+    const auth = useContext(AuthContext);
+    const currentUsername = auth?.authData?.user?.username || null;
     const [recipientOptions, setRecipientOptions] = useState<EmployeeOption[]>([]);
     const [values, setValues] = useState<CorrespondenceFormValues>({
         ...emptyFormValues,
@@ -193,10 +293,12 @@ export const CorrespondenceForm = ({
     const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+    const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [successDialogOpen, setSuccessDialogOpen] = useState(false);
     const [successMessage, setSuccessMessage] = useState('Correspondence saved successfully.');
     const [pendingPayload, setPendingPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
     const [submittedPayload, setSubmittedPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
+    const qaSectionDisabled = mode === 'create';
 
     useEffect(() => {
         if (localUpdateRef.current) {
@@ -219,6 +321,9 @@ export const CorrespondenceForm = ({
                 localStorage.removeItem(CREATE_DRAFT_STORAGE_KEY);
             }
         }
+        if (mode === 'create') {
+            nextValues = stripQaValues(nextValues);
+        }
         setValues(nextValues);
         setQaRows(buildQaRowsFromValues(nextValues, recipientOptions));
     }, [initialValues, recipientOptions, mode]);
@@ -231,10 +336,75 @@ export const CorrespondenceForm = ({
     useEffect(() => {
         return () => {
             attachments.forEach((item) => {
-                if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+                if (item.previewUrl && item.fromObjectUrl) URL.revokeObjectURL(item.previewUrl);
             });
         };
     }, [attachments]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadInitialAttachment = async () => {
+            if (mode !== 'edit' || !initialAttachment?.filePath) return;
+
+            const fallbackItem: AttachmentItem = {
+                id: `existing-${initialAttachment.filePath}`,
+                fileName: initialAttachment.fileName || initialAttachment.filePath.split('/').pop() || 'attachment.pdf',
+                fileSize: initialAttachment.fileSize ?? 0,
+                fileType: initialAttachment.mimeType || 'application/pdf',
+                previewUrl: initialAttachment.filePath,
+                pdfPageCount: initialAttachment.pdfPageCount ?? undefined,
+                fromObjectUrl: false,
+            };
+
+            try {
+                const response = await authenticatedApi.get(initialAttachment.filePath, { responseType: 'blob' });
+                if (cancelled) return;
+                const blob = response.data as Blob;
+                const fileName = fallbackItem.fileName;
+                const fileType = blob.type || fallbackItem.fileType;
+                const file = new File([blob], fileName, { type: fileType });
+                const previewUrl = URL.createObjectURL(blob);
+                setAttachments((prev) => {
+                    prev.forEach((entry) => {
+                        if (entry.previewUrl && entry.fromObjectUrl) URL.revokeObjectURL(entry.previewUrl);
+                    });
+                    return [
+                        {
+                            id: fallbackItem.id,
+                            file,
+                            fileName,
+                            fileSize: blob.size || fallbackItem.fileSize,
+                            fileType,
+                            previewUrl,
+                            pdfPageCount: initialAttachment.pdfPageCount ?? undefined,
+                            fromObjectUrl: true,
+                        },
+                    ];
+                });
+            } catch {
+                if (cancelled) return;
+                setAttachments((prev) => {
+                    prev.forEach((entry) => {
+                        if (entry.previewUrl && entry.fromObjectUrl) URL.revokeObjectURL(entry.previewUrl);
+                    });
+                    return [fallbackItem];
+                });
+            }
+        };
+
+        setAttachments((prev) => {
+            prev.forEach((entry) => {
+                if (entry.previewUrl && entry.fromObjectUrl) URL.revokeObjectURL(entry.previewUrl);
+            });
+            return [];
+        });
+        void loadInitialAttachment();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [initialAttachment, mode]);
 
     useEffect(() => {
         let ignore = false;
@@ -315,12 +485,16 @@ export const CorrespondenceForm = ({
             const item = {
                 id: `${file.name}-${file.size}-${file.lastModified}`,
                 file,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
                 previewUrl: URL.createObjectURL(file),
                 pdfPageCount,
+                fromObjectUrl: true,
             };
             setAttachments((prev) => {
                 prev.forEach((entry) => {
-                    if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl);
+                    if (entry.previewUrl && entry.fromObjectUrl) URL.revokeObjectURL(entry.previewUrl);
                 });
                 return [item];
             });
@@ -335,25 +509,26 @@ export const CorrespondenceForm = ({
     const removeAttachment = (id: string) => {
         setAttachments((prev) => {
             const item = prev.find((entry) => entry.id === id);
-            if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+            if (item?.previewUrl && item.fromObjectUrl) URL.revokeObjectURL(item.previewUrl);
             return prev.filter((entry) => entry.id !== id);
         });
     };
 
     const buildPayload = (): CorrespondenceFormSubmitPayload => {
         const currentAttachment = attachments[0];
+        const payloadValues = mode === 'create' ? stripQaValues(values) : values;
         return {
-            ...values,
-            reference_no: mode === 'create' ? null : values.reference_no.trim() || null,
+            ...payloadValues,
+            reference_no: mode === 'create' ? null : payloadValues.reference_no.trim() || null,
             registered_at: null,
-            registered_by: null,
+            registered_by: currentUsername,
             disseminated_at: null,
             disseminated_by: null,
-            attachment_filename: currentAttachment?.file.name ?? null,
-            attachment_mime_type: currentAttachment?.file.type ?? null,
-            attachment_size: currentAttachment?.file.size ?? null,
-            attachment_pdf_page_count: currentAttachment?.pdfPageCount ?? null,
-            attachment_file_path: null,
+            attachment_filename: currentAttachment?.fileName ?? initialAttachment?.fileName ?? null,
+            attachment_mime_type: currentAttachment?.fileType ?? initialAttachment?.mimeType ?? null,
+            attachment_size: currentAttachment?.fileSize ?? initialAttachment?.fileSize ?? null,
+            attachment_pdf_page_count: currentAttachment?.pdfPageCount ?? initialAttachment?.pdfPageCount ?? null,
+            attachment_file_path: currentAttachment?.file ? null : (initialAttachment?.filePath ?? null),
         };
     };
 
@@ -367,39 +542,35 @@ export const CorrespondenceForm = ({
     const confirmSubmit = async () => {
         if (!pendingPayload || isSubmitting) return;
         const payload = pendingPayload;
+        const registryPayload = buildRegistryPayload(payload);
+        const qaPayload = buildQaPayload(payload);
 
         try {
             setIsSubmitting(true);
             setConfirmDialogOpen(false);
             const selectedAttachment = attachments[0]?.file;
             const formData = new FormData();
-            appendFormValue(formData, 'reference_no', payload.reference_no);
-            appendFormValue(formData, 'sender', payload.sender);
-            appendFormValue(formData, 'sender_ref', payload.sender_ref);
-            appendFormValue(formData, 'document_cover_page', payload.document_cover_page);
-            appendFormValue(formData, 'document_full_letters', payload.document_full_letters);
-            appendFormValue(formData, 'document_claim_attachment', payload.document_claim_attachment);
-            appendFormValue(formData, 'document_others', payload.document_others);
-            appendFormValue(formData, 'document_others_specify', payload.document_others_specify);
-            appendFormValue(formData, 'subject', payload.subject);
-            appendFormValue(formData, 'correspondent', payload.correspondent);
-            appendFormValue(formData, 'direction', payload.direction);
-            appendFormValue(formData, 'department', payload.department);
-            appendFormValue(formData, 'letter_type', payload.letter_type);
-            appendFormValue(formData, 'category', payload.category);
-            appendFormValue(formData, 'priority', payload.priority);
-            appendFormValue(formData, 'date_received', payload.date_received);
-            appendFormValue(formData, 'remarks', payload.remarks);
-            appendFormValue(formData, 'registered_at', payload.registered_at);
-            appendFormValue(formData, 'registered_by', payload.registered_by);
-            appendFormValue(formData, 'disseminated_at', payload.disseminated_at);
-            appendFormValue(formData, 'disseminated_by', payload.disseminated_by);
-            appendFormValue(formData, 'attachment_filename', payload.attachment_filename);
-            appendFormValue(formData, 'attachment_mime_type', payload.attachment_mime_type);
-            appendFormValue(formData, 'attachment_size', payload.attachment_size);
-            appendFormValue(formData, 'attachment_pdf_page_count', payload.attachment_pdf_page_count);
-            appendFormValue(formData, 'attachment_file_path', payload.attachment_file_path);
-            if (selectedAttachment) {
+            appendFormValue(formData, 'reference_no', registryPayload.reference_no);
+            appendFormValue(formData, 'sender', registryPayload.sender);
+            appendFormValue(formData, 'sender_ref', registryPayload.sender_ref);
+            appendFormValue(formData, 'document_cover_page', registryPayload.document_cover_page);
+            appendFormValue(formData, 'document_full_letters', registryPayload.document_full_letters);
+            appendFormValue(formData, 'document_claim_attachment', registryPayload.document_claim_attachment);
+            appendFormValue(formData, 'document_others', registryPayload.document_others);
+            appendFormValue(formData, 'document_others_specify', registryPayload.document_others_specify);
+            appendFormValue(formData, 'subject', registryPayload.subject);
+            appendFormValue(formData, 'direction', registryPayload.direction);
+            appendFormValue(formData, 'date_received', registryPayload.date_received);
+            appendFormValue(formData, 'registered_at', registryPayload.registered_at);
+            appendFormValue(formData, 'registered_by', registryPayload.registered_by);
+            appendFormValue(formData, 'disseminated_at', registryPayload.disseminated_at);
+            appendFormValue(formData, 'disseminated_by', registryPayload.disseminated_by);
+            appendFormValue(formData, 'attachment_filename', registryPayload.attachment_filename);
+            appendFormValue(formData, 'attachment_mime_type', registryPayload.attachment_mime_type);
+            appendFormValue(formData, 'attachment_size', registryPayload.attachment_size);
+            appendFormValue(formData, 'attachment_pdf_page_count', registryPayload.attachment_pdf_page_count);
+            appendFormValue(formData, 'attachment_file_path', registryPayload.attachment_file_path);
+            if (selectedAttachment instanceof File) {
                 formData.append('file', selectedAttachment);
             }
 
@@ -411,6 +582,7 @@ export const CorrespondenceForm = ({
                 await authenticatedApi.put(`/api/media/correspondence/${recordId}`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
+                await authenticatedApi.put(`/api/media/correspondence/${recordId}/qa`, qaPayload);
                 setSuccessMessage('Correspondence updated successfully.');
             } else {
                 await authenticatedApi.post('/api/media/correspondence', formData, {
@@ -517,12 +689,12 @@ export const CorrespondenceForm = ({
                                                     onClick={(event) => event.stopPropagation()}
                                                 >
                                                     <div className="relative overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                                                        {item.file.type === 'application/pdf' && item.previewUrl ? (
+                                                        {(item.fileType === 'application/pdf' || item.previewUrl?.toLowerCase().includes('.pdf')) && item.previewUrl ? (
                                                             <div className="space-y-2 p-2">
                                                                 <div className="h-120 overflow-hidden rounded-md border border-slate-200 bg-white">
                                                                     <iframe
                                                                         src={`${item.previewUrl}#toolbar=0&navpanes=0`}
-                                                                        title={`${item.file.name} preview`}
+                                                                        title={`${item.fileName} preview`}
                                                                         className="h-full w-full"
                                                                     />
                                                                 </div>
@@ -537,7 +709,7 @@ export const CorrespondenceForm = ({
                                                         )}
                                                     </div>
                                                     <div className="mt-2 flex items-center gap-2">
-                                                        <p className="truncate text-xs font-medium text-slate-700">{item.file.name}</p>
+                                                        <p className="truncate text-xs font-medium text-slate-700">{item.fileName}</p>
                                                         <a
                                                             href={item.previewUrl ?? '#'}
                                                             target="_blank"
@@ -551,7 +723,9 @@ export const CorrespondenceForm = ({
                                                             Preview
                                                         </a>
                                                     </div>
-                                                    <p className="truncate text-[11px] text-slate-500">{formatFileSize(item.file.size)}</p>
+                                                    <p className="truncate text-[11px] text-slate-500">
+                                                        {item.fileSize > 0 ? formatFileSize(item.fileSize) : 'Saved attachment'}
+                                                    </p>
                                                 </div>
                                             ))}
                                         </div>
@@ -723,13 +897,21 @@ export const CorrespondenceForm = ({
 
                             <Card className='bg-stone-100/50 hover:bg-stone-100'>
                                 <CardContent className="space-y-4">
-                                    <p className="text-sm font-bold text-slate-900">QA Section</p>
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-bold text-slate-900">QA Section</p>
+                                        {qaSectionDisabled ? (
+                                            <p className="text-xs text-slate-500">
+                                                Available after registry creation as part of the second workflow.
+                                            </p>
+                                        ) : null}
+                                    </div>
                                     <div className="grid gap-4 md:grid-cols-3">
                                         <div className="space-y-2">
                                             <Label htmlFor="letter-type">Letter Type</Label>
                                             <Select
                                                 value={values.letter_type}
                                                 onValueChange={(value) => updateValues({ ...values, letter_type: value })}
+                                                disabled={qaSectionDisabled}
                                             >
                                                 <SelectTrigger id="letter-type" className="w-full">
                                                     <SelectValue placeholder="Select letter type" />
@@ -748,6 +930,7 @@ export const CorrespondenceForm = ({
                                             <Select
                                                 value={values.category}
                                                 onValueChange={(value) => updateValues({ ...values, category: value })}
+                                                disabled={qaSectionDisabled}
                                             >
                                                 <SelectTrigger id="category" className="w-full">
                                                     <SelectValue placeholder="Select category" />
@@ -766,6 +949,7 @@ export const CorrespondenceForm = ({
                                             <Select
                                                 value={values.priority}
                                                 onValueChange={(value) => updateValues({ ...values, priority: value as Priority })}
+                                                disabled={qaSectionDisabled}
                                             >
                                                 <SelectTrigger id="priority" className="w-full">
                                                     <SelectValue placeholder="Select priority" />
@@ -788,6 +972,7 @@ export const CorrespondenceForm = ({
                                                         options={recipientOptions}
                                                         value={row.recipientRamcoId}
                                                         onValueChange={(value) => {
+                                                            if (qaSectionDisabled) return;
                                                             const selected =
                                                                 recipientOptions.find((option) => option.value === value) ??
                                                                 recipientOptions.find((option) => option.label === value);
@@ -806,6 +991,7 @@ export const CorrespondenceForm = ({
                                                         placeholder="Select recipient"
                                                         searchPlaceholder="Search recipient..."
                                                         emptyMessage="No active employee found."
+                                                        disabled={qaSectionDisabled}
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
@@ -814,8 +1000,9 @@ export const CorrespondenceForm = ({
                                                         id={`department-${row.id}`}
                                                         value={row.departmentCode}
                                                         readOnly
+                                                        disabled={qaSectionDisabled}
                                                         placeholder="Auto from recipient"
-                                                        required={index === 0}
+                                                        required={!qaSectionDisabled && index === 0}
                                                     />
                                                 </div>
                                                 <div className="flex items-end">
@@ -827,6 +1014,7 @@ export const CorrespondenceForm = ({
                                                             className="w-full md:w-9 border-emerald-600 text-emerald-600 hover:bg-emerald-50 focus-visible:ring-emerald-600"
                                                             onClick={() => syncQaRowsToValues([...qaRows, createQaRow()])}
                                                             aria-label="Add correspondence row"
+                                                            disabled={qaSectionDisabled}
                                                         >
                                                             <Plus className="h-4 w-4" />
                                                         </Button>
@@ -841,6 +1029,7 @@ export const CorrespondenceForm = ({
                                                                 syncQaRowsToValues(nextRows);
                                                             }}
                                                             aria-label="Remove correspondence row"
+                                                            disabled={qaSectionDisabled}
                                                         >
                                                             <Minus className="h-4 w-4" />
                                                         </Button>
@@ -858,6 +1047,7 @@ export const CorrespondenceForm = ({
                                             onChange={(event) => updateValues({ ...values, remarks: event.target.value })}
                                             placeholder="Add letter summary"
                                             rows={4}
+                                            disabled={qaSectionDisabled}
                                         />
                                     </div>
                                 </CardContent>
@@ -866,7 +1056,7 @@ export const CorrespondenceForm = ({
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
-                        <Button type="button" variant="outline" onClick={onCancel}>
+                        <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(true)}>
                             Cancel
                         </Button>
                         <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
@@ -887,6 +1077,22 @@ export const CorrespondenceForm = ({
                         <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
                         <AlertDialogAction onClick={() => void confirmSubmit()} disabled={isSubmitting}>
                             {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Discard this form?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Unsaved changes in the correspondence form will be lost if you leave now.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isSubmitting}>Stay</AlertDialogCancel>
+                        <AlertDialogAction onClick={onCancel} disabled={isSubmitting}>
+                            Leave Form
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

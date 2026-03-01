@@ -8,9 +8,9 @@ import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import TelcoBillSummary from './telco-bill-summary';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { exportTelcoBillSummaryPDF } from './pdfreport-telco-costcenter';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { AuthContext } from '@/store/AuthContext';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface TelcoBill {
   id: number;
@@ -39,6 +39,8 @@ const TelcoBill = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<number[]>([]);
+  const currentYear = new Date().getFullYear();
+  const [yearFilter, setYearFilter] = useState<string>(currentYear.toString());
   const router = useRouter();
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -47,10 +49,17 @@ const TelcoBill = () => {
   const currentUserRamco = auth?.authData?.user?.username;
   const deleteAdmin = useMemo(() => ['000475', '000277'], []);
   const canDelete = useMemo(() => !!currentUserRamco && deleteAdmin.includes(String(currentUserRamco)), [currentUserRamco, deleteAdmin]);
+  const yearOptions = useMemo(
+    () => ['all', ...Array.from({ length: 6 }, (_, idx) => (currentYear - idx).toString())],
+    [currentYear]
+  );
 
   const fetchTelcoBills = () => {
     setLoading(true);
-    authenticatedApi.get('/api/telco/bills')
+    const url = yearFilter === 'all'
+      ? '/api/telco/bills'
+      : `/api/telco/bills?year=${yearFilter}`;
+    authenticatedApi.get(url)
       .then(res => {
         const data = (res.data as { data?: TelcoBill[] })?.data || [];
         setRows(data.map((item, idx) => ({
@@ -70,7 +79,7 @@ const TelcoBill = () => {
 
   useEffect(() => {
     fetchTelcoBills();
-  }, []);
+  }, [yearFilter]);
 
   useEffect(() => {
     window.reloadTelcoBillGrid = () => {
@@ -140,6 +149,18 @@ const TelcoBill = () => {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Select value={yearFilter} onValueChange={setYearFilter}>
+            <SelectTrigger className="w-28">
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
+            <SelectContent>
+              {yearOptions.map((year) => (
+                <SelectItem key={year} value={year}>
+                  {year === 'all' ? 'All' : year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant={'default'}
             onClick={() => router.push('/billings/telco/bill/new')}
