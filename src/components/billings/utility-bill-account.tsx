@@ -8,8 +8,16 @@ import ActionSidebar from '@/components/ui/action-aside';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 
 interface BillingAccount {
@@ -53,6 +61,9 @@ const BillingAccount = () => {
   // provider removed; beneficiaries are used instead
   const [beneficiariesList, setBeneficiariesList] = useState<{ id: number; name: string }[]>([]);
   const [locationsList, setLocationsList] = useState<{ id: number; name: string }[]>([]);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [errorDialogTitle, setErrorDialogTitle] = useState('Error');
+  const [errorDialogMessage, setErrorDialogMessage] = useState('');
 
   // Service to provider mapping
   const [formData, setFormData] = useState<BillingAccountForm>({
@@ -70,6 +81,12 @@ const BillingAccount = () => {
   });
 
   // Fetch accounts data
+  const showErrorDialog = (message: string, title = 'Error') => {
+    setErrorDialogTitle(title);
+    setErrorDialogMessage(message);
+    setErrorDialogOpen(true);
+  };
+
   const fetchAccounts = async () => {
     setLoading(true);
     try {
@@ -78,7 +95,7 @@ const BillingAccount = () => {
         setAccounts((response.data as any).data || []);
       }
     } catch (error) {
-      toast.error('Failed to fetch billing accounts');
+      showErrorDialog('Failed to fetch billing accounts', 'Load Failed');
       console.error('Error fetching accounts:', error);
     } finally {
       setLoading(false);
@@ -96,6 +113,7 @@ const BillingAccount = () => {
         })));
       }
     } catch (error) {
+      showErrorDialog('Failed to fetch cost centers', 'Load Failed');
       console.error('Error fetching cost centers:', error);
     }
   };
@@ -124,6 +142,7 @@ const BillingAccount = () => {
         return prev;
       });
     } catch (err) {
+      showErrorDialog('Failed to fetch beneficiaries', 'Load Failed');
       console.error('fetch beneficiaries', err);
     }
   };
@@ -139,6 +158,7 @@ const BillingAccount = () => {
       const list = res.data?.data || res.data || [];
       setLocationsList(Array.isArray(list) ? list.map((l: any) => ({ id: l.id?.toString() ?? String(l.id ?? ''), name: l.name || l.location || l.label || '' })) : []);
     } catch (err) {
+      showErrorDialog('Failed to fetch locations', 'Load Failed');
       console.error('fetch locations', err);
     }
   };
@@ -196,7 +216,7 @@ const BillingAccount = () => {
 
   const handleSave = async () => {
     if (!formData.account || !formData.beneficiary_id || !formData.category) {
-      toast.error('Please fill in required fields: Account Number, Beneficiary, and Category');
+      showErrorDialog('Please fill in required fields: Account Number, Beneficiary, and Category', 'Validation Error');
       return;
     }
 
@@ -235,7 +255,7 @@ const BillingAccount = () => {
       resetForm();
       fetchAccounts();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to save billing account');
+      showErrorDialog(error.response?.data?.message || 'Failed to save billing account', 'Save Failed');
       console.error('Error saving account:', error);
     } finally {
       setSaving(false);
@@ -527,6 +547,18 @@ const BillingAccount = () => {
           }
         />
       )}
+
+      <AlertDialog open={errorDialogOpen} onOpenChange={setErrorDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-lg font-semibold text-red-500'>{errorDialogTitle}!</AlertDialogTitle>
+            <AlertDialogDescription className='text-sm text-red-500'>{errorDialogMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setErrorDialogOpen(false)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
