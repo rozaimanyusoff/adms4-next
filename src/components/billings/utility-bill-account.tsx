@@ -1,10 +1,13 @@
 'use client';
 import React, { useEffect, useState, useMemo } from 'react';
 import { authenticatedApi } from '@/config/api';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Loader2 } from 'lucide-react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
+import ExcelBillAccount from './excel-bill-account';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SearchableSelect } from '@/components/ui/select';
@@ -322,56 +325,86 @@ const BillingAccount = () => {
   }, [accounts]);
 
   const categoryCounts = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { total: number; active: number; terminated: number }> = {};
     accounts.forEach(a => {
       const key = (a.category || 'Uncategorized') as string;
-      map[key] = (map[key] || 0) + 1;
+      const status = (a.status || '').toLowerCase();
+      if (!map[key]) {
+        map[key] = { total: 0, active: 0, terminated: 0 };
+      }
+      map[key].total += 1;
+      if (status === 'active') map[key].active += 1;
+      if (status === 'terminated') map[key].terminated += 1;
     });
     return map;
   }, [accounts]);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded">
-          <h3 className="text-sm font-semibold">Status Summary</h3>
-          <div className="mt-2 space-y-1">
-            {Object.entries(statusCounts).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-sm">
-                <div className="capitalize">{k}</div>
-                <div className="font-medium">{v}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <Card className="col-span-1 md:col-span-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Account Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-[220px_1fr] md:items-start">
+              <div className="rounded-lg border bg-muted/20 px-4 py-6 text-center">
+                <div className="text-sm font-medium text-muted-foreground">Total Utilities Accounts</div>
+                <div className="mt-3 text-3xl font-bold">{accounts.length}</div>
               </div>
-            ))}
-          </div>
-        </div>
+              <div>
+                <div className="mb-3 text-sm font-semibold">Status Summary</div>
+                <div className="space-y-1">
+                  {Object.entries(statusCounts).map(([k, v]) => {
+                    const isTerminated = k.toLowerCase() === 'terminated';
+                    return (
+                      <div key={k} className={`flex justify-between text-sm ${isTerminated ? 'text-red-600' : ''}`}>
+                        <div className="capitalize">{k}</div>
+                        <div className="font-medium">{v}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded">
-          <h3 className="text-sm font-semibold">Category Summary</h3>
-          <div className="mt-2 space-y-1">
+        <Card className="col-span-1 md:col-span-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Category Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-0">
             {Object.entries(categoryCounts).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-sm">
+              <div key={k} className="flex items-start justify-between gap-3 text-sm">
                 <div className="capitalize">{k}</div>
-                <div className="font-medium">{v}</div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">
+                    {v.total}
+                  </Badge>
+                  <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                    Active {v.active}
+                  </Badge>
+                  <Badge className="bg-red-600 text-white hover:bg-red-600">
+                    Terminated {v.terminated}
+                  </Badge>
+                </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="col-span-1 md:col-span-1 bg-card border p-3 rounded flex items-center justify-center">
-          <div className="text-center">
-            <h3 className="text-sm font-semibold">Total Accounts</h3>
-            <div className="text-2xl font-bold mt-2">{accounts.length}</div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold">Billing Accounts</h2>
           <p className="text-sm text-muted-foreground">Manage utility billing account records</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={18} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <ExcelBillAccount rows={accounts} />
+          <Button onClick={handleAdd}>
+            <Plus size={18} />
+          </Button>
+        </div>
       </div>
 
       <CustomDataGrid
@@ -380,10 +413,14 @@ const BillingAccount = () => {
         pagination={false}
         inputFilter={false}
         theme="sm"
-        dataExport={true}
+        dataExport={false}
         onRowDoubleClick={handleRowDoubleClick}
         rowClass={(row: any) => row.status === 'Terminated' ? 'bg-red-50' : ''}
       />
+
+      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+        Notice: billing accounts do not accept duplicate cost center and location combinations for the same account number.
+      </p>
 
       {sidebarOpen && (
         <ActionSidebar
