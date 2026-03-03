@@ -5,6 +5,8 @@ import CorrespondenceForm, { type CorrespondenceFormValues } from '@/components/
 
 const EMPTY_FORM_VALUES: CorrespondenceFormValues = {
     reference_no: '',
+    date_received: '',
+    letter_date: '',
     sender: '',
     sender_ref: '',
     document_cover_page: false,
@@ -13,14 +15,20 @@ const EMPTY_FORM_VALUES: CorrespondenceFormValues = {
     document_others: false,
     document_others_specify: '',
     subject: '',
-    correspondent: '',
     direction: 'incoming',
-    department: '',
+    registered_at: '',
+    registered_by: '',
+    qa_review_date: '',
+    qa_reviewed_by: '',
+    qa_status: '',
     letter_type: '',
     category: '',
     priority: 'normal',
-    date_received: '',
     remarks: '',
+    endorsed_by: '',
+    endorsed_at: '',
+    endorsed_remarks: '',
+    endorsed_status: '',
 };
 
 export default function CreateCorrespondencePageClient() {

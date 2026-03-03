@@ -9,6 +9,8 @@ import { authenticatedApi } from '@/config/api';
 type ApiCorrespondenceDetail = {
     id: number | string;
     reference_no?: string | null;
+    date_received?: string | null;
+    letter_date?: string | null;
     sender?: string | null;
     sender_ref?: string | null;
     document_cover_page?: boolean | number | null;
@@ -17,14 +19,26 @@ type ApiCorrespondenceDetail = {
     document_others?: boolean | number | null;
     document_others_specify?: string | null;
     subject?: string | null;
-    correspondent?: string | null;
     direction?: 'incoming' | 'outgoing' | null;
-    department?: string | null;
+    registered_at?: string | null;
+    registered_by?: string | null;
+    qa_review_date?: string | null;
+    qa_reviewed_by?: string | null;
+    qa_status?: string | null;
+    qa_remarks?: string | null;
+    endorsed_by?: string | null;
+    endorsed_at?: string | null;
+    endorsed_remarks?: string | null;
+    endorsed_status?: string | null;
     letter_type?: string | null;
     category?: string | null;
     priority?: 'low' | 'normal' | 'high' | null;
-    date_received?: string | null;
-    remarks?: string | null;
+    recipients?:
+        | Array<{
+              ramco_id?: string | null;
+              department_id?: string | number | null;
+          }>
+        | null;
     attachment_file_path?: string | null;
     attachment_filename?: string | null;
     attachment_mime_type?: string | null;
@@ -34,6 +48,8 @@ type ApiCorrespondenceDetail = {
 
 const emptyFormValues: CorrespondenceFormValues = {
     reference_no: '',
+    date_received: '',
+    letter_date: '',
     sender: '',
     sender_ref: '',
     document_cover_page: false,
@@ -42,14 +58,20 @@ const emptyFormValues: CorrespondenceFormValues = {
     document_others: false,
     document_others_specify: '',
     subject: '',
-    correspondent: '',
     direction: 'incoming',
-    department: '',
+    registered_at: '',
+    registered_by: '',
+    qa_review_date: '',
+    qa_reviewed_by: '',
+    qa_status: '',
     letter_type: '',
     category: '',
     priority: 'normal',
-    date_received: '',
     remarks: '',
+    endorsed_by: '',
+    endorsed_at: '',
+    endorsed_remarks: '',
+    endorsed_status: '',
 };
 
 const toBool = (value: boolean | number | null | undefined) => value === true || value === 1;
@@ -63,6 +85,8 @@ const toDateInputValue = (value?: string | null) => {
 
 const toFormValues = (record: ApiCorrespondenceDetail): CorrespondenceFormValues => ({
     reference_no: String(record.reference_no ?? ''),
+    date_received: toDateInputValue(record.date_received),
+    letter_date: toDateInputValue(record.letter_date),
     sender: String(record.sender ?? ''),
     sender_ref: String(record.sender_ref ?? ''),
     document_cover_page: toBool(record.document_cover_page),
@@ -71,14 +95,20 @@ const toFormValues = (record: ApiCorrespondenceDetail): CorrespondenceFormValues
     document_others: toBool(record.document_others),
     document_others_specify: String(record.document_others_specify ?? ''),
     subject: String(record.subject ?? ''),
-    correspondent: String(record.correspondent ?? ''),
     direction: record.direction === 'outgoing' ? 'outgoing' : 'incoming',
-    department: String(record.department ?? ''),
+    registered_at: String(record.registered_at ?? ''),
+    registered_by: String(record.registered_by ?? ''),
+    qa_review_date: String(record.qa_review_date ?? ''),
+    qa_reviewed_by: String(record.qa_reviewed_by ?? ''),
+    qa_status: String(record.qa_status ?? ''),
     letter_type: String(record.letter_type ?? ''),
     category: String(record.category ?? ''),
     priority: record.priority === 'low' || record.priority === 'high' ? record.priority : 'normal',
-    date_received: toDateInputValue(record.date_received),
-    remarks: String(record.remarks ?? ''),
+    remarks: String(record.qa_remarks ?? ''),
+    endorsed_by: String(record.endorsed_by ?? ''),
+    endorsed_at: String(record.endorsed_at ?? ''),
+    endorsed_remarks: String(record.endorsed_remarks ?? ''),
+    endorsed_status: String(record.endorsed_status ?? ''),
 });
 
 export default function EditCorrespondencePageClient() {
@@ -89,6 +119,7 @@ export default function EditCorrespondencePageClient() {
     const [error, setError] = useState<string | null>(null);
     const [recordId, setRecordId] = useState<string | number | null>(null);
     const [formValues, setFormValues] = useState<CorrespondenceFormValues>(emptyFormValues);
+    const [initialRecipients, setInitialRecipients] = useState<Array<{ ramcoId: string; departmentId: string | number }>>([]);
     const [initialAttachment, setInitialAttachment] = useState<{
         filePath: string;
         fileName?: string | null;
@@ -121,6 +152,14 @@ export default function EditCorrespondencePageClient() {
                 if (cancelled) return;
                 setRecordId(record.id);
                 setFormValues(toFormValues(record));
+                setInitialRecipients(
+                    Array.isArray(record.recipients)
+                        ? record.recipients.map((recipient) => ({
+                              ramcoId: String(recipient?.ramco_id ?? ''),
+                              departmentId: recipient?.department_id ?? '',
+                          }))
+                        : [],
+                );
                 setInitialAttachment(
                     record.attachment_file_path
                         ? {
@@ -184,6 +223,7 @@ export default function EditCorrespondencePageClient() {
                 recordSlug={slug}
                 showCardHeader={false}
                 initialValues={formValues}
+                initialRecipients={initialRecipients}
                 initialAttachment={initialAttachment}
                 onCancel={goBackToRecords}
                 onSubmit={goBackToRecords}
