@@ -1,0 +1,179 @@
+/* POST /api/media/correspondence - for registering a new correspondence. this is formdata since it requires files attachment */
+{
+    "reference_no": null,
+    "date_received": "2026-02-27",
+    "letter_date": "2026-02-27",
+    "sender": "HPE",
+    "sender_ref": "HPE/MSA/2070",
+    "document_cover_page": 0,
+    "document_full_letters": 0,
+    "document_claim_attachment": 0,
+    "document_others": 1,
+    "document_others_specify": "document",
+    "subject": "HPE MSA 2070 AND HPE MSA 2070 STORAGE BEST PRACTICES",
+    "direction": "incoming",
+    "registered_at": "2026-02-27T16:00:00.000Z",
+    "registered_by": "000277",
+    "attachment_filename": "HPE MSA 2070 and HPE MSA 2072 Storage best practices-a50011790enw.pdf",
+    "attachment_mime_type": "application/pdf",
+    "attachment_size": 911714,
+    "attachment_pdf_page_count": 26,
+    "attachment_file_path": "http://localhost:3030/uploads/media/correspondence/file-1772465968785-785811894.pdf"
+}
+/* PUT /api/media/correspondence/{id} - for updating an existing correspondence. this is formdata since it may include replacement files */
+{
+    "id": 2,
+    "reference_no": null,
+    "date_received": "2026-02-27",
+    "letter_date": "2026-02-27",
+    "sender": "HPE",
+    "sender_ref": "HPE/MSA/2070",
+    "document_cover_page": 0,
+    "document_full_letters": 0,
+    "document_claim_attachment": 0,
+    "document_others": 1,
+    "document_others_specify": "document",
+    "subject": "HPE MSA 2070 AND HPE MSA 2070 STORAGE BEST PRACTICES",
+    "direction": "incoming",
+    "registered_at": "2026-02-27T16:00:00.000Z",
+    "registered_by": "000277",
+    "attachment_filename": "HPE MSA 2070 and HPE MSA 2072 Storage best practices-a50011790enw.pdf",
+    "attachment_mime_type": "application/pdf",
+    "attachment_size": 911714,
+    "attachment_pdf_page_count": 26,
+    "attachment_file_path": "http://localhost:3030/uploads/media/correspondence/file-1772465968785-785811894.pdf"
+},
+/* PUT /api/media/correspondence/{id}/qa - for updating the QA status of a correspondence */
+{
+    "id": 2,
+    "qa_review_date": "2026-02-28T10:00:00.000Z",
+    "qa_reviewed_by": "000123",
+    "qa_status": "submitted",
+    "recipients": [
+        {
+            "ramco_id": "000277",
+            "department_id": 26,
+        },
+        {
+            "ramco_id": "000123",
+            "department_id": 16,
+        }
+    ],
+    "letter_type": "Notice",
+    "category": "Finance",
+    "priority": "normal",
+    "remarks": "test",
+},
+/* GET /api/media/correspondence/{id} - specific correspondence response data */
+{
+    "id": 2,
+    "reference_no": "RTSB/IN/00002/2026",
+    "date_received": "2026-02-27",
+    "letter_date": "2026-02-27",
+    "sender": "HPE",
+    "sender_ref": "HPE/MSA/2070",
+    "document_cover_page": 0,
+    "document_full_letters": 0,
+    "document_claim_attachment": 0,
+    "document_others": 1,
+    "document_others_specify": "document",
+    "subject": "HPE MSA 2070 AND HPE MSA 2070 STORAGE BEST PRACTICES",
+    "direction": "incoming",
+    "registered_at": "2026-02-27T16:00:00.000Z",
+    "registered_by": "000277",
+    "attachment_filename": "HPE MSA 2070 and HPE MSA 2072 Storage best practices-a50011790enw.pdf",
+    "attachment_mime_type": "application/pdf",
+    "attachment_size": 911714,
+    "attachment_pdf_page_count": 26,
+    "attachment_file_path": "http://localhost:3030/uploads/media/correspondence/file-1772465968785-785811894.pdf",
+    "qa_review_date": "2026-02-28T10:00:00.000Z", /* QA Team */
+    "qa_reviewed_by": "000123", /* QA Team */
+    "qa_status": "submitted", /* QA Team */
+    "qa_remarks": "test", /* QA Team */
+    "letter_type": "Notice", /* QA Team */
+    "category": "Finance", /* QA Team */
+    "priority": "normal", /* QA Team */
+    "recipients": [ /* department head - assigned by QA Team */
+        {
+            "ramco_id": "000277",
+            "department_id": 26,
+            "action": {
+                "date": "2026-02-28T12:00:00.000Z",
+                "status": "forwarded",
+                "remarks": "accepted and forwarded to section head for review",
+                "forwarded_to": [
+                    {
+                        "ramco_id": "000456",
+                        "department_id": 261,
+                        "action": {
+                            "date": "2026-02-28T14:00:00.000Z",
+                            "status": "accepted",
+                            "remarks": "accepted by section head"
+                        }
+                    }
+                ]
+            },
+        },
+        {
+            "ramco_id": "000123",
+            "department_id": 16,
+            "action": {
+                "date": "2026-02-28T12:00:00.000Z",
+                "status": null,
+                "remarks": null
+            }
+        }
+    ],
+    "endorsed_by": "000123", /* general manager */
+    "endorsed_at": "2026-02-28T12:00:00.000Z", /* general manager */
+    "endorsed_remarks": "endorsement remarks", /* general manager */
+    "endorsed_status": "endorsed", /* general manager */
+    "created_at": "2026-02-27T16:00:00.000Z",
+    "updated_at": "2026-02-28T10:00:00.000Z"
+}
+/* PUT /api/media/correspondence/{id}/endorse - update specific correspondence */
+{
+    "id": 2,
+    "endorsed_by": "000123", /* general manager */
+    "endorsed_at": "2026-02-28T12:00:00.000Z", /* general manager */
+    "endorsed_remarks": "endorsement remarks", /* general manager */
+    "endorsed_status": "endorsed", /* general manager */
+},
+/* GET /api/media/correspondence - list correspondence with pagination */
+{
+    "data": [
+        {
+            "id": 2,
+            "reference_no": "RTSB/IN/00002/2026",
+            "date_received": "2026-02-27",
+            "sender": "HPE",
+            "subject": "HPE MSA 2070 AND HPE MSA 2070 STORAGE BEST PRACTICES",
+            "direction": "incoming",
+            "registered_at": "2026-02-27T16:00:00.000Z",
+            "registered_by": "000277",
+            "qa_status": "submitted",
+            "qa_reviewed_by": "000123",
+            "letter_type": "Notice",
+            "category": "Finance",
+            "priority": "normal",
+            "recipients_count": 2,
+            "workflow_status": {
+                "qa_completed": true,
+                "department_head_action_pending": 1,
+                "department_head_action_completed": 1,
+                "section_head_action_pending": 0,
+                "section_head_action_completed": 1,
+                "endorsed": false,
+                "overall_status": "in_progress"
+            },
+            "created_at": "2026-02-27T16:00:00.000Z",
+            "updated_at": "2026-02-28T10:00:00.000Z"
+        }
+    ],
+    "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 45,
+        "pages": 5
+    }
+}
