@@ -27,7 +27,7 @@ export const CorrespondenceTabs = ({ value, onValueChange }: CorrespondenceTabsP
 };
 
 export const DocsCorrespondenceTabs = () => {
-    const [activeTab, setActiveTab] = useState<CorrespondenceTab>('dashboard');
+    const [activeTab, setActiveTab] = useState<CorrespondenceTab | null>(null);
     const hydratedRef = useRef(false);
     const pathname = usePathname();
     const router = useRouter();
@@ -38,24 +38,37 @@ export const DocsCorrespondenceTabs = () => {
         const tabFromUrl = searchParams.get('tab');
         const hasFormQuery = searchParams.has('form') || searchParams.has('edit');
         const storedTab = localStorage.getItem(TAB_STORAGE_KEY);
-        if (tabFromUrl === 'dashboard' || tabFromUrl === 'records') {
-            setActiveTab(tabFromUrl);
-        } else if (hasFormQuery) {
-            setActiveTab('records');
-        } else if (storedTab === 'dashboard' || storedTab === 'records') {
-            setActiveTab(storedTab);
-        }
+        const nextTab: CorrespondenceTab =
+            tabFromUrl === 'dashboard' || tabFromUrl === 'records'
+                ? tabFromUrl
+                : hasFormQuery
+                  ? 'records'
+                  : storedTab === 'dashboard' || storedTab === 'records'
+                    ? storedTab
+                    : 'dashboard';
+        setActiveTab(nextTab);
         hydratedRef.current = true;
     }, [searchParams]);
 
     useEffect(() => {
-        if (!hydratedRef.current) return;
+        if (!hydratedRef.current || !activeTab) return;
         localStorage.setItem(TAB_STORAGE_KEY, activeTab);
         const params = new URLSearchParams(window.location.search);
         params.set('tab', activeTab);
         const query = params.toString();
         router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     }, [activeTab, pathname, router]);
+
+    if (!activeTab) {
+        return (
+            <div className="space-y-6">
+                <div className="space-y-1">
+                    <h1 className="text-2xl font-semibold text-slate-900">Correspondence Tracking</h1>
+                    <p className="text-sm text-muted-foreground">Monitor workflow, activity, and records in one module.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">

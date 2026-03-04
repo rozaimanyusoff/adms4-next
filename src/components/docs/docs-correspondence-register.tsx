@@ -194,23 +194,38 @@ export const CorrespondenceRecordsGrid = ({ records, onCreateNew, onEditRecord }
 type ApiCorrespondenceRow = {
     id: number;
     reference_no: string;
+    date_received: string | null;
     sender: string | null;
     subject: string;
-    correspondent: string;
     direction: 'incoming' | 'outgoing';
-    department: string;
-    priority: 'low' | 'normal' | 'high';
-    date_received: string | null;
-    disseminated_at: string | null;
+    registered_at: string | null;
     registered_by: string | null;
+    qa_status: string | null;
+    qa_reviewed_by: string | null;
+    letter_type: string | null;
+    category: string | null;
+    priority: 'low' | 'normal' | 'high';
+    recipients_count?: number | null;
+    workflow_status?: {
+        qa_completed?: boolean;
+        department_head_action_pending?: number;
+        department_head_action_completed?: number;
+        section_head_action_pending?: number;
+        section_head_action_completed?: number;
+        endorsed?: boolean;
+        overall_status?: RegisterStatus | null;
+    } | null;
+    created_at?: string | null;
+    updated_at?: string | null;
 };
 
 type CorrespondenceApiResponse = {
-    data?: {
-        total?: number;
+    data?: ApiCorrespondenceRow[];
+    pagination?: {
+        page?: number;
         limit?: number;
-        offset?: number;
-        rows?: ApiCorrespondenceRow[];
+        total?: number;
+        pages?: number;
     };
 };
 
@@ -234,7 +249,8 @@ const toSlug = (value: string) =>
         .replace(/^-+|-+$/g, '');
 
 const toRecordStatus = (row: ApiCorrespondenceRow): RegisterStatus => {
-    if (row.disseminated_at) return 'completed';
+    if (row.workflow_status?.overall_status === 'completed') return 'completed';
+    if (row.workflow_status?.overall_status === 'in_progress') return 'in_progress';
     return 'registered';
 };
 
@@ -248,11 +264,11 @@ const mapApiRowToRecord = (row: ApiCorrespondenceRow): CorrespondenceRecord => (
     reference_no: row.reference_no,
     subject: row.subject || '-',
     direction: row.direction,
-    correspondent: row.correspondent || row.sender || '-',
-    department: row.department || '-',
+    correspondent: row.sender || '-',
+    department: row.category || row.letter_type || '-',
     medium: 'letter',
     received_at: row.date_received || undefined,
-    due_date: row.date_received || undefined,
+    due_date: row.registered_at || undefined,
     status: toRecordStatus(row),
     priority: toRecordPriority(row.priority),
     owner: row.registered_by || '-',
@@ -280,8 +296,8 @@ export const CorrespondenceRegister = () => {
                     offset: 0,
                 };
                 const response = await authenticatedApi.get('/api/media/correspondence', { params });
-                const payload = (response.data as CorrespondenceApiResponse)?.data;
-                const rows = payload?.rows || [];
+                const payload = response.data as CorrespondenceApiResponse;
+                const rows = Array.isArray(payload?.data) ? payload.data : [];
                 setRecords(rows.map(mapApiRowToRecord));
             } catch (error) {
                 console.error('Failed to fetch correspondence records:', error);

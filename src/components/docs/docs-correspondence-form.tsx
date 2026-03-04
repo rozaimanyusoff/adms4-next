@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useContext, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, useContext, useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
     AlertDialog,
-    AlertDialogAction,
     AlertDialogCancel,
     AlertDialogContent,
     AlertDialogDescription,
@@ -25,7 +24,7 @@ import { toast } from 'sonner';
 import type { Direction, Priority } from './correspondence-tracking-data';
 import { AuthContext } from '@/store/AuthContext';
 
-export type CorrespondenceFormValues = {
+export type CorrespondenceRegistryFormValues = {
     reference_no: string;
     date_received: string;
     letter_date: string;
@@ -40,6 +39,9 @@ export type CorrespondenceFormValues = {
     direction: Direction;
     registered_at: string;
     registered_by: string;
+};
+
+type CorrespondenceWorkflowValues = {
     qa_review_date: string;
     qa_reviewed_by: string;
     qa_status: string;
@@ -53,16 +55,20 @@ export type CorrespondenceFormValues = {
     endorsed_status: string;
 };
 
-export type CorrespondenceFormSubmitPayload = Omit<CorrespondenceFormValues, 'reference_no'> & {
-    reference_no: string | null;
-    attachment_filename: string | null;
-    attachment_mime_type: string | null;
-    attachment_size: number | null;
-    attachment_pdf_page_count: number | null;
-    attachment_file_path: string | null;
+export type CorrespondenceFormValues = CorrespondenceRegistryFormValues & CorrespondenceWorkflowValues;
+
+type AttachmentItem = {
+    id: string;
+    file?: File;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    previewUrl?: string;
+    pdfPageCount?: number;
+    fromObjectUrl?: boolean;
 };
 
-export type CorrespondenceRegistryPayload = {
+type CorrespondenceRegistryPayload = {
     id?: string | number;
     reference_no: string | null;
     date_received: string | null;
@@ -85,38 +91,19 @@ export type CorrespondenceRegistryPayload = {
     attachment_file_path: string | null;
 };
 
-export type CorrespondenceQaPayload = {
+type CorrespondenceQaPayload = {
     id: string | number;
-    qa_review_date: string | null;
-    qa_reviewed_by: string | null;
+    qa_review_date: string;
+    qa_reviewed_by: string;
     qa_status: string;
-    letter_type: string;
-    category: string;
-    priority: Priority;
-    remarks: string;
     recipients: Array<{
         ramco_id: string;
         department_id: number;
     }>;
-};
-
-export type CorrespondenceEndorsementPayload = {
-    id: string | number;
-    endorsed_by: string | null;
-    endorsed_at: string | null;
-    endorsed_remarks: string | null;
-    endorsed_status: string;
-};
-
-type AttachmentItem = {
-    id: string;
-    file?: File;
-    fileName: string;
-    fileSize: number;
-    fileType: string;
-    previewUrl?: string;
-    pdfPageCount?: number;
-    fromObjectUrl?: boolean;
+    letter_type: string;
+    category: string;
+    priority: Priority;
+    remarks: string;
 };
 
 type CorrespondenceInitialAttachment = {
@@ -127,23 +114,25 @@ type CorrespondenceInitialAttachment = {
     pdfPageCount?: number | null;
 };
 
+type CorrespondenceRecipient = {
+    ramcoId: string;
+    departmentId: string | number;
+};
+
 type CorrespondenceFormProps = {
     mode?: 'create' | 'edit';
     recordId?: string | number;
     recordSlug?: string;
     showCardHeader?: boolean;
     initialValues?: CorrespondenceFormValues;
-    initialRecipients?: Array<{
-        ramcoId: string;
-        departmentId: string | number;
-    }>;
+    initialRecipients?: CorrespondenceRecipient[];
     initialAttachment?: CorrespondenceInitialAttachment | null;
     onCancel: () => void;
-    onSubmit?: (payload: CorrespondenceFormSubmitPayload) => void | Promise<void>;
+    onSubmit?: () => void | Promise<void>;
     onValuesChange?: (values: CorrespondenceFormValues) => void;
 };
 
-const emptyFormValues: CorrespondenceFormValues = {
+const emptyRegistryFormValues: CorrespondenceRegistryFormValues = {
     reference_no: '',
     date_received: '',
     letter_date: '',
@@ -158,6 +147,9 @@ const emptyFormValues: CorrespondenceFormValues = {
     direction: 'incoming',
     registered_at: '',
     registered_by: '',
+};
+
+const emptyWorkflowFormValues: CorrespondenceWorkflowValues = {
     qa_review_date: '',
     qa_reviewed_by: '',
     qa_status: '',
@@ -170,6 +162,13 @@ const emptyFormValues: CorrespondenceFormValues = {
     endorsed_remarks: '',
     endorsed_status: '',
 };
+
+const emptyFormValues: CorrespondenceFormValues = {
+    ...emptyRegistryFormValues,
+    ...emptyWorkflowFormValues,
+};
+
+const EMPTY_INITIAL_RECIPIENTS: CorrespondenceRecipient[] = [];
 
 const LETTER_TYPE_OPTIONS = [
     'Formal Letters',
@@ -205,71 +204,6 @@ const stripQaValues = (formValues: CorrespondenceFormValues): CorrespondenceForm
     endorsed_status: '',
 });
 
-const buildRegistryPayload = (payload: CorrespondenceFormSubmitPayload): CorrespondenceRegistryPayload => ({
-    reference_no: payload.reference_no,
-    date_received: payload.date_received || null,
-    letter_date: payload.letter_date || null,
-    sender: payload.sender,
-    sender_ref: payload.sender_ref || null,
-    document_cover_page: Number(payload.document_cover_page),
-    document_full_letters: Number(payload.document_full_letters),
-    document_claim_attachment: Number(payload.document_claim_attachment),
-    document_others: Number(payload.document_others),
-    document_others_specify: payload.document_others_specify || null,
-    subject: payload.subject,
-    direction: payload.direction,
-    registered_at: payload.registered_at,
-    registered_by: payload.registered_by,
-    attachment_filename: payload.attachment_filename,
-    attachment_mime_type: payload.attachment_mime_type,
-    attachment_size: payload.attachment_size,
-    attachment_pdf_page_count: payload.attachment_pdf_page_count,
-    attachment_file_path: payload.attachment_file_path,
-});
-
-const buildQaPayload = (
-    payload: CorrespondenceFormSubmitPayload,
-    qaRows: QaRow[],
-    recordId: string | number,
-): CorrespondenceQaPayload => {
-    return {
-        id: recordId,
-        qa_review_date: payload.qa_review_date || null,
-        qa_reviewed_by: payload.qa_reviewed_by || null,
-        qa_status: payload.qa_status || 'submitted',
-        letter_type: payload.letter_type,
-        category: payload.category,
-        priority: payload.priority,
-        remarks: payload.remarks,
-        recipients: qaRows
-            .map((row) => ({
-                ramco_id: row.recipientRamcoId.trim(),
-                department_id: Number(row.departmentId),
-            }))
-            .filter((row) => row.ramco_id && Number.isFinite(row.department_id)),
-    };
-};
-
-const buildEndorsementPayload = (
-    payload: CorrespondenceFormSubmitPayload,
-    recordId: string | number,
-): CorrespondenceEndorsementPayload | null => {
-    const hasEndorsementData = Boolean(
-        payload.endorsed_status.trim() ||
-        payload.endorsed_remarks.trim() ||
-        payload.endorsed_by.trim() ||
-        payload.endorsed_at.trim(),
-    );
-    if (!hasEndorsementData) return null;
-    return {
-        id: recordId,
-        endorsed_by: payload.endorsed_by.trim() || null,
-        endorsed_at: payload.endorsed_at.trim() || null,
-        endorsed_remarks: payload.endorsed_remarks.trim() || null,
-        endorsed_status: payload.endorsed_status.trim(),
-    };
-};
-
 type QaRow = {
     id: string;
     recipientRamcoId: string;
@@ -297,14 +231,6 @@ const getDepartmentId = (item: any) =>
 const getDepartmentCode = (item: any) =>
     String(item?.department?.code ?? item?.department_code ?? item?.dept_code ?? item?.dept?.code ?? '').trim();
 
-const appendFormValue = (formData: FormData, key: string, value: string | number | boolean | null | undefined) => {
-    if (value === null || value === undefined) {
-        formData.append(key, '');
-        return;
-    }
-    formData.append(key, String(value));
-};
-
 const buildQaRows = (
     recipients: Array<{ ramcoId: string; departmentId: string | number }> = [],
     recipientOptions: EmployeeOption[] = [],
@@ -318,13 +244,38 @@ const buildQaRows = (
     });
 };
 
+const toSqlDatetime = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    const hours = String(value.getHours()).padStart(2, '0');
+    const minutes = String(value.getMinutes()).padStart(2, '0');
+    const seconds = String(value.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+const normalizeSqlDatetime = (value?: string | null) => {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
+        return value;
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return value;
+    }
+
+    return toSqlDatetime(parsed);
+};
+
 export const CorrespondenceForm = ({
     mode = 'create',
     recordId,
     recordSlug,
     showCardHeader = true,
     initialValues,
-    initialRecipients = [],
+    initialRecipients = EMPTY_INITIAL_RECIPIENTS,
     initialAttachment,
     onCancel,
     onSubmit,
@@ -342,16 +293,11 @@ export const CorrespondenceForm = ({
     });
     const [qaRows, setQaRows] = useState<QaRow[]>(buildQaRows(initialRecipients));
     const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-    const [successDialogOpen, setSuccessDialogOpen] = useState(false);
-    const [successMessage, setSuccessMessage] = useState('Correspondence saved successfully.');
-    const [pendingPayload, setPendingPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
-    const [submittedPayload, setSubmittedPayload] = useState<CorrespondenceFormSubmitPayload | null>(null);
     const [isRegistryEditing, setIsRegistryEditing] = useState(mode === 'create');
-    const [isRegistrySaving, setIsRegistrySaving] = useState(false);
-    const qaSectionDisabled = mode === 'create';
+    const [isQaEditing, setIsQaEditing] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const qaSectionDisabled = mode === 'create' || (mode === 'edit' && !isQaEditing);
     const endorsementSectionDisabled = mode === 'create';
     const registryEditable = mode === 'create' || isRegistryEditing;
 
@@ -570,148 +516,149 @@ export const CorrespondenceForm = ({
         });
     };
 
-    const buildPayload = (): CorrespondenceFormSubmitPayload => {
+    const buildRegistryPayload = (): CorrespondenceRegistryPayload => {
         const currentAttachment = attachments[0];
-        const payloadValues = mode === 'create' ? stripQaValues(values) : values;
-        const nowIso = new Date().toISOString();
-        const hasEndorsementDraft = Boolean(
-            payloadValues.endorsed_status.trim() ||
-            payloadValues.endorsed_remarks.trim() ||
-            payloadValues.endorsed_by.trim() ||
-            payloadValues.endorsed_at.trim(),
-        );
+        const registeredAt = normalizeSqlDatetime(values.registered_at) || toSqlDatetime(new Date());
+        const registeredBy = values.registered_by || currentUsername || '';
+
         return {
-            ...payloadValues,
-            reference_no: payloadValues.reference_no.trim() || null,
-            registered_at: payloadValues.registered_at || nowIso,
-            registered_by: payloadValues.registered_by || currentUsername || '',
-            qa_review_date: mode === 'edit' ? payloadValues.qa_review_date || nowIso : '',
-            qa_reviewed_by: mode === 'edit' ? payloadValues.qa_reviewed_by || currentUsername || '' : '',
-            qa_status: mode === 'edit' ? payloadValues.qa_status || 'submitted' : '',
-            endorsed_at:
-                mode === 'edit' && hasEndorsementDraft ? payloadValues.endorsed_at || nowIso : payloadValues.endorsed_at,
-            endorsed_by:
-                mode === 'edit' && hasEndorsementDraft
-                    ? payloadValues.endorsed_by || currentUsername || ''
-                    : payloadValues.endorsed_by,
+            ...(mode === 'edit' && recordId ? { id: recordId } : {}),
+            reference_no: values.reference_no.trim() || null,
+            date_received: values.date_received || null,
+            letter_date: values.letter_date || null,
+            sender: values.sender.trim(),
+            sender_ref: values.sender_ref.trim() || null,
+            document_cover_page: Number(values.document_cover_page),
+            document_full_letters: Number(values.document_full_letters),
+            document_claim_attachment: Number(values.document_claim_attachment),
+            document_others: Number(values.document_others),
+            document_others_specify: values.document_others_specify.trim() || null,
+            subject: values.subject.trim(),
+            direction: values.direction,
+            registered_at: registeredAt,
+            registered_by: registeredBy || null,
             attachment_filename: currentAttachment?.fileName ?? initialAttachment?.fileName ?? null,
             attachment_mime_type: currentAttachment?.fileType ?? initialAttachment?.mimeType ?? null,
             attachment_size: currentAttachment?.fileSize ?? initialAttachment?.fileSize ?? null,
             attachment_pdf_page_count: currentAttachment?.pdfPageCount ?? initialAttachment?.pdfPageCount ?? null,
-            attachment_file_path: currentAttachment?.file ? null : (initialAttachment?.filePath ?? null),
+            attachment_file_path: currentAttachment?.file ? null : initialAttachment?.filePath ?? null,
         };
     };
 
-    const submitHandler = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if (isSubmitting) return;
-        setPendingPayload(buildPayload());
-        setConfirmDialogOpen(true);
+    const appendFormValue = (formData: FormData, key: keyof CorrespondenceRegistryPayload, value: string | number | null | undefined) => {
+        formData.append(key, value === null || value === undefined ? '' : String(value));
     };
 
-    const buildRegistryFormData = (registryPayload: CorrespondenceRegistryPayload) => {
-        const selectedAttachment = attachments[0]?.file;
+    const buildRegistryFormData = (payload: CorrespondenceRegistryPayload) => {
         const formData = new FormData();
-        appendFormValue(formData, 'reference_no', registryPayload.reference_no);
-        appendFormValue(formData, 'date_received', registryPayload.date_received);
-        appendFormValue(formData, 'letter_date', registryPayload.letter_date);
-        appendFormValue(formData, 'sender', registryPayload.sender);
-        appendFormValue(formData, 'sender_ref', registryPayload.sender_ref);
-        appendFormValue(formData, 'document_cover_page', registryPayload.document_cover_page);
-        appendFormValue(formData, 'document_full_letters', registryPayload.document_full_letters);
-        appendFormValue(formData, 'document_claim_attachment', registryPayload.document_claim_attachment);
-        appendFormValue(formData, 'document_others', registryPayload.document_others);
-        appendFormValue(formData, 'document_others_specify', registryPayload.document_others_specify);
-        appendFormValue(formData, 'subject', registryPayload.subject);
-        appendFormValue(formData, 'direction', registryPayload.direction);
-        appendFormValue(formData, 'registered_at', registryPayload.registered_at);
-        appendFormValue(formData, 'registered_by', registryPayload.registered_by);
-        appendFormValue(formData, 'attachment_filename', registryPayload.attachment_filename);
-        appendFormValue(formData, 'attachment_mime_type', registryPayload.attachment_mime_type);
-        appendFormValue(formData, 'attachment_size', registryPayload.attachment_size);
-        appendFormValue(formData, 'attachment_pdf_page_count', registryPayload.attachment_pdf_page_count);
-        appendFormValue(formData, 'attachment_file_path', registryPayload.attachment_file_path);
+        const selectedAttachment = attachments[0]?.file;
+
+        appendFormValue(formData, 'id', payload.id);
+        appendFormValue(formData, 'reference_no', payload.reference_no);
+        appendFormValue(formData, 'date_received', payload.date_received);
+        appendFormValue(formData, 'letter_date', payload.letter_date);
+        appendFormValue(formData, 'sender', payload.sender);
+        appendFormValue(formData, 'sender_ref', payload.sender_ref);
+        appendFormValue(formData, 'document_cover_page', payload.document_cover_page);
+        appendFormValue(formData, 'document_full_letters', payload.document_full_letters);
+        appendFormValue(formData, 'document_claim_attachment', payload.document_claim_attachment);
+        appendFormValue(formData, 'document_others', payload.document_others);
+        appendFormValue(formData, 'document_others_specify', payload.document_others_specify);
+        appendFormValue(formData, 'subject', payload.subject);
+        appendFormValue(formData, 'direction', payload.direction);
+        appendFormValue(formData, 'registered_at', payload.registered_at);
+        appendFormValue(formData, 'registered_by', payload.registered_by);
+        appendFormValue(formData, 'attachment_filename', payload.attachment_filename);
+        appendFormValue(formData, 'attachment_mime_type', payload.attachment_mime_type);
+        appendFormValue(formData, 'attachment_size', payload.attachment_size);
+        appendFormValue(formData, 'attachment_pdf_page_count', payload.attachment_pdf_page_count);
+        appendFormValue(formData, 'attachment_file_path', payload.attachment_file_path);
+
         if (selectedAttachment instanceof File) {
             formData.append('file', selectedAttachment);
         }
+
         return formData;
     };
 
-    const saveRegistrySection = async () => {
-        if (mode !== 'edit') return;
-        if (!recordId) {
+    const submitRegistry = async () => {
+        if (!isRegistrySectionComplete || isSubmitting) return;
+        if (mode === 'edit' && !recordId) {
             toast.error('Unable to resolve correspondence ID for update');
             return;
         }
 
         try {
-            setIsRegistrySaving(true);
-            const payload = buildPayload();
-            const registryPayload = buildRegistryPayload(payload);
-            const formData = buildRegistryFormData(registryPayload);
-
-            await authenticatedApi.put(`/api/media/correspondence/${recordId}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-
-            setIsRegistryEditing(false);
-            setValues((current) => ({
-                ...current,
-                reference_no: payload.reference_no ?? current.reference_no,
-                registered_at: payload.registered_at,
-                registered_by: payload.registered_by,
-            }));
-            toast.success('Registry updated successfully.');
-        } catch (error: any) {
-            const message = error?.response?.data?.message || error?.message || 'Failed to update registry';
-            toast.error(message);
-        } finally {
-            setIsRegistrySaving(false);
-        }
-    };
-
-    const confirmSubmit = async () => {
-        if (!pendingPayload || isSubmitting) return;
-        const payload = pendingPayload;
-        const registryPayload = buildRegistryPayload(payload);
-        const qaPayload = mode === 'edit' && recordId ? buildQaPayload(payload, qaRows, recordId) : null;
-        const endorsementPayload = mode === 'edit' && recordId ? buildEndorsementPayload(payload, recordId) : null;
-
-        try {
             setIsSubmitting(true);
-            setConfirmDialogOpen(false);
-            const formData = buildRegistryFormData(registryPayload);
+            const payload = buildRegistryPayload();
+            const formData = buildRegistryFormData(payload);
 
-            if (mode === 'edit') {
-                if (!recordId) {
-                    toast.error('Unable to resolve correspondence ID for update');
-                    return;
-                }
+            if (mode === 'edit' && recordId) {
                 await authenticatedApi.put(`/api/media/correspondence/${recordId}`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
-                if (qaPayload) {
-                    await authenticatedApi.put(`/api/media/correspondence/${recordId}/qa`, qaPayload);
-                }
-                if (endorsementPayload) {
-                    await authenticatedApi.put(`/api/media/correspondence/${recordId}/endorse`, endorsementPayload);
-                }
-                setSuccessMessage('Correspondence updated successfully.');
+                setIsRegistryEditing(false);
+                setValues((current) => ({
+                    ...current,
+                    registered_at: payload.registered_at ?? current.registered_at,
+                    registered_by: payload.registered_by ?? current.registered_by,
+                    reference_no: payload.reference_no ?? current.reference_no,
+                }));
+                toast.success('Registry updated successfully.');
             } else {
                 await authenticatedApi.post('/api/media/correspondence', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
                 localStorage.removeItem(CREATE_DRAFT_STORAGE_KEY);
-                setSuccessMessage('Correspondence created successfully.');
+                toast.success('Registry created successfully.');
             }
-            setSubmittedPayload(payload);
-            setSuccessDialogOpen(true);
+
+            await onSubmit?.();
         } catch (error: any) {
-            const message = error?.response?.data?.message || error?.message || 'Failed to save correspondence';
+            const message = error?.response?.data?.message || error?.message || 'Failed to save registry';
             toast.error(message);
         } finally {
             setIsSubmitting(false);
-            setPendingPayload(null);
+        }
+    };
+
+    const buildQaPayload = (): CorrespondenceQaPayload => ({
+        id: recordId as string | number,
+        qa_review_date: normalizeSqlDatetime(values.qa_review_date) || toSqlDatetime(new Date()),
+        qa_reviewed_by: values.qa_reviewed_by || currentUsername || '',
+        qa_status: values.qa_status || 'submitted',
+        recipients: qaRows
+            .map((row) => ({
+                ramco_id: row.recipientRamcoId.trim(),
+                department_id: Number(row.departmentId),
+            }))
+            .filter((row) => row.ramco_id && Number.isFinite(row.department_id)),
+        letter_type: values.letter_type.trim(),
+        category: values.category.trim(),
+        priority: values.priority,
+        remarks: values.remarks.trim(),
+    });
+
+    const submitQaSection = async () => {
+        if (mode !== 'edit' || !recordId || !isQaSectionComplete || isSubmitting) return;
+
+        try {
+            setIsSubmitting(true);
+            const payload = buildQaPayload();
+            await authenticatedApi.put(`/api/media/correspondence/${recordId}/qa`, payload);
+            setValues((current) => ({
+                ...current,
+                qa_review_date: payload.qa_review_date,
+                qa_reviewed_by: payload.qa_reviewed_by,
+                qa_status: payload.qa_status,
+            }));
+            setIsQaEditing(false);
+            toast.success('QA section updated successfully.');
+        } catch (error: any) {
+            const message = error?.response?.data?.message || error?.message || 'Failed to save QA section';
+            toast.error(message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -738,6 +685,34 @@ export const CorrespondenceForm = ({
         values.document_claim_attachment ? 'Claim attachment' : null,
         values.document_others ? `Others${values.document_others_specify ? `: ${values.document_others_specify}` : ''}` : null,
     ].filter(Boolean) as string[];
+    const hasRegistryAttachment = attachments.length > 0 || Boolean(initialAttachment?.filePath || initialAttachment?.fileName);
+    const isRegistrySectionComplete = Boolean(
+        (mode === 'create' || values.reference_no.trim()) &&
+        values.direction.trim() &&
+        values.date_received.trim() &&
+        values.letter_date.trim() &&
+        values.sender.trim() &&
+        values.sender_ref.trim() &&
+        values.subject.trim() &&
+        registryDocumentContents.length > 0 &&
+        (!values.document_others || values.document_others_specify.trim()) &&
+        hasRegistryAttachment,
+    );
+    const isQaSectionComplete = Boolean(
+        values.letter_type.trim() &&
+        values.category.trim() &&
+        values.priority &&
+        qaRows.some((row) => row.recipientRamcoId.trim() && Number.isFinite(Number(row.departmentId))),
+    );
+    const qaRecipientsSummary = qaRows
+        .map((row) => {
+            const recipientLabel =
+                recipientOptions.find((option) => option.value === row.recipientRamcoId)?.label || row.recipientRamcoId;
+            if (!recipientLabel) return '';
+            return row.departmentCode ? `${recipientLabel} (${row.departmentCode})` : recipientLabel;
+        })
+        .filter(Boolean)
+        .join(', ');
 
     const syncQaRowsToValues = (nextRows: QaRow[]) => {
         setQaRows(nextRows);
@@ -756,13 +731,12 @@ export const CorrespondenceForm = ({
                 </CardHeader>
             ) : null}
             <CardContent>
-                <form onSubmit={submitHandler} className="space-y-4">
+                <form className="space-y-4">
                     <div className="grid gap-6 xl:grid-cols-[minmax(320px,3fr)_minmax(0,2fr)] xl:items-stretch">
                         <div className="h-full">
                             <div
-                                className={`h-full rounded-xl border border-dashed border-slate-300 bg-stone-100/50 px-4 py-4 transition-colors ${
-                                    registryEditable ? 'cursor-pointer hover:bg-stone-100' : ''
-                                }`}
+                                className={`h-full rounded-xl border border-dashed border-slate-300 bg-stone-100/50 px-4 py-4 transition-colors ${registryEditable ? 'cursor-pointer hover:bg-stone-100' : ''
+                                    }`}
                                 onClick={registryEditable ? openFilePicker : undefined}
                                 onKeyDown={(event) => {
                                     if (!registryEditable) return;
@@ -869,78 +843,68 @@ export const CorrespondenceForm = ({
                                     <div className="flex items-center justify-between">
                                         <p className="text-sm font-bold text-slate-900">Registy Section</p>
                                         {mode === 'edit' ? (
-                                            isRegistryEditing ? (
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-8 w-8"
-                                                    onClick={() => void saveRegistrySection()}
-                                                    disabled={isRegistrySaving || isSubmitting}
-                                                    aria-label="Save registry section"
-                                                >
-                                                    <Save className="h-4 w-4" />
-                                                </Button>
-                                            ) : (
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-8 w-8"
-                                                    onClick={() => setIsRegistryEditing(true)}
-                                                    aria-label="Edit registry section"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                            )
-                                        ) : null}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={isRegistryEditing ? () => void submitRegistry() : () => setIsRegistryEditing(true)}
+                                                disabled={isRegistryEditing ? !isRegistrySectionComplete || isSubmitting : false}
+                                                aria-label={isRegistryEditing ? 'Save registry section' : 'Edit registry section'}
+                                            >
+                                                {isRegistryEditing ? <Save className="h-4 w-4 text-emerald-600" /> : <Pencil className="h-4 w-4 text-amber-500" />}
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                                                onClick={() => void submitRegistry()}
+                                                disabled={!isRegistrySectionComplete || isSubmitting}
+                                                aria-label="Save correspondence"
+                                            >
+                                                <Save className="h-4 w-4" />
+                                            </Button>
+                                        )}
                                     </div>
 
                                     {mode === 'edit' && !isRegistryEditing ? (
                                         <div className="space-y-4 text-sm text-slate-700">
-                                            <div className="grid gap-4 md:grid-cols-3">
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Reference No.</p>
-                                                    <p className="mt-1">{values.reference_no || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Direction</p>
-                                                    <p className="mt-1 capitalize">{values.direction}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Date Received</p>
-                                                    <p className="mt-1">{formatDisplayDate(values.date_received)}</p>
-                                                </div>
-                                            </div>
-                                            <div className="grid gap-4 md:grid-cols-3">
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Sender</p>
-                                                    <p className="mt-1">{values.sender || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Sender Ref.</p>
-                                                    <p className="mt-1">{values.sender_ref || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Letter Date</p>
-                                                    <p className="mt-1">{formatDisplayDate(values.letter_date)}</p>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Document Contents</p>
-                                                <p className="mt-1">{registryDocumentContents.length > 0 ? registryDocumentContents.join(', ') : '-'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Subject Matters</p>
-                                                <p className="mt-1 whitespace-pre-wrap">{values.subject || '-'}</p>
+                                            <div className="grid gap-x-4 gap-y-3 sm:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Reference No.:</p>
+                                                <p className="min-w-0 wrap-break-words">{values.reference_no || '-'}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Direction:</p>
+                                                <p className="min-w-0 wrap-break-words capitalize">{values.direction}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Date Received:</p>
+                                                <p className="min-w-0 wrap-break-words">{formatDisplayDate(values.date_received)}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Letter Date:</p>
+                                                <p className="min-w-0 wrap-break-words">{formatDisplayDate(values.letter_date)}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Sender:</p>
+                                                <p className="min-w-0 wrap-break-words">{values.sender || '-'}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Sender Ref.:</p>
+                                                <p className="min-w-0 wrap-break-words">{values.sender_ref || '-'}</p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Document Contents:</p>
+                                                <p className="min-w-0 wrap-break-words">
+                                                    {registryDocumentContents.length > 0 ? registryDocumentContents.join(', ') : '-'}
+                                                </p>
+
+                                                <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Subject Matters:</p>
+                                                <p className="min-w-0 whitespace-pre-wrap wrap-break-words">{values.subject || '-'}</p>
                                             </div>
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="grid gap-4 md:grid-cols-3">
+                                            <div className="grid gap-4 md:grid-cols-2">
                                                 <div className="space-y-2">
                                                     <Label>Reference No.</Label>
-                                                    <div className="min-h-10 py-2 text-sm">
+                                                    <div className="min-h-10 py-2 text-xs">
                                                         {values.reference_no || (mode === 'create' ? 'Auto-generated by system' : '-')}
                                                     </div>
                                                 </div>
@@ -959,6 +923,9 @@ export const CorrespondenceForm = ({
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
+                                            </div>
+
+                                            <div className="grid gap-4 md:grid-cols-2">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="date-received">Date Received</Label>
                                                     <Input
@@ -968,9 +935,18 @@ export const CorrespondenceForm = ({
                                                         onChange={(event) => updateValues({ ...values, date_received: event.target.value })}
                                                     />
                                                 </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="letter-date">Letter Date</Label>
+                                                    <Input
+                                                        id="letter-date"
+                                                        type="date"
+                                                        value={values.letter_date}
+                                                        onChange={(event) => updateValues({ ...values, letter_date: event.target.value })}
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <div className="grid gap-4 md:grid-cols-3">
+                                            <div className="grid gap-4 md:grid-cols-2">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="sender">Sender</Label>
                                                     <Input
@@ -989,15 +965,6 @@ export const CorrespondenceForm = ({
                                                         onChange={(event) => updateValues({ ...values, sender_ref: event.target.value })}
                                                         placeholder="Sender reference number"
                                                         className='uppercase placeholder:normal-case'
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="letter-date">Letter Date</Label>
-                                                    <Input
-                                                        id="letter-date"
-                                                        type="date"
-                                                        value={values.letter_date}
-                                                        onChange={(event) => updateValues({ ...values, letter_date: event.target.value })}
                                                     />
                                                 </div>
                                             </div>
@@ -1096,159 +1063,197 @@ export const CorrespondenceForm = ({
 
                             <Card className='bg-stone-100/50 hover:bg-stone-100'>
                                 <CardContent className="space-y-4">
-                                    <div className="space-y-1">
-                                        <p className="text-sm font-bold text-slate-900">QA Section</p>
-                                        {qaSectionDisabled ? (
-                                            <p className="text-xs text-slate-500">
-                                                Available after registry creation as part of the second workflow.
-                                            </p>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-bold text-slate-900">QA Section</p>
+                                            {qaSectionDisabled ? (
+                                                <p className="text-xs text-slate-500">
+                                                    {mode === 'create'
+                                                        ? 'Available after registry creation as part of the second workflow.'
+                                                        : 'Click the pencil icon to edit QA details.'}
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                        {mode === 'edit' ? (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-8 w-8"
+                                                onClick={isQaEditing ? () => void submitQaSection() : () => setIsQaEditing(true)}
+                                                disabled={isQaEditing ? !isQaSectionComplete || isSubmitting : false}
+                                                aria-label={isQaEditing ? 'Save QA section' : 'Edit QA section'}
+                                            >
+                                                {isQaEditing ? <Save className="h-4 w-4 text-emerald-600" /> : <Pencil className="h-4 w-4 text-amber-500" />}
+                                            </Button>
                                         ) : null}
                                     </div>
-                                    <div className="grid gap-4 md:grid-cols-3">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="letter-type">Letter Type</Label>
-                                            <Select
-                                                value={values.letter_type}
-                                                onValueChange={(value) => updateValues({ ...values, letter_type: value })}
-                                                disabled={qaSectionDisabled}
-                                            >
-                                                <SelectTrigger id="letter-type" className="w-full">
-                                                    <SelectValue placeholder="Select letter type" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {LETTER_TYPE_OPTIONS.map((option) => (
-                                                        <SelectItem key={option} value={option}>
-                                                            {option}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="category">Category</Label>
-                                            <Select
-                                                value={values.category}
-                                                onValueChange={(value) => updateValues({ ...values, category: value })}
-                                                disabled={qaSectionDisabled}
-                                            >
-                                                <SelectTrigger id="category" className="w-full">
-                                                    <SelectValue placeholder="Select category" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {CATEGORY_OPTIONS.map((option) => (
-                                                        <SelectItem key={option} value={option}>
-                                                            {option}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="priority">Priority</Label>
-                                            <Select
-                                                value={values.priority}
-                                                onValueChange={(value) => updateValues({ ...values, priority: value as Priority })}
-                                                disabled={qaSectionDisabled}
-                                            >
-                                                <SelectTrigger id="priority" className="w-full">
-                                                    <SelectValue placeholder="Select priority" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="low">Low</SelectItem>
-                                                    <SelectItem value="normal">Normal</SelectItem>
-                                                    <SelectItem value="high">High</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                                    {mode === 'edit' && !isQaEditing ? (
+                                        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-[minmax(0,160px)_minmax(0,1fr)] text-sm text-slate-700">
+                                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Letter Type:</p>
+                                            <p className="min-w-0 wrap-break-words">{values.letter_type || '-'}</p>
 
-                                    <div className="space-y-3">
-                                        {qaRows.map((row, index) => (
-                                            <div key={row.id} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Category:</p>
+                                            <p className="min-w-0 wrap-break-words">{values.category || '-'}</p>
+
+                                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Priority:</p>
+                                            <p className="min-w-0 wrap-break-words capitalize">{values.priority || '-'}</p>
+
+                                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Recipient:</p>
+                                            <p className="min-w-0 wrap-break-words">{qaRecipientsSummary || '-'}</p>
+
+                                            <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">QA Remarks:</p>
+                                            <p className="min-w-0 whitespace-pre-wrap wrap-break-words">{values.remarks || '-'}</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="grid gap-4 md:grid-cols-3">
                                                 <div className="space-y-2">
-                                                    <Label>Recipient</Label>
-                                                    <Combobox
-                                                        options={recipientOptions}
-                                                        value={row.recipientRamcoId}
-                                                        onValueChange={(value) => {
-                                                            if (qaSectionDisabled) return;
-                                                            const selected =
-                                                                recipientOptions.find((option) => option.value === value) ??
-                                                                recipientOptions.find((option) => option.label === value);
-                                                            const nextRows = qaRows.map((entry) =>
-                                                                entry.id === row.id
-                                                                    ? {
-                                                                        ...entry,
-                                                                        recipientRamcoId: value,
-                                                                        departmentId: selected?.departmentId ?? entry.departmentId,
-                                                                        departmentCode: selected?.departmentCode ?? entry.departmentCode,
-                                                                    }
-                                                                    : entry,
-                                                            );
-                                                            syncQaRowsToValues(nextRows);
-                                                        }}
-                                                        placeholder="Select recipient"
-                                                        searchPlaceholder="Search recipient..."
-                                                        emptyMessage="No active employee found."
+                                                    <Label htmlFor="letter-type">Letter Type</Label>
+                                                    <Select
+                                                        value={values.letter_type}
+                                                        onValueChange={(value) => updateValues({ ...values, letter_type: value })}
                                                         disabled={qaSectionDisabled}
-                                                    />
+                                                    >
+                                                        <SelectTrigger id="letter-type" className="w-full">
+                                                            <SelectValue placeholder="Select letter type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {LETTER_TYPE_OPTIONS.map((option) => (
+                                                                <SelectItem key={option} value={option}>
+                                                                    {option}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <Label htmlFor={`department-${row.id}`}>Department</Label>
-                                                    <Input
-                                                        id={`department-${row.id}`}
-                                                        value={row.departmentCode}
-                                                        readOnly
+                                                    <Label htmlFor="category">Category</Label>
+                                                    <Select
+                                                        value={values.category}
+                                                        onValueChange={(value) => updateValues({ ...values, category: value })}
                                                         disabled={qaSectionDisabled}
-                                                        placeholder="Auto from recipient"
-                                                        required={!qaSectionDisabled && index === 0}
-                                                    />
+                                                    >
+                                                        <SelectTrigger id="category" className="w-full">
+                                                            <SelectValue placeholder="Select category" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {CATEGORY_OPTIONS.map((option) => (
+                                                                <SelectItem key={option} value={option}>
+                                                                    {option}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
-                                                <div className="flex items-end">
-                                                    {index === 0 ? (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className="w-full md:w-9 border-emerald-600 text-emerald-600 hover:bg-emerald-50 focus-visible:ring-emerald-600"
-                                                            onClick={() => syncQaRowsToValues([...qaRows, createQaRow()])}
-                                                            aria-label="Add correspondence row"
-                                                            disabled={qaSectionDisabled}
-                                                        >
-                                                            <Plus className="h-4 w-4" />
-                                                        </Button>
-                                                    ) : (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="icon"
-                                                            className="w-full md:w-9 border-rose-600 text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-600"
-                                                            onClick={() => {
-                                                                const nextRows = qaRows.filter((entry) => entry.id !== row.id);
-                                                                syncQaRowsToValues(nextRows);
-                                                            }}
-                                                            aria-label="Remove correspondence row"
-                                                            disabled={qaSectionDisabled}
-                                                        >
-                                                            <Minus className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="priority">Priority</Label>
+                                                    <Select
+                                                        value={values.priority}
+                                                        onValueChange={(value) => updateValues({ ...values, priority: value as Priority })}
+                                                        disabled={qaSectionDisabled}
+                                                    >
+                                                        <SelectTrigger id="priority" className="w-full">
+                                                            <SelectValue placeholder="Select priority" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="low">Low</SelectItem>
+                                                            <SelectItem value="normal">Normal</SelectItem>
+                                                            <SelectItem value="high">High</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="remarks">QA Remarks</Label>
-                                        <Textarea
-                                            id="remarks"
-                                            value={values.remarks}
-                                            onChange={(event) => updateValues({ ...values, remarks: event.target.value })}
-                                            placeholder="Add letter summary"
-                                            rows={4}
-                                            disabled={qaSectionDisabled}
-                                        />
-                                    </div>
+                                            <div className="space-y-3">
+                                                {qaRows.map((row, index) => (
+                                                    <div key={row.id} className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                                        <div className="space-y-2">
+                                                            <Label>Recipient</Label>
+                                                            <Combobox
+                                                                options={recipientOptions}
+                                                                value={row.recipientRamcoId}
+                                                                onValueChange={(value) => {
+                                                                    if (qaSectionDisabled) return;
+                                                                    const selected =
+                                                                        recipientOptions.find((option) => option.value === value) ??
+                                                                        recipientOptions.find((option) => option.label === value);
+                                                                    const nextRows = qaRows.map((entry) =>
+                                                                        entry.id === row.id
+                                                                            ? {
+                                                                                ...entry,
+                                                                                recipientRamcoId: value,
+                                                                                departmentId: selected?.departmentId ?? entry.departmentId,
+                                                                                departmentCode: selected?.departmentCode ?? entry.departmentCode,
+                                                                            }
+                                                                            : entry,
+                                                                    );
+                                                                    syncQaRowsToValues(nextRows);
+                                                                }}
+                                                                placeholder="Select recipient"
+                                                                searchPlaceholder="Search recipient..."
+                                                                emptyMessage="No active employee found."
+                                                                disabled={qaSectionDisabled}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label htmlFor={`department-${row.id}`}>Department</Label>
+                                                            <Input
+                                                                id={`department-${row.id}`}
+                                                                value={row.departmentCode}
+                                                                readOnly
+                                                                disabled={qaSectionDisabled}
+                                                                placeholder="Auto from recipient"
+                                                                required={!qaSectionDisabled && index === 0}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-end">
+                                                            {index === 0 ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="w-full md:w-9 border-emerald-600 text-emerald-600 hover:bg-emerald-50 focus-visible:ring-emerald-600"
+                                                                    onClick={() => syncQaRowsToValues([...qaRows, createQaRow()])}
+                                                                    aria-label="Add correspondence row"
+                                                                    disabled={qaSectionDisabled}
+                                                                >
+                                                                    <Plus className="h-4 w-4" />
+                                                                </Button>
+                                                            ) : (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    className="w-full md:w-9 border-rose-600 text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-600"
+                                                                    onClick={() => {
+                                                                        const nextRows = qaRows.filter((entry) => entry.id !== row.id);
+                                                                        syncQaRowsToValues(nextRows);
+                                                                    }}
+                                                                    aria-label="Remove correspondence row"
+                                                                    disabled={qaSectionDisabled}
+                                                                >
+                                                                    <Minus className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label htmlFor="remarks">QA Remarks</Label>
+                                                <Textarea
+                                                    id="remarks"
+                                                    value={values.remarks}
+                                                    onChange={(event) => updateValues({ ...values, remarks: event.target.value })}
+                                                    placeholder="Add letter summary"
+                                                    rows={4}
+                                                    disabled={qaSectionDisabled}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                 </CardContent>
                             </Card>
 
@@ -1315,28 +1320,17 @@ export const CorrespondenceForm = ({
                         <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(true)}>
                             Cancel
                         </Button>
-                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting || isRegistrySaving}>
+                        <Button
+                            type="button"
+                            className="bg-blue-600 hover:bg-blue-700"
+                            onClick={() => void submitRegistry()}
+                            disabled={mode === 'edit' ? true : !isRegistrySectionComplete || isSubmitting}
+                        >
                             {isSubmitting ? 'Saving...' : mode === 'edit' ? 'Save Workflow' : 'Save Registry'}
                         </Button>
                     </div>
                 </form>
             </CardContent>
-            <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to submit this correspondence record?
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void confirmSubmit()} disabled={isSubmitting}>
-                            {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
             <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -1347,28 +1341,9 @@ export const CorrespondenceForm = ({
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel disabled={isSubmitting}>Stay</AlertDialogCancel>
-                        <AlertDialogAction onClick={onCancel} disabled={isSubmitting}>
+                        <Button type="button" onClick={onCancel} disabled={isSubmitting}>
                             Leave Form
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-            <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Submission Successful</AlertDialogTitle>
-                        <AlertDialogDescription>{successMessage}</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogAction
-                            onClick={() => {
-                                if (submittedPayload) {
-                                    void onSubmit?.(submittedPayload);
-                                }
-                            }}
-                        >
-                            Return to Records
-                        </AlertDialogAction>
+                        </Button>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
