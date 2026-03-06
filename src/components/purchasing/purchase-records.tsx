@@ -990,7 +990,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
 
     if (!hasDeliveries) return 'Delivery record missing';
     if (!hasDeliveryProof) return 'Purchase form not completed or upload file missing';
-    if (assetRegistry !== 'completed') return 'Asset registry not completed';
+    if (assetRegistry !== 'completed') return '';
     return '';
   };
 
@@ -1055,8 +1055,8 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
                     ? 'bg-green-600 hover:bg-green-700 text-white border-0'
                     : disableAsset
                       ? 'ring-1 ring-red-400 border-0 text-red-500 hover:bg-red-100'
-                      : 'ring-1 ring-amber-500 border-0 text-amber-600 hover:bg-amber-100'
-                } ${disableAsset ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      : 'border border-red-500 text-red-600 bg-white hover:bg-red-50'
+                } ${disableAsset ? 'opacity-60 cursor-not-allowed' : ''} ${status === 'unregistered' ? 'animate-unregisteredBlink' : ''}`}
                 title="Open Asset Manager"
                 disabled={disableAsset}
               >
@@ -1065,14 +1065,20 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
               <Button
                 size="sm"
                 variant="link"
-                className="h-6 px-0 text-blue-600 hover:text-blue-700 gap-1"
+                className={`h-6 px-0 gap-1 ${
+                  isRegCompleted
+                    ? 'text-gray-400 hover:text-gray-400 cursor-not-allowed'
+                    : status === 'unregistered'
+                      ? 'text-red-600 hover:text-red-600 animate-unregisteredBlink'
+                      : 'text-blue-600 hover:text-blue-700'
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleResendNotification(row.id);
                 }}
-                disabled={resendingId === String(row.id)}
+                disabled={resendingId === String(row.id) || isRegCompleted}
               >
-                <Mail className="h-4 w-4" />
+                <Mail className={`h-4 w-4 ${status === 'unregistered' ? 'animate-unregisteredBlink' : ''}`} />
                 {resendingId === String(row.id) ? 'Sending...' : 'Resend'}
               </Button>
             </div>

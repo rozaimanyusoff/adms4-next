@@ -18,7 +18,7 @@ import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, C
 import ActionSidebar from '@/components/ui/action-aside';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
 interface PurchaseData {
@@ -106,6 +106,21 @@ interface CategoryOption {
   name: string;
 }
 
+interface SimilarityIssue {
+  assetId: string;
+  assetLabel: string;
+  brandMatches: string[];
+  modelMatches: string[];
+  unresolvedBrand: boolean;
+  unresolvedModel: boolean;
+}
+
+interface RequiredFieldIssue {
+  assetId: string;
+  assetLabel: string;
+  missingFields: string[];
+}
+
 const PurchaseAssetRegistration: React.FC = () => {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -137,6 +152,14 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [modelTooltipOpenKey, setModelTooltipOpenKey] = useState<string | null>(null);
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [successSummary, setSuccessSummary] = useState('');
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [similarityDialogOpen, setSimilarityDialogOpen] = useState(false);
+  const [submitSimilarityIssues, setSubmitSimilarityIssues] = useState<SimilarityIssue[]>([]);
+  const [requiredDialogOpen, setRequiredDialogOpen] = useState(false);
+  const [requiredFieldIssues, setRequiredFieldIssues] = useState<RequiredFieldIssue[]>([]);
+  const [submitErrorDialogOpen, setSubmitErrorDialogOpen] = useState(false);
+  const [submitErrorMessage, setSubmitErrorMessage] = useState('');
+  const [showInlineValidation, setShowInlineValidation] = useState(false);
   const [bulkFormData, setBulkFormData] = useState<Omit<AssetFormData, 'register_number'>>({
     model: '',
     brand: '',
@@ -526,6 +549,77 @@ const PurchaseAssetRegistration: React.FC = () => {
       .filter(m => (m.name || '').toLowerCase().includes(t))
       .map(m => m.name)
       .slice(0, 5);
+  };
+
+  const getAssetLabel = (asset: AssetItem, index: number): string => {
+    return asset.register_number?.trim() || `Asset #${index + 1}`;
+  };
+
+  const getSimilarityIssueForAsset = (asset: AssetItem, index: number): SimilarityIssue | null => {
+    const brandName = (asset.brand || '').trim();
+    const modelName = (asset.model || '').trim();
+    const exactBrandExists = !!brandName && brandOptions.some(b => b.name.toLowerCase() === brandName.toLowerCase());
+    const exactModelExists = !!modelName && (modelOptionsCache[asset.brand] || []).some(m => m.name.toLowerCase() === modelName.toLowerCase());
+    const unresolvedBrand = !!(asset.customBrand && brandName && !exactBrandExists);
+    const brandMatches = unresolvedBrand ? findBrandMatches(brandName) : [];
+    const fetchedModelMatches = (modelMatchResults[`asset-${asset.id}`] || []).filter(
+      m => (m || '').trim().toLowerCase() !== modelName.toLowerCase()
+    );
+    const localModelMatches = findModelMatches(asset.brand, modelName);
+    const unresolvedModel = !!(asset.customModel && modelName && !exactModelExists);
+    const modelMatches = unresolvedModel
+      ? Array.from(new Set([...localModelMatches, ...fetchedModelMatches])).slice(0, 5)
+      : [];
+    if (!unresolvedBrand && !unresolvedModel) return null;
+    return {
+      assetId: asset.id,
+      assetLabel: getAssetLabel(asset, index),
+      brandMatches,
+      modelMatches,
+      unresolvedBrand,
+      unresolvedModel
+    };
+  };
+
+  const collectSimilarityIssues = (items: AssetItem[]): SimilarityIssue[] => {
+    return items
+      .map((asset, index) => getSimilarityIssueForAsset(asset, index))
+      .filter((issue): issue is SimilarityIssue => Boolean(issue));
+  };
+
+  const hasSimilarityIssueForField = (asset: AssetItem, index: number, field: 'brand' | 'model'): boolean => {
+    const issue = getSimilarityIssueForAsset(asset, index);
+    if (!issue) return false;
+    return field === 'brand' ? issue.unresolvedBrand : issue.unresolvedModel;
+  };
+
+  const getRequiredFieldIssues = (items: AssetItem[]): RequiredFieldIssue[] => {
+    return items
+      .map((item, index) => {
+        const isSoftware = (item.category || '').toLowerCase() === 'software';
+        const missingFields: string[] = [];
+        if (!isSoftware && !item.register_number?.trim()) missingFields.push('Register Number');
+        if (!item.brand?.trim()) missingFields.push('Brand');
+        if (!item.model?.trim()) missingFields.push('Model');
+        if (!item.description?.trim()) missingFields.push('Description');
+        if (!missingFields.length) return null;
+        return {
+          assetId: item.id,
+          assetLabel: getAssetLabel(item, index),
+          missingFields
+        };
+      })
+      .filter((issue): issue is RequiredFieldIssue => Boolean(issue));
+  };
+
+  const openRequiredFieldsDialog = (issues: RequiredFieldIssue[]) => {
+    setRequiredFieldIssues(issues);
+    setRequiredDialogOpen(true);
+    const firstIssue = issues[0];
+    if (firstIssue) {
+      setActiveTab(firstIssue.assetId);
+      requestAnimationFrame(() => scrollToAsset(firstIssue.assetId));
+    }
   };
 
   const loadModelsForBrand = async (brandName: string, forceReload = false) => {
@@ -1038,14 +1132,18 @@ const PurchaseAssetRegistration: React.FC = () => {
    * }
    */
   const handleSave = async () => {
-    const invalidAssets = assetItems.filter(item => {
-      const isSoftware = (item.category || '').toLowerCase() === 'software';
-      const missingRegister = !isSoftware && !item.register_number?.trim();
-      const missingDesc = !item.description?.trim();
-      return missingRegister || missingDesc;
-    });
-    if (invalidAssets.length > 0) {
-      toast.error('Please fill in required fields for all assets');
+    const itemsToProcess = assetItems.filter(a => !a.registered);
+    const similarityIssues = collectSimilarityIssues(itemsToProcess);
+    if (similarityIssues.length > 0) {
+      setShowInlineValidation(true);
+      setSubmitSimilarityIssues(similarityIssues);
+      setSimilarityDialogOpen(true);
+      return;
+    }
+
+    const requiredIssues = getRequiredFieldIssues(itemsToProcess);
+    if (requiredIssues.length > 0) {
+      openRequiredFieldsDialog(requiredIssues);
       return;
     }
 
@@ -1082,7 +1180,6 @@ const PurchaseAssetRegistration: React.FC = () => {
         description: item.description,
       });
 
-      const itemsToProcess = assetItems.filter(a => !a.registered);
       const toUpdate = itemsToProcess.filter(i => i.registry_id);
       const toCreate = itemsToProcess.filter(i => !i.registry_id);
 
@@ -1121,11 +1218,45 @@ const PurchaseAssetRegistration: React.FC = () => {
       setSuccessSummary(parts.join(' | ') || 'Assets saved');
       setSuccessDialogOpen(true);
     } catch (error) {
-      toast.error('Failed to register assets');
+      const msg =
+        (error as any)?.response?.data?.message ||
+        (error as any)?.message ||
+        'Failed to register assets';
+      setSubmitErrorMessage(String(msg));
+      setSubmitErrorDialogOpen(true);
       console.error('Error registering assets:', error);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSubmitClick = () => {
+    if (saving) return;
+    const newItems = assetItems.filter(a => !a.registered);
+    if (newItems.length === 0) return;
+
+    const requiredIssues = getRequiredFieldIssues(newItems);
+    if (requiredIssues.length > 0) {
+      openRequiredFieldsDialog(requiredIssues);
+      return;
+    }
+
+    const similarityIssues = collectSimilarityIssues(newItems);
+    if (similarityIssues.length > 0) {
+      setShowInlineValidation(true);
+      setSubmitSimilarityIssues(similarityIssues);
+      setSimilarityDialogOpen(true);
+      const firstIssue = similarityIssues[0];
+      if (firstIssue) {
+        setActiveTab(firstIssue.assetId);
+        requestAnimationFrame(() => scrollToAsset(firstIssue.assetId));
+      }
+      return;
+    }
+
+    setShowInlineValidation(false);
+    setSubmitSimilarityIssues([]);
+    setConfirmDialogOpen(true);
   };
 
   if (loading) {
@@ -1516,30 +1647,35 @@ const PurchaseAssetRegistration: React.FC = () => {
                         )}
                         {bulkBrandCustom && bulkFormData.brand.trim() && (() => {
                           const matches = findBrandMatches(bulkFormData.brand);
-                          if (!matches.length) return null;
                           return (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-help">
-                                  <Info className="h-3.5 w-3.5" />
-                                  View similar brands
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <div className="text-xs max-w-xs">
-                                  {matches.join(', ')}
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
+                            <div className="mt-1 flex items-center gap-1 flex-wrap">
+                              {matches.length > 0 && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
+                                      <Info className="h-3.5 w-3.5" />
+                                      View similar brands
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="text-xs max-w-xs">
+                                      {matches.join(', ')}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="link"
+                                disabled={creatingBrand}
+                                onClick={() => createBrand(bulkFormData.brand, 'bulk')}
+                                className="h-auto p-0 text-xs text-amber-600"
+                              >
+                                {creatingBrand ? 'Saving...' : 'or Save current brand'}
+                              </Button>
+                            </div>
                           );
                         })()}
-                        {bulkBrandCustom && bulkFormData.brand.trim() && (
-                          <div className="mt-2 flex justify-end">
-                            <Button size="sm" variant="outline" disabled={creatingBrand} onClick={() => createBrand(bulkFormData.brand, 'bulk')}>
-                              {creatingBrand ? 'Saving...' : 'Save brand'}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                       <div>
                         <div className="flex items-center space-x-1">
@@ -1571,40 +1707,46 @@ const PurchaseAssetRegistration: React.FC = () => {
                           />
                         )}
                         {bulkModelCustom && bulkFormData.model.trim() && bulkFormData.brand && (
-                          <div className="mt-2 space-y-1">
-                            <Tooltip
-                              open={modelTooltipOpenKey === 'bulk'}
-                              onOpenChange={(open) => { if (!open && modelTooltipOpenKey === 'bulk') setModelTooltipOpenKey(null); }}
-                            >
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer"
-                                  disabled={modelMatchLoadingKey === 'bulk'}
-                                  onClick={() => fetchModelMatches(bulkFormData.model, 'bulk')}
-                                >
-                                  <Info className="h-3.5 w-3.5" />
-                                  {modelMatchLoadingKey === 'bulk' ? 'Fetching...' : 'View similar models'}
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <div className="text-xs max-w-xs space-y-1">
-                                  {modelMatchLoadingKey === 'bulk' && <div>Fetching...</div>}
-                                  {modelMatchLoadingKey !== 'bulk' && (modelMatchResults['bulk']?.length
-                                    ? modelMatchResults['bulk'].map(m => (
-                                        <div key={m} className="flex items-center justify-between gap-2">
-                                          <span>{m}</span>
-                                          <button className="text-yellow-300 hover:underline" onClick={() => selectBulkModelSuggestion(m)}>Choose</button>
-                                        </div>
-                                      ))
-                                    : <div>No matches yet</div>
-                                  )}
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                            <div className="flex justify-end">
-                              <Button size="sm" variant="outline" disabled={creatingModel} onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}>
-                                {creatingModel ? 'Saving...' : 'Save model'}
+                          <div className="mt-1">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <Tooltip
+                                open={modelTooltipOpenKey === 'bulk'}
+                                onOpenChange={(open) => { if (!open && modelTooltipOpenKey === 'bulk') setModelTooltipOpenKey(null); }}
+                              >
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
+                                    disabled={modelMatchLoadingKey === 'bulk'}
+                                    onClick={() => fetchModelMatches(bulkFormData.model, 'bulk')}
+                                  >
+                                    <Info className="h-3.5 w-3.5" />
+                                    {modelMatchLoadingKey === 'bulk' ? 'Fetching...' : 'View similar models'}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="text-xs max-w-xs space-y-1">
+                                    {modelMatchLoadingKey === 'bulk' && <div>Fetching...</div>}
+                                    {modelMatchLoadingKey !== 'bulk' && (modelMatchResults['bulk']?.length
+                                      ? modelMatchResults['bulk'].map(m => (
+                                          <div key={m} className="flex items-center justify-between gap-2">
+                                            <span>{m}</span>
+                                            <button className="text-yellow-300 hover:underline" onClick={() => selectBulkModelSuggestion(m)}>Choose</button>
+                                          </div>
+                                        ))
+                                      : <div>No matches yet</div>
+                                    )}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                              <Button
+                                size="sm"
+                                variant="link"
+                                disabled={creatingModel}
+                                onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}
+                                className="h-auto p-0 text-xs text-amber-600"
+                              >
+                                {creatingModel ? 'Saving...' : 'or Save current model'}
                               </Button>
                             </div>
                           </div>
@@ -1712,6 +1854,8 @@ const PurchaseAssetRegistration: React.FC = () => {
                 {assetItems.map((asset, index) => {
                   const isComplete = isAssetFormComplete(asset);
                   const modelOptionsForAsset = modelOptionsCache[asset.brand] || [];
+                  const brandSimilarityIssue = showInlineValidation && hasSimilarityIssueForField(asset, index, 'brand');
+                  const modelSimilarityIssue = showInlineValidation && hasSimilarityIssueForField(asset, index, 'model');
                   return (
                     <TabsContent key={`content-${asset.id}`} value={asset.id}>
                       <Card id={`asset-card-${asset.id}`} className={`relative transition-all duration-200 ${isComplete ? 'ring-0' : 'ring-2 ring-red-300 border-red-300'}`}>
@@ -1741,19 +1885,8 @@ const PurchaseAssetRegistration: React.FC = () => {
                           {/* Row 1: Register Number, Warranty (years), Condition */}
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                              <div className="flex items-center gap-2">
-                                <Label htmlFor={`register_number_${asset.id}`}>Register Number *</Label>
-                              <button
-                                type="button"
-                                className="text-blue-600 hover:underline text-xs"
-                                onClick={() => {
-                                  setActiveAssetId(asset.id);
-                                  setShowSidebar(true);
-                                  fetchExistingAssets();
-                                }}
-                              >
-                                Map existing assets
-                              </button>
+                              <div className="flex items-center gap-2 whitespace-nowrap">
+                                <Label htmlFor={`register_number_${asset.id}`} className="whitespace-nowrap shrink-0">Register Number *</Label>
                               {((asset.category || '').toLowerCase() === 'software') && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1776,6 +1909,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                               required
                               className={`uppercase h-10 ${getFieldRingClass(asset.register_number)} placeholder:normal-case`}
                             />
+                            <button
+                              type="button"
+                              className="mt-1 text-xs text-amber-600 hover:underline inline-flex items-center whitespace-nowrap animate-amberRedBlink"
+                              onClick={() => {
+                                setActiveAssetId(asset.id);
+                                setShowSidebar(true);
+                                fetchExistingAssets();
+                              }}
+                            >
+                              or Use existing assets
+                            </button>
                             {((asset.category || '').toLowerCase() === 'software') && (
                               <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
                             )}
@@ -1837,7 +1981,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                             )}
                           </div>
                           <div>
-                            <Label htmlFor={`brand_${asset.id}`}>Brand</Label>
+                            <Label htmlFor={`brand_${asset.id}`} className={brandSimilarityIssue ? 'text-red-600' : ''}>Brand</Label>
                             {brandOptions.length > 0 && !asset.customBrand ? (
                               <SingleSelect
                                 options={[
@@ -1853,7 +1997,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 searchPlaceholder="Search brands..."
                                 disabled={loadingBrands}
                                 clearable
-                                className={`h-10 ${getFieldRingClass(asset.brand)}`}
+                                className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
                               />
                             ) : (
                               <Input
@@ -1862,38 +2006,46 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
                                 placeholder="Enter brand"
                                 disabled={loadingBrands}
-                                className={`h-10 ${getFieldRingClass(asset.brand)}`}
+                                className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
                               />
                             )}
                             {asset.customBrand && asset.brand.trim() && (() => {
                               const matches = findBrandMatches(asset.brand);
-                              if (!matches.length) return null;
                               return (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-help">
-                                      <Info className="h-3.5 w-3.5" />
-                                      View similar brands
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs max-w-xs">
-                                      {matches.join(', ')}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  {matches.length > 0 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
+                                          <Info className="h-3.5 w-3.5" />
+                                          View similar brands
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <div className="text-xs max-w-xs">
+                                          {matches.join(', ')}
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="link"
+                                    disabled={creatingBrand}
+                                    onClick={() => createBrand(asset.brand, 'asset', asset.id)}
+                                    className="h-auto p-0 text-xs text-amber-600"
+                                  >
+                                    {creatingBrand ? 'Saving...' : 'or Save current brand'}
+                                  </Button>
+                                </div>
                               );
                             })()}
-                            {asset.customBrand && asset.brand.trim() && (
-                              <div className="mt-2 flex justify-end">
-                                <Button size="sm" variant="outline" disabled={creatingBrand} onClick={() => createBrand(asset.brand, 'asset', asset.id)}>
-                                  {creatingBrand ? 'Saving...' : 'Save brand'}
-                                </Button>
-                              </div>
+                            {brandSimilarityIssue && (
+                              <p className="mt-1 text-xs text-red-600">Choose a valid brand from existing similar options.</p>
                             )}
                           </div>
                           <div>
-                            <Label htmlFor={`model_${asset.id}`}>Model</Label>
+                            <Label htmlFor={`model_${asset.id}`} className={modelSimilarityIssue ? 'text-red-600' : ''}>Model</Label>
                             {(!asset.customBrand && !asset.customModel && modelOptionsForAsset.length > 0) ? (
                               <SingleSelect
                                 options={[
@@ -1905,7 +2057,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 placeholder="Select model"
                                 searchPlaceholder="Search models..."
                                 clearable
-                                className={`h-10 ${getFieldRingClass(asset.model)}`}
+                                className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
                               />
                             ) : (
                               <Input
@@ -1913,11 +2065,11 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 value={asset.model}
                                 onChange={(e) => handleAssetModelInput(asset.id, e.target.value)}
                                 placeholder="Enter model"
-                                className={`h-10 ${getFieldRingClass(asset.model)}`}
+                                className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
                               />
                             )}
-                            {asset.model.trim() && asset.brand && (() => {
-                              return (
+                            {asset.model.trim() && asset.brand && (
+                              <div className="mt-1 flex items-center gap-1 flex-wrap">
                                 <Tooltip
                                   open={modelTooltipOpenKey === `asset-${asset.id}`}
                                   onOpenChange={(open) => { if (!open && modelTooltipOpenKey === `asset-${asset.id}`) setModelTooltipOpenKey(null); }}
@@ -1925,7 +2077,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 cursor-pointer"
+                                      className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
                                       disabled={modelMatchLoadingKey === `asset-${asset.id}`}
                                       onClick={() => fetchModelMatches(asset.model, `asset-${asset.id}`)}
                                     >
@@ -1948,14 +2100,21 @@ const PurchaseAssetRegistration: React.FC = () => {
                                     </div>
                                   </TooltipContent>
                                 </Tooltip>
-                              );
-                            })()}
-                            {asset.customModel && asset.model.trim() && asset.brand && (
-                              <div className="mt-2 flex justify-end">
-                                <Button size="sm" variant="outline" disabled={creatingModel} onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}>
-                                  {creatingModel ? 'Saving...' : 'Save model'}
-                                </Button>
+                                {asset.customModel && (
+                                  <Button
+                                    size="sm"
+                                    variant="link"
+                                    disabled={creatingModel}
+                                    onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}
+                                    className="h-auto p-0 text-xs text-amber-600"
+                                  >
+                                    {creatingModel ? 'Saving...' : 'or Save current model'}
+                                  </Button>
+                                )}
                               </div>
+                            )}
+                            {modelSimilarityIssue && (
+                              <p className="mt-1 text-xs text-red-600">Choose a valid model from existing similar options.</p>
                             )}
                           </div>
                         </div>
@@ -2123,28 +2282,15 @@ const PurchaseAssetRegistration: React.FC = () => {
 
                 <Separator className="my-3" />
                 <div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        disabled={(() => {
-                          if (saving) return true;
-                          const newItems = assetItems.filter(a => !a.registered);
-                          if (newItems.length === 0) return true; // nothing new to submit
-                          return newItems.some(item => {
-                            const isSoftware = (item.category || '').toLowerCase() === 'software';
-                            const missingRegister = !isSoftware && !item.register_number?.trim();
-                            const missingDesc = !item.description?.trim();
-                            const missingBrand = !item.brand?.trim();
-                            const missingModel = !item.model?.trim();
-                            return missingRegister || missingDesc || missingBrand || missingModel;
-                          });
-                        })()}
-                        className={`w-full text-white ${editMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'}`}
-                      >
-                        <Save className="mr-2 h-4 w-4" />
-                        {saving ? (editMode ? 'Updating...' : 'Submitting...') : (editMode ? 'Update' : 'Submit')}
-                      </Button>
-                    </AlertDialogTrigger>
+                  <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+                    <Button
+                      disabled={saving || assetItems.filter(a => !a.registered).length === 0}
+                      onClick={handleSubmitClick}
+                      className={`w-full text-white ${editMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'}`}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      {saving ? (editMode ? 'Updating...' : 'Submitting...') : (editMode ? 'Update' : 'Submit')}
+                    </Button>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Confirm Asset Registration</AlertDialogTitle>
@@ -2194,7 +2340,7 @@ const PurchaseAssetRegistration: React.FC = () => {
               <div className="font-semibold text-amber-900">Quick guide</div>
               <div>1) Select <span className="font-semibold">Brand</span> first.</div>
               <div>2) Choose an existing Model from the list, or pick <span className="font-semibold">Add new model…</span> to create one.</div>
-              <div>3) If adding new, use <span className="font-semibold">View similar models</span> to avoid duplicates, then hit <span className="font-semibold">Save model</span>.</div>
+              <div>3) If adding new, use <span className="font-semibold">View similar models</span> or <span className="font-semibold">Save current model</span>.</div>
             </div>
           </div>
         </div>
@@ -2295,6 +2441,106 @@ const PurchaseAssetRegistration: React.FC = () => {
           </div>
         )}
       />
+      <AlertDialog open={requiredDialogOpen} onOpenChange={setRequiredDialogOpen}>
+        <AlertDialogContent className='bg-red-50'>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700">Required Fields Missing</AlertDialogTitle>
+            <AlertDialogDescription className="text-red-700/90 text-sm">
+              Submission is blocked. Fill in all required fields before continuing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-[45vh] overflow-auto text-sm space-y-3">
+            {requiredFieldIssues.map((issue) => (
+              <div key={issue.assetId} className="rounded">
+                <div className="font-semibold text-red-700">{issue.assetLabel}</div>
+                <div className="text-red-700 mt-1">
+                  Missing: {issue.missingFields.join(', ')}
+                </div>
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction className='bg-red-500'
+              onClick={() => {
+                setRequiredDialogOpen(false);
+                const firstIssue = requiredFieldIssues[0];
+                if (firstIssue) {
+                  setActiveTab(firstIssue.assetId);
+                  requestAnimationFrame(() => scrollToAsset(firstIssue.assetId));
+                }
+              }}
+            >
+              Review Fields
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={similarityDialogOpen} onOpenChange={setSimilarityDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700">Resolve Similar Brand/Model First</AlertDialogTitle>
+            <AlertDialogDescription className="text-red-700/90 text-sm">
+              Submission is blocked because some fields still show similar existing options. Choose the valid existing option before submitting.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-[45vh] overflow-auto text-sm space-y-3">
+            {submitSimilarityIssues.map((issue) => (
+              <div key={issue.assetId} className="rounded">
+                <div className="font-semibold text-red-700">{issue.assetLabel}</div>
+                {issue.unresolvedBrand && issue.brandMatches.length > 0 && (
+                  <div className="text-red-700 text-sm mt-1">
+                    Similar brands: {issue.brandMatches.join(', ')}
+                  </div>
+                )}
+                {issue.unresolvedBrand && issue.brandMatches.length === 0 && (
+                  <div className="text-red-700 text-sm mt-1">
+                    Brand is not in existing options. Choose existing brand or save current brand.
+                  </div>
+                )}
+                {issue.unresolvedModel && issue.modelMatches.length > 0 && (
+                  <div className="text-red-700 text-sm mt-1">
+                    Similar models: {issue.modelMatches.join(', ')}
+                  </div>
+                )}
+                {issue.unresolvedModel && issue.modelMatches.length === 0 && (
+                  <div className="text-red-700 text-sm mt-1">
+                    Model is not in existing options. Choose existing model or save current model.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogAction className='bg-red-600'
+              onClick={() => {
+                setSimilarityDialogOpen(false);
+                const firstIssue = submitSimilarityIssues[0];
+                if (firstIssue) {
+                  setActiveTab(firstIssue.assetId);
+                  requestAnimationFrame(() => scrollToAsset(firstIssue.assetId));
+                }
+              }}
+            >
+              Review Fields
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={submitErrorDialogOpen} onOpenChange={setSubmitErrorDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700">Submission Failed</AlertDialogTitle>
+            <AlertDialogDescription className="text-red-700/90">
+              {submitErrorMessage || 'Failed to register assets'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setSubmitErrorDialogOpen(false)}>
+              Review Form
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Success dialog */}
       <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
         <AlertDialogContent>
