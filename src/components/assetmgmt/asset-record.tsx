@@ -362,7 +362,7 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
         ? transformedData.filter(asset => asset.record_status?.toLowerCase() === 'active')
         : transformedData;
     const filteredData = showAssetOnlyToggle && hideNonAsset
-        ? contextData.filter(asset => asset.classification === 'asset')
+        ? contextData.filter(asset => String(asset.classification || '').trim().toLowerCase() === 'asset')
         : contextData;
 
     // Apply type filter if selected
@@ -383,9 +383,9 @@ const CoreAsset: React.FC<AssetRecordProps> = ({
     const getCountsByClassification = (typeName: string) => {
         const typeData = filteredData.filter(a => (a as any).asset_type === typeName);
         return {
-            asset: typeData.filter(a => a.classification === 'asset').length,
-            rental: typeData.filter(a => a.classification === 'rental').length,
-            consumable: typeData.filter(a => a.classification === 'consumable').length,
+            asset: typeData.filter(a => String(a.classification || '').trim().toLowerCase() === 'asset').length,
+            rental: typeData.filter(a => String(a.classification || '').trim().toLowerCase() === 'rental').length,
+            consumable: typeData.filter(a => String(a.classification || '').trim().toLowerCase() === 'consumable').length,
             total: typeData.length
         };
     };
