@@ -62,6 +62,8 @@ interface AssetFormData {
   costcenter: string;
   description: string;
   location: string;
+  assignment: string;
+  purpose: string;
   condition: string;
   classification: string;
   warranty_period: string; // years
@@ -106,6 +108,12 @@ interface CategoryOption {
   name: string;
 }
 
+interface EmployeeOption extends ComboboxOption {
+  ramcoId?: string;
+  employeeId?: number;
+  departmentId?: number;
+}
+
 interface SimilarityIssue {
   assetId: string;
   assetLabel: string;
@@ -139,6 +147,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [costCenterOptions, setCostCenterOptions] = useState<CostCenterOption[]>([]);
   const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [creatingBrand, setCreatingBrand] = useState(false);
   const [creatingModel, setCreatingModel] = useState(false);
@@ -147,6 +156,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [loadingCostCenters, setLoadingCostCenters] = useState(false);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [modelMatchLoadingKey, setModelMatchLoadingKey] = useState<string | null>(null);
   const [modelMatchResults, setModelMatchResults] = useState<Record<string, string[]>>({});
   const [modelTooltipOpenKey, setModelTooltipOpenKey] = useState<string | null>(null);
@@ -167,6 +177,8 @@ const PurchaseAssetRegistration: React.FC = () => {
     costcenter: '',
     description: '',
     location: '',
+    assignment: '',
+    purpose: '',
     condition: 'new',
     classification: 'Asset',
     warranty_period: '',
@@ -208,6 +220,7 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
     fetchCostCenterOptions();
     fetchLocationOptions();
+    fetchEmployeeOptions();
   }, [typeId]);
 
   useEffect(() => {
@@ -250,22 +263,6 @@ const PurchaseAssetRegistration: React.FC = () => {
     }));
   }, [modelOptionsCache, bulkFormData.brand, bulkFormData.model]);
 
-  // Fetch registry assets for this purchase id
-  useEffect(() => {
-    if (!purchaseId) return;
-    const load = async () => {
-      try {
-        const res = await authenticatedApi.get(`/api/purchases/registry?pr=${purchaseId}`);
-        const data = (res as any).data?.data || (res as any).data || [];
-        setRegistryAssets(Array.isArray(data) && data.length > 0 ? data : []);
-      } catch (e) {
-        console.warn('Failed to load purchase registry', e);
-        setRegistryAssets([]);
-      }
-    };
-    load();
-  }, [purchaseId]);
-
   // Map registry assets to UI items once options are available
   useEffect(() => {
     if (!purchase) return;
@@ -277,6 +274,43 @@ const PurchaseAssetRegistration: React.FC = () => {
       return found ? found.name : '';
     };
 
+    const resolveAssignmentValue = (asset: any): string => {
+      const assignmentCandidates = [
+        asset?.ramco_id,
+        asset?.employee_id,
+        asset?.assignee_id,
+        asset?.assignee?.ramco_id,
+        asset?.assignee?.employee_id,
+        asset?.owner?.ramco_id,
+        asset?.owner?.employee_id,
+      ];
+
+      for (const candidate of assignmentCandidates) {
+        const raw = String(candidate ?? '').trim();
+        if (!raw) continue;
+        const matched = employeeOptions.find((option) =>
+          option.value === raw ||
+          (option.ramcoId && option.ramcoId === raw) ||
+          (typeof option.employeeId === 'number' && String(option.employeeId) === raw)
+        );
+        return matched?.value || raw;
+      }
+
+      const nameCandidates = [
+        asset?.assignee?.full_name,
+        asset?.assignee?.name,
+        asset?.owner?.full_name,
+        asset?.owner?.name,
+      ];
+      for (const name of nameCandidates) {
+        const raw = String(name ?? '').trim();
+        if (!raw) continue;
+        const matched = employeeOptions.find((option) => option.label === raw);
+        if (matched) return matched.value;
+      }
+      return '';
+    };
+
     let items: AssetItem[] = registryAssets.map((a: any, idx: number) => ({
       id: `asset_${idx + 1}`,
       register_number: a.register_number || '',
@@ -286,9 +320,11 @@ const PurchaseAssetRegistration: React.FC = () => {
       costcenter: mapIdToName(costCenterOptions as any, a.costcenter_id) || (() => { const cc: any = (purchase as any).costcenter ?? (purchase as any).request?.costcenter; return typeof cc === 'string' ? cc : (cc?.name || ''); })(),
       description: a.description || (purchase as any).items || (purchase as any).description || '',
       location: mapIdToName(locationOptions as any, a.location_id) || getDefaultLocationName() || '',
+      assignment: resolveAssignmentValue(a),
+      purpose: String(a.purpose || ''),
       condition: a.item_condition || 'new',
       classification: a.classification || 'Asset',
-      warranty_period: '',
+      warranty_period: a.warranty_period !== null && typeof a.warranty_period !== 'undefined' ? String(a.warranty_period) : '',
       notes: '',
       registered: !editMode,
       registry_id: a.id,
@@ -324,15 +360,17 @@ const PurchaseAssetRegistration: React.FC = () => {
           costcenter: purchaseCostcenter,
           description: (purchase as any).items || (purchase as any).description || '',
           location: '',
+          assignment: '',
+          purpose: '',
           condition: 'new',
           classification: 'Asset',
           warranty_period: '',
-      notes: '',
-        registered: false,
-        customBrand: false,
-        customModel: false
-      });
-    }
+          notes: '',
+          registered: false,
+          customBrand: false,
+          customModel: false
+        });
+      }
     }
 
     if (items.length > 0) {
@@ -349,11 +387,14 @@ const PurchaseAssetRegistration: React.FC = () => {
         costcenter: first.costcenter,
         description: first.description,
         location: first.location,
+        assignment: first.assignment,
+        purpose: first.purpose,
         condition: first.condition,
         classification: first.classification,
+        warranty_period: first.warranty_period,
       }));
     }
-  }, [registryAssets, brandOptions, categoryOptions, costCenterOptions, locationOptions, purchase]);
+  }, [registryAssets, brandOptions, categoryOptions, costCenterOptions, locationOptions, employeeOptions, purchase]);
 
   // After locations load, set default location for bulk and any asset missing location
   useEffect(() => {
@@ -434,10 +475,13 @@ const PurchaseAssetRegistration: React.FC = () => {
       if (!normalized.items && normalized.description) {
         normalized.items = normalized.description;
       }
+      // Registry assets are now included in /api/purchases/{id} as `assets`
+      setRegistryAssets(Array.isArray(normalized.assets) ? normalized.assets : []);
       setPurchase(normalized);
     } catch (error) {
       toast.error('Failed to load purchase data');
       console.error('Error loading purchase:', error);
+      setRegistryAssets([]);
     } finally {
       setLoading(false);
     }
@@ -554,6 +598,9 @@ const PurchaseAssetRegistration: React.FC = () => {
   const getAssetLabel = (asset: AssetItem, index: number): string => {
     return asset.register_number?.trim() || `Asset #${index + 1}`;
   };
+
+  // Normalize register number to uppercase before any validation/payload usage.
+  const normalizeRegisterNumber = (value: string): string => String(value || '').trim().toUpperCase();
 
   const getSimilarityIssueForAsset = (asset: AssetItem, index: number): SimilarityIssue | null => {
     const brandName = (asset.brand || '').trim();
@@ -684,6 +731,50 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
+  const fetchEmployeeOptions = async () => {
+    setLoadingEmployees(true);
+    try {
+      const response = await authenticatedApi.get('/api/assets/employees?status=active');
+      const raw = (response as any)?.data;
+      const list = Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.items)
+          ? raw.items
+          : Array.isArray(raw?.data?.items)
+            ? raw.data.items
+            : Array.isArray(raw)
+              ? raw
+              : [];
+
+      const seen = new Set<string>();
+      const options: EmployeeOption[] = [];
+      list.forEach((item: any, index: number) => {
+        const ramcoId = String(item?.ramco_id ?? '').trim();
+        const employeeIdRaw = item?.employee_id ?? item?.id;
+        const parsedEmployeeId = Number(employeeIdRaw);
+        const employeeId = Number.isFinite(parsedEmployeeId) ? parsedEmployeeId : undefined;
+        const value = ramcoId || (employeeId != null ? String(employeeId) : '');
+        if (!value || seen.has(value)) return;
+        seen.add(value);
+        options.push({
+          value,
+          label: String(item?.full_name ?? item?.name ?? `Employee ${index + 1}`),
+          ramcoId: ramcoId || undefined,
+          employeeId,
+          departmentId: Number.isFinite(Number(item?.department?.id ?? item?.department_id))
+            ? Number(item?.department?.id ?? item?.department_id)
+            : undefined
+        });
+      });
+      setEmployeeOptions(options);
+    } catch (error) {
+      console.error('Failed to load employee options:', error);
+      setEmployeeOptions([]);
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
   // Default location name resolved from options for id=2
   const getDefaultLocationName = (): string => {
     const loc = locationOptions.find((l: any) => Number(l.id) === 2);
@@ -718,6 +809,8 @@ const PurchaseAssetRegistration: React.FC = () => {
       costcenter: purchaseCostcenter,
       description: (purchase as any).items || (purchase as any).description || '',
       location: getDefaultLocationName() || '',
+      assignment: '',
+      purpose: '',
       condition: 'new',
       classification: 'Asset',
       warranty_period: '',
@@ -734,6 +827,8 @@ const PurchaseAssetRegistration: React.FC = () => {
         costcenter: purchaseCostcenter,
         description: (purchase as any).items || (purchase as any).description || '',
         location: getDefaultLocationName() || '',
+        assignment: '',
+        purpose: '',
         condition: 'new',
         classification: 'Asset',
         warranty_period: '',
@@ -751,7 +846,7 @@ const PurchaseAssetRegistration: React.FC = () => {
   const handleAssetChange = (id: string, field: keyof AssetFormData, value: string) => {
     let next = value;
     if (field === 'register_number') {
-      next = (value || '').toUpperCase();
+      next = normalizeRegisterNumber(value);
     } else if (field === 'warranty_period') {
       next = (value || '').replace(/\D+/g, '');
     }
@@ -1126,6 +1221,9 @@ const PurchaseAssetRegistration: React.FC = () => {
    *     model: string,
    *     costcenter_id: number | null,
    *     location_id: number | null,
+   *     department_id: number | null,
+   *     ramco_id: string | null,
+   *     purpose: string | null,
    *     item_condition: string, // renamed from `condition` to avoid SQL reserved word
    *     description: string,
    *   }>
@@ -1154,6 +1252,7 @@ const PurchaseAssetRegistration: React.FC = () => {
       const costCenterIdByName = (name: string) => costCenterOptions.find(c => c.name === name)?.id;
       const locationIdByName = (name: string) => locationOptions.find(l => l.name === name)?.id;
       const categoryIdByName = (name: string) => categoryOptions.find(c => c.name === name)?.id;
+      const employeeByValue = (value: string) => employeeOptions.find(e => e.value === value);
 
       // Ensure numeric IDs in payload
       const resolvedTypeId: number | null = (() => {
@@ -1163,8 +1262,16 @@ const PurchaseAssetRegistration: React.FC = () => {
       })();
 
       const buildPayload = (item: AssetItem) => ({
-        register_number: (item.register_number || '').toUpperCase(),
-        classification: item.classification,
+        ...((): { ramco_id: string | null; department_id: number | null } => {
+          const selected = employeeByValue(item.assignment);
+          const assignment = String(item.assignment || '').trim();
+          const ramcoId = selected?.ramcoId
+            ?? (assignment || null);
+          const departmentId = selected?.departmentId ?? null;
+          return { ramco_id: ramcoId, department_id: departmentId };
+        })(),
+        register_number: normalizeRegisterNumber(item.register_number),
+        classification: String(item.classification || '').toLowerCase(),
         type_id: resolvedTypeId,
         category_id: categoryIdByName(item.category) ?? null,
         brand_id: ((): number | null => {
@@ -1176,6 +1283,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         warranty_period: item.warranty_period ? Number(item.warranty_period) : null,
         costcenter_id: costCenterIdByName(item.costcenter) ?? null,
         location_id: locationIdByName(item.location) ?? null,
+        purpose: item.purpose ? String(item.purpose) : null,
         item_condition: item.condition,
         description: item.description,
       });
@@ -1601,219 +1709,238 @@ const PurchaseAssetRegistration: React.FC = () => {
 
                   {/* Row 2: Category, Brand, Model */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-category">Category</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('category')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {categoryOptions.length > 0 ? (
-                          <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
-                        ) : (
-                          <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-brand">Brand</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('brand')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {brandOptions.length > 0 && !bulkBrandCustom ? (
-                          <SingleSelect
-                            options={[
-                              ...brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` })),
-                              { value: '__add_new_brand', label: 'Add new brand...' }
-                            ]}
-                            value={bulkFormData.brand}
-                            onValueChange={handleBulkBrandSelect}
-                            placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'}
-                            searchPlaceholder="Search brands..."
-                            disabled={loadingBrands}
-                            clearable
-                            className="h-10"
-                          />
-                        ) : (
-                          <Input
-                            id="bulk-brand"
-                            value={bulkFormData.brand}
-                            onChange={(e) => handleBulkBrandInput(e.target.value)}
-                            placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'}
-                            disabled={loadingBrands}
-                            className="h-10"
-                          />
-                        )}
-                        {bulkBrandCustom && bulkFormData.brand.trim() && (() => {
-                          const matches = findBrandMatches(bulkFormData.brand);
-                          return (
-                            <div className="mt-1 flex items-center gap-1 flex-wrap">
-                              {matches.length > 0 && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
-                                      <Info className="h-3.5 w-3.5" />
-                                      View similar brands
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs max-w-xs">
-                                      {matches.join(', ')}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="link"
-                                disabled={creatingBrand}
-                                onClick={() => createBrand(bulkFormData.brand, 'bulk')}
-                                className="h-auto p-0 text-xs text-amber-600"
-                              >
-                                {creatingBrand ? 'Saving...' : 'or Save current brand'}
-                              </Button>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-model">Model</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('model')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {(!bulkBrandCustom && !bulkModelCustom && (modelOptionsCache[bulkFormData.brand]?.length || 0) > 0) ? (
-                          <SingleSelect
-                            options={[
-                              ...(modelOptionsCache[bulkFormData.brand] || []).map(option => ({ value: option.name, label: option.name })),
-                              { value: '__add_new_model', label: 'Add new model...' }
-                            ]}
-                            value={bulkFormData.model}
-                            onValueChange={handleBulkModelSelect}
-                            placeholder="Select model"
-                            searchPlaceholder="Search models..."
-                            clearable
-                            className="h-10"
-                          />
-                        ) : (
-                          <Input
-                            id="bulk-model"
-                            value={bulkFormData.model}
-                            onChange={(e) => handleBulkModelInput(e.target.value)}
-                            placeholder="Enter model"
-                            className="h-10"
-                          />
-                        )}
-                        {bulkModelCustom && bulkFormData.model.trim() && bulkFormData.brand && (
-                          <div className="mt-1">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <Tooltip
-                                open={modelTooltipOpenKey === 'bulk'}
-                                onOpenChange={(open) => { if (!open && modelTooltipOpenKey === 'bulk') setModelTooltipOpenKey(null); }}
-                              >
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
-                                    disabled={modelMatchLoadingKey === 'bulk'}
-                                    onClick={() => fetchModelMatches(bulkFormData.model, 'bulk')}
-                                  >
-                                    <Info className="h-3.5 w-3.5" />
-                                    {modelMatchLoadingKey === 'bulk' ? 'Fetching...' : 'View similar models'}
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <div className="text-xs max-w-xs space-y-1">
-                                    {modelMatchLoadingKey === 'bulk' && <div>Fetching...</div>}
-                                    {modelMatchLoadingKey !== 'bulk' && (modelMatchResults['bulk']?.length
-                                      ? modelMatchResults['bulk'].map(m => (
-                                          <div key={m} className="flex items-center justify-between gap-2">
-                                            <span>{m}</span>
-                                            <button className="text-yellow-300 hover:underline" onClick={() => selectBulkModelSuggestion(m)}>Choose</button>
-                                          </div>
-                                        ))
-                                      : <div>No matches yet</div>
-                                    )}
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
-                              <Button
-                                size="sm"
-                                variant="link"
-                                disabled={creatingModel}
-                                onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}
-                                className="h-auto p-0 text-xs text-amber-600"
-                              >
-                                {creatingModel ? 'Saving...' : 'or Save current model'}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Row 3: Classification, Cost Center, Location */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-classification">Classification</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('classification')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <SingleSelect
-                          options={[
-                            { value: 'Asset', label: 'Asset' },
-                            { value: 'Consumable', label: 'Consumable' },
-                            { value: 'Rental', label: 'Rental' },
-                            { value: 'Non-Asset', label: 'Non-Asset' },
-                          ]}
-                          value={bulkFormData.classification}
-                          onValueChange={(value) => handleBulkChange('classification', value)}
-                          placeholder="Select classification"
-                          className="h-10"
-                        />
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-costcenter">Cost Center</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('costcenter')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {costCenterOptions.length > 0 ? (
-                          <SingleSelect options={costCenterOptions.map(option => ({ value: option.name, label: `${option.name}${option.code ? ` (${option.code})` : ''}` }))} value={bulkFormData.costcenter} onValueChange={(value) => handleBulkChange('costcenter', value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Select cost center'} searchPlaceholder="Search cost centers..." disabled={loadingCostCenters} clearable className="h-10" />
-                        ) : (
-                          <Input id="bulk-costcenter" value={bulkFormData.costcenter} onChange={(e) => handleBulkChange('costcenter', e.target.value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Enter cost center'} disabled={loadingCostCenters} className="h-10" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="bulk-location">Location</Label>
-                          <Button variant="ghost" size="sm" onClick={() => copyToAll('location')} className="h-5 w-5 p-0">
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {locationOptions.length > 0 ? (
-                          <SingleSelect options={locationOptions.map(option => ({ value: option.name, label: `${option.name}${option.building ? ` (${option.building})` : ''}` }))} value={bulkFormData.location} onValueChange={(value) => handleBulkChange('location', value)} placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} searchPlaceholder="Search locations..." disabled={loadingLocations} clearable className="h-10" />
-                        ) : (
-                          <Input id="bulk-location" value={bulkFormData.location} onChange={(e) => handleBulkChange('location', e.target.value)} placeholder={loadingLocations ? 'Loading locations...' : 'Enter location'} disabled={loadingLocations} className="h-10" />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Row 4: Description */}
                     <div>
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="bulk-description">Description *</Label>
-                        <Button variant="ghost" size="sm" onClick={() => copyToAll('description')} className="h-6 w-6 p-0">
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-category">Category</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('category')} className="h-5 w-5 p-0">
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
-                      <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
+                      {categoryOptions.length > 0 ? (
+                        <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
+                      ) : (
+                        <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
+                      )}
                     </div>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-brand">Brand</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('brand')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {brandOptions.length > 0 && !bulkBrandCustom ? (
+                        <SingleSelect
+                          options={[
+                            ...brandOptions.map(option => ({ value: option.name, label: `${option.icon ? `${option.icon} ` : ''}${option.name}` })),
+                            { value: '__add_new_brand', label: 'Add new brand...' }
+                          ]}
+                          value={bulkFormData.brand}
+                          onValueChange={handleBulkBrandSelect}
+                          placeholder={loadingBrands ? 'Loading brands...' : 'Select brand'}
+                          searchPlaceholder="Search brands..."
+                          disabled={loadingBrands}
+                          clearable
+                          className="h-10"
+                        />
+                      ) : (
+                        <Input
+                          id="bulk-brand"
+                          value={bulkFormData.brand}
+                          onChange={(e) => handleBulkBrandInput(e.target.value)}
+                          placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'}
+                          disabled={loadingBrands}
+                          className="h-10"
+                        />
+                      )}
+                      {bulkBrandCustom && bulkFormData.brand.trim() && (() => {
+                        const matches = findBrandMatches(bulkFormData.brand);
+                        return (
+                          <div className="mt-1 flex items-center gap-1 flex-wrap">
+                            {matches.length > 0 && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
+                                    <Info className="h-3.5 w-3.5" />
+                                    View similar brands
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="text-xs max-w-xs">
+                                    {matches.join(', ')}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="link"
+                              disabled={creatingBrand}
+                              onClick={() => createBrand(bulkFormData.brand, 'bulk')}
+                              className="h-auto p-0 text-xs text-amber-600"
+                            >
+                              {creatingBrand ? 'Saving...' : 'or Save current brand'}
+                            </Button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-model">Model</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('model')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {(!bulkBrandCustom && !bulkModelCustom && (modelOptionsCache[bulkFormData.brand]?.length || 0) > 0) ? (
+                        <SingleSelect
+                          options={[
+                            ...(modelOptionsCache[bulkFormData.brand] || []).map(option => ({ value: option.name, label: option.name })),
+                            { value: '__add_new_model', label: 'Add new model...' }
+                          ]}
+                          value={bulkFormData.model}
+                          onValueChange={handleBulkModelSelect}
+                          placeholder="Select model"
+                          searchPlaceholder="Search models..."
+                          clearable
+                          className="h-10"
+                        />
+                      ) : (
+                        <Input
+                          id="bulk-model"
+                          value={bulkFormData.model}
+                          onChange={(e) => handleBulkModelInput(e.target.value)}
+                          placeholder="Enter model"
+                          className="h-10"
+                        />
+                      )}
+                      {bulkModelCustom && bulkFormData.model.trim() && bulkFormData.brand && (
+                        <div className="mt-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Tooltip
+                              open={modelTooltipOpenKey === 'bulk'}
+                              onOpenChange={(open) => { if (!open && modelTooltipOpenKey === 'bulk') setModelTooltipOpenKey(null); }}
+                            >
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
+                                  disabled={modelMatchLoadingKey === 'bulk'}
+                                  onClick={() => fetchModelMatches(bulkFormData.model, 'bulk')}
+                                >
+                                  <Info className="h-3.5 w-3.5" />
+                                  {modelMatchLoadingKey === 'bulk' ? 'Fetching...' : 'View similar models'}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-xs max-w-xs space-y-1">
+                                  {modelMatchLoadingKey === 'bulk' && <div>Fetching...</div>}
+                                  {modelMatchLoadingKey !== 'bulk' && (modelMatchResults['bulk']?.length
+                                    ? modelMatchResults['bulk'].map(m => (
+                                      <div key={m} className="flex items-center justify-between gap-2">
+                                        <span>{m}</span>
+                                        <button className="text-yellow-300 hover:underline" onClick={() => selectBulkModelSuggestion(m)}>Choose</button>
+                                      </div>
+                                    ))
+                                    : <div>No matches yet</div>
+                                  )}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                            <Button
+                              size="sm"
+                              variant="link"
+                              disabled={creatingModel}
+                              onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}
+                              className="h-auto p-0 text-xs text-amber-600"
+                            >
+                              {creatingModel ? 'Saving...' : 'or Save current model'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Row 3: Classification, Cost Center, Location, Purpose */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-classification">Classification</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('classification')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <SingleSelect
+                        options={[
+                          { value: 'asset', label: 'Asset' },
+                          { value: 'consumable', label: 'Consumable' },
+                          { value: 'rental', label: 'Rental' },
+                          { value: 'non-asset', label: 'Non-Asset' },
+                        ]}
+                        value={bulkFormData.classification}
+                        onValueChange={(value) => handleBulkChange('classification', value)}
+                        placeholder="Select classification"
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-costcenter">Cost Center</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('costcenter')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {costCenterOptions.length > 0 ? (
+                        <SingleSelect options={costCenterOptions.map(option => ({ value: option.name, label: `${option.name}${option.code ? ` (${option.code})` : ''}` }))} value={bulkFormData.costcenter} onValueChange={(value) => handleBulkChange('costcenter', value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Select cost center'} searchPlaceholder="Search cost centers..." disabled={loadingCostCenters} clearable className="h-10" />
+                      ) : (
+                        <Input id="bulk-costcenter" value={bulkFormData.costcenter} onChange={(e) => handleBulkChange('costcenter', e.target.value)} placeholder={loadingCostCenters ? 'Loading cost centers...' : 'Enter cost center'} disabled={loadingCostCenters} className="h-10" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-location">Location</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('location')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {locationOptions.length > 0 ? (
+                        <SingleSelect options={locationOptions.map(option => ({ value: option.name, label: `${option.name}${option.building ? ` (${option.building})` : ''}` }))} value={bulkFormData.location} onValueChange={(value) => handleBulkChange('location', value)} placeholder={loadingLocations ? 'Loading locations...' : 'Select location'} searchPlaceholder="Search locations..." disabled={loadingLocations} clearable className="h-10" />
+                      ) : (
+                        <Input id="bulk-location" value={bulkFormData.location} onChange={(e) => handleBulkChange('location', e.target.value)} placeholder={loadingLocations ? 'Loading locations...' : 'Enter location'} disabled={loadingLocations} className="h-10" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-1">
+                        <Label htmlFor="bulk-purpose">Purpose</Label>
+                        <Button variant="ghost" size="sm" onClick={() => copyToAll('purpose')} className="h-5 w-5 p-0">
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <SingleSelect
+                        options={[
+                          { value: 'project', label: 'Project' },
+                          { value: 'pool', label: 'Pool' },
+                        ]}
+                        value={bulkFormData.purpose}
+                        onValueChange={(value) => handleBulkChange('purpose', value)}
+                        placeholder="Select purpose"
+                        clearable
+                        className="h-10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 4: Description */}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="bulk-description">Description *</Label>
+                      <Button variant="ghost" size="sm" onClick={() => copyToAll('description')} className="h-6 w-6 p-0">
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Textarea id="bulk-description" value={bulkFormData.description} onChange={(e) => handleBulkChange('description', e.target.value)} placeholder="Enter asset description" rows={2} />
+                  </div>
                 </>)}
               </div>
             )}
@@ -1887,326 +2014,368 @@ const PurchaseAssetRegistration: React.FC = () => {
                             <div>
                               <div className="flex items-center gap-2 whitespace-nowrap">
                                 <Label htmlFor={`register_number_${asset.id}`} className="whitespace-nowrap shrink-0">Register Number *</Label>
+                                {((asset.category || '').toLowerCase() === 'software') && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex items-center text-amber-600 cursor-help">
+                                        <Info className="h-3.5 w-3.5" />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Register number not required for Software category
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                              <Input
+                                id={`register_number_${asset.id}`}
+                                value={asset.register_number}
+                                onFocus={() => setActiveAssetId(asset.id)}
+                                onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
+                                placeholder="e.g., AST001234"
+                                required
+                                className={`uppercase h-10 ${getFieldRingClass(asset.register_number)} placeholder:normal-case`}
+                              />
+                              <button
+                                type="button"
+                                className="mt-1 text-xs text-amber-600 hover:underline inline-flex items-center whitespace-nowrap animate-amberRedBlink"
+                                onClick={() => {
+                                  setActiveAssetId(asset.id);
+                                  setShowSidebar(true);
+                                  fetchExistingAssets();
+                                }}
+                              >
+                                or Use existing assets
+                              </button>
                               {((asset.category || '').toLowerCase() === 'software') && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex items-center text-amber-600 cursor-help">
-                                      <Info className="h-3.5 w-3.5" />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Register number not required for Software category
-                                  </TooltipContent>
-                                </Tooltip>
+                                <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
                               )}
                             </div>
-                            <Input
-                              id={`register_number_${asset.id}`}
-                              value={asset.register_number}
-                              onFocus={() => setActiveAssetId(asset.id)}
-                              onChange={(e) => handleAssetChange(asset.id, 'register_number', e.target.value)}
-                              placeholder="e.g., AST001234"
-                              required
-                              className={`uppercase h-10 ${getFieldRingClass(asset.register_number)} placeholder:normal-case`}
-                            />
-                            <button
-                              type="button"
-                              className="mt-1 text-xs text-amber-600 hover:underline inline-flex items-center whitespace-nowrap animate-amberRedBlink"
-                              onClick={() => {
-                                setActiveAssetId(asset.id);
-                                setShowSidebar(true);
-                                fetchExistingAssets();
-                              }}
-                            >
-                              or Use existing assets
-                            </button>
-                            {((asset.category || '').toLowerCase() === 'software') && (
-                              <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
-                            )}
+                            <div>
+                              <Label htmlFor={`warranty_period_${asset.id}`}>Warranty Period (years)</Label>
+                              <Input
+                                id={`warranty_period_${asset.id}`}
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={asset.warranty_period}
+                                onChange={(e) => handleAssetChange(asset.id, 'warranty_period', e.target.value)}
+                                placeholder="e.g., 3"
+                                className={`h-10 ${getFieldRingClass(asset.warranty_period)}`}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`condition_${asset.id}`}>Condition</Label>
+                              <SingleSelect
+                                options={[
+                                  { value: 'new', label: 'New' },
+                                  { value: 'good', label: 'Good' },
+                                  { value: 'fair', label: 'Fair' },
+                                  { value: 'poor', label: 'Poor' }
+                                ]}
+                                value={asset.condition}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'condition', value)}
+                                placeholder="Select condition"
+                                className={`h-10 ${getFieldRingClass(asset.condition)}`}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <Label htmlFor={`warranty_period_${asset.id}`}>Warranty Period (years)</Label>
-                            <Input
-                              id={`warranty_period_${asset.id}`}
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={asset.warranty_period}
-                              onChange={(e) => handleAssetChange(asset.id, 'warranty_period', e.target.value)}
-                              placeholder="e.g., 3"
-                              className={`h-10 ${getFieldRingClass(asset.warranty_period)}`}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor={`condition_${asset.id}`}>Condition</Label>
-                            <SingleSelect
-                              options={[
-                                { value: 'new', label: 'New' },
-                                { value: 'good', label: 'Good' },
-                                { value: 'fair', label: 'Fair' },
-                                { value: 'poor', label: 'Poor' }
-                              ]}
-                              value={asset.condition}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'condition', value)}
-                              placeholder="Select condition"
-                              className={`h-10 ${getFieldRingClass(asset.condition)}`}
-                            />
-                          </div>
-                        </div>
 
-                        {/* Row 2: Category, Brand, Model */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <Label htmlFor={`category_${asset.id}`}>Category</Label>
-                            {categoryOptions.length > 0 ? (
-                              <SingleSelect
-                                options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
-                                value={asset.category}
-                                onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
-                                placeholder="Select category"
-                                searchPlaceholder="Search categories..."
-                                disabled={loadingCategories}
-                                clearable
-                                className={`h-10 ${getFieldRingClass(asset.category)}`}
-                              />
-                            ) : (
-                              <Input
-                                id={`category_${asset.id}`}
-                                value={asset.category}
-                                onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
-                                placeholder="Enter category"
-                                disabled={loadingCategories}
-                                className={`h-10 ${getFieldRingClass(asset.category)}`}
-                              />
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor={`brand_${asset.id}`} className={brandSimilarityIssue ? 'text-red-600' : ''}>Brand</Label>
-                            {brandOptions.length > 0 && !asset.customBrand ? (
-                              <SingleSelect
-                                options={[
-                                  ...brandOptions.map(option => ({
-                                    value: option.name,
-                                    label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
-                                  })),
-                                  { value: '__add_new_brand', label: 'Add new brand...' }
-                                ]}
-                                value={asset.brand}
-                                onValueChange={(value) => handleAssetBrandSelect(asset.id, value)}
-                                placeholder="Select brand"
-                                searchPlaceholder="Search brands..."
-                                disabled={loadingBrands}
-                                clearable
-                                className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
-                              />
-                            ) : (
-                              <Input
-                                id={`brand_${asset.id}`}
-                                value={asset.brand}
-                                onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
-                                placeholder="Enter brand"
-                                disabled={loadingBrands}
-                                className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
-                              />
-                            )}
-                            {asset.customBrand && asset.brand.trim() && (() => {
-                              const matches = findBrandMatches(asset.brand);
-                              return (
-                                <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                  {matches.length > 0 && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
-                                          <Info className="h-3.5 w-3.5" />
-                                          View similar brands
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <div className="text-xs max-w-xs">
-                                          {matches.join(', ')}
-                                        </div>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="link"
-                                    disabled={creatingBrand}
-                                    onClick={() => createBrand(asset.brand, 'asset', asset.id)}
-                                    className="h-auto p-0 text-xs text-amber-600"
-                                  >
-                                    {creatingBrand ? 'Saving...' : 'or Save current brand'}
-                                  </Button>
-                                </div>
-                              );
-                            })()}
-                            {brandSimilarityIssue && (
-                              <p className="mt-1 text-xs text-red-600">Choose a valid brand from existing similar options.</p>
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor={`model_${asset.id}`} className={modelSimilarityIssue ? 'text-red-600' : ''}>Model</Label>
-                            {(!asset.customBrand && !asset.customModel && modelOptionsForAsset.length > 0) ? (
-                              <SingleSelect
-                                options={[
-                                  ...modelOptionsForAsset.map(option => ({ value: option.name, label: option.name })),
-                                  { value: '__add_new_model', label: 'Add new model...' }
-                                ]}
-                                value={asset.model}
-                                onValueChange={(value) => handleAssetModelSelect(asset.id, value)}
-                                placeholder="Select model"
-                                searchPlaceholder="Search models..."
-                                clearable
-                                className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
-                              />
-                            ) : (
-                              <Input
-                                id={`model_${asset.id}`}
-                                value={asset.model}
-                                onChange={(e) => handleAssetModelInput(asset.id, e.target.value)}
-                                placeholder="Enter model"
-                                className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
-                              />
-                            )}
-                            {asset.model.trim() && asset.brand && (
-                              <div className="mt-1 flex items-center gap-1 flex-wrap">
-                                <Tooltip
-                                  open={modelTooltipOpenKey === `asset-${asset.id}`}
-                                  onOpenChange={(open) => { if (!open && modelTooltipOpenKey === `asset-${asset.id}`) setModelTooltipOpenKey(null); }}
-                                >
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
-                                      disabled={modelMatchLoadingKey === `asset-${asset.id}`}
-                                      onClick={() => fetchModelMatches(asset.model, `asset-${asset.id}`)}
+                          {/* Row 2: Category, Brand, Model */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <Label htmlFor={`category_${asset.id}`}>Category</Label>
+                              {categoryOptions.length > 0 ? (
+                                <SingleSelect
+                                  options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
+                                  value={asset.category}
+                                  onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
+                                  placeholder="Select category"
+                                  searchPlaceholder="Search categories..."
+                                  disabled={loadingCategories}
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.category)}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`category_${asset.id}`}
+                                  value={asset.category}
+                                  onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
+                                  placeholder="Enter category"
+                                  disabled={loadingCategories}
+                                  className={`h-10 ${getFieldRingClass(asset.category)}`}
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor={`brand_${asset.id}`} className={brandSimilarityIssue ? 'text-red-600' : ''}>Brand</Label>
+                              {brandOptions.length > 0 && !asset.customBrand ? (
+                                <SingleSelect
+                                  options={[
+                                    ...brandOptions.map(option => ({
+                                      value: option.name,
+                                      label: `${option.icon ? `${option.icon} ` : ''}${option.name}`
+                                    })),
+                                    { value: '__add_new_brand', label: 'Add new brand...' }
+                                  ]}
+                                  value={asset.brand}
+                                  onValueChange={(value) => handleAssetBrandSelect(asset.id, value)}
+                                  placeholder="Select brand"
+                                  searchPlaceholder="Search brands..."
+                                  disabled={loadingBrands}
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`brand_${asset.id}`}
+                                  value={asset.brand}
+                                  onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
+                                  placeholder="Enter brand"
+                                  disabled={loadingBrands}
+                                  className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
+                                />
+                              )}
+                              {asset.customBrand && asset.brand.trim() && (() => {
+                                const matches = findBrandMatches(asset.brand);
+                                return (
+                                  <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                    {matches.length > 0 && (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-help">
+                                            <Info className="h-3.5 w-3.5" />
+                                            View similar brands
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <div className="text-xs max-w-xs">
+                                            {matches.join(', ')}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="link"
+                                      disabled={creatingBrand}
+                                      onClick={() => createBrand(asset.brand, 'asset', asset.id)}
+                                      className="h-auto p-0 text-xs text-amber-600"
                                     >
-                                      <Info className="h-3.5 w-3.5" />
-                                      {modelMatchLoadingKey === `asset-${asset.id}` ? 'Fetching...' : 'View similar models'}
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <div className="text-xs max-w-xs space-y-1">
-                                      {modelMatchLoadingKey === `asset-${asset.id}` && <div>Fetching...</div>}
-                                      {modelMatchLoadingKey !== `asset-${asset.id}` && (modelMatchResults[`asset-${asset.id}`]?.length
-                                        ? modelMatchResults[`asset-${asset.id}`].map(m => (
+                                      {creatingBrand ? 'Saving...' : 'or Save current brand'}
+                                    </Button>
+                                  </div>
+                                );
+                              })()}
+                              {brandSimilarityIssue && (
+                                <p className="mt-1 text-xs text-red-600">Choose a valid brand from existing similar options.</p>
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor={`model_${asset.id}`} className={modelSimilarityIssue ? 'text-red-600' : ''}>Model</Label>
+                              {(!asset.customBrand && !asset.customModel && modelOptionsForAsset.length > 0) ? (
+                                <SingleSelect
+                                  options={[
+                                    ...modelOptionsForAsset.map(option => ({ value: option.name, label: option.name })),
+                                    { value: '__add_new_model', label: 'Add new model...' }
+                                  ]}
+                                  value={asset.model}
+                                  onValueChange={(value) => handleAssetModelSelect(asset.id, value)}
+                                  placeholder="Select model"
+                                  searchPlaceholder="Search models..."
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`model_${asset.id}`}
+                                  value={asset.model}
+                                  onChange={(e) => handleAssetModelInput(asset.id, e.target.value)}
+                                  placeholder="Enter model"
+                                  className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
+                                />
+                              )}
+                              {asset.model.trim() && asset.brand && (
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  <Tooltip
+                                    open={modelTooltipOpenKey === `asset-${asset.id}`}
+                                    onOpenChange={(open) => { if (!open && modelTooltipOpenKey === `asset-${asset.id}`) setModelTooltipOpenKey(null); }}
+                                  >
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="text-xs text-blue-600 inline-flex items-center gap-1 cursor-pointer animate-similarModelsBlink"
+                                        disabled={modelMatchLoadingKey === `asset-${asset.id}`}
+                                        onClick={() => fetchModelMatches(asset.model, `asset-${asset.id}`)}
+                                      >
+                                        <Info className="h-3.5 w-3.5" />
+                                        {modelMatchLoadingKey === `asset-${asset.id}` ? 'Fetching...' : 'View similar models'}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <div className="text-xs max-w-xs space-y-1">
+                                        {modelMatchLoadingKey === `asset-${asset.id}` && <div>Fetching...</div>}
+                                        {modelMatchLoadingKey !== `asset-${asset.id}` && (modelMatchResults[`asset-${asset.id}`]?.length
+                                          ? modelMatchResults[`asset-${asset.id}`].map(m => (
                                             <div key={m} className="flex items-center justify-between gap-2">
                                               <span>{m}</span>
                                               <button className="text-yellow-300 hover:underline" onClick={() => selectAssetModelSuggestion(asset.id, m)}>Choose</button>
                                             </div>
                                           ))
-                                        : <div>No matches yet</div>
-                                      )}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                                {asset.customModel && (
-                                  <Button
-                                    size="sm"
-                                    variant="link"
-                                    disabled={creatingModel}
-                                    onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}
-                                    className="h-auto p-0 text-xs text-amber-600"
-                                  >
-                                    {creatingModel ? 'Saving...' : 'or Save current model'}
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                            {modelSimilarityIssue && (
-                              <p className="mt-1 text-xs text-red-600">Choose a valid model from existing similar options.</p>
-                            )}
+                                          : <div>No matches yet</div>
+                                        )}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  {asset.customModel && (
+                                    <Button
+                                      size="sm"
+                                      variant="link"
+                                      disabled={creatingModel}
+                                      onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}
+                                      className="h-auto p-0 text-xs text-amber-600"
+                                    >
+                                      {creatingModel ? 'Saving...' : 'or Save current model'}
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                              {modelSimilarityIssue && (
+                                <p className="mt-1 text-xs text-red-600">Choose a valid model from existing similar options.</p>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        {/* Row 3: Classification, Cost Center, Location */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Row 3: Cost Center, Location, Assignment */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <Label htmlFor={`costcenter_${asset.id}`}>Cost Center</Label>
+                              {costCenterOptions.length > 0 ? (
+                                <SingleSelect
+                                  options={costCenterOptions.map(option => ({
+                                    value: option.name,
+                                    label: `${option.name}${option.code ? ` (${option.code})` : ''}`
+                                  }))}
+                                  value={asset.costcenter}
+                                  onValueChange={(value) => handleAssetChange(asset.id, 'costcenter', value)}
+                                  placeholder="Select cost center"
+                                  searchPlaceholder="Search cost centers..."
+                                  disabled={loadingCostCenters}
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`costcenter_${asset.id}`}
+                                  value={asset.costcenter}
+                                  onChange={(e) => handleAssetChange(asset.id, 'costcenter', e.target.value)}
+                                  placeholder="Enter cost center"
+                                  disabled={loadingCostCenters}
+                                  className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor={`location_${asset.id}`}>Location</Label>
+                              {locationOptions.length > 0 ? (
+                                <SingleSelect
+                                  options={locationOptions.map(option => ({
+                                    value: option.name,
+                                    label: `${option.name}${option.building ? ` (${option.building})` : ''}`
+                                  }))}
+                                  value={asset.location}
+                                  onValueChange={(value) => handleAssetChange(asset.id, 'location', value)}
+                                  placeholder="Select location"
+                                  searchPlaceholder="Search locations..."
+                                  disabled={loadingLocations}
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.location)}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`location_${asset.id}`}
+                                  value={asset.location}
+                                  onChange={(e) => handleAssetChange(asset.id, 'location', e.target.value)}
+                                  placeholder="Enter location"
+                                  disabled={loadingLocations}
+                                  className={`h-10 ${getFieldRingClass(asset.location)}`}
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <Label htmlFor={`assignment_${asset.id}`}>Asset Assignment</Label>
+                              {employeeOptions.length > 0 ? (
+                                <SingleSelect
+                                  options={employeeOptions}
+                                  value={asset.assignment}
+                                  onValueChange={(value) => handleAssetChange(asset.id, 'assignment', value)}
+                                  placeholder={loadingEmployees ? 'Loading assignees...' : 'Select assignee'}
+                                  searchPlaceholder="Search assignees..."
+                                  disabled={loadingEmployees}
+                                  clearable
+                                  className={`h-10 ${getFieldRingClass(asset.assignment)}`}
+                                />
+                              ) : (
+                                <Input
+                                  id={`assignment_${asset.id}`}
+                                  value={asset.assignment}
+                                  onChange={(e) => handleAssetChange(asset.id, 'assignment', e.target.value)}
+                                  placeholder={loadingEmployees ? 'Loading assignees...' : 'Enter assignee'}
+                                  disabled={loadingEmployees}
+                                  className={`h-10 ${getFieldRingClass(asset.assignment)}`}
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Row 4: Classification, Purpose */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
+                              <SingleSelect
+                                options={[
+                                  { value: 'asset', label: 'Asset' },
+                                  { value: 'consumable', label: 'Consumable' },
+                                  { value: 'rental', label: 'Rental' },
+                                  { value: 'non-asset', label: 'Non-Asset' },
+                                ]}
+                                value={asset.classification}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
+                                placeholder="Select classification"
+                                className={`h-10 ${getFieldRingClass(asset.classification)}`}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`purpose_${asset.id}`}>Purpose</Label>
+                              <SingleSelect
+                                options={[
+                                  { value: 'project', label: 'Project' },
+                                  { value: 'pool', label: 'Pool' },
+                                ]}
+                                value={asset.purpose}
+                                onValueChange={(value) => handleAssetChange(asset.id, 'purpose', value)}
+                                placeholder="Select purpose"
+                                clearable
+                                className={`h-10 ${getFieldRingClass(asset.purpose)}`}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Row 5: Description (full width) */}
                           <div>
-                            <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
-                            <SingleSelect
-                              options={[
-                                { value: 'Asset', label: 'Asset' },
-                                { value: 'Consumable', label: 'Consumable' },
-                                { value: 'Rental', label: 'Rental' },
-                                { value: 'Non-Asset', label: 'Non-Asset' },
-                              ]}
-                              value={asset.classification}
-                              onValueChange={(value) => handleAssetChange(asset.id, 'classification', value)}
-                              placeholder="Select classification"
-                              className={`h-10 ${getFieldRingClass(asset.classification)}`}
+                            <Label htmlFor={`description_${asset.id}`}>Description *</Label>
+                            <Textarea
+                              id={`description_${asset.id}`}
+                              value={asset.description}
+                              onChange={(e) => handleAssetChange(asset.id, 'description', e.target.value)}
+                              placeholder="Enter asset description"
+                              rows={2}
+                              required
+                              className={`${getFieldRingClass(asset.description)}`}
                             />
                           </div>
-                          <div>
-                            <Label htmlFor={`costcenter_${asset.id}`}>Cost Center</Label>
-                            {costCenterOptions.length > 0 ? (
-                              <SingleSelect
-                                options={costCenterOptions.map(option => ({
-                                  value: option.name,
-                                  label: `${option.name}${option.code ? ` (${option.code})` : ''}`
-                                }))}
-                                value={asset.costcenter}
-                                onValueChange={(value) => handleAssetChange(asset.id, 'costcenter', value)}
-                                placeholder="Select cost center"
-                                searchPlaceholder="Search cost centers..."
-                                disabled={loadingCostCenters}
-                                clearable
-                                className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
-                              />
-                            ) : (
-                              <Input
-                                id={`costcenter_${asset.id}`}
-                                value={asset.costcenter}
-                                onChange={(e) => handleAssetChange(asset.id, 'costcenter', e.target.value)}
-                                placeholder="Enter cost center"
-                                disabled={loadingCostCenters}
-                                className={`h-10 ${getFieldRingClass(asset.costcenter)}`}
-                              />
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor={`location_${asset.id}`}>Location</Label>
-                            {locationOptions.length > 0 ? (
-                              <SingleSelect
-                                options={locationOptions.map(option => ({
-                                  value: option.name,
-                                  label: `${option.name}${option.building ? ` (${option.building})` : ''}`
-                                }))}
-                                value={asset.location}
-                                onValueChange={(value) => handleAssetChange(asset.id, 'location', value)}
-                                placeholder="Select location"
-                                searchPlaceholder="Search locations..."
-                                disabled={loadingLocations}
-                                clearable
-                                className={`h-10 ${getFieldRingClass(asset.location)}`}
-                              />
-                            ) : (
-                              <Input
-                                id={`location_${asset.id}`}
-                                value={asset.location}
-                                onChange={(e) => handleAssetChange(asset.id, 'location', e.target.value)}
-                                placeholder="Enter location"
-                                disabled={loadingLocations}
-                                className={`h-10 ${getFieldRingClass(asset.location)}`}
-                              />
-                            )}
-                          </div>
-                        </div>
 
-                        {/* Row 4: Description (full width) */}
-                        <div>
-                          <Label htmlFor={`description_${asset.id}`}>Description *</Label>
-                          <Textarea
-                            id={`description_${asset.id}`}
-                            value={asset.description}
-                            onChange={(e) => handleAssetChange(asset.id, 'description', e.target.value)}
-                            placeholder="Enter asset description"
-                            rows={2}
-                            required
-                              className={`${getFieldRingClass(asset.description)}`}
-                          />
-                        </div>
-
-                        {/* Notes removed per requirement */}
+                          {/* Notes removed per requirement */}
                         </CardContent>
                       </Card>
                     </TabsContent>
@@ -2219,20 +2388,20 @@ const PurchaseAssetRegistration: React.FC = () => {
           {/* Right Pane - Register Number Overview */}
           <div className="lg:col-span-1 space-y-4">
             <Card className="sticky top-4">
-                    <CardHeader>
-                      <CardTitle className="text-lg flex items-center justify-between">
-                        <div className="flex items-center">
-                          <Package className="mr-2 h-5 w-5" />
-                          Asset Registration Status
-                        </div>
-                        <div className="text-sm font-normal text-gray-500 flex items-center gap-2">
-                          {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
-                          {purchase && registryAssets && registryAssets.length >= (purchase.qty || 0) && assetItems.every(a => a.registered) && (
-                            <Badge className="bg-green-600 hover:bg-green-600">Completed</Badge>
-                          )}
-                        </div>
-                      </CardTitle>
-                    </CardHeader>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Package className="mr-2 h-5 w-5" />
+                    Asset Registration Status
+                  </div>
+                  <div className="text-sm font-normal text-gray-500 flex items-center gap-2">
+                    {assetItems.filter(asset => isAssetOverviewComplete(asset)).length}/{assetItems.length}
+                    {purchase && registryAssets && registryAssets.length >= (purchase.qty || 0) && assetItems.every(a => a.registered) && (
+                      <Badge className="bg-green-600 hover:bg-green-600">Completed</Badge>
+                    )}
+                  </div>
+                </CardTitle>
+              </CardHeader>
               <CardContent className="space-y-3">
                 {/* Summary Stats */}
                 <div className="grid grid-cols-2 gap-2 mb-4">
