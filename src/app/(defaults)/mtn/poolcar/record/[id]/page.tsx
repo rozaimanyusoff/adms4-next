@@ -1,13 +1,15 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import PoolcarApplicationForm from '@components/maintenance/poolcar-form';
 
-export default function PoolcarRecordApplicationPage({ params }: { params: { id: string } }) {
+export default function PoolcarRecordApplicationPage() {
   const router = useRouter();
-  const isNew = params.id === 'new';
+  const params = useParams<{ id: string }>();
+  const paramId = params?.id ?? '';
+  const isNew = paramId === 'new';
 
   const handleBack = React.useCallback(() => {
     router.push('/mtn/poolcar/record');
@@ -29,7 +31,7 @@ export default function PoolcarRecordApplicationPage({ params }: { params: { id:
       </div>
 
       <PoolcarApplicationForm
-        id={isNew ? undefined : params.id}
+        id={isNew ? undefined : paramId}
         onClose={handleBack}
         onSubmitted={handleBack}
       />

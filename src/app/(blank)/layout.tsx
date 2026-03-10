@@ -44,9 +44,7 @@ const AuthLayout = ({ children }: { children: React.ReactNode }) => {
 
         // If authenticated and trying to access auth pages, redirect to dashboard
         if (authContext?.authData && pathname?.startsWith('/auth/')) {
-            const lastNav = authContext.authData.user?.lastNav;
-            // Fallback changed from '/dashboard' to '/users/profile' to ensure first-time activation/login lands on profile
-            router.push(lastNav && lastNav !== '/' ? lastNav : '/users/profile');
+            router.push('/users/dashboard');
         }
     }, [authContext, router, pathname]);
 

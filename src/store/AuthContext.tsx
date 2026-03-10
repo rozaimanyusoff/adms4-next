@@ -33,6 +33,8 @@ interface User {
   username: string;
   contact: string;
   name: string;
+  lastLogin?: string | null;
+  timeSpent?: number | null;
   avatar?: string | null;
   userType: number;
   status: number;

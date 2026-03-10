@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import React, { useState, useContext, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Input } from '@components/ui/input';
 import { Button } from '@components/ui/button';
 import { Checkbox } from "@components/ui/checkbox";
@@ -21,6 +21,8 @@ interface LoginResponse {
             username: string;
             contact: string;
             name: string;
+            lastLogin?: string | null;
+            timeSpent?: number | null;
             userType: number;
             status: number;
             lastNav: string;
@@ -69,7 +71,7 @@ type AccountResponse = {
 
 const ComponentLogin = () => {
     const router = useRouter();
-    const searchParams = useSearchParams();
+    const USER_DASHBOARD_PATH = '/users/dashboard';
     const [showPassword, setShowPassword] = useState(false);
     const defaultMessage = 'Login to your ADMS account.';
     const [responseMessage, setResponseMessage] = useState<string>(defaultMessage);
@@ -197,11 +199,9 @@ const ComponentLogin = () => {
     }, [rateLimit.blocked, responseMessage]);
 
     useEffect(() => {
-        // Redirect to lastNav if user is already authenticated
+        // Always land authenticated users on dashboard.
         if (authContext?.authData) {
-            const lastNav = authContext.authData.user?.lastNav;
-            const redirectPath = lastNav && lastNav.startsWith('/') ? lastNav : '/users/profile';
-            router.push(redirectPath);
+            router.push(USER_DASHBOARD_PATH);
         }
 
         // Load remembered credentials
@@ -260,7 +260,7 @@ const ComponentLogin = () => {
         };
 
         loadRememberedCredentials();
-    }, [authContext, router]);
+    }, [authContext, router, USER_DASHBOARD_PATH]);
 
     if (authContext?.authData) {
         // Prevent rendering the login page if the user is authenticated
@@ -333,21 +333,8 @@ const ComponentLogin = () => {
                     console.error('AuthContext is not properly initialized.');
                 }
 
-                const qsRedirect = searchParams?.get('redirect');
-                const storedRedirect = (() => {
-                    try { return localStorage.getItem('postLoginRedirect'); } catch { return null; }
-                })();
-                const candidate = qsRedirect || storedRedirect;
-                const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                const isSafe = (p: string | null) => !!p && (p.startsWith('/') || (origin && p.startsWith(origin)));
-                const normalizedCandidate = candidate && origin && candidate.startsWith(origin)
-                    ? candidate.replace(origin, '')
-                    : candidate;
-                const redirectPath = isSafe(candidate)
-                    ? (normalizedCandidate || '/users/profile')
-                    : (response.data.data.user?.lastNav?.startsWith('/') ? response.data.data.user.lastNav : '/users/profile');
                 try { localStorage.removeItem('postLoginRedirect'); } catch { /* ignore */ }
-                router.push(redirectPath);
+                router.push(USER_DASHBOARD_PATH);
                 setRateLimit({ blocked: false, blockedUntilMs: null });
                 setCountdownMs(0);
                 setAttempts(null);

@@ -63,15 +63,6 @@ const readApiAvatarUrl = (payload: any): string | undefined => {
     );
 };
 
-const formatLastActivity = (value: string | null | undefined) => {
-    if (!value) return '—';
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString();
-    }
-    return value;
-};
-
 const formatDateValue = (value?: string | null) => {
     if (!value) return '—';
     if (value.startsWith('1899') || value.startsWith('0000')) return '—';
@@ -342,7 +333,6 @@ const UserProfile: React.FC<React.PropsWithChildren> = ({ children }) => {
                 { label: 'Hire Date', value: formatDateValue(employee?.hire_date) },
                 { label: 'Resignation Date', value: formatDateValue(employee?.resignation_date) },
                 { label: 'Role', value: user.role?.name || '—' },
-                { label: 'Last Navigation', value: formatLastActivity(user.lastNav) },
             ];
         },
         [employee, user]

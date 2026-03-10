@@ -2,7 +2,6 @@
     "compilerOptions": {
         "target": "ES2017",
         "lib": ["dom", "dom.iterable", "esnext"],
-        "ignoreDeprecations": "5.0",
         "allowJs": true,
         "skipLibCheck": true,
         "strict": true,
@@ -15,19 +14,18 @@
         "isolatedModules": true,
         "jsx": "react-jsx",
         "incremental": true,
-        "baseUrl": "./src",
         "paths": {
-            "@app/*": ["app/*"],
-            "@components/*": ["components/*"],
-            "@store/*": ["store/*"],
-            "@styles/*": ["styles/*"],
-            "@/*": ["*"],
-            "@/components/*": ["components/*"],
-            "@/store/*": ["store/*"],
-            "@/styles/*": ["styles/*"],
-            "@/i18n": ["../i18n"],
-            "@/App": ["../App"],
-            "@/theme.config": ["../theme.config"]
+            "@app/*": ["./src/app/*"],
+            "@components/*": ["./src/components/*"],
+            "@store/*": ["./src/store/*"],
+            "@styles/*": ["./src/styles/*"],
+            "@/*": ["./src/*"],
+            "@/components/*": ["./src/components/*"],
+            "@/store/*": ["./src/store/*"],
+            "@/styles/*": ["./src/styles/*"],
+            "@/i18n": ["./i18n"],
+            "@/App": ["./App"],
+            "@/theme.config": ["./theme.config"]
         },
         "plugins": [
             {
@@ -35,6 +33,6 @@
             }
         ]
     },
-    "include": ["**/*.d.ts", "**/*.ts", "**/*.tsx", "next-env.d.ts", "ni18n.config.ts.js", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+    "include": ["**/*.d.ts", "**/*.ts", "**/*.tsx", "next-env.d.ts", "i18n.config.ts.js", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
     "exclude": ["node_modules"]
 }

@@ -3,11 +3,12 @@ import type { Metadata } from 'next';
 import VehicleServicePortal from '@components/maintenance/vehicle-mtn-portal';
 
 export async function generateMetadata(
-  props: { params: Promise<{ id?: string }>; searchParams?: { action?: string; authorize?: string } }
+  props: { params: Promise<{ id?: string }>; searchParams?: Promise<{ action?: string; authorize?: string }> }
 ): Promise<Metadata> {
   const { id = '' } = await props.params;
-  const action = props.searchParams?.action;
-  const authorize = props.searchParams?.authorize;
+  const searchParams = await props.searchParams;
+  const action = searchParams?.action;
+  const authorize = searchParams?.authorize;
 
   const prettyAction = action === 'approve' ? 'Approval' : action === 'recommend' ? 'Recommendation' : 'Authorization';
   const prettyAuthorize = authorize ? ` • ${authorize}` : '';
