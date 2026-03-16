@@ -41,8 +41,8 @@ export default function CreateCorrespondencePageClient() {
     return (
         <div className="space-y-8">
             <div className="space-y-1">
-                <h1 className="text-2xl font-semibold text-slate-900">Create Correspondence Registry</h1>
-                <p className="text-sm text-muted-foreground">Register new incoming or outgoing correspondence details.</p>
+                <h1 className="text-2xl font-semibold text-slate-900">Create Mail Registry</h1>
+                <p className="text-sm text-muted-foreground">Register new incoming or outgoing mail details.</p>
             </div>
             <CorrespondenceForm
                 mode="create"

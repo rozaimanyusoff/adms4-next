@@ -63,7 +63,7 @@ export const DocsCorrespondenceTabs = () => {
         return (
             <div className="space-y-6">
                 <div className="space-y-1">
-                    <h1 className="text-2xl font-semibold text-slate-900">Correspondence Tracking</h1>
+                    <h1 className="text-2xl font-semibold text-slate-900">Mail Management</h1>
                     <p className="text-sm text-muted-foreground">Monitor workflow, activity, and records in one module.</p>
                 </div>
             </div>
@@ -73,7 +73,7 @@ export const DocsCorrespondenceTabs = () => {
     return (
         <div className="space-y-6">
             <div className="space-y-1">
-                <h1 className="text-2xl font-semibold text-slate-900">Correspondence Tracking</h1>
+                <h1 className="text-2xl font-semibold text-slate-900">Mail Management</h1>
                 <p className="text-sm text-muted-foreground">Monitor workflow, activity, and records in one module.</p>
             </div>
             <CorrespondenceTabs value={activeTab} onValueChange={setActiveTab} />

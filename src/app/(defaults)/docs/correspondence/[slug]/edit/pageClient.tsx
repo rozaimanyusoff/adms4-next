@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import CorrespondenceForm, { type CorrespondenceFormValues } from '@/components/docs/docs-correspondence-form';
 import { authenticatedApi } from '@/config/api';
@@ -114,12 +114,17 @@ const toFormValues = (record: ApiCorrespondenceDetail): CorrespondenceFormValues
 export default function EditCorrespondencePageClient() {
     const params = useParams<{ slug: string }>();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const slug = params?.slug ?? '';
+    const actionParam = searchParams.get('action');
+    const workflowAction =
+        actionParam === 'qa' || actionParam === 'qa_review' ? 'qa'
+        : actionParam === 'endorse' || actionParam === 'endorsement' ? 'endorsement'
+        : 'registry';
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [recordId, setRecordId] = useState<string | number | null>(null);
     const [formValues, setFormValues] = useState<CorrespondenceFormValues>(emptyFormValues);
-    const [initialRecipients, setInitialRecipients] = useState<Array<{ ramcoId: string; departmentId: string | number }>>([]);
     const [initialAttachment, setInitialAttachment] = useState<{
         filePath: string;
         fileName?: string | null;
@@ -152,14 +157,6 @@ export default function EditCorrespondencePageClient() {
                 if (cancelled) return;
                 setRecordId(record.id);
                 setFormValues(toFormValues(record));
-                setInitialRecipients(
-                    Array.isArray(record.recipients)
-                        ? record.recipients.map((recipient) => ({
-                              ramcoId: String(recipient?.ramco_id ?? ''),
-                              departmentId: recipient?.department_id ?? '',
-                          }))
-                        : [],
-                );
                 setInitialAttachment(
                     record.attachment_file_path
                         ? {
@@ -209,21 +206,29 @@ export default function EditCorrespondencePageClient() {
         );
     }
 
+    const refLabel = String(formValues.reference_no || recordId);
+
     return (
         <div className="space-y-8">
             <div className="space-y-1">
-                <h1 className="text-2xl font-semibold text-slate-900">Edit Correspondence Registry</h1>
-                <p className="text-sm text-muted-foreground">
-                    Update registry details for {String(formValues.reference_no || recordId)}.
-                </p>
+                {workflowAction !== 'registry' ? (
+                    <h1 className="text-2xl font-semibold text-slate-900">
+                        {workflowAction === 'qa' ? 'QA Review' : 'Endorsement'}
+                    </h1>
+                ) : (
+                    <>
+                        <h1 className="text-2xl font-semibold text-slate-900">Edit Mail Registry</h1>
+                        <p className="text-sm text-muted-foreground">Update registry details for {refLabel}.</p>
+                    </>
+                )}
             </div>
             <CorrespondenceForm
                 mode="edit"
+                workflowAction={workflowAction}
                 recordId={recordId}
                 recordSlug={slug}
                 showCardHeader={false}
                 initialValues={formValues}
-                initialRecipients={initialRecipients}
                 initialAttachment={initialAttachment}
                 onCancel={goBackToRecords}
                 onSubmit={goBackToRecords}
