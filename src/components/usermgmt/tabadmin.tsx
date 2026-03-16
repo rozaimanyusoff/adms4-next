@@ -7,6 +7,7 @@ import Groups from "./groups";
 import Navigations from "./navigation";
 import Roles from "./roles";
 import CLogs from "./logs";
+import CErrorLogs from "./error-logs";
 import Workflows from "../maintenance/workflows";
 import ManagementModule from "./mgmt-module";
 import PermissionMgmt from "./permission";
@@ -25,6 +26,7 @@ const UserMgmtMain = () => {
         { value: "module", label: "Modules" },
         { value: "maintenance", label: "Maintenance" },
         { value: "logs", label: "Logs" },
+        { value: "error-logs", label: "Error Logs" },
         { value: "guide", label: "Admin Guide", icon: CircleHelp },
     ];
 
@@ -38,6 +40,7 @@ const UserMgmtMain = () => {
         module: <ManagementModule />,
         maintenance: <MaintenanceControl />,
         logs: <CLogs />,
+        "error-logs": <CErrorLogs />,
         guide: <AdminGuide />,
     };
 
