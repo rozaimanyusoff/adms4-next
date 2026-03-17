@@ -362,6 +362,7 @@ type ApiCorrespondenceRow = {
     registered_at: string | null;
     registered_by: string | null;
     qa_status: string | null;
+    qa_review_date?: string | null;
     qa_reviewed_at?: string | null;
     qa_reviewed_by: string | null;
     endorsed_at?: string | null;
@@ -439,14 +440,14 @@ const mapApiRowToRecord = (row: ApiCorrespondenceRow): CorrespondenceRow => ({
     registered_at: row.registered_at || undefined,
     workflow: {
         registered: !!row.registered_at,
-        qa_completed: !!(row.workflow_status?.qa_completed || row.qa_status === 'approved'),
+        qa_completed: !!(row.workflow_status?.qa_completed || row.qa_status === 'completed' || row.qa_status === 'approved'),
         endorsed: !!(row.workflow_status?.endorsed),
         acknowledged:
             ((row.workflow_status?.department_head_action_completed ?? 0) > 0 ||
                 (row.workflow_status?.section_head_action_completed ?? 0) > 0),
         dates: {
             registered: row.registered_at || undefined,
-            qa: row.qa_reviewed_at || undefined,
+            qa: row.qa_review_date || row.qa_reviewed_at || undefined,
             endorsed: row.endorsed_at || undefined,
             acknowledged: row.acknowledged_at || undefined,
         },

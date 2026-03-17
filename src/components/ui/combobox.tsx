@@ -87,28 +87,28 @@ export function Combobox(props: ComboboxProps) {
     if (isMultiple && Array.isArray(currentValue)) {
       const newValue = currentValue.includes(selectedValue)
         ? currentValue.filter(v => v !== selectedValue)
-        : maxItems && currentValue.length >= maxItems 
-          ? currentValue 
+        : maxItems && currentValue.length >= maxItems
+          ? currentValue
           : [...currentValue, selectedValue]
-      ;(props as MultiComboboxProps).onValueChange(newValue)
+        ; (props as MultiComboboxProps).onValueChange(newValue)
     } else {
-      ;(props as SingleComboboxProps).onValueChange(selectedValue)
+      ; (props as SingleComboboxProps).onValueChange(selectedValue)
     }
   }, [isMultiple, currentValue, props, maxItems])
 
   const handleClear = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     if (isMultiple) {
-      ;(props as MultiComboboxProps).onValueChange([])
+      ; (props as MultiComboboxProps).onValueChange([])
     } else {
-      ;(props as SingleComboboxProps).onValueChange("")
+      ; (props as SingleComboboxProps).onValueChange("")
     }
   }, [isMultiple, props])
 
   const handleRemoveItem = React.useCallback((itemValue: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (isMultiple && Array.isArray(currentValue)) {
-      ;(props as MultiComboboxProps).onValueChange(currentValue.filter(v => v !== itemValue))
+      ; (props as MultiComboboxProps).onValueChange(currentValue.filter(v => v !== itemValue))
     }
   }, [isMultiple, currentValue, props])
 
@@ -138,7 +138,7 @@ export function Combobox(props: ComboboxProps) {
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "w-full justify-between h-auto min-h-[2.25rem] py-2 bg-inherit hover:bg-inherit",
+            "w-full justify-between h-auto min-h-9 py-2 bg-inherit hover:bg-inherit",
             textSizeClasses.base,
             className
           )}
@@ -206,7 +206,7 @@ export function Combobox(props: ComboboxProps) {
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="min-w-[var(--radix-popover-trigger-width)] w-auto max-w-[80vw] p-0"
+        className="min-w-(--radix-popover-trigger-width) w-auto max-w-[80vw] p-0"
       >
         <Command className="w-full">
           <CommandInput
@@ -220,51 +220,51 @@ export function Combobox(props: ComboboxProps) {
               {filteredOptions
                 .filter(option => option && option.value != null && option.value !== '')
                 .map((option, index) => {
-                const isSelected = isMultiple && Array.isArray(currentValue)
-                  ? currentValue.includes(option.value)
-                  : currentValue === option.value
+                  const isSelected = isMultiple && Array.isArray(currentValue)
+                    ? currentValue.includes(option.value)
+                    : currentValue === option.value
 
-                return (
-                  <CommandItem
-                    key={`${option.value}-${index}`}
-                    value={option.value}
-                    keywords={[option.label, option.value]}
-                    disabled={option.disabled}
-                    onSelect={() => {
-                      handleSelect(option.value)
-                      if (!isMultiple) {
-                        setOpen(false)
-                      }
-                    }}
-                    className={cn(
-                      "cursor-pointer flex items-center gap-2",
-                      textSizeClasses.base,
-                      isSelected && "bg-accent"
-                    )}
-                  >
-                    {isMultiple ? (
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        readOnly
-                        aria-hidden
-                        className="mr-2 w-4 h-4 rounded border-gray-300"
-                      />
-                    ) : (
-                      <Check
-                        className={cn(
-                          "h-4 w-4 font-bold transition-all duration-200",
-                          isSelected ? "opacity-100 text-primary scale-100" : "opacity-0 scale-75"
-                        )}
-                      />
-                    )}
-                    <span className="flex-1">{option.render ?? option.label}</span>
-                    {isMultiple && isSelected && (
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                    )}
-                  </CommandItem>
-                )
-              })}
+                  return (
+                    <CommandItem
+                      key={`${option.value}-${index}`}
+                      value={option.value}
+                      keywords={[option.label, option.value]}
+                      disabled={option.disabled}
+                      onSelect={() => {
+                        handleSelect(option.value)
+                        if (!isMultiple) {
+                          setOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        "cursor-pointer flex items-center gap-2",
+                        textSizeClasses.base,
+                        isSelected && "bg-accent"
+                      )}
+                    >
+                      {isMultiple ? (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          readOnly
+                          aria-hidden
+                          className="mr-2 w-4 h-4 rounded border-gray-300"
+                        />
+                      ) : (
+                        <Check
+                          className={cn(
+                            "h-4 w-4 font-bold transition-all duration-200",
+                            isSelected ? "opacity-100 text-primary scale-100" : "opacity-0 scale-75"
+                          )}
+                        />
+                      )}
+                      <span className="flex-1">{option.render ?? option.label}</span>
+                      {isMultiple && isSelected && (
+                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                      )}
+                    </CommandItem>
+                  )
+                })}
             </CommandGroup>
           </CommandList>
           {isMultiple && selectedOptions.length > 0 && (

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { authenticatedApi } from '@/config/api';
 import { FileText, UploadCloud, X } from 'lucide-react';
+import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import type { Direction, Priority } from './correspondence-tracking-data';
 import { AuthContext } from '@/store/AuthContext';
@@ -56,7 +57,8 @@ type CorrespondenceWorkflowValues = {
 
 export type CorrespondenceFormValues = CorrespondenceRegistryFormValues & CorrespondenceWorkflowValues;
 
-type QaRecipient = { name: string; department: string };
+type QaRecipient = { ramco_id: string; department_id: number | null; department_name: string };
+type EmployeeOption = { value: string; label: string; departmentId: number | null; departmentName: string };
 
 type AttachmentItem = {
     id: string;
@@ -108,6 +110,7 @@ type CorrespondenceFormProps = {
     showCardHeader?: boolean;
     initialValues?: CorrespondenceFormValues;
     initialAttachment?: CorrespondenceInitialAttachment | null;
+    initialRecipients?: Array<{ ramco_id: string; department_id: number | null }>;
     onCancel: () => void;
     onSubmit?: () => void | Promise<void>;
     onValuesChange?: (values: CorrespondenceFormValues) => void;
@@ -200,6 +203,7 @@ export const CorrespondenceForm = ({
     showCardHeader = true,
     initialValues,
     initialAttachment,
+    initialRecipients,
     onCancel,
     onSubmit,
     onValuesChange,
@@ -214,7 +218,11 @@ export const CorrespondenceForm = ({
         ...(initialValues ?? {}),
     });
     const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-    const [qaRecipients, setQaRecipients] = useState<QaRecipient[]>([{ name: '', department: '' }]);
+    const [qaRecipients, setQaRecipients] = useState<QaRecipient[]>([{ ramco_id: '', department_id: null, department_name: '' }]);
+    const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+    const employeeOptionsRef = useRef<EmployeeOption[]>([]);
+    const [endorsementPriorityOverride, setEndorsementPriorityOverride] = useState<Priority | null>(null);
+    const [endorsementRemarks, setEndorsementRemarks] = useState('');
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
     const [successDialogOpen, setSuccessDialogOpen] = useState(false);
@@ -262,6 +270,49 @@ export const CorrespondenceForm = ({
         };
     }, [attachments]);
 
+    useEffect(() => {
+        if (workflowAction !== 'qa') return;
+        authenticatedApi.get('/api/assets/employees?status=active').then((res: any) => {
+            const raw = res?.data;
+            const list: any[] = Array.isArray(raw?.data)
+                ? raw.data
+                : Array.isArray(raw?.items)
+                    ? raw.items
+                    : Array.isArray(raw?.data?.items)
+                        ? raw.data.items
+                        : Array.isArray(raw)
+                            ? raw
+                            : [];
+            const seen = new Set<string>();
+            const opts: EmployeeOption[] = [];
+            list.forEach((item: any) => {
+                const val = String(item?.ramco_id ?? item?.id ?? '').trim();
+                if (!val || seen.has(val)) return;
+                seen.add(val);
+                const deptId = item?.department?.id ?? item?.department_id ?? null;
+                opts.push({
+                    value: val,
+                    label: String(item?.full_name ?? item?.name ?? val),
+                    departmentId: deptId != null ? Number(deptId) : null,
+                    departmentName: String(item?.department?.name ?? item?.department_name ?? ''),
+                });
+            });
+            employeeOptionsRef.current = opts;
+            setEmployeeOptions(opts);
+        }).catch(() => { employeeOptionsRef.current = []; setEmployeeOptions([]); });
+    }, [workflowAction]);
+
+    useEffect(() => {
+        if (!initialRecipients || initialRecipients.length === 0) return;
+        setQaRecipients(
+            initialRecipients.map((r) => ({
+                ramco_id: String(r.ramco_id ?? ''),
+                department_id: r.department_id ?? null,
+                department_name: employeeOptionsRef.current.find((o) => o.value === String(r.ramco_id ?? ''))?.departmentName ?? '',
+            }))
+        );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialRecipients]);
 
     useEffect(() => {
         let cancelled = false;
@@ -490,7 +541,7 @@ export const CorrespondenceForm = ({
         values.letter_type.trim() &&
         values.category.trim() &&
         values.remarks.trim() &&
-        qaRecipients.some((r) => r.name.trim()),
+        qaRecipients.some((r) => r.ramco_id.trim()),
     );
 
     const submitQaReview = async () => {
@@ -505,7 +556,10 @@ export const CorrespondenceForm = ({
                 letter_type: values.letter_type.trim() || null,
                 category: values.category.trim() || null,
                 priority: values.priority,
-                recipients: qaRecipients.filter((r) => r.name.trim()).map((r) => ({ name: r.name.trim(), department: r.department.trim() || null })),
+                qa_review_date: new Date().toISOString().slice(0, 10),
+                qa_reviewed_by: currentUsername || null,
+                qa_status: 'completed',
+                recipients: qaRecipients.filter((r) => r.ramco_id.trim()).map((r) => ({ ramco_id: r.ramco_id, department_id: r.department_id })),
                 remarks: values.remarks.trim() || null,
             });
             setSuccessDialogOpen(true);
@@ -770,7 +824,12 @@ export const CorrespondenceForm = ({
                     {workflowAction === 'qa' && (
                         <div className="space-y-5">
                             <div className="flex items-center justify-between">
-                                <p className="text-sm font-bold text-slate-900">QA Review</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-bold text-slate-900">QA Review</p>
+                                    {values.reference_no && (
+                                        <span className="text-sm text-slate-400">· {values.reference_no}</span>
+                                    )}
+                                </div>
                                 <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-white">Stage 2 — QA Review</span>
                             </div>
                         <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
@@ -785,7 +844,7 @@ export const CorrespondenceForm = ({
                                             value={values.letter_type}
                                             onValueChange={(v) => updateValues({ ...values, letter_type: v })}
                                         >
-                                            <SelectTrigger id="letter-type">
+                                            <SelectTrigger id="letter-type" className='w-full'>
                                                 <SelectValue placeholder="Select type" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -804,7 +863,7 @@ export const CorrespondenceForm = ({
                                             value={values.category}
                                             onValueChange={(v) => updateValues({ ...values, category: v })}
                                         >
-                                            <SelectTrigger id="category">
+                                            <SelectTrigger id="category" className='w-full'>
                                                 <SelectValue placeholder="Select category" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -844,25 +903,31 @@ export const CorrespondenceForm = ({
                                     <div className="space-y-2">
                                         {qaRecipients.map((recipient, idx) => (
                                             <div key={idx} className="flex gap-2">
+                                                <div className="flex-1">
+                                                    <Combobox
+                                                        options={employeeOptions}
+                                                        value={recipient.ramco_id}
+                                                        onValueChange={(val) => {
+                                                            const emp = employeeOptionsRef.current.find((o) => o.value === val);
+                                                            const updated = [...qaRecipients];
+                                                            updated[idx] = {
+                                                                ramco_id: emp?.value ?? '',
+                                                                department_id: emp?.departmentId ?? null,
+                                                                department_name: emp?.departmentName ?? '',
+                                                            };
+                                                            setQaRecipients(updated);
+                                                        }}
+                                                        placeholder="Search employee..."
+                                                        searchPlaceholder="Type name..."
+                                                        emptyMessage="No employee found"
+                                                        clearable
+                                                    />
+                                                </div>
                                                 <Input
-                                                    value={recipient.name}
-                                                    onChange={(e) => {
-                                                        const updated = [...qaRecipients];
-                                                        updated[idx] = { ...updated[idx], name: e.target.value };
-                                                        setQaRecipients(updated);
-                                                    }}
-                                                    placeholder="Name"
-                                                    className="flex-1"
-                                                />
-                                                <Input
-                                                    value={recipient.department}
-                                                    onChange={(e) => {
-                                                        const updated = [...qaRecipients];
-                                                        updated[idx] = { ...updated[idx], department: e.target.value };
-                                                        setQaRecipients(updated);
-                                                    }}
+                                                    value={recipient.department_name}
+                                                    readOnly
                                                     placeholder="Department"
-                                                    className="flex-1"
+                                                    className="flex-1 bg-slate-50 text-slate-500"
                                                 />
                                                 <Button
                                                     type="button"
@@ -880,7 +945,7 @@ export const CorrespondenceForm = ({
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => setQaRecipients((prev) => [...prev, { name: '', department: '' }])}
+                                            onClick={() => setQaRecipients((prev) => [...prev, { ramco_id: '', department_id: null, department_name: '' }])}
                                         >
                                             + Add recipient
                                         </Button>
@@ -936,6 +1001,158 @@ export const CorrespondenceForm = ({
                         </div>
                     )}
 
+                    {/* ── Endorsement Section ── */}
+                    {workflowAction === 'endorsement' && (
+                        <div className="space-y-5">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-bold text-slate-900">Endorsement</p>
+                                    {values.reference_no && (
+                                        <span className="text-sm text-slate-400">· {values.reference_no}</span>
+                                    )}
+                                </div>
+                                <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-white">Stage 3 — Endorsement</span>
+                            </div>
+                            <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+                                {/* Left — Endorsement form */}
+                                <div className="space-y-5">
+                                    {/* QA Summary read-only */}
+                                    {values.remarks && (
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">QA summary</p>
+                                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                                                {values.remarks}
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {values.letter_type && (
+                                                    <span className="rounded-full bg-blue-100 px-3 py-0.5 text-xs font-medium text-blue-700">{values.letter_type}</span>
+                                                )}
+                                                {values.category && (
+                                                    <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-medium text-slate-600">{values.category}</span>
+                                                )}
+                                                {values.priority && (
+                                                    <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${
+                                                        values.priority === 'high' ? 'bg-rose-100 text-rose-700'
+                                                        : values.priority === 'normal' ? 'bg-amber-100 text-amber-700'
+                                                        : 'bg-slate-100 text-slate-600'
+                                                    }`}>
+                                                        {values.priority === 'normal' ? 'Medium' : values.priority.charAt(0).toUpperCase() + values.priority.slice(1)} priority
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Confirmed recipients (read-only from QA) */}
+                                    <div className="space-y-2">
+                                        <Label>Confirmed recipient(s) <span className="text-rose-500">*</span></Label>
+                                        <div className="space-y-2">
+                                            {qaRecipients.filter((r) => r.ramco_id.trim()).map((r, idx) => {
+                                                const emp = employeeOptions.find((o) => o.value === r.ramco_id);
+                                                const displayName = emp?.label ?? r.ramco_id;
+                                                return (
+                                                    <div key={idx} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                                                                {displayName.charAt(0).toUpperCase()}
+                                                            </span>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-slate-800">{displayName}</p>
+                                                                {r.department_name && <p className="text-xs text-slate-400">{r.department_name}</p>}
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs text-slate-400">From QA</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-xs text-slate-400">No changes — recipient confirmed as assigned by QA.</p>
+                                    </div>
+
+                                    {/* Priority override */}
+                                    <div className="space-y-2">
+                                        <Label>Priority override <span className="text-xs font-normal text-slate-400">(optional)</span></Label>
+                                        <div className="flex gap-2">
+                                            {(['high', 'normal', 'low'] as Priority[]).map((p) => (
+                                                <button
+                                                    key={p}
+                                                    type="button"
+                                                    onClick={() => setEndorsementPriorityOverride(endorsementPriorityOverride === p ? null : p)}
+                                                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                                                        endorsementPriorityOverride === p
+                                                            ? p === 'high' ? 'bg-rose-500 text-white' : p === 'normal' ? 'bg-amber-400 text-white' : 'bg-slate-400 text-white'
+                                                            : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {p === 'normal' ? 'Medium' : p.charAt(0).toUpperCase() + p.slice(1)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {endorsementPriorityOverride && (
+                                            <p className="text-xs text-slate-400">
+                                                QA original: <span className="font-medium capitalize">{values.priority === 'normal' ? 'Medium' : values.priority}</span>. Override is optional — only change if required.
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Remarks / Instructions */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="endorsement-remarks">Remarks / Instructions <span className="text-xs font-normal text-slate-400">(optional)</span></Label>
+                                        <Textarea
+                                            id="endorsement-remarks"
+                                            value={endorsementRemarks}
+                                            onChange={(e) => setEndorsementRemarks(e.target.value)}
+                                            placeholder="Any instructions or remarks for the recipient"
+                                            rows={3}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Right — Mail info panel */}
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                    <p className="mb-3 text-sm font-bold text-slate-900">Mail Info</p>
+                                    <div className="space-y-2 text-sm">
+                                        {[
+                                            { label: 'Reference', value: values.reference_no || '-' },
+                                            { label: 'Sender', value: values.sender || '-' },
+                                            { label: 'Letter type', value: values.letter_type || '-' },
+                                            { label: 'Category', value: values.category || '-' },
+                                            { label: 'Date received', value: formatDisplayDate(values.date_received) },
+                                            { label: 'Reviewed by', value: values.qa_reviewed_by || '-' },
+                                        ].map(({ label, value }) => (
+                                            <div key={label} className="grid grid-cols-[110px_1fr] gap-1">
+                                                <span className="text-xs font-medium text-slate-500">{label}</span>
+                                                <span className="min-w-0 wrap-break-word text-slate-800">{value}</span>
+                                            </div>
+                                        ))}
+                                        {/* QA Priority with badge */}
+                                        <div className="grid grid-cols-[110px_1fr] gap-1">
+                                            <span className="text-xs font-medium text-slate-500">QA priority</span>
+                                            <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                values.priority === 'high' ? 'bg-rose-100 text-rose-700'
+                                                : values.priority === 'normal' ? 'bg-amber-100 text-amber-700'
+                                                : 'bg-slate-100 text-slate-600'
+                                            }`}>
+                                                {values.priority === 'normal' ? 'Medium' : (values.priority?.charAt(0).toUpperCase() ?? '') + (values.priority?.slice(1) ?? '')}
+                                            </span>
+                                        </div>
+                                        {(attachments[0] || initialAttachment) && (
+                                            <div className="grid grid-cols-[110px_1fr] gap-1">
+                                                <span className="text-xs font-medium text-slate-500">Attachment</span>
+                                                <span className="flex items-center gap-1 text-slate-800">
+                                                    <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                                    <span className="min-w-0 truncate">
+                                                        {attachments[0]?.fileName ?? initialAttachment?.fileName ?? 'Document'}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ── Action Buttons ── */}
                     <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                         <Button type="button" variant="outline" onClick={() => setCancelDialogOpen(true)}>
@@ -966,9 +1183,9 @@ export const CorrespondenceForm = ({
                                 type="button"
                                 className="bg-blue-600 hover:bg-blue-700"
                                 onClick={() => setConfirmDialogOpen(true)}
-                                disabled={!isRegistrySectionComplete || isSubmitting}
+                                disabled={isSubmitting}
                             >
-                                {isSubmitting ? 'Saving...' : 'Endorsed & forward →'}
+                                {isSubmitting ? 'Saving...' : 'Endorse & forward →'}
                             </Button>
                         )}
                     </div>

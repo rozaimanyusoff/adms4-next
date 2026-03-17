@@ -125,6 +125,7 @@ export default function EditCorrespondencePageClient() {
     const [error, setError] = useState<string | null>(null);
     const [recordId, setRecordId] = useState<string | number | null>(null);
     const [formValues, setFormValues] = useState<CorrespondenceFormValues>(emptyFormValues);
+    const [initialRecipients, setInitialRecipients] = useState<Array<{ ramco_id: string; department_id: number | null }>>([]);
     const [initialAttachment, setInitialAttachment] = useState<{
         filePath: string;
         fileName?: string | null;
@@ -157,6 +158,12 @@ export default function EditCorrespondencePageClient() {
                 if (cancelled) return;
                 setRecordId(record.id);
                 setFormValues(toFormValues(record));
+                setInitialRecipients(
+                    (record.recipients ?? []).map((r) => ({
+                        ramco_id: String(r.ramco_id ?? ''),
+                        department_id: r.department_id != null ? Number(r.department_id) : null,
+                    }))
+                );
                 setInitialAttachment(
                     record.attachment_file_path
                         ? {
@@ -212,9 +219,15 @@ export default function EditCorrespondencePageClient() {
         <div className="space-y-8">
             <div className="space-y-1">
                 {workflowAction !== 'registry' ? (
-                    <h1 className="text-2xl font-semibold text-slate-900">
-                        {workflowAction === 'qa' ? 'QA Review' : 'Endorsement'}
-                    </h1>
+                    <nav className="flex items-center gap-1 text-sm text-slate-500">
+                        <button onClick={goBackToRecords} className="hover:text-slate-800">All Mail</button>
+                        <span>›</span>
+                        <span className="text-slate-700">{refLabel}</span>
+                        <span>›</span>
+                        <span className="font-medium text-slate-900">
+                            {workflowAction === 'qa' ? 'QA Review' : 'Endorsement'}
+                        </span>
+                    </nav>
                 ) : (
                     <>
                         <h1 className="text-2xl font-semibold text-slate-900">Edit Mail Registry</h1>
@@ -230,6 +243,7 @@ export default function EditCorrespondencePageClient() {
                 showCardHeader={false}
                 initialValues={formValues}
                 initialAttachment={initialAttachment}
+                initialRecipients={initialRecipients}
                 onCancel={goBackToRecords}
                 onSubmit={goBackToRecords}
             />
