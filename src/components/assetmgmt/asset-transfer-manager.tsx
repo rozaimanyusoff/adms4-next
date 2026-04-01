@@ -748,9 +748,11 @@ const AssetTransferManager: React.FC = () => {
                 }, 0);
                 if (count <= 0) return "-";
                 return (
-                    <span className="inline-flex items-center justify-center gap-1 relative">
-                        <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-500 opacity-75" />
-                        <span className="relative inline-flex items-center justify-center h-2.5 w-2.5 rounded-full bg-red-600 text-white text-[8px] font-black leading-none">!</span>
+                    <span className="inline-flex items-center justify-center gap-1.5">
+                        <span className="relative flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-flex items-center justify-center h-3 w-3 rounded-full bg-red-600 text-white text-[8px] font-black leading-none">!</span>
+                        </span>
                         <span className="font-semibold text-red-700 text-xs">{count}</span>
                     </span>
                 );
