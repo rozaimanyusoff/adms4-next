@@ -1251,8 +1251,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}@date&limit=3&sort=-date&exclude=series_type,diesel_eastmsia`)
 			.then(r => r.json())
 			.then((records: FuelPriceRecord[]) => {
-				// Filter for actual price records (not weekly change deltas)
-				const priceRecords = records.filter(r => r.ron95 > 1 && r.ron97 > 1 && r.diesel > 1).slice(0, 2);
+				const today = new Date().toISOString().split('T')[0];
+				// Filter for actual price records (not weekly change deltas) and exclude future dates
+				const priceRecords = records.filter(r => r.ron95 > 1 && r.ron97 > 1 && r.diesel > 1 && r.date <= today).slice(0, 2);
 				if (priceRecords.length > 0) {
 					setFuelPriceRefs(priceRecords);
 					// Auto-populate for new forms only
