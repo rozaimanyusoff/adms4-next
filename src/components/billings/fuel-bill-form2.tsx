@@ -1248,7 +1248,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		const daysBack = day >= 4 ? day - 4 : day + 3; // days since last Thursday
 		d.setDate(d.getDate() - daysBack);
 		const dateStart = d.toISOString().split('T')[0];
-		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}&limit=3&sort=-date&exclude=series_type,diesel_eastmsia`)
+		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}@date&limit=3&sort=-date&exclude=series_type,diesel_eastmsia`)
 			.then(r => r.json())
 			.then((records: FuelPriceRecord[]) => {
 				// Filter for actual price records (not weekly changes which have near-zero values)
