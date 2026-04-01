@@ -68,6 +68,19 @@ type MaintenanceSummary = {
     cancelled: number;
 };
 
+type MySummon = {
+    smn_id: number;
+    summon_no?: string;
+    summon_date?: string;
+    summon_agency?: string;
+    summon_amt?: string;
+    summon_loc?: string;
+    type_of_summon?: string;
+    receipt_date?: string;
+    asset?: { register_number?: string };
+    employee?: { full_name?: string };
+};
+
 type MyAsset = {
     id: number;
     asset_id?: number;
@@ -177,6 +190,11 @@ const UserDashboard: React.FC = () => {
     const [myAssetsError, setMyAssetsError] = useState<string | null>(null);
     const [showAllAssets, setShowAllAssets] = useState(false);
     const ASSETS_DEFAULT_LIMIT = 3;
+    const [mySummons, setMySummons] = useState<MySummon[]>([]);
+    const [mySummonsLoading, setMySummonsLoading] = useState(false);
+    const [mySummonsError, setMySummonsError] = useState<string | null>(null);
+    const [showAllSummons, setShowAllSummons] = useState(false);
+    const SUMMONS_DEFAULT_LIMIT = 5;
 
     const greetingName = useMemo(() => user?.name || user?.username || 'User', [user?.name, user?.username]);
     const lastActivity = useMemo(() => formatLastActivity(user?.lastNav), [user?.lastNav]);
@@ -298,6 +316,38 @@ const UserDashboard: React.FC = () => {
             isActive = false;
         };
     }, [user?.username]);
+
+    useEffect(() => {
+        if (!user?.username) {
+            setMySummons([]);
+            setMySummonsError(null);
+            setMySummonsLoading(false);
+            return;
+        }
+        let isActive = true;
+        setMySummonsLoading(true);
+        setMySummonsError(null);
+        (async () => {
+            try {
+                const res = await authenticatedApi.get('/api/compliance/summon', {
+                    params: { username: user.username },
+                });
+                const data = (res as any)?.data?.data ?? (res as any)?.data ?? [];
+                if (!isActive) return;
+                setMySummons(Array.isArray(data) ? data : []);
+            } catch {
+                if (!isActive) return;
+                setMySummons([]);
+                setMySummonsError('Unable to load summon records.');
+            } finally {
+                if (isActive) setMySummonsLoading(false);
+            }
+        })();
+        return () => { isActive = false; };
+    }, [user?.username]);
+
+    const summonPending = mySummons.filter(s => !s.receipt_date).length;
+    const summonPaid = mySummons.filter(s => !!s.receipt_date).length;
 
     if (!user) {
         return <div className="rounded-md bg-slate-100 p-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">Dashboard data is not available.</div>;
@@ -637,6 +687,113 @@ const UserDashboard: React.FC = () => {
                                                     </span>
                                                 )}
                                             </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── My Summons ─────────────────────────────────────────── */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+                    <div>
+                        <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+                            My Summons
+                            {!mySummonsLoading && mySummons.length > 0 && (
+                                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                                    {mySummons.length}
+                                </span>
+                            )}
+                        </h2>
+                        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                            {mySummonsLoading
+                                ? 'Loading summons...'
+                                : `${summonPending} pending · ${summonPaid} paid`}
+                        </p>
+                    </div>
+                    {!mySummonsLoading && mySummons.length > SUMMONS_DEFAULT_LIMIT && (
+                        <button
+                            onClick={() => setShowAllSummons((v) => !v)}
+                            className="shrink-0 text-xs font-semibold text-primary hover:underline"
+                        >
+                            {showAllSummons ? 'Show less ↑' : `View all (${mySummons.length}) →`}
+                        </button>
+                    )}
+                </div>
+                <div className="p-6">
+                    {mySummonsLoading ? (
+                        <div className="space-y-2">
+                            {[0, 1, 2].map((i) => (
+                                <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+                                    <Shimmer className="mb-2 h-3 w-32" />
+                                    <Shimmer className="h-2.5 w-48" />
+                                </div>
+                            ))}
+                        </div>
+                    ) : mySummonsError ? (
+                        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-amber-200 py-8 text-center dark:border-amber-800/40">
+                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{mySummonsError}</p>
+                        </div>
+                    ) : mySummons.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 py-10 text-center">
+                            <div className="rounded-2xl border border-dashed border-slate-200 p-5 dark:border-slate-700">
+                                <svg className="h-10 w-10 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                            </div>
+                            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">No summon records</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">Summons assigned to you will appear here.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {summonPending > 0 && (
+                                <div className="mb-3 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800/40 dark:bg-red-900/15">
+                                    <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+                                    <p className="text-sm text-red-800 dark:text-red-300">
+                                        You have {summonPending} unpaid summon{summonPending !== 1 ? 's' : ''}.{' '}
+                                        <Link href="/compliance/summon" className="font-semibold underline underline-offset-2 hover:no-underline">
+                                            View now
+                                        </Link>
+                                    </p>
+                                </div>
+                            )}
+                            {(showAllSummons ? mySummons : mySummons.slice(0, SUMMONS_DEFAULT_LIMIT)).map((s) => {
+                                const paid = !!s.receipt_date;
+                                const dateStr = s.summon_date ? new Date(s.summon_date).toLocaleDateString() : '—';
+                                return (
+                                    <div key={s.smn_id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                                {s.summon_no ?? `#${s.smn_id}`}
+                                                {s.asset?.register_number && (
+                                                    <span className="ml-2 font-mono text-xs text-slate-400">{s.asset.register_number}</span>
+                                                )}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                                                {dateStr}{s.summon_agency ? ` · ${s.summon_agency}` : ''}{s.type_of_summon ? ` · ${s.type_of_summon}` : ''}
+                                            </p>
+                                        </div>
+                                        <div className="ml-4 flex shrink-0 items-center gap-3">
+                                            {s.summon_amt && (
+                                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">RM {Number(s.summon_amt).toFixed(2)}</span>
+                                            )}
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                                paid
+                                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                            }`}>
+                                                {paid ? 'Paid' : 'Pending'}
+                                            </span>
+                                            <Link
+                                                href={`/compliance/summon/portal/${s.smn_id}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[10px] font-semibold text-primary hover:underline"
+                                            >
+                                                Update →
+                                            </Link>
                                         </div>
                                     </div>
                                 );
