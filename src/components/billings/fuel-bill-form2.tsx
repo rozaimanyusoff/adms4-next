@@ -91,6 +91,7 @@ type DetailRowProps = {
 	onChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
 	onFleetCardChange: (idx: number, cardNo: string) => void;
 	onRegisterChange: (idx: number, registerNo: string) => void;
+	onFuelTypeChange: (idx: number, fuelType: string) => void;
 	onRemove: (detail: FuelDetail) => void;
 	cardFieldsReady: boolean;
 	isDuplicateCard: (detail: FuelDetail) => boolean;
@@ -107,6 +108,7 @@ type ConsumerTableProps = {
 	onDetailChange: (idx: number, field: keyof FuelDetail, value: string | number) => void;
 	onFleetCardChange: (idx: number, cardNo: string) => void;
 	onRegisterChange: (idx: number, registerNo: string) => void;
+	onFuelTypeChange: (idx: number, fuelType: string) => void;
 	isRowRequiredFieldsFilled: (detail: FuelDetail) => boolean;
 	handleNumericInput: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 	validateNumericInput: (value: string) => string;
@@ -126,6 +128,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 	onChange,
 	onFleetCardChange,
 	onRegisterChange,
+	onFuelTypeChange,
 	onRemove,
 	cardFieldsReady,
 	isDuplicateCard,
@@ -168,6 +171,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 									type="text"
 									value={detail.asset?.register_number || ''}
 									onChange={e => onRegisterChange(originalIndex, e.target.value)}
+									onPaste={e => { e.preventDefault(); onRegisterChange(originalIndex, e.clipboardData.getData('text').trim()); }}
 									placeholder={cardFieldsReady ? 'Copy & paste register no here' : 'Fill Issuer, Statement No & Date first'}
 									disabled={!cardFieldsReady}
 									className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateRegister(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
@@ -194,6 +198,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 										type="text"
 										value={detail.fleetcard?.card_no || ''}
 										onChange={e => onFleetCardChange(originalIndex, e.target.value)}
+										onPaste={e => { e.preventDefault(); onFleetCardChange(originalIndex, e.clipboardData.getData('text').trim()); }}
 										placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
 										disabled={!cardFieldsReady}
 										className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
@@ -212,7 +217,22 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					</div>
 				</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.costcenter?.name || ''}</td>
-			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.fuel_type || ''}</td>
+			<td className="border p-0">
+				<Select
+					value={detail.asset?.fuel_type || ''}
+					onValueChange={val => onFuelTypeChange(originalIndex, val)}
+				>
+					<SelectTrigger className="w-full rounded-none border-0 bg-white h-full focus:ring-0 focus:ring-offset-0 text-xs">
+						<SelectValue placeholder="Select" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="RON95">RON95</SelectItem>
+						<SelectItem value="RON97">RON97</SelectItem>
+						<SelectItem value="DIESEL7">DIESEL7</SelectItem>
+						<SelectItem value="DIESEL10">DIESEL10</SelectItem>
+					</SelectContent>
+				</Select>
+			</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.purpose || ''}</td>
 			<td className="border p-0 text-right">
 				<TooltipProvider>
@@ -314,6 +334,7 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 	onDetailChange,
 	onFleetCardChange,
 	onRegisterChange,
+	onFuelTypeChange,
 	isRowRequiredFieldsFilled,
 	handleNumericInput,
 	validateNumericInput,
@@ -459,6 +480,7 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 									onChange={onDetailChange}
 									onFleetCardChange={onFleetCardChange}
 									onRegisterChange={onRegisterChange}
+									onFuelTypeChange={onFuelTypeChange}
 									onRemove={onRemoveDetail}
 									cardFieldsReady={cardFieldsReady}
 									isDuplicateCard={isDuplicateCard}
@@ -1197,6 +1219,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			.then(() => setLoadingDetails(false));
 	}, [cardFieldsReady]);
 
+	const handleFuelTypeChange = React.useCallback((idx: number, fuelType: string) => {
+		setEditableDetails(prev => prev.map((detail, i) => {
+			if (i !== idx) return detail;
+			return { ...detail, asset: { ...detail.asset, fuel_type: fuelType } as Asset };
+		}));
+	}, []);
+
 	const handleSummaryChange = (field: keyof typeof summary, value: string) => {
 		setSummary(prev => ({ ...prev, [field]: value }));
 	};
@@ -1673,6 +1702,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						onRemoveDetail={handleRemoveDetail}
 					onDetailChange={handleDetailChange}
 					onFleetCardChange={handleFleetCardChange}
+					onFuelTypeChange={handleFuelTypeChange}
 					onRegisterChange={handleRegisterNumberChange}
 					isRowRequiredFieldsFilled={isRowRequiredFieldsFilled}
 					handleNumericInput={handleNumericInput}
