@@ -272,10 +272,12 @@ const DetailList: React.FC<{
     row: TransferRow;
     pendingLookup: PendingLookup;
     committing: Record<string, boolean>;
+    forceCommitting: Record<string, boolean>;
     resendAcceptanceLoading: Record<string, boolean>;
     onCommit: (item: PendingCommitItem) => void;
+    onForceCommit: (transferId: string | number, itemId: string | number) => void;
     onResendAcceptance: (transferId?: string | number) => void;
-}> = ({ row, pendingLookup, committing, resendAcceptanceLoading, onCommit, onResendAcceptance }) => {
+}> = ({ row, pendingLookup, committing, forceCommitting, resendAcceptanceLoading, onCommit, onForceCommit, onResendAcceptance }) => {
     const list = getDetails(row);
     if (!list.length) return <div className="p-3 text-sm text-muted-foreground">No items found for this transfer.</div>;
 
@@ -429,16 +431,33 @@ const DetailList: React.FC<{
                                                                 {isUncommittedStep ? "Uncommitted" : isPendingAcceptanceStep ? "Pending Acceptance" : ev.label}
                                                             </span>
                                                             {isPendingAcceptanceStep && transferIdForAcceptance && (
-                                                                <Button
-                                                                    size="icon"
-                                                                    variant="ghost"
-                                                                    className="h-4 w-4 p-0 text-blue-600 hover:text-blue-700"
-                                                                    disabled={resendBusy}
-                                                                    title="Resend acceptance notification to new owner"
-                                                                    onClick={() => onResendAcceptance(transferIdForAcceptance)}
-                                                                >
-                                                                    <MailWarning className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                                <>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="h-4 w-4 p-0 text-blue-600 hover:text-blue-700"
+                                                                        disabled={resendBusy}
+                                                                        title="Resend acceptance notification to new owner"
+                                                                        onClick={() => onResendAcceptance(transferIdForAcceptance)}
+                                                                    >
+                                                                        <MailWarning className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                    {item.id != null && (() => {
+                                                                        const forceKey = `${transferIdForAcceptance}-${item.id}`;
+                                                                        const forceBusy = forceCommitting[forceKey];
+                                                                        return (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 border border-red-300 disabled:opacity-50"
+                                                                                disabled={forceBusy}
+                                                                                title="Force commit without waiting for acceptance"
+                                                                                onClick={() => onForceCommit(transferIdForAcceptance, item.id!)}
+                                                                            >
+                                                                                {forceBusy ? "Forcing…" : "Force Commit"}
+                                                                            </button>
+                                                                        );
+                                                                    })()}
+                                                                </>
                                                             )}
                                                             {isUncommittedStep && pendingMatch && (
                                                                 <div className="flex items-center gap-1">
@@ -488,6 +507,7 @@ const AssetTransferManager: React.FC = () => {
     const [pendingLookup, setPendingLookup] = useState<PendingLookup>({});
     const [pendingLoading, setPendingLoading] = useState(false);
     const [committing, setCommitting] = useState<Record<string, boolean>>({});
+    const [forceCommitting, setForceCommitting] = useState<Record<string, boolean>>({});
     const [resendAcceptanceLoading, setResendAcceptanceLoading] = useState<Record<string, boolean>>({});
     const pendingCount = useMemo(() => Object.keys(pendingLookup).length, [pendingLookup]);
 
@@ -624,6 +644,22 @@ const AssetTransferManager: React.FC = () => {
             toast.error(message);
         } finally {
             setCommitting((prev) => ({ ...prev, [key]: false }));
+        }
+    };
+
+    const handleForceCommit = async (transferId: string | number, itemId: string | number) => {
+        const key = `${transferId}-${itemId}`;
+        setForceCommitting((prev) => ({ ...prev, [key]: true }));
+        try {
+            await authenticatedApi.put(`/api/assets/transfer-commit/${encodeURIComponent(String(transferId))}/items/${encodeURIComponent(String(itemId))}/force`);
+            toast.success("Transfer force-committed successfully");
+            await fetchPendingCommits(managerTypeIds);
+            await loadTransfers();
+        } catch (err: any) {
+            const message = err?.response?.data?.message || "Failed to force commit transfer";
+            toast.error(message);
+        } finally {
+            setForceCommitting((prev) => ({ ...prev, [key]: false }));
         }
     };
 
@@ -985,8 +1021,10 @@ const AssetTransferManager: React.FC = () => {
                         row={row}
                         pendingLookup={pendingLookup}
                         committing={committing}
+                        forceCommitting={forceCommitting}
                         resendAcceptanceLoading={resendAcceptanceLoading}
                         onCommit={handleCommitTransfer}
+                        onForceCommit={handleForceCommit}
                         onResendAcceptance={handleResendAcceptance}
                     />
                 ) }}
