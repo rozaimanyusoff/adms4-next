@@ -746,7 +746,14 @@ const AssetTransferManager: React.FC = () => {
                     const match = keyCandidatesForDetail(detail).some((k) => pendingLookup[k]);
                     return acc + (match ? 1 : 0);
                 }, 0);
-                return count > 0 ? count : "-";
+                if (count <= 0) return "-";
+                return (
+                    <span className="inline-flex items-center justify-center gap-1 relative">
+                        <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-red-500 opacity-75" />
+                        <span className="relative inline-flex items-center justify-center h-2.5 w-2.5 rounded-full bg-red-600 text-white text-[8px] font-black leading-none">!</span>
+                        <span className="font-semibold text-red-700 text-xs">{count}</span>
+                    </span>
+                );
             },
         },
         { key: "approval_status", header: "Status", colClass: "truncate text-center", render: (row) => <StatusBadge row={row} pendingLookup={pendingLookup} /> },
