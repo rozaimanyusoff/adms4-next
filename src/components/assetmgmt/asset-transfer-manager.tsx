@@ -297,14 +297,12 @@ const DetailList: React.FC<{
                     const acceptedAt = Boolean(item?.acceptance_date) && Boolean(item?.acceptance_by)
                         ? item?.acceptance_date || ""
                         : "";
-                    const committedDate = String(item?.committed_status || "").toLowerCase() === "committed"
-                        ? item?.committed_at || ""
-                        : "";
+                    const committedStatus = String(item?.committed_status || "").toLowerCase();
+                    const isItemCompleted = committedStatus === "committed";
                     const timeline = [
                         { label: "Initiated", date: initiatedDate },
                         { label: "Approved", date: approvedDate },
                         { label: "Accepted", date: acceptedAt },
-                        { label: "Completed", date: committedDate },
                     ];
 
                     const candidateKeys = [
@@ -322,10 +320,17 @@ const DetailList: React.FC<{
                     const transferIdForAcceptance = item?.transfer_id ?? row?.id;
                     const resendBusy = transferIdForAcceptance ? resendAcceptanceLoading[String(transferIdForAcceptance)] : false;
                     const isUncommitted = Boolean(pendingMatch);
+                    const itemContainerClass = isItemCompleted
+                        ? "bg-emerald-50 border-emerald-200"
+                        : isUncommitted
+                            ? "bg-amber-50/70 border-amber-200"
+                            : Boolean(acceptedAt) && !isItemCompleted
+                                ? "bg-sky-50/60 border-sky-200"
+                                : "bg-stone-100 border-slate-200";
                     return (
                         <div
                             key={`${row.id}-${item.id}`}
-                            className={`rounded border border-border p-3 shadow-sm ${isUncommitted ? "bg-amber-50/70 border-amber-200" : "bg-stone-200"}`}
+                            className={`rounded border p-3 shadow-sm ${itemContainerClass}`}
                         >
                             <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
                                 {/* Left: content */}
@@ -402,33 +407,41 @@ const DetailList: React.FC<{
                                 </div>
 
                                 {/* Right: timeline */}
-                                <div className="flex flex-col gap-2 text-xs md:text-sm">
-                                    <div className="font-semibold text-sm">Transfer Progress</div>
-                                    <div className="relative flex flex-col gap-3 pl-4 before:content-[''] before:absolute before:left-1.75 before:top-1 before:bottom-1 before:w-0.5 before:bg-black/50">
-                                        {timeline.map((ev) => {
+                                <div className="flex flex-col gap-1 min-w-50">
+                                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Transfer Progress</div>
+                                    <div className="flex flex-col">
+                                        {timeline.map((ev, stepIdx) => {
                                             const isDone = Boolean(ev.date);
-                                            const isUncommittedStep = ev.label === "Completed" && Boolean(pendingMatch);
                                             const isPendingAcceptanceStep = ev.label === "Accepted" && !isDone;
-                                            const color =
-                                                ev.label === "Initiated"
-                                                    ? "rgb(234 179 8)"
-                                                    : ev.label === "Approved"
-                                                        ? "rgb(14 165 233)"
-                                                        : ev.label === "Accepted"
-                                                            ? "rgb(22 163 74)"
-                                                            : isUncommittedStep
-                                                                ? "rgb(245 158 11)"
-                                                                : "rgb(16 185 129)";
+                                            const isActiveStep = !isDone && isPendingAcceptanceStep;
+                                            const isLastStep = stepIdx === timeline.length - 1;
+
+                                            const dotColor = isDone
+                                                ? ev.label === "Initiated" ? "bg-amber-400 border-amber-400"
+                                                    : ev.label === "Approved" ? "bg-sky-500 border-sky-500"
+                                                        : "bg-green-500 border-green-500"
+                                                : isActiveStep ? "bg-amber-50 border-amber-400"
+                                                    : "bg-slate-100 border-slate-300";
+
+                                            const displayLabel = isPendingAcceptanceStep ? "Pending Acceptance" : ev.label;
+
                                             return (
-                                                <div key={`${identifier}-${ev.label}`} className="relative flex items-start gap-2">
-                                                    <span
-                                                        className="absolute -left-4 top-0 h-4 w-4 rounded-full border-2 border-white shadow-sm"
-                                                        style={{ backgroundColor: isDone ? color : "rgba(148, 163, 184, 0.6)", borderColor: color }}
-                                                    />
-                                                    <div className="flex flex-col leading-tight">
-                                                        <div className="flex items-center gap-2 pl-3">
-                                                            <span className="font-semibold text-xs">
-                                                                {isUncommittedStep ? "Uncommitted" : isPendingAcceptanceStep ? "Pending Acceptance" : ev.label}
+                                                <div key={`${identifier}-${ev.label}`} className="flex gap-2">
+                                                    <div className="flex flex-col items-center shrink-0">
+                                                        <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center ${dotColor} ${isActiveStep ? "animate-pulse" : ""}`}>
+                                                            {isDone && <span className="text-white font-black leading-none" style={{ fontSize: "8px" }}>✓</span>}
+                                                        </div>
+                                                        {!isLastStep && (
+                                                            <div className={`w-0.5 flex-1 min-h-3.5 mt-0.5 ${isDone ? "bg-slate-300" : "bg-slate-200"}`} />
+                                                        )}
+                                                    </div>
+                                                    <div className="pb-2.5 flex flex-col gap-0.5 min-w-0">
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            <span className={`text-xs font-semibold leading-tight ${isDone ? "text-slate-700"
+                                                                : isActiveStep ? "text-amber-700"
+                                                                    : "text-slate-400"
+                                                                }`}>
+                                                                {displayLabel}
                                                             </span>
                                                             {isPendingAcceptanceStep && transferIdForAcceptance && (
                                                                 <>
@@ -446,7 +459,7 @@ const DetailList: React.FC<{
                                                                         const forceKey = `${transferIdForAcceptance}-${item.id}`;
                                                                         const forceBusy = forceCommitting[forceKey];
                                                                         return (
-                                                                            <div className="relative group inline-flex items-center ml-1">
+                                                                            <div className="relative group inline-flex items-center">
                                                                                 <button
                                                                                     type="button"
                                                                                     className="text-[10px] font-semibold pl-1.5 pr-0.5 py-0.5 rounded-l bg-red-100 text-red-700 hover:bg-red-200 border border-r-0 border-red-300 disabled:opacity-50"
@@ -465,28 +478,10 @@ const DetailList: React.FC<{
                                                                     })()}
                                                                 </>
                                                             )}
-                                                            {isUncommittedStep && pendingMatch && (
-                                                                <div className="flex items-center gap-1">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="text-blue-600 hover:underline text-xs font-semibold"
-                                                                        disabled={commitBusy}
-                                                                        onClick={() => onCommit(pendingMatch)}
-                                                                    >
-                                                                        {commitBusy ? "Committing…" : "Commit transfer now!"}
-                                                                    </button>
-                                                                    <div className="relative group inline-block">
-                                                                        <Info className="h-3.5 w-3.5 text-slate-600" aria-hidden />
-                                                                        <span className="absolute z-10 hidden group-hover:block mt-2 w-56 text-[11px] leading-snug text-slate-800 bg-white border border-slate-200 shadow-lg rounded p-2">
-                                                                            This action will update transfer records according to the effective date.
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            <span className="text-xs text-shadow-muted">
-                                                                {isUncommittedStep || isPendingAcceptanceStep ? "" : isDone ? formatTimelineDate(ev.date) : "—"}
-                                                            </span>
                                                         </div>
+                                                        {isDone && (
+                                                            <span className="text-[10px] text-slate-400 leading-tight">{formatTimelineDate(ev.date)}</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -724,12 +719,8 @@ const AssetTransferManager: React.FC = () => {
             header: "Acceptance",
             colClass: "text-center",
             render: (row) => {
-                const { state, acceptedCount, totalCount } = computeStatus(row);
-                const uncommitted = getUncommittedCountForRow(row, pendingLookup);
-                const isPartialAccepted = state === "approved" && acceptedCount > 0 && acceptedCount < totalCount;
-                const isAccepted = state === "completed" && uncommitted > 0; // completed but not committed yet shows as "Accepted"
-                const hideAcceptance = state === "submitted" || (state === "approved" && !isPartialAccepted) || (state === "completed" && !isAccepted);
-                if (hideAcceptance) return "-";
+                const { state } = computeStatus(row);
+                if (state === "submitted") return "-";
                 const { accepted, total } = getAcceptanceCountForRow(row);
                 if (!total) return "-";
                 return `${accepted}/${total}`;
@@ -743,13 +734,16 @@ const AssetTransferManager: React.FC = () => {
                 const details = getDetails(row);
                 if (!details.length) return "-";
                 const count = details.reduce((acc, detail) => {
-                    const match = keyCandidatesForDetail(detail).some((k) => pendingLookup[k]);
-                    return acc + (match ? 1 : 0);
+                    const isPendingCommit = keyCandidatesForDetail(detail).some((k) => pendingLookup[k]);
+                    const isAccepted = Boolean(detail?.acceptance_date) && Boolean(detail?.acceptance_by);
+                    const isCommitted = String(detail?.committed_status || "").toLowerCase() === "committed";
+                    const isPendingAcceptance = Boolean(row.approved_date) && !isAccepted && !isCommitted;
+                    return acc + (isPendingCommit || isPendingAcceptance ? 1 : 0);
                 }, 0);
                 if (count <= 0) return "-";
                 return (
                     <span className="inline-flex items-center justify-center gap-1">
-                        <TriangleAlert className="h-3.5 w-3.5 text-red-600" />
+                        <TriangleAlert className="h-3.5 w-3.5 text-red-600 animate-pulse" />
                         <span className="font-semibold text-red-700 text-xs">{count}</span>
                     </span>
                 );
