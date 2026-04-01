@@ -80,6 +80,14 @@ interface FuelMtnDetailProps {
 	onLeaveHandlerReady?: (fn: () => void) => void;
 }
 
+type FuelPriceRecord = {
+	date: string;
+	ron95: number;
+	ron97: number;
+	diesel: number;
+	ron95_budi95: number;
+};
+
 type DetailRowProps = {
 	detail: FuelDetail;
 	displayIndex: number;
@@ -134,8 +142,8 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 	isDuplicateCard,
 	isDuplicateRegister,
 }) => {
-    const isRequired = isRowRequiredFieldsFilled(detail);
-    const rowClass = `border-b focus:outline-none focus:ring-0 ${showEmptyHighlight ? 'bg-amber-100/70' : ''}`;
+	const isRequired = isRowRequiredFieldsFilled(detail);
+	const rowClass = `border-b focus:outline-none focus:ring-0 ${showEmptyHighlight ? 'bg-amber-100/70' : ''}`;
 	return (
 		<tr className={rowClass}>
 			<td className="border p-0 text-center">
@@ -190,32 +198,32 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 				</div>
 			</td>
 			<td className={`border p-0 ${isDuplicateCard(detail) ? 'bg-red-50' : ''}`}>
-					<div className="flex items-center gap-2 px-1">
-						<TooltipProvider>
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<Input
-										type="text"
-										value={detail.fleetcard?.card_no || ''}
-										onChange={e => onFleetCardChange(originalIndex, e.target.value)}
-										onPaste={e => { e.preventDefault(); onFleetCardChange(originalIndex, e.clipboardData.getData('text').trim()); }}
-										placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
-										disabled={!cardFieldsReady}
-										className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
-									/>
-								</TooltipTrigger>
-								{isDuplicateCard(detail) && (
-									<TooltipContent>
-										<p>Duplicated Card No</p>
-									</TooltipContent>
-								)}
-							</Tooltip>
-						</TooltipProvider>
-						{isDuplicateCard(detail) && (
-							<span className="text-xs text-red-600 whitespace-nowrap">(Duplicated)</span>
-						)}
-					</div>
-				</td>
+				<div className="flex items-center gap-2 px-1">
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Input
+									type="text"
+									value={detail.fleetcard?.card_no || ''}
+									onChange={e => onFleetCardChange(originalIndex, e.target.value)}
+									onPaste={e => { e.preventDefault(); onFleetCardChange(originalIndex, e.clipboardData.getData('text').trim()); }}
+									placeholder={cardFieldsReady ? 'Copy & paste card no here' : 'Fill Issuer, Statement No & Date first'}
+									disabled={!cardFieldsReady}
+									className={`w-full rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent border ${isDuplicateCard(detail) ? 'border-red-500 text-red-700 bg-red-50' : 'border-transparent'}`}
+								/>
+							</TooltipTrigger>
+							{isDuplicateCard(detail) && (
+								<TooltipContent>
+									<p>Duplicated Card No</p>
+								</TooltipContent>
+							)}
+						</Tooltip>
+					</TooltipProvider>
+					{isDuplicateCard(detail) && (
+						<span className="text-xs text-red-600 whitespace-nowrap">(Duplicated)</span>
+					)}
+				</div>
+			</td>
 			<td className="border p-0 bg-gray-50 text-gray-700">{detail.asset?.costcenter?.name || ''}</td>
 			<td className="border p-0">
 				<Select
@@ -520,6 +528,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		stmt_diesel: '2.88',
 	});
 
+	// Fuel price reference from gov API
+	const [fuelPriceRef, setFuelPriceRef] = useState<FuelPriceRecord | null>(null);
 
 	// State for vendor select
 	const [vendors, setVendors] = useState<{ fuel_id: number; vendor: string; logo: string; image2: string }[]>([]);
@@ -1230,6 +1240,33 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		setSummary(prev => ({ ...prev, [field]: value }));
 	};
 
+	// Fetch latest fuel prices from data.gov.my for reference
+	useEffect(() => {
+		const d = new Date();
+		d.setDate(d.getDate() - 45);
+		const dateStart = d.toISOString().split('T')[0];
+		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}&limit=5&sort=-date&exclude=series_type,diesel_eastmsia`)
+			.then(r => r.json())
+			.then((records: FuelPriceRecord[]) => {
+				// Filter for actual price records (not weekly changes which have near-zero values)
+				const priceRecords = records.filter(r => r.ron95 > 1 && r.ron97 > 1 && r.diesel > 1);
+				if (priceRecords.length > 0) {
+					const latest = priceRecords[0];
+					setFuelPriceRef(latest);
+					// Auto-populate for new forms only
+					if (!initialStmtId || initialStmtId === 0) {
+						setSummary(prev => ({
+							...prev,
+							stmt_ron95: String(latest.ron95),
+							stmt_ron97: String(latest.ron97),
+							stmt_diesel: String(latest.diesel),
+						}));
+					}
+				}
+			})
+			.catch(() => { /* silently ignore - reference data only */ });
+	}, [initialStmtId]);
+
 	const handleHeaderChange = (field: keyof typeof headerDraft, value: string) => {
 		setHeaderDraft(prev => ({ ...prev, [field]: value }));
 	};
@@ -1588,33 +1625,42 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								</div>
 								{/* Stack for RON95, RON97, Diesel */}
 								<div className="flex flex-col space-y-2 w-full md:w-60">
-									<div className="flex items-center gap-2">
-										<label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
-										<Input
-											type="text"
-											value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
-											onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
-											className="w-full text-right bg-gray-100"
-										/>
-									</div>
-									<div className="flex items-center gap-2">
-										<label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
-										<Input
-											type="text"
-											value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
-											onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
-											className="w-full text-right bg-gray-100"
-										/>
-									</div>
-									<div className="flex items-center gap-2">
-										<label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
-										<Input
-											type="text"
-											value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
-											onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
-											className="w-full text-right bg-gray-100"
-										/>
-									</div>
+								        {fuelPriceRef && (
+								                <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 leading-relaxed">
+								                        <span className="font-medium">Official prices w.e.f {fuelPriceRef.date}:</span><br />
+								                        RON95 RM{fuelPriceRef.ron95.toFixed(2)} &middot; RON97 RM{fuelPriceRef.ron97.toFixed(2)} &middot; Diesel RM{fuelPriceRef.diesel.toFixed(2)}
+								                </div>
+								        )}
+								        <div className="flex items-center gap-2">
+								               <label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
+								               <Input
+								               type="text"
+								               value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
+								               onKeyDown={handleNumericInput}
+								               onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
+								               className="w-full text-right"
+								               />
+								        </div>
+								        <div className="flex items-center gap-2">
+								               <label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
+								               <Input
+								               type="text"
+								               value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
+								               onKeyDown={handleNumericInput}
+								               onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
+								               className="w-full text-right"
+								               />
+								        </div>
+								        <div className="flex items-center gap-2">
+								               <label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
+								               <Input
+								               type="text"
+								               value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
+								               onKeyDown={handleNumericInput}
+								               onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
+								               className="w-full text-right"
+								               />
+								        </div>
 								</div>
 							</div>
 						</div>
@@ -1693,13 +1739,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				</div>
 			</div>
 			<div className="mt-4 w-full">
-					<ConsumerDetailsTable
-						filteredDetails={filteredDetails}
-						editableDetails={editableDetails}
-						search={search}
-						onSearchChange={handleSearchChange}
-						loadingDetails={loadingDetails}
-						onRemoveDetail={handleRemoveDetail}
+				<ConsumerDetailsTable
+					filteredDetails={filteredDetails}
+					editableDetails={editableDetails}
+					search={search}
+					onSearchChange={handleSearchChange}
+					loadingDetails={loadingDetails}
+					onRemoveDetail={handleRemoveDetail}
 					onDetailChange={handleDetailChange}
 					onFleetCardChange={handleFleetCardChange}
 					onFuelTypeChange={handleFuelTypeChange}
