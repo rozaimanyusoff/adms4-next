@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Mail, Paperclip, Check, Trash } from 'lucide-react';
+import { Plus, Mail, Paperclip, Check, Trash, Upload } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
 import { AuthContext } from '@/store/AuthContext';
 // dialog no longer used — use ActionSidebar on row double-click for edit
@@ -75,6 +75,7 @@ const ComplianceSummonList: React.FC = () => {
     const [confirmLoading, setConfirmLoading] = useState(false);
 
     const deleteAuthorizer = ['000712', '000277'];
+    const excludeAdmin: string[] = ['000712', '003461']; // these users see all summons and cannot filter by username; also excluded from auto-assigning username param on fetch
     // get username from auth context or localStorage fallback
     const authCtx = React.useContext(AuthContext as any) as { authData?: any } | undefined;
     const username: string = authCtx?.authData?.user?.username || (() => {
@@ -88,7 +89,8 @@ const ComplianceSummonList: React.FC = () => {
     useEffect(() => {
         let mounted = true;
         setLoading(true);
-        authenticatedApi.get('/api/compliance/summon')
+        const summonParams = !excludeAdmin.includes(username) && username ? { params: { username } } : {};
+        authenticatedApi.get('/api/compliance/summon', summonParams)
             .then(res => {
                 const data = (res as any).data?.data || (res as any).data || [];
                 if (mounted) {
@@ -337,7 +339,8 @@ const ComplianceSummonList: React.FC = () => {
                 toast.success('Summon registered');
             }
             // refresh
-            const res = await authenticatedApi.get('/api/compliance/summon');
+            const summonParams = !excludeAdmin.includes(username) && username ? { params: { username } } : {};
+            const res = await authenticatedApi.get('/api/compliance/summon', summonParams);
             const data = (res as any).data?.data || (res as any).data || [];
             setRows(Array.isArray(data) ? data : []);
             setSidebarOpen(false);
@@ -487,6 +490,16 @@ const ComplianceSummonList: React.FC = () => {
                             <Paperclip className="h-5 w-5 text-green-600" />
                         </a>
                     ) : null}
+                    <a
+                        href={`/compliance/summon/portal/${r.smn_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 rounded hover:bg-gray-100"
+                        title="Payment update portal"
+                    >
+                        <Upload className="h-5 w-5 text-purple-600" />
+                    </a>
                     {/* Paid indicator removed; status column now shows Paid/Pending */}
                 </div>
             )
@@ -752,7 +765,8 @@ const ComplianceSummonList: React.FC = () => {
                                                 await Promise.all(selectedRowsData.map(r => authenticatedApi.delete(`/api/compliance/summon/${r.smn_id}`)));
                                                 toast.success('Selected summons deleted');
                                                 // refresh
-                                                const res = await authenticatedApi.get('/api/compliance/summon');
+                                                const summonParams = !excludeAdmin.includes(username) && username ? { params: { username } } : {};
+                                                const res = await authenticatedApi.get('/api/compliance/summon', summonParams);
                                                 const data = (res as any).data?.data || (res as any).data || [];
                                                 setRows(Array.isArray(data) ? data : []);
                                                 // clear selection
