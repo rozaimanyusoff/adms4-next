@@ -240,7 +240,7 @@ const FuelBill = () => {
         pagination={false}
         inputFilter={false}
         theme="sm"
-        dataExport={true}
+        dataExport={false}
         onRowDoubleClick={handleRowDoubleClick}
         rowSelection={{
           enabled: deleteMode,

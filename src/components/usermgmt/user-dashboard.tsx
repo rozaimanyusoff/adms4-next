@@ -390,7 +390,7 @@ const UserDashboard: React.FC = () => {
                         </div>
                         <Link href="/users/profile">
                             <Button variant="outline" className="inline-flex items-center gap-1.5 rounded-lg border-white/25 bg-white/10 text-xs text-white backdrop-blur-sm hover:bg-white/20 hover:text-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-white">
-                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                                 Edit Profile
                             </Button>
                         </Link>
@@ -437,13 +437,13 @@ const UserDashboard: React.FC = () => {
                         </div>
                     ) : mySummonsError ? (
                         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-amber-200 py-8 text-center dark:border-amber-800/40">
-                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                             <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{mySummonsError}</p>
                         </div>
                     ) : mySummons.length === 0 ? (
                         <div className="flex flex-col items-center gap-2 py-10 text-center">
                             <div className="rounded-2xl border border-dashed border-slate-200 p-5 dark:border-slate-700">
-                                <svg className="h-10 w-10 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                                <svg className="h-10 w-10 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /></svg>
                             </div>
                             <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">No summon records</p>
                             <p className="text-xs text-slate-400 dark:text-slate-500">Summons assigned to you will appear here.</p>
@@ -481,11 +481,10 @@ const UserDashboard: React.FC = () => {
                                             {s.summon_amt && (
                                                 <span className="text-sm font-bold text-slate-700 dark:text-slate-200">RM {Number(s.summon_amt).toFixed(2)}</span>
                                             )}
-                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                                paid
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${paid
                                                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                                                     : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                            }`}>
+                                                }`}>
                                                 {paid ? 'Paid' : 'Pending'}
                                             </span>
                                             <Link
@@ -531,7 +530,7 @@ const UserDashboard: React.FC = () => {
                     ) : appError ? (
                         /* ④ error empty state */
                         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-amber-200 py-8 text-center dark:border-amber-800/40">
-                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                             <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{appError}</p>
                         </div>
                     ) : (
@@ -594,7 +593,7 @@ const UserDashboard: React.FC = () => {
                         </div>
                     ) : assetError ? (
                         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-amber-200 py-8 text-center dark:border-amber-800/40">
-                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                             <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{assetError}</p>
                         </div>
                     ) : (
@@ -653,7 +652,7 @@ const UserDashboard: React.FC = () => {
                                 ) : (
                                     /* ④ empty state */
                                     <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-8 text-center dark:border-slate-700">
-                                        <svg className="h-8 w-8 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                        <svg className="h-8 w-8 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
                                         <p className="text-sm font-medium text-slate-500 dark:text-slate-400">No assignment records</p>
                                         <p className="text-xs text-slate-400 dark:text-slate-500">No asset transfers have been made to your account yet.</p>
                                     </div>
@@ -729,14 +728,14 @@ const UserDashboard: React.FC = () => {
                         </div>
                     ) : myAssetsError ? (
                         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-amber-200 py-8 text-center dark:border-amber-800/40">
-                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <svg className="h-8 w-8 text-amber-300 dark:text-amber-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                             <p className="text-sm font-medium text-amber-600 dark:text-amber-400">{myAssetsError}</p>
                         </div>
                     ) : myAssets.length === 0 ? (
                         /* ④ empty state */
                         <div className="flex flex-col items-center gap-2 py-10 text-center">
                             <div className="rounded-2xl border border-dashed border-slate-200 p-5 dark:border-slate-700">
-                                <svg className="h-10 w-10 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="15"/><line x1="10.5" y1="13.5" x2="13.5" y2="13.5"/></svg>
+                                <svg className="h-10 w-10 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /><line x1="12" y1="12" x2="12" y2="15" /><line x1="10.5" y1="13.5" x2="13.5" y2="13.5" /></svg>
                             </div>
                             <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">No assets assigned</p>
                             <p className="text-xs text-slate-400 dark:text-slate-500">Assets assigned to your account will appear here.</p>
@@ -784,7 +783,7 @@ const UserDashboard: React.FC = () => {
                                                 )}
                                                 {asset.location_name && (
                                                     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                                                        <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+                                                        <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" /><circle cx="12" cy="9" r="2.5" /></svg>
                                                         {asset.location_name}
                                                     </span>
                                                 )}
