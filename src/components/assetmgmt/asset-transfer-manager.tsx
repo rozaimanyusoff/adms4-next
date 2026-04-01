@@ -651,7 +651,7 @@ const AssetTransferManager: React.FC = () => {
         const key = `${transferId}-${itemId}`;
         setForceCommitting((prev) => ({ ...prev, [key]: true }));
         try {
-            await authenticatedApi.put(`/api/assets/transfer-commit/${encodeURIComponent(String(transferId))}/items/${encodeURIComponent(String(itemId))}/force`);
+            await authenticatedApi.put(`/api/assets/transfer-commit/${encodeURIComponent(String(transferId))}/items/${encodeURIComponent(String(itemId))}/force`, { committed_by: username });
             toast.success("Transfer force-committed successfully");
             await fetchPendingCommits(managerTypeIds);
             await loadTransfers();
@@ -965,7 +965,7 @@ const AssetTransferManager: React.FC = () => {
                 </Card>
 
                 <Card className="border border-border bg-stone-100/90">
-                <CardHeader className="pb-2">
+                    <CardHeader className="pb-2">
                         <CardTitle className="text-sm">Monthly Transfer Overview</CardTitle>
                     </CardHeader>
                     <CardContent className="py-5">
@@ -1016,18 +1016,20 @@ const AssetTransferManager: React.FC = () => {
                 columns={columns}
                 pagination={false}
                 inputFilter={false}
-                rowExpandable={{ enabled: true, render: (row) => (
-                    <DetailList
-                        row={row}
-                        pendingLookup={pendingLookup}
-                        committing={committing}
-                        forceCommitting={forceCommitting}
-                        resendAcceptanceLoading={resendAcceptanceLoading}
-                        onCommit={handleCommitTransfer}
-                        onForceCommit={handleForceCommit}
-                        onResendAcceptance={handleResendAcceptance}
-                    />
-                ) }}
+                rowExpandable={{
+                    enabled: true, render: (row) => (
+                        <DetailList
+                            row={row}
+                            pendingLookup={pendingLookup}
+                            committing={committing}
+                            forceCommitting={forceCommitting}
+                            resendAcceptanceLoading={resendAcceptanceLoading}
+                            onCommit={handleCommitTransfer}
+                            onForceCommit={handleForceCommit}
+                            onResendAcceptance={handleResendAcceptance}
+                        />
+                    )
+                }}
             />
         </div>
     );
