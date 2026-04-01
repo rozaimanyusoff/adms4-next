@@ -5,7 +5,7 @@ import { authenticatedApi } from "@/config/api";
 import { CustomDataGrid, type ColumnDef } from "@/components/ui/DataGrid";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCcw, Info, MailWarning } from "lucide-react";
+import { RefreshCcw, Info, MailWarning, TriangleAlert } from "lucide-react";
 import { AuthContext } from "@/store/AuthContext";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -748,11 +748,8 @@ const AssetTransferManager: React.FC = () => {
                 }, 0);
                 if (count <= 0) return "-";
                 return (
-                    <span className="inline-flex items-center justify-center gap-1.5">
-                        <span className="relative flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                            <span className="relative inline-flex items-center justify-center h-3 w-3 rounded-full bg-red-600 text-white text-[8px] font-black leading-none">!</span>
-                        </span>
+                    <span className="inline-flex items-center justify-center gap-1">
+                        <TriangleAlert className="h-3.5 w-3.5 text-red-600" />
                         <span className="font-semibold text-red-700 text-xs">{count}</span>
                     </span>
                 );
