@@ -1242,10 +1242,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Fetch latest fuel prices from data.gov.my for reference
 	useEffect(() => {
+		// Prices update every Thursday — find the most recent past Thursday
 		const d = new Date();
-		d.setDate(d.getDate() - 45);
+		const day = d.getDay(); // 0=Sun,1=Mon,...,4=Thu,...,6=Sat
+		const daysBack = day >= 4 ? day - 4 : day + 3; // days since last Thursday
+		d.setDate(d.getDate() - daysBack);
 		const dateStart = d.toISOString().split('T')[0];
-		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}&limit=5&sort=-date&exclude=series_type,diesel_eastmsia`)
+		fetch(`https://api.data.gov.my/data-catalogue/?id=fuelprice&date_start=${dateStart}&limit=3&sort=-date&exclude=series_type,diesel_eastmsia`)
 			.then(r => r.json())
 			.then((records: FuelPriceRecord[]) => {
 				// Filter for actual price records (not weekly changes which have near-zero values)
@@ -1625,42 +1628,42 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								</div>
 								{/* Stack for RON95, RON97, Diesel */}
 								<div className="flex flex-col space-y-2 w-full md:w-60">
-								        {fuelPriceRef && (
-								                <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 leading-relaxed">
-								                        <span className="font-medium">Official prices w.e.f {fuelPriceRef.date}:</span><br />
-								                        RON95 RM{fuelPriceRef.ron95.toFixed(2)} &middot; RON97 RM{fuelPriceRef.ron97.toFixed(2)} &middot; Diesel RM{fuelPriceRef.diesel.toFixed(2)}
-								                </div>
-								        )}
-								        <div className="flex items-center gap-2">
-								               <label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
-								               <Input
-								               type="text"
-								               value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
-								               onKeyDown={handleNumericInput}
-								               onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
-								               className="w-full text-right"
-								               />
-								        </div>
-								        <div className="flex items-center gap-2">
-								               <label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
-								               <Input
-								               type="text"
-								               value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
-								               onKeyDown={handleNumericInput}
-								               onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
-								               className="w-full text-right"
-								               />
-								        </div>
-								        <div className="flex items-center gap-2">
-								               <label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
-								               <Input
-								               type="text"
-								               value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
-								               onKeyDown={handleNumericInput}
-								               onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
-								               className="w-full text-right"
-								               />
-								        </div>
+									{fuelPriceRef && (
+										<div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 leading-relaxed">
+											<span className="font-medium">Official prices w.e.f {fuelPriceRef.date}:</span><br />
+											RON95 RM{fuelPriceRef.ron95.toFixed(2)} &middot; RON97 RM{fuelPriceRef.ron97.toFixed(2)} &middot; Diesel RM{fuelPriceRef.diesel.toFixed(2)}
+										</div>
+									)}
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">RON95 (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_ron95 !== undefined && summary.stmt_ron95 !== null && summary.stmt_ron95 !== '' && !isNaN(Number(summary.stmt_ron95)) ? summary.stmt_ron95 : ''}
+											onKeyDown={handleNumericInput}
+											onChange={e => handleSummaryChange('stmt_ron95', validateNumericInput(e.target.value))}
+											className="w-full text-right"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">RON97 (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_ron97 !== undefined && summary.stmt_ron97 !== null && summary.stmt_ron97 !== '' && !isNaN(Number(summary.stmt_ron97)) ? summary.stmt_ron97 : ''}
+											onKeyDown={handleNumericInput}
+											onChange={e => handleSummaryChange('stmt_ron97', validateNumericInput(e.target.value))}
+											className="w-full text-right"
+										/>
+									</div>
+									<div className="flex items-center gap-2">
+										<label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
+										<Input
+											type="text"
+											value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
+											onKeyDown={handleNumericInput}
+											onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
+											className="w-full text-right"
+										/>
+									</div>
 								</div>
 							</div>
 						</div>
