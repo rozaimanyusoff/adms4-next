@@ -446,24 +446,21 @@ const DetailList: React.FC<{
                                                                         const forceKey = `${transferIdForAcceptance}-${item.id}`;
                                                                         const forceBusy = forceCommitting[forceKey];
                                                                         return (
-                                                                            <>
+                                                                            <div className="relative group inline-flex items-center ml-1">
                                                                                 <button
                                                                                     type="button"
-                                                                                    className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 border border-red-300 disabled:opacity-50"
+                                                                                    className="text-[10px] font-semibold pl-1.5 pr-0.5 py-0.5 rounded-l bg-red-100 text-red-700 hover:bg-red-200 border border-r-0 border-red-300 disabled:opacity-50"
                                                                                     disabled={forceBusy}
-                                                                                    title="Force commit without waiting for acceptance"
                                                                                     onClick={() => onForceCommit(transferIdForAcceptance, item.id!)}
                                                                                 >
                                                                                     {forceBusy ? "Forcing…" : "Force Commit"}
                                                                                 </button>
-                                                                                <div className="relative group inline-block">
-                                                                                    <Info className="h-3.5 w-3.5 text-slate-500 cursor-help" aria-hidden />
-                                                                                    <span className="absolute z-10 hidden group-hover:block mt-2 w-64 text-[11px] leading-snug text-slate-800 bg-white border border-slate-200 shadow-lg rounded p-2 right-0">
-                                                                                        <strong className="block mb-1 text-red-700">Force Commit — Asset Manager Action</strong>
-                                                                                        Completes the transfer immediately after HOD approval, bypassing the new owner&apos;s acceptance step. Use when the new owner is unaware of the notification or has not responded in time.
-                                                                                    </span>
-                                                                                </div>
-                                                                            </>
+                                                                                <span className="text-[10px] font-bold px-1 py-0.5 rounded-r bg-red-200 text-red-700 border border-red-300 cursor-help leading-none">?</span>
+                                                                                <span className="absolute z-10 hidden group-hover:block top-full mt-1 w-64 text-[11px] leading-snug text-slate-800 bg-white border border-slate-200 shadow-lg rounded p-2 right-0">
+                                                                                    <strong className="block mb-1 text-red-700">Force Commit — Asset Manager Action</strong>
+                                                                                    Completes the transfer immediately after HOD approval, bypassing the new owner&apos;s acceptance step. Use when the new owner is unaware of the notification or has not responded in time.
+                                                                                </span>
+                                                                            </div>
                                                                         );
                                                                     })()}
                                                                 </>
