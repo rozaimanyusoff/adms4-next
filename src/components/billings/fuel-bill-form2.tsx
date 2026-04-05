@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authenticatedApi } from '@/config/api';
-import { Loader2, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Trash2, RefreshCw, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,6 +58,7 @@ interface FuelBillDetail {
 	stmt_ron95: string;
 	stmt_ron97: string;
 	stmt_diesel: string;
+	stmt_dieselb10: string;
 	bill_payment: string;
 	stmt_count: number;
 	stmt_litre: string;
@@ -123,6 +124,8 @@ type ConsumerTableProps = {
 	detailIndexMap: Map<number, number>;
 	isRowFilled: (detail: FuelDetail) => boolean;
 	cardFieldsReady: boolean;
+	onImportExcel: () => void;
+	importing: boolean;
 };
 
 const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
@@ -253,7 +256,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 								onChange={e => onChange(originalIndex, 'start_odo', validateNumericInput(e.target.value))}
 								readOnly={false}
 								maxLength={6}
-								className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+								className="w-full text-xs text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
 							/>
 						</TooltipTrigger>
 						{!isRequired && (
@@ -275,7 +278,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 								onChange={e => onChange(originalIndex, 'end_odo', validateNumericInput(e.target.value))}
 								readOnly={false}
 								maxLength={6}
-								className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+								className="w-full text-xs text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
 							/>
 						</TooltipTrigger>
 						{!isRequired && (
@@ -293,7 +296,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					readOnly
 					tabIndex={-1}
 					maxLength={6}
-					className="w-full text-right border-0 rounded-none bg-gray-100 text-gray-700"
+					className="w-full text-xs text-right border-0 rounded-none bg-gray-100 text-gray-700"
 				/>
 			</td>
 			<td className="border p-0">
@@ -303,7 +306,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					onKeyDown={handleNumericInput}
 					onChange={e => onChange(originalIndex, 'total_litre', validateNumericInput(e.target.value))}
 					readOnly={false}
-					className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+					className="w-full text-xs text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
 				/>
 			</td>
 			<td className="border p-0">
@@ -314,7 +317,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 						: '0.00'}
 					readOnly
 					tabIndex={-1}
-					className="w-full text-right border-0 rounded-none bg-gray-100 text-gray-700"
+					className="w-full text-xs text-right border-0 rounded-none bg-gray-100 text-gray-700"
 				/>
 			</td>
 			<td className="border p-0">
@@ -324,7 +327,7 @@ const FuelDetailRow: React.FC<DetailRowProps> = React.memo(({
 					onKeyDown={handleNumericInput}
 					onChange={e => onChange(originalIndex, 'amount', validateNumericInput(e.target.value))}
 					readOnly={false}
-					className="w-full text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
+					className="w-full text-xs text-right border-0 rounded-none bg-white focus:outline-none focus:ring-0 focus:ring-offset-0 focus:border-transparent focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-transparent"
 				/>
 			</td>
 		</tr>
@@ -349,6 +352,8 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 	detailIndexMap,
 	isRowFilled,
 	cardFieldsReady,
+	onImportExcel,
+	importing,
 }) => {
 	// Track duplicates for card numbers (case-insensitive, trimmed)
 	const duplicateCardNos = React.useMemo(() => {
@@ -433,6 +438,26 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 						onChange={e => onSearchChange(e.target.value)}
 						className="w-62 rounded-md"
 					/>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={onImportExcel}
+									disabled={importing}
+									className="flex items-center gap-1.5 bg-emerald-600 text-white hover:bg-emerald-400 hover:text-gray-900"
+								>
+									{importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+									{importing ? 'Importing...' : 'Import Excel'}
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>You can import past fuel statement records.<br />Ensure the statement no. is not duplicated.</p>
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
 					<div className="flex flex-wrap items-center gap-2 text-sm">
 						<span className="text-blue-600 bg-gray-100 rounded px-2 py-0.5">
 							Total entries: {filledCount}{search ? ` • Showing ${filteredFilledCount}` : ''}
@@ -455,9 +480,9 @@ const ConsumerDetailsTable: React.FC<ConsumerTableProps> = React.memo(({
 				className="overflow-x-auto overflow-y-auto mb-6 w-full max-h-80"
 				ref={tableContainerRef}
 			>
-				<table className="min-w-275 table-auto border-collapse text-sm">
+				<table className="min-w-275 table-auto border-collapse text-xs">
 					<thead className="bg-gray-200 sticky top-0 z-10">
-						<tr className='text-xs'>
+						<tr>
 							<th className="border px-2 py-3 w-12">#</th>
 							<th className="border px-2 py-3">Register Number</th>
 							<th className="border px-2 py-3">Card No</th>
@@ -526,6 +551,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		stmt_ron95: '2.05',
 		stmt_ron97: '3.18',
 		stmt_diesel: '2.88',
+		stmt_dieselb10: '',
 	});
 
 	// Fuel price reference from gov API (last 2 weeks)
@@ -699,6 +725,104 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			}
 		};
 	}, [draftKey, draftLoaded, draftDetailsRestored, editableDetails, header, selectedVendor, summary, currentStmtId]);
+
+	const [importing, setImporting] = useState(false);
+	const importFileRef = React.useRef<HTMLInputElement | null>(null);
+
+	const handleImportExcel = React.useCallback(() => {
+		importFileRef.current?.click();
+	}, []);
+
+	const handleImportFileChange = React.useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		// reset so same file can be re-selected
+		e.target.value = '';
+		setImporting(true);
+		try {
+			const formData = new FormData();
+			formData.append('file', file);
+			const res = await authenticatedApi.post<{ data: any[] }>('/api/bills/fuel/import/preview', formData, {
+				headers: { 'Content-Type': 'multipart/form-data' },
+			});
+			const rows: any[] = res.data?.data || [];
+			if (rows.length === 0) {
+				toast.warning('No data found in the imported file.');
+				return;
+			}
+			const stmtDate = header.stmt_date || '';
+			const baseTime = Date.now();
+
+			// Build initial rows from preview response, then parallel-fetch register info
+			// for each row to auto-fill cost center and purpose (same as copy-paste flow)
+			const newDetails: FuelDetail[] = await Promise.all(rows.map(async (row, i) => {
+				const detail: FuelDetail = {
+					s_id: baseTime + i,
+					stmt_id: currentStmtId || 0,
+					fleetcard: { id: row.card_id ?? 0, card_no: row.card_no || '' },
+					asset: {
+						id: row.asset_id ?? 0,
+						asset_id: row.asset_id ?? 0,
+						register_number: row.register_number || row.vehicle_no || '',
+						fuel_type: row.fuel_type || '',
+						costcenter: null,
+						purpose: '',
+						vehicle_id: row.vehicle_id ?? undefined,
+					},
+					stmt_date: stmtDate,
+					start_odo: 0,
+					end_odo: 0,
+					total_km: 0,
+					total_litre: row.total_litre != null ? String(row.total_litre) : '',
+					amount: row.amount != null ? String(row.amount) : '',
+				} as FuelDetail;
+
+				const registerNo = row.register_number || row.vehicle_no || '';
+				if (registerNo) {
+					try {
+						const regRes = await authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet/register/${encodeURIComponent(registerNo)}`);
+						const record = Array.isArray(regRes.data?.data) ? regRes.data.data[0] : null;
+						if (record) {
+							const asset = record.asset || {};
+							const assetId = asset.id ?? asset.asset_id ?? record.asset_id ?? detail.asset?.id ?? 0;
+							const locId = asset.location_id ?? asset.locations?.id ?? record.location_id ?? record.loc_id;
+							detail.fleetcard = {
+								id: record.id ?? record.card_id ?? detail.fleetcard?.id ?? 0,
+								card_no: record.card_no || detail.fleetcard?.card_no || '',
+							};
+							detail.asset = {
+								...detail.asset,
+								id: assetId,
+								asset_id: assetId,
+								register_number: asset.register_number || registerNo,
+								fuel_type: asset.fuel_type || detail.asset?.fuel_type || '',
+								costcenter: asset.costcenter ?? null,
+								locations: asset.locations,
+								location_id: locId ?? undefined,
+								purpose: asset.purpose || '',
+								vehicle_id: asset.vehicle_id ?? detail.asset?.vehicle_id,
+								entry_code: asset.entry_code,
+							};
+						}
+					} catch {
+						// silently keep base data if lookup fails
+					}
+				}
+				return detail;
+			}));
+
+			setEditableDetails(prev => {
+				// remove trailing empty rows before appending
+				const filled = prev.filter(d => d.fleetcard?.card_no || d.asset?.register_number || (d.amount && parseFloat(String(d.amount)) > 0));
+				return [...filled, ...newDetails];
+			});
+			toast.success(`Imported ${newDetails.length} row${newDetails.length !== 1 ? 's' : ''} successfully.`);
+		} catch (err: any) {
+			toast.error(err?.response?.data?.message || 'Failed to import Excel file.');
+		} finally {
+			setImporting(false);
+		}
+	}, [currentStmtId, header.stmt_date, setEditableDetails]);
 
 	const handleCloseSuccessDialog = React.useCallback(() => {
 		setShowSubmitSuccess(false);
@@ -879,6 +1003,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			stmt_ron95: fmtAmount(summary.stmt_ron95),
 			stmt_ron97: fmtAmount(summary.stmt_ron97),
 			stmt_diesel: fmtAmount(summary.stmt_diesel),
+			stmt_dieselb10: fmtAmount(summary.stmt_dieselb10),
 			stmt_rounding: fmtAmount(summary.stmt_rounding),
 			stmt_tax: fmtAmount(summary.stmt_tax),
 			stmt_entry: summary.stmt_entry || '',
@@ -976,6 +1101,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 						stmt_ron95: bill.stmt_ron95 || '2.05',
 						stmt_ron97: bill.stmt_ron97 || '3.18',
 						stmt_diesel: bill.stmt_diesel || '2.88',
+						stmt_dieselb10: (bill as any).stmt_dieselb10 || '3.18',
 					});
 					setHeader({
 						stmt_no: bill.stmt_no || '',
@@ -1012,6 +1138,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					stmt_ron95: '2.05',
 					stmt_ron97: '3.18',
 					stmt_diesel: '2.88',
+					stmt_dieselb10: '',
 				});
 				setHeader({
 					stmt_no: '',
@@ -1652,12 +1779,22 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 											/>
 										</div>
 										<div className="flex items-center gap-2">
-											<label className="text-xs min-w-22.5">Diesel (RM/Litre)</label>
+											<label className="text-xs min-w-22.5">Diesel B7 (RM/Litre)</label>
 											<Input
 												type="text"
 												value={summary.stmt_diesel !== undefined && summary.stmt_diesel !== null && summary.stmt_diesel !== '' && !isNaN(Number(summary.stmt_diesel)) ? summary.stmt_diesel : ''}
 												onKeyDown={handleNumericInput}
 												onChange={e => handleSummaryChange('stmt_diesel', validateNumericInput(e.target.value))}
+												className="w-full text-right"
+											/>
+										</div>
+										<div className="flex items-center gap-2">
+											<label className="text-xs min-w-22.5">Diesel B10 (RM/Litre)</label>
+											<Input
+												type="text"
+												value={summary.stmt_dieselb10 !== undefined && summary.stmt_dieselb10 !== null && summary.stmt_dieselb10 !== '' && !isNaN(Number(summary.stmt_dieselb10)) ? summary.stmt_dieselb10 : ''}
+												onKeyDown={handleNumericInput}
+												onChange={e => handleSummaryChange('stmt_dieselb10', validateNumericInput(e.target.value))}
 												className="w-full text-right"
 											/>
 										</div>
@@ -1685,7 +1822,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 														{fuelPriceRefs.map(p => <td key={p.date} className="text-right pr-2 text-blue-800 font-medium">{p.ron97.toFixed(2)}</td>)}
 													</tr>
 													<tr>
-														<td className="pr-3 text-blue-600">Diesel</td>
+														<td className="pr-3 text-blue-600">Diesel B7</td>
+														{fuelPriceRefs.map(p => <td key={p.date} className="text-right pr-2 text-blue-800 font-medium">{p.diesel.toFixed(2)}</td>)}
+													</tr>
+													<tr>
+														<td className="pr-3 text-blue-600">Diesel B10</td>
 														{fuelPriceRefs.map(p => <td key={p.date} className="text-right pr-2 text-blue-800 font-medium">{p.diesel.toFixed(2)}</td>)}
 													</tr>
 												</tbody>
@@ -1770,6 +1911,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				</div>
 			</div>
 			<div className="mt-4 w-full">
+				<input
+					ref={importFileRef}
+					type="file"
+					accept=".xlsx,.xls,.csv"
+					className="hidden"
+					onChange={handleImportFileChange}
+				/>
 				<ConsumerDetailsTable
 					filteredDetails={filteredDetails}
 					editableDetails={editableDetails}
@@ -1787,6 +1935,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					detailIndexMap={detailIndexMap}
 					isRowFilled={isRowFilled}
 					cardFieldsReady={cardFieldsReady}
+					onImportExcel={handleImportExcel}
+					importing={importing}
 				/>
 			</div>
 		</div>

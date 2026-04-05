@@ -34,10 +34,13 @@ const getCellText = (cell: ExcelJS.Cell): string => {
 
 const autoFitColumns = (worksheet: ExcelJS.Worksheet, opts?: { minWidth?: number; maxWidth?: number }) => {
   const minWidth = opts?.minWidth ?? 6;
-  const maxWidth = opts?.maxWidth ?? 32;
+  const maxWidth = opts?.maxWidth ?? 30;
   worksheet.columns.forEach(column => {
     let maxLength = 0;
     column.eachCell?.({ includeEmpty: false }, cell => {
+      // Skip slave cells in merged ranges — they share the master's value
+      // which would otherwise inflate unrelated column widths
+      if (cell.type === ExcelJS.ValueType.Merge) return;
       const textLength = getCellText(cell).trim().length;
       if (textLength > maxLength) maxLength = textLength;
     });
@@ -90,7 +93,7 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
           brand: item.brand?.name || '',
           transmission: item.transmission || '',
           fuel_type: item.fuel || '',
-          age: item.age || '',
+          age: item.age ?? '',
           costcenter: item.costcenter?.name || '',
           location: item.location?.name || '',
           model: item.model?.name || '',
@@ -99,7 +102,8 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
           record_status: item.record_status || '',
           total_litre: toNumber(item.total_litre),
           total_amount: toNumber(item.total_amount),
-          amounts: {} as Record<string, number>
+          amounts: {} as Record<string, number>,
+          litres: {} as Record<string, number>
         };
       }
       (item.details || []).forEach((detail: any) => {
@@ -111,6 +115,7 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
               const month = d.getMonth() + 1;
               const colKey = `${year}-${month}`;
               rows[key].amounts[colKey] = toNumber(expense.amount);
+              rows[key].litres[colKey] = toNumber(expense.total_litre);
             }
           });
         }
@@ -126,49 +131,80 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
     worksheet.addRow([`Date Range: ${from} to ${to}`]);
     worksheet.addRow([]);
 
+    const baseColCount = 13;
     const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'Location', 'Owner', 'Classification', 'Record Status'];
-    const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
+    const header2 = new Array(baseColCount).fill('');
+    const header3 = new Array(baseColCount).fill('');
     years.forEach(y => {
       const months = Array.from(yearMonthMap[y]);
       header1.push(y);
-      for (let i = 1; i < months.length; i++) header1.push('');
-      months.forEach(m => header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' })));
+      for (let i = 1; i < months.length * 2; i++) header1.push('');
+      months.forEach(m => {
+        header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' }));
+        header2.push('');
+        header3.push('Amount (RM)');
+        header3.push('Litre (L)');
+      });
     });
-    header1.push('Sub Total');
-    header2.push('');
+    header1.push('Sub Total (RM)');
+    header1.push('Total Litre');
+    header2.push(''); header2.push('');
+    header3.push(''); header3.push('');
 
     const totalColumns = header1.length;
     worksheet.mergeCells(1, 1, 1, totalColumns);
-    worksheet.addRow(header1);
-    worksheet.addRow(header2);
+    worksheet.addRow(header1); // row 5
+    worksheet.addRow(header2); // row 6
+    worksheet.addRow(header3); // row 7
 
-    let col = 14;
+    // Merge static base columns across 3 header rows (rows 5-7)
+    for (let i = 1; i <= baseColCount; i++) {
+      worksheet.mergeCells(5, i, 7, i);
+    }
+    // Merge year groups across months×2 cols, and month names across 2 cols each
+    let col = baseColCount + 1;
     years.forEach(y => {
       const months = Array.from(yearMonthMap[y]);
-      if (months.length > 1) {
-        worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number - 1, col + months.length - 1);
+      const yearSpan = months.length * 2;
+      if (yearSpan > 1) {
+        worksheet.mergeCells(5, col, 5, col + yearSpan - 1);
       }
-      col += months.length;
+      months.forEach(() => {
+        worksheet.mergeCells(6, col, 6, col + 1);
+        col += 2;
+      });
     });
-    worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number, col);
-    for (let i = 1; i <= 13; i++) {
-      worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
-    }
+    // Sub Total (RM) and Total Litre span rows 5-7
+    worksheet.mergeCells(5, col, 7, col);
+    worksheet.mergeCells(5, col + 1, 7, col + 1);
+
     const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
     let no = 1;
     const columns = years.flatMap(y => Array.from(yearMonthMap[y]).map(m => ({ year: y, month: m })));
-    const monthTotals = new Array(columns.length).fill(0);
-    let overallTotal = 0;
+    const monthAmountTotals = new Array(columns.length).fill(0);
+    const monthLitreTotals = new Array(columns.length).fill(0);
+    let overallAmountTotal = 0;
+    let overallLitreTotal = 0;
     Object.values(rows).forEach((row: any) => {
       const amounts = columns.map(c => {
         const val = row.amounts[`${c.year}-${c.month}`];
         return val !== undefined ? toNumber(val) : 0;
       });
-      const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
-      amounts.forEach((amount, idx) => {
-        monthTotals[idx] += amount;
+      const litres = columns.map(c => {
+        const val = row.litres[`${c.year}-${c.month}`];
+        return val !== undefined ? toNumber(val) : 0;
       });
-      overallTotal += subTotal;
+      const subTotal = amounts.reduce((sum, a) => sum + a, 0);
+      const totalLitre = litres.reduce((sum, l) => sum + l, 0);
+      amounts.forEach((a, idx) => { monthAmountTotals[idx] += a; });
+      litres.forEach((l, idx) => { monthLitreTotals[idx] += l; });
+      overallAmountTotal += subTotal;
+      overallLitreTotal += totalLitre;
+      const monthCells: number[] = [];
+      columns.forEach((_, idx) => {
+        monthCells.push(amounts[idx]);
+        monthCells.push(litres[idx]);
+      });
       worksheet.addRow([
         no++,
         row.vehicle,
@@ -183,36 +219,42 @@ export async function downloadFuelVehicleSummary(from: string, to: string, opts?
         row.owner,
         row.classification,
         row.record_status,
-        ...amounts,
+        ...monthCells,
         subTotal,
+        totalLitre,
       ]);
     });
     if (no > 1) {
-      const baseColumns = 13;
-      const totalRowValues: any[] = new Array(baseColumns).fill('');
+      const totalRowValues: any[] = new Array(baseColCount).fill('');
       totalRowValues[1] = 'Total';
+      const monthTotalCells: number[] = [];
+      columns.forEach((_, idx) => {
+        monthTotalCells.push(monthAmountTotals[idx]);
+        monthTotalCells.push(monthLitreTotals[idx]);
+      });
       const totalsRow = worksheet.addRow([
         ...totalRowValues,
-        ...monthTotals,
-        overallTotal,
+        ...monthTotalCells,
+        overallAmountTotal,
+        overallLitreTotal,
       ]);
       totalsRow.font = { bold: true };
     }
 
-    const amountStartCol = 14;
-    const totalCol = amountStartCol + columns.length;
-    const headerStartRow = 3;
-    worksheet.getRow(headerStartRow).font = { bold: true };
-    worksheet.getRow(headerStartRow + 1).font = { bold: true };
+    const amountStartCol = baseColCount + 1;
+    const totalLitreCol = amountStartCol + columns.length * 2 + 1;
+    worksheet.getRow(5).font = { bold: true };
+    worksheet.getRow(6).font = { bold: true };
+    worksheet.getRow(7).font = { bold: true };
     const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
     for (let rowNum = tableStartRow; rowNum <= lastRowNum; rowNum++) {
-      for (let colIdx = amountStartCol; colIdx <= totalCol; colIdx++) {
+      for (let colIdx = amountStartCol; colIdx <= totalLitreCol; colIdx++) {
         const cell = worksheet.getRow(rowNum).getCell(colIdx);
         cell.numFmt = '#,##0.00';
       }
     }
     const tableEndRow = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
-    for (let rowNum = 3; rowNum <= tableEndRow; rowNum++) {
+    for (let rowNum = 5; rowNum <= tableEndRow; rowNum++) {
       const row = worksheet.getRow(rowNum);
       row.eachCell(cell => {
         cell.border = {
@@ -465,7 +507,7 @@ const FuelConsumptionReport = () => {
                   brand: item.brand?.name || '',
                   transmission: item.transmission || '',
                   fuel_type: item.fuel || '',
-                  age: item.age || '',
+                  age: item.age ?? '',
                   costcenter: item.costcenter?.name || '',
                   location: item.location?.name || '',
                   model: item.model?.name || '',
@@ -474,7 +516,8 @@ const FuelConsumptionReport = () => {
                   record_status: item.record_status || '',
                   total_litre: toNumber(item.total_litre),
                   total_amount: toNumber(item.total_amount),
-                  amounts: {} as Record<string, number>
+                  amounts: {} as Record<string, number>,
+                  litres: {} as Record<string, number>
                 };
               }
               (item.details || []).forEach((detail: any) => {
@@ -486,6 +529,7 @@ const FuelConsumptionReport = () => {
                       const month = d.getMonth() + 1;
                       const colKey = `${year}-${month}`;
                       rows[key].amounts[colKey] = toNumber(expense.amount);
+                      rows[key].litres[colKey] = toNumber(expense.total_litre);
                     }
                   });
                 }
@@ -511,64 +555,84 @@ const FuelConsumptionReport = () => {
             worksheet.addRow([`Date Range: ${startDate} to ${endDate}`]);
             worksheet.addRow([]);
 
-            // Create headers
+            // Create headers (3 rows: year / month / amount+litre)
+            const baseColCount = 13;
             const header1 = ['No', 'Vehicle', 'Category', 'Brand', 'Model', 'Trans.', 'Fuel', 'Age', 'Cost Center', 'Location', 'Owner', 'Classification', 'Record Status'];
-            const header2 = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
+            const header2 = new Array(baseColCount).fill('');
+            const header3 = new Array(baseColCount).fill('');
 
-            // Add year-month columns for amounts
             years.forEach(y => {
               const months = Array.from(yearMonthMap[y]);
               header1.push(y);
-              for (let i = 1; i < months.length; i++) header1.push('');
-              months.forEach(m => header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' })));
+              for (let i = 1; i < months.length * 2; i++) header1.push('');
+              months.forEach(m => {
+                header2.push(new Date(Number(y), m - 1, 1).toLocaleString('default', { month: 'short' }));
+                header2.push('');
+                header3.push('Amount (RM)');
+                header3.push('Litre (L)');
+              });
             });
 
-            // Add total column
-            header1.push('Sub Total');
-            header2.push('');
+            header1.push('Sub Total (RM)');
+            header1.push('Total Litre');
+            header2.push(''); header2.push('');
+            header3.push(''); header3.push('');
 
             // Merge title across all columns
             const totalColumns = header1.length;
             worksheet.mergeCells(1, 1, 1, totalColumns);
 
-            worksheet.addRow(header1);
-            worksheet.addRow(header2);
-            // Merge year cells for amounts
-            let col = 14; // Start after basic columns (No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, Location, Owner, Classification, Record Status)
+            worksheet.addRow(header1); // row 5
+            worksheet.addRow(header2); // row 6
+            worksheet.addRow(header3); // row 7
+
+            // Merge static base columns across 3 header rows (rows 5-7)
+            for (let i = 1; i <= baseColCount; i++) {
+              worksheet.mergeCells(5, i, 7, i);
+            }
+            // Merge year groups across months×2 cols, month names across 2 cols each
+            let col = baseColCount + 1;
             years.forEach(y => {
               const months = Array.from(yearMonthMap[y]);
-              if (months.length > 1) {
-                worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number - 1, col + months.length - 1);
+              const yearSpan = months.length * 2;
+              if (yearSpan > 1) {
+                worksheet.mergeCells(5, col, 5, col + yearSpan - 1);
               }
-              col += months.length;
+              months.forEach(() => {
+                worksheet.mergeCells(6, col, 6, col + 1);
+                col += 2;
+              });
             });
+            // Sub Total (RM) and Total Litre span rows 5-7
+            worksheet.mergeCells(5, col, 7, col);
+            worksheet.mergeCells(5, col + 1, 7, col + 1);
 
-            // Merge Sub Total cell
-            worksheet.mergeCells(worksheet.lastRow!.number - 1, col, worksheet.lastRow!.number, col);
-
-            // Merge basic column headers (span 2 rows)
-            for (let i = 1; i <= 13; i++) {
-              worksheet.mergeCells(worksheet.lastRow!.number - 1, i, worksheet.lastRow!.number, i);
-            }
             const tableStartRow = worksheet.lastRow ? worksheet.lastRow.number + 1 : 8;
             let no = 1;
-            const monthTotals = new Array(columns.length).fill(0);
-            let overallTotal = 0;
+            const monthAmountTotals = new Array(columns.length).fill(0);
+            const monthLitreTotals = new Array(columns.length).fill(0);
+            let overallAmountTotal = 0;
+            let overallLitreTotal = 0;
             Object.values(rows).forEach((row: any) => {
-              // Amount columns for each year-month
               const amounts = columns.map(c => {
                 const val = row.amounts[`${c.year}-${c.month}`];
                 return val !== undefined ? toNumber(val) : 0;
               });
-
-              // Calculate sub total
-              const subTotal = amounts.reduce((sum, amount) => sum + amount, 0);
-
-              amounts.forEach((amount, idx) => {
-                monthTotals[idx] += amount;
+              const litres = columns.map(c => {
+                const val = row.litres[`${c.year}-${c.month}`];
+                return val !== undefined ? toNumber(val) : 0;
               });
-              overallTotal += subTotal;
-
+              const subTotal = amounts.reduce((sum, a) => sum + a, 0);
+              const totalLitre = litres.reduce((sum, l) => sum + l, 0);
+              amounts.forEach((a, idx) => { monthAmountTotals[idx] += a; });
+              litres.forEach((l, idx) => { monthLitreTotals[idx] += l; });
+              overallAmountTotal += subTotal;
+              overallLitreTotal += totalLitre;
+              const monthCells: number[] = [];
+              columns.forEach((_, idx) => {
+                monthCells.push(amounts[idx]);
+                monthCells.push(litres[idx]);
+              });
               worksheet.addRow([
                 no++,
                 row.vehicle,
@@ -583,45 +647,41 @@ const FuelConsumptionReport = () => {
                 row.owner,
                 row.classification,
                 row.record_status,
-                ...amounts,
-                subTotal
+                ...monthCells,
+                subTotal,
+                totalLitre,
               ]);
             });
             if (no > 1) {
-              const basicColumnsCount = 13;
-              const totalRowValues: any[] = new Array(basicColumnsCount).fill('');
+              const totalRowValues: any[] = new Array(baseColCount).fill('');
               totalRowValues[1] = 'Total';
+              const monthTotalCells: number[] = [];
+              columns.forEach((_, idx) => {
+                monthTotalCells.push(monthAmountTotals[idx]);
+                monthTotalCells.push(monthLitreTotals[idx]);
+              });
               const totalsRow = worksheet.addRow([
                 ...totalRowValues,
-                ...monthTotals,
-                overallTotal
+                ...monthTotalCells,
+                overallAmountTotal,
+                overallLitreTotal,
               ]);
               totalsRow.font = { bold: true };
             }
             // Format number columns
-            const basicColumnsCount = 13; // No, Vehicle, Category, Brand, Model, Trans, Fuel, Age, Cost Center, Location, Owner, Classification, Record Status
-            const amountStartCol = basicColumnsCount + 1;
-            const amountEndCol = amountStartCol + columns.length - 1;
-            const subTotalCol = amountEndCol + 1;
+            const amountStartCol = baseColCount + 1;
+            const totalLitreCol = amountStartCol + columns.length * 2 + 1;
             const lastRowNum = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
-
-            // Format amount and total columns
             for (let rowNum = tableStartRow; rowNum <= lastRowNum; rowNum++) {
-              // Format monthly amount columns
-              for (let colIdx = amountStartCol; colIdx <= amountEndCol; colIdx++) {
+              for (let colIdx = amountStartCol; colIdx <= totalLitreCol; colIdx++) {
                 const cell = worksheet.getRow(rowNum).getCell(colIdx);
                 cell.numFmt = '#,##0.00';
               }
-
-              // Format Sub Total column
-              const subTotalCell = worksheet.getRow(rowNum).getCell(subTotalCol);
-              subTotalCell.numFmt = '#,##0.00';
             }
 
             // Add borders to all cells
             const tableEndRow = worksheet.lastRow ? worksheet.lastRow.number : tableStartRow;
-            const headerStartRow = tableStartRow - 2; // Account for the two-row header
-            for (let rowNum = headerStartRow; rowNum <= tableEndRow; rowNum++) {
+            for (let rowNum = 5; rowNum <= tableEndRow; rowNum++) {
               const row = worksheet.getRow(rowNum);
               row.eachCell({ includeEmpty: false }, cell => {
                 cell.border = {
@@ -636,9 +696,9 @@ const FuelConsumptionReport = () => {
             // Style the headers and title
             worksheet.getRow(1).font = { bold: true, size: 14 };
             worksheet.getRow(3).font = { bold: true };
-            worksheet.getRow(4).font = { bold: true };
-            worksheet.getRow(headerStartRow).font = { bold: true };
-            worksheet.getRow(headerStartRow + 1).font = { bold: true };
+            worksheet.getRow(5).font = { bold: true };
+            worksheet.getRow(6).font = { bold: true };
+            worksheet.getRow(7).font = { bold: true };
 
             // Auto-fit columns
             autoFitColumns(worksheet);
@@ -676,7 +736,7 @@ const FuelConsumptionReport = () => {
     <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
       <div className="flex items-center space-x-2">
         <FileSpreadsheet className="h-5 w-5 text-green-600" />
-      <h2 className="text-2xl font-bold">Fuel Consumption Report</h2>
+        <h2 className="text-2xl font-bold">Fuel Consumption Report</h2>
       </div>
       <div className="text-sm text-yellow-700 bg-yellow-100 border-l-4 border-yellow-400 p-3 my-2 rounded">
         <strong>Notice:</strong> The generated report is based on the statement month. Fuel consumption bills are typically received in the following month.

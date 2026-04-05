@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ExcelFleetRecord from "./excel-fleet-record";
 import { toast } from "sonner";
 import { AuthContext } from "@/store/AuthContext";
@@ -23,28 +25,31 @@ interface FleetCard {
     card_no: string;
     vendor?: {
         id?: number;
+        fuel_id?: number;
         name?: string;
         logo?: string;
         image2?: string;
     };
     asset?: {
-        id: number;
-        register_number?: string;
+        id: string;
+        assignee?: string;
         costcenter?: { id: number; name: string };
+        locations?: { id: number; code: string };
         fuel_type?: string;
         purpose?: string;
     };
-    vehicle_id?: number;
     reg_date?: string | null;
     remarks?: string | null;
     pin_no?: string | null;
     status?: string;
     expiry?: string | null;
+    register_number?: string | null;
+    product_restriction?: string | null;
 }
 
 interface AssetOption {
-    id: number;
-    register_number?: string;
+    id: string;
+    assignee?: string;
     costcenter?: { id: number; name: string };
     purpose?: string;
     fuel_type?: string;
@@ -91,10 +96,24 @@ const FleetCardList: React.FC = () => {
     const [replacementComboboxOpen, setReplacementComboboxOpen] = useState(false);
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [showAssetReplaceConfirm, setShowAssetReplaceConfirm] = useState<{
-        assetId: number | null;
+        assetId: string | null;
         cardNo: string | null;
     }>({ assetId: null, cardNo: null });
     const [pendingAssetSelection, setPendingAssetSelection] = useState<(() => void) | null>(null);
+    const [assignmentTab, setAssignmentTab] = useState<'asset' | 'employee'>('asset');
+    const [productRestrictions, setProductRestrictions] = useState<string[]>([]);
+
+    interface EmployeeOption {
+        id: number;
+        full_name?: string;
+        ramco_id?: string;
+        department?: { code?: string; id?: number; name?: string } | string;
+        costcenter?: { id: number; name: string };
+    }
+    const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+    const [employeeSearch, setEmployeeSearch] = useState('');
+    const [employeeLoading, setEmployeeLoading] = useState(false);
+    const [selectedEmployeeName, setSelectedEmployeeName] = useState<string | null>(null);
 
     const handleAssetSelect = (a: AssetOption) => {
         const existingCard = cards.find(c => c.asset?.id === a.id);
@@ -105,6 +124,7 @@ const FleetCardList: React.FC = () => {
                 purpose: (a.purpose || f.purpose || '').toLowerCase(),
                 costcenter_id: a.costcenter?.id ? String(a.costcenter.id) : f.costcenter_id,
                 fuel_type: (a.fuel_type || f.fuel_type || '').toLowerCase(),
+                register_number: a.assignee || f.register_number,
                 assignment: existingCard ? 'replacement' : f.assignment,
                 replacement_card_id: existingCard ? existingCard.id : f.replacement_card_id,
             }));
@@ -113,6 +133,7 @@ const FleetCardList: React.FC = () => {
                 setReplacementSelection(String(existingCard.id));
             }
             setErrors(prev => ({ ...prev, asset_id: undefined, fuel_type: undefined }));
+            setSelectedEmployeeName(null);
             setAssetPickerOpen(false);
             setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
             setPendingAssetSelection(null);
@@ -132,6 +153,7 @@ const FleetCardList: React.FC = () => {
         fuel_id: string;
         fuel_type: string;
         pin: string;
+        register_number: string;
         status: string;
         reg_date: string;
         expiry_date: string;
@@ -148,6 +170,7 @@ const FleetCardList: React.FC = () => {
         fuel_id: '',
         fuel_type: '',
         pin: '',
+        register_number: '',
         status: 'active',
         reg_date: '',
         expiry_date: '',
@@ -165,40 +188,40 @@ const FleetCardList: React.FC = () => {
             authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet"),
             authenticatedApi.get<{ data: VendorOption[] }>("/api/bills/fuel/vendor")
         ])
-        .then(([cardsRes, vendorsRes]) => {
-            const fetched = cardsRes.data?.data || [];
-            setCards(fetched);
-            setVendors(vendorsRes.data?.data || []);
-            // derive unique assets from cards so form can show register_number
-            const uniqueAssetsMap = new Map<number, AssetOption>();
-            fetched.forEach(c => {
-                if (c.asset && c.asset.id != null && !uniqueAssetsMap.has(c.asset.id)) {
-                    uniqueAssetsMap.set(c.asset.id, {
-                        id: c.asset.id,
-                        register_number: c.asset.register_number,
-                        costcenter: c.asset.costcenter,
-                        purpose: c.asset.purpose,
-                        fuel_type: c.asset.fuel_type,
-                    });
-                }
+            .then(([cardsRes, vendorsRes]) => {
+                const fetched = cardsRes.data?.data || [];
+                setCards(fetched);
+                setVendors(vendorsRes.data?.data || []);
+                // derive unique assets from cards
+                const uniqueAssetsMap = new Map<string, AssetOption>();
+                fetched.forEach(c => {
+                    if (c.asset && c.asset.id != null && !uniqueAssetsMap.has(c.asset.id)) {
+                        uniqueAssetsMap.set(c.asset.id, {
+                            id: c.asset.id,
+                            assignee: c.asset.assignee,
+                            costcenter: c.asset.costcenter,
+                            purpose: c.asset.purpose,
+                            fuel_type: c.asset.fuel_type,
+                        });
+                    }
+                });
+                setAssets(Array.from(uniqueAssetsMap.values()));
+                setLoading(false);
+            })
+            .catch(() => {
+                setError("Failed to load fleet cards.");
+                setLoading(false);
             });
-            setAssets(Array.from(uniqueAssetsMap.values()));
-            setLoading(false);
-        })
-        .catch(() => {
-            setError("Failed to load fleet cards.");
-            setLoading(false);
-        });
     }, []);
 
     // compute duplicated asset ids
     const duplicatedAssetIds = React.useMemo(() => {
-        const counts = new Map<number, number>();
+        const counts = new Map<string, number>();
         cards.forEach(c => {
             const id = c.asset?.id;
-            if (typeof id === 'number') counts.set(id, (counts.get(id) || 0) + 1);
+            if (id) counts.set(id, (counts.get(id) || 0) + 1);
         });
-        const dup = new Set<number>();
+        const dup = new Set<string>();
         counts.forEach((v, k) => { if (v > 1) dup.add(k); });
         return dup;
     }, [cards]);
@@ -206,10 +229,10 @@ const FleetCardList: React.FC = () => {
     const duplicatedCount = duplicatedAssetIds.size;
 
     const cardNumberSharedCount = React.useMemo(() => {
-        const map = new Map<string, Set<number>>();
+        const map = new Map<string, Set<string>>();
         cards.forEach(card => {
             if (!card.card_no) return;
-            const set = map.get(card.card_no) || new Set<number>();
+            const set = map.get(card.card_no) || new Set<string>();
             if (card.asset?.id) set.add(card.asset.id);
             map.set(card.card_no, set);
         });
@@ -221,10 +244,10 @@ const FleetCardList: React.FC = () => {
     }, [cards]);
 
     const cardNumberSharedAssetTotal = React.useMemo(() => {
-        const map = new Map<string, Set<number>>();
+        const map = new Map<string, Set<string>>();
         cards.forEach(card => {
             if (!card.card_no || !card.asset?.id) return;
-            const set = map.get(card.card_no) || new Set<number>();
+            const set = map.get(card.card_no) || new Set<string>();
             set.add(card.asset.id);
             map.set(card.card_no, set);
         });
@@ -271,13 +294,13 @@ const FleetCardList: React.FC = () => {
     }, [cards]);
 
     const duplicatedAssetRegisters = React.useMemo(() => {
-        const seen = new Set<number>();
+        const seen = new Set<string>();
         const list: string[] = [];
         cards.forEach(card => {
             const assetId = card.asset?.id;
             if (assetId && duplicatedAssetIds.has(assetId) && !seen.has(assetId)) {
                 seen.add(assetId);
-                list.push(card.asset?.register_number || `#${assetId}`);
+                list.push(card.asset?.assignee || `#${assetId}`);
             }
         });
         return list;
@@ -298,7 +321,7 @@ const FleetCardList: React.FC = () => {
 
     useEffect(() => {
         if (loading) return;
-        const uniqueAssets = new Set<number>();
+        const uniqueAssets = new Set<string>();
         cards.forEach(c => { if (c.asset?.id) uniqueAssets.add(c.asset.id); });
         const hasDuplicates = duplicatedCount > 0;
         const cardsExceedAssets = cards.length > uniqueAssets.size;
@@ -314,8 +337,8 @@ const FleetCardList: React.FC = () => {
         // Flatten nested fields needed by the grid filters/sorters
         const augmented = cards.map(c => ({
             ...c,
-            // expose register_number at top-level so column input filter works
-            register_number: c.asset?.register_number || '',
+            // expose assignee at top-level so column input filter works
+            assignee: c.asset?.assignee || '',
         }));
         return augmented.filter(c => {
             const status = (c.status || '').toLowerCase();
@@ -404,8 +427,15 @@ const FleetCardList: React.FC = () => {
         },
         {
             key: 'register_number',
-            header: 'Register Number',
-            render: (row: FleetCard) => row.asset?.register_number || '',
+            header: 'Registered Name on Card',
+            render: (row: FleetCard) => row.register_number || '',
+            sortable: true,
+            filter: 'input',
+        },
+        {
+            key: 'assignee',
+            header: 'Assignee',
+            render: (row: FleetCard) => row.asset?.assignee || '',
             sortable: true,
             filter: 'input',
         },
@@ -417,7 +447,7 @@ const FleetCardList: React.FC = () => {
         },
         {
             key: 'fuel_type',
-            header: 'Fuel Type',
+            header: 'Product Restriction',
             render: (row: FleetCard) => row.asset?.fuel_type || '',
             filter: 'singleSelect',
             filterParams: { options: fuelTypeOptions },
@@ -432,7 +462,7 @@ const FleetCardList: React.FC = () => {
         },
         {
             key: 'purpose',
-            header: 'Purpose',
+            header: 'Application Category',
             render: (row: FleetCard) => row.asset?.purpose || '',
             filter: 'singleSelect',
             filterParams: { options: purposeOptions },
@@ -464,19 +494,26 @@ const FleetCardList: React.FC = () => {
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             },
         },
+        {
+            key: 'remarks',
+            header: 'Remarks',
+            render: (row: FleetCard) => row.remarks || '',
+            filter: 'input',
+        }
     ] as any;
 
     const openEditor = (card?: FleetCard) => {
         if (card) {
             setEditingCard(card);
-                // support both new vendor.id and legacy vendor.fuel_id
-                const vendorId = card.vendor?.id ?? (card.vendor as any)?.fuel_id ?? null;
-                setForm({
+            // support both new vendor.id and legacy vendor.fuel_id
+            const vendorId = card.vendor?.id ?? card.vendor?.fuel_id ?? null;
+            setForm({
                 card_no: card.card_no || '',
                 asset_id: card.asset?.id ? String(card.asset.id) : '',
                 fuel_id: vendorId != null ? String(vendorId) : '',
                 fuel_type: card.asset?.fuel_type ? card.asset.fuel_type.toLowerCase() : '',
                 pin: card.pin_no || '',
+                register_number: card.register_number || '',
                 status: (card.status || 'active').toLowerCase(),
                 reg_date: card.reg_date ? card.reg_date.slice(0, 10) : '',
                 expiry_date: card.expiry ? card.expiry.slice(0, 10) : '',
@@ -486,19 +523,33 @@ const FleetCardList: React.FC = () => {
                 costcenter_id: card.asset?.costcenter?.id ? String(card.asset.costcenter.id) : '',
                 replacement_card_id: null,
             });
+            setProductRestrictions(card.asset?.fuel_type ? card.asset.fuel_type.split(',').map(s => s.trim()).filter(Boolean) : []);
             setReplacementMode('new');
             setReplacementSelection('');
         } else {
             setEditingCard(null);
             const today = new Date().toISOString().slice(0, 10);
-            setForm({ card_no: '', asset_id: '', fuel_id: '', fuel_type: '', pin: '', status: 'active', reg_date: today, expiry_date: '', remarks: '', assignment: 'new', purpose: '', costcenter_id: '', replacement_card_id: null });
+            setForm({ card_no: '', asset_id: '', fuel_id: '', fuel_type: '', pin: '', register_number: '', status: 'active', reg_date: today, expiry_date: '', remarks: '', assignment: 'new', purpose: '', costcenter_id: '', replacement_card_id: null });
+            setProductRestrictions([]);
             setReplacementMode('new');
             setReplacementSelection('');
         }
         setErrors({});
         setConfirmOpen(false);
+        setSelectedEmployeeName(null);
         setSidebarOpen(true);
     };
+
+    // fetch employees when picker opens on employee tab
+    useEffect(() => {
+        if (!assetPickerOpen || assignmentTab !== 'employee') return;
+        if (employeeOptions.length > 0) return;
+        setEmployeeLoading(true);
+        Promise.resolve(authenticatedApi.get<{ data: EmployeeOption[] }>('/api/assets/employees', { params: { status: 'active' } }))
+            .then(res => setEmployeeOptions(res.data?.data || []))
+            .catch(() => { toast.error('Failed to load employees'); setEmployeeOptions([]); })
+            .finally(() => setEmployeeLoading(false));
+    }, [assetPickerOpen, assignmentTab, employeeOptions.length]);
 
     // fetch active assets for picker when opened
     useEffect(() => {
@@ -526,7 +577,7 @@ const FleetCardList: React.FC = () => {
         if (!form.card_no) newErrors.card_no = 'Card number is required';
         if (!form.fuel_id) newErrors.fuel_id = 'Vendor is required';
         if (!form.asset_id) newErrors.asset_id = 'Asset is required';
-        if (!form.fuel_type) newErrors.fuel_type = 'Fuel product is required';
+        if (productRestrictions.length === 0) newErrors.fuel_type = 'At least one product restriction is required';
         if (!form.costcenter_id) newErrors.costcenter_id = 'Cost center is required';
         if (!form.status) newErrors.status = 'Status is required';
         if (!form.reg_date) newErrors.reg_date = 'Registration date is required';
@@ -549,13 +600,14 @@ const FleetCardList: React.FC = () => {
         const payload = {
             card_no: form.card_no,
             pin: form.pin,
+            register_number: form.register_number || null,
             fuel_id: form.fuel_id ? Number(form.fuel_id) : null,
-            asset_id: form.asset_id ? Number(form.asset_id) : null,
+            asset_id: form.asset_id || null,
             status: form.status,
             reg_date: form.reg_date || null,
             expiry_date: form.expiry_date || null,
             remarks: form.remarks,
-            fuel_type: form.fuel_type || null,
+            fuel_type: productRestrictions.length > 0 ? productRestrictions.join(',') : null,
             assignment: replacementMode,
             replacement_card_id: replacementMode === 'replacement' ? (form.replacement_card_id ?? null) : null,
             purpose: form.purpose,
@@ -742,7 +794,7 @@ const FleetCardList: React.FC = () => {
                         size={'sm'}
                         onClick={() => openEditor()}
                     >
-                        <Plus size={20} />
+                        <Plus size={20} /> Register new card
                     </Button>
                 </div>
             </div>
@@ -755,8 +807,10 @@ const FleetCardList: React.FC = () => {
                 inputFilter={false}
                 onRowDoubleClick={(row: FleetCard) => openEditor(row)}
                 rowClass={(row: FleetCard) => {
-                    if (highlightDuplicates && row.asset && duplicatedAssetIds.has(row.asset.id!)) return 'bg-amber-50';
-                    return '';
+                    const classes: string[] = [];
+                    if ((row.status || '').toLowerCase() === 'inactive') classes.push('line-through opacity-60 text-amber-600');
+                    if (highlightDuplicates && row.asset && duplicatedAssetIds.has(row.asset.id)) classes.push('bg-amber-50');
+                    return classes.join(' ');
                 }}
             />
 
@@ -774,281 +828,305 @@ const FleetCardList: React.FC = () => {
                                     if (validateForm()) setConfirmOpen(true);
                                 }}
                             >
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Card No</label>
-                                <Input
-                                    inputMode="numeric"
-                                    value={form.card_no}
-                                    onChange={e => {
-                                        const numeric = e.target.value.replace(/\D+/g, '');
-                                        setForm(f => ({ ...f, card_no: numeric }));
-                                        setErrors(prev => ({ ...prev, card_no: undefined }));
-                                    }}
-                                    onKeyDown={(e) => {
-                                        const allowed = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
-                                        if (allowed.includes(e.key)) return;
-                                        if (!/^\d$/.test(e.key)) {
-                                            e.preventDefault();
-                                        }
-                                    }}
-                                    className={errors.card_no ? 'border-red-500 focus-visible:ring-red-500' : undefined}
-                                    required
-                                />
-                            </div>
-                            {!editingCard && (
-                                <>
-                                    <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                            Type <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                        </label>
-                    <p className="text-xs text-amber-700 mb-1">Select the type of assignment: create a new card or replace an existing active card.</p>
-                                        <RadioGroup
-                                            className="flex gap-4"
-                                            value={replacementMode}
-                                            onValueChange={val => {
-                                                const value = val as 'new' | 'replacement';
-                                                setReplacementMode(value);
-                                                if (value === 'new') {
-                                                    setReplacementSelection('');
-                                                    setForm(f => ({ ...f, asset_id: '', assignment: 'new', replacement_card_id: null }));
-                                                } else {
-                                                    setForm(f => ({ ...f, assignment: 'replacement' }));
-                                                }
-                                            }}
-                                        >
-                                            <label className="flex items-center gap-2 text-sm">
-                                                <RadioGroupItem value="new" /> New
+                                {!editingCard && (
+                                    <>
+                                        <div>
+                                            <label className="flex items-center gap-1 text-sm font-medium">
+                                                Registration Type <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
                                             </label>
-                                            <label className="flex items-center gap-2 text-sm">
-                                                <RadioGroupItem value="replacement" /> Replacement
-                                            </label>
-                                        </RadioGroup>
-                                    </div>
-                                    {replacementMode === 'replacement' && (
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Replacement Fleet</label>
-                                        <Popover open={replacementComboboxOpen} onOpenChange={setReplacementComboboxOpen}>
-                                            <PopoverTrigger asChild>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    className="w-full justify-between"
-                                                >
-                                                    {replacementSelection
-                                                        ? (() => {
-                                                            const selected = replacementOptions.find(opt => String(opt.id) === replacementSelection);
-                                                            return selected ? (
-                                                                <div className="flex flex-col items-start">
-                                                                    <span className="font-medium">{selected.card_no}</span>
-                                                                    <span className="text-xs text-muted-foreground">
-                                                                        {selected.asset?.register_number || '-'} • {selected.asset?.costcenter?.name || '-'} • {(selected.asset?.purpose || '-').toLowerCase()}
-                                                                    </span>
-                                                                </div>
-                                                            ) : 'Select active fleet';
-                                                        })()
-                                                        : 'Select active fleet'}
-                                                </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="p-0 w-[320px]" align="start">
-                                                <Command
-                                                    filter={(value, search) =>
-                                                        value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
+                                            <p className="text-xs text-amber-700 mb-1">Select the type of assignment: create a new card or replace an existing active card.</p>
+                                            <RadioGroup
+                                                className="flex gap-4"
+                                                value={replacementMode}
+                                                onValueChange={val => {
+                                                    const value = val as 'new' | 'replacement';
+                                                    setReplacementMode(value);
+                                                    if (value === 'new') {
+                                                        setReplacementSelection('');
+                                                        setForm(f => ({ ...f, asset_id: '', assignment: 'new', replacement_card_id: null }));
+                                                    } else {
+                                                        setForm(f => ({ ...f, assignment: 'replacement' }));
                                                     }
-                                                >
-                                                    <CommandInput
-                                                        placeholder="Search card number"
-                                                    />
-                                                    <CommandEmpty>No active fleet matches.</CommandEmpty>
-                                                    <CommandList>
-                                                        <CommandGroup>
-                                                            {replacementOptions.map(opt => (
-                                                                <CommandItem
-                                                                    key={opt.id}
-                                                                    value={opt.card_no}
-                                                                    onSelect={() => {
-                                                                        const v = String(opt.id);
-                                                                        setReplacementSelection(v);
-                                                                        if (opt.asset?.id) {
-                                                                            setForm(f => ({
-                                                                                ...f,
-                                                                                asset_id: String(opt.asset!.id),
-                                                                                replacement_card_id: Number(v),
-                                                                                purpose: opt.asset?.purpose?.toLowerCase() || f.purpose,
-                                                                                costcenter_id: opt.asset?.costcenter?.id ? String(opt.asset.costcenter.id) : f.costcenter_id,
-                                                                                fuel_type: opt.asset?.fuel_type?.toLowerCase() || f.fuel_type,
-                                                                            }));
-                                                                        }
-                                                                        setErrors(prev => ({ ...prev, asset_id: undefined }));
-                                                                        setReplacementComboboxOpen(false);
-                                                                    }}
-                                                                >
-                                                                    <div className="flex flex-col">
-                                                                        <span className="font-medium">{opt.card_no}</span>
-                                                                        <span className="text-xs text-muted-foreground">
-                                                                            {opt.asset?.register_number || '-'} • {opt.asset?.costcenter?.name || '-'} • {(opt.asset?.purpose || '-').toLowerCase()}
-                                                                        </span>
-                                                                    </div>
-                                                                </CommandItem>
-                                                            ))}
-                                                        </CommandGroup>
-                                                    </CommandList>
-                                                </Command>
-                                            </PopoverContent>
-                                        </Popover>
-                                        <p className="text-xs text-amber-700 mt-1">Selecting a fleet will assign its asset to this card.</p>
-                                    </div>
+                                                }}
+                                            >
+                                                <label className="flex items-center gap-2 text-sm">
+                                                    <RadioGroupItem value="new" /> New
+                                                </label>
+                                                <label className="flex items-center gap-2 text-sm">
+                                                    <RadioGroupItem value="replacement" /> Replacement
+                                                </label>
+                                            </RadioGroup>
+                                        </div>
+                                        {replacementMode === 'replacement' && (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1 text-red-600">Old Card</label>
+                                                <Popover open={replacementComboboxOpen} onOpenChange={setReplacementComboboxOpen}>
+                                                    <PopoverTrigger asChild>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            className="w-full justify-between"
+                                                        >
+                                                            {replacementSelection
+                                                                ? (() => {
+                                                                    const selected = replacementOptions.find(opt => String(opt.id) === replacementSelection);
+                                                                    return selected ? (
+                                                                        <div className="flex flex-col items-start">
+                                                                            <span className="font-medium text-red-600">{selected.card_no}</span>
+                                                                            <span className="text-xs text-muted-foreground">
+                                                                                {selected.asset?.assignee || '-'} • {selected.asset?.costcenter?.name || '-'} • {(selected.asset?.purpose || '-').toLowerCase()}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : 'Select old card';
+                                                                })()
+                                                                : 'Select old card'}
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="p-0 w-[320px]" align="start">
+                                                        <Command
+                                                            filter={(value, search) =>
+                                                                value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
+                                                            }
+                                                        >
+                                                            <CommandInput
+                                                                placeholder="Search card number"
+                                                            />
+                                                            <CommandEmpty>No active fleet matches.</CommandEmpty>
+                                                            <CommandList>
+                                                                <CommandGroup>
+                                                                    {replacementOptions.map(opt => (
+                                                                        <CommandItem
+                                                                            key={opt.id}
+                                                                            value={opt.card_no}
+                                                                            onSelect={() => {
+                                                                                const v = String(opt.id);
+                                                                                setReplacementSelection(v);
+                                                                                if (opt.asset?.id) {
+                                                                                    setForm(f => ({
+                                                                                        ...f,
+                                                                                        asset_id: String(opt.asset!.id),
+                                                                                        replacement_card_id: Number(v),
+                                                                                        purpose: opt.asset?.purpose?.toLowerCase() || f.purpose,
+                                                                                        costcenter_id: opt.asset?.costcenter?.id ? String(opt.asset.costcenter.id) : f.costcenter_id,
+                                                                                        fuel_type: opt.asset?.fuel_type?.toLowerCase() || f.fuel_type,
+                                                                                    }));
+                                                                                }
+                                                                                setErrors(prev => ({ ...prev, asset_id: undefined }));
+                                                                                setReplacementComboboxOpen(false);
+                                                                            }}
+                                                                        >
+                                                                            <div className="flex flex-col">
+                                                                                <span className="font-medium">{opt.card_no}</span>
+                                                                                <span className="text-xs text-muted-foreground">
+                                                                                    {opt.asset?.assignee || '-'} • {opt.asset?.costcenter?.name || '-'} • {(opt.asset?.purpose || '-').toLowerCase()}
+                                                                                </span>
+                                                                            </div>
+                                                                        </CommandItem>
+                                                                    ))}
+                                                                </CommandGroup>
+                                                            </CommandList>
+                                                        </Command>
+                                                    </PopoverContent>
+                                                </Popover>
+                                                <p className="text-xs text-amber-700 mt-1">Selecting a fleet will assign its asset to this card.</p>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
-                            </>
-                        )}
-                            <div>
-                                <label className="block text-sm font-medium mb-1">PIN</label>
-                                <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Vendor <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <p className="text-xs text-amber-700 mb-1">Pick the fuel vendor that issues/bills this card.</p>
-                                <Select value={form.fuel_id} onValueChange={v => { setForm(f => ({ ...f, fuel_id: v })); setErrors(p => ({ ...p, fuel_id: undefined })); }} required>
-                                    <SelectTrigger className={`w-full ${errors.fuel_id ? 'border-red-500 focus:ring-red-500' : ''}`} aria-invalid={!!errors.fuel_id}>
-                                        <SelectValue placeholder="Select Vendor" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {vendors.map(i => (
-                                            <SelectItem key={i.id} value={String(i.id)} className="flex items-center gap-2">
-                                                {i.logo ? <img src={i.logo} alt={i.name} className="w-6 h-6 object-contain rounded" /> : null}
-                                                <span>{i.name}</span>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {errors.fuel_id && (
-                                    <p className="mt-1 text-sm text-red-600">{errors.fuel_id}</p>
-                                )}
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Asset <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <p className="text-xs text-amber-700 mb-1">Will you assign this card to an existing asset (preferred) or just register a new card without linking? Choose the asset to link.</p>
-                                <div className="relative">
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">
+                                        Card No{replacementMode === 'replacement' && <span className="ml-2 text-xs font-normal text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">Replacement</span>}
+                                    </label>
                                     <Input
-                                        readOnly
-                                        placeholder="No asset selected"
-                                        className={`pr-10 cursor-pointer ${errors.asset_id ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                                        onClick={() => setAssetPickerOpen(true)}
-                                        value={(() => {
-                                            const id = form.asset_id;
-                                            if (!id) return '';
-                                            const fromAssets = assets.find(a => String(a.id) === String(id));
-                                            if (fromAssets) {
-                                                return fromAssets.register_number || `#${fromAssets.id}`;
+                                        inputMode="numeric"
+                                        value={form.card_no}
+                                        onChange={e => {
+                                            const numeric = e.target.value.replace(/\D+/g, '');
+                                            setForm(f => ({ ...f, card_no: numeric }));
+                                            setErrors(prev => ({ ...prev, card_no: undefined }));
+                                        }}
+                                        onKeyDown={(e) => {
+                                            const allowed = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+                                            if (allowed.includes(e.key)) return;
+                                            if (!/^\d$/.test(e.key)) {
+                                                e.preventDefault();
                                             }
-                                            const fromOptions = assetOptions.find(a => String(a.id) === String(id));
-                                            if (fromOptions) {
-                                                return fromOptions.register_number || `#${fromOptions.id}`;
-                                            }
-                                            return `#${id}`;
-                                        })()}
+                                        }}
+                                        className={errors.card_no ? 'border-red-500 focus-visible:ring-red-500' : undefined}
+                                        required
                                     />
-                                    <button
-                                        type="button"
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
-                                        title="Choose from assets"
-                                        onClick={() => setAssetPickerOpen(true)}
-                                        aria-label="Open asset picker"
-                                    >
-                                        <ArrowBigRight />
-                                    </button>
                                 </div>
-                                {errors.asset_id && <p className="mt-1 text-sm text-red-600">{errors.asset_id}</p>}
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Purpose <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <p className="text-xs text-amber-700 mb-1">Define how this card will be used (project, staff cost, or poolcar).</p>
-                                <Select
-                                    value={form.purpose}
-                                    onValueChange={v => { setForm(f => ({ ...f, purpose: v })); setErrors(prev => ({ ...prev, purpose: undefined })); }}
-                                    required
-                                >
-                                    <SelectTrigger className={`w-full ${errors.purpose ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                                        <SelectValue placeholder="Select purpose" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="project">Project</SelectItem>
-                                        <SelectItem value="staff cost">Staff Cost</SelectItem>
-                                        <SelectItem value="poolcar">Poolcar</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.purpose && <p className="mt-1 text-sm text-red-600">{errors.purpose}</p>}
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Fuel Product <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <Select
-                                    value={form.fuel_type}
-                                    onValueChange={v => { setForm(f => ({ ...f, fuel_type: v })); setErrors(prev => ({ ...prev, fuel_type: undefined })); }}
-                                    required
-                                >
-                                    <SelectTrigger className={`w-full ${errors.fuel_type ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                                        <SelectValue placeholder="Select fuel product" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="petrol">Petrol</SelectItem>
-                                        <SelectItem value="diesel">Diesel</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.fuel_type && <p className="mt-1 text-sm text-red-600">{errors.fuel_type}</p>}
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Cost Center <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <p className="text-xs text-amber-700 mb-1">Assign the cost center that will bear this card’s expenses.</p>
-                                <Select
-                                    value={form.costcenter_id}
-                                    onValueChange={v => { setForm(f => ({ ...f, costcenter_id: v })); setErrors(prev => ({ ...prev, costcenter_id: undefined })); }}
-                                    required
-                                >
-                                    <SelectTrigger className={`w-full ${errors.costcenter_id ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                                        <SelectValue placeholder="Select cost center" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {Array.from(new Map([...assets, ...assetOptions].map(a => [a.costcenter?.id, a.costcenter?.name || '']))).filter(([id, name]) => id && name).map(([id, name]) => (
-                                            <SelectItem key={String(id)} value={String(id)}>{name as string}</SelectItem>
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Vendor <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <p className="text-xs text-amber-700 mb-1">Pick the fuel vendor that issues/bills this card.</p>
+                                    <Select value={form.fuel_id} onValueChange={v => { setForm(f => ({ ...f, fuel_id: v })); setErrors(p => ({ ...p, fuel_id: undefined })); }} required>
+                                        <SelectTrigger className={`w-full ${errors.fuel_id ? 'border-red-500 focus:ring-red-500' : ''}`} aria-invalid={!!errors.fuel_id}>
+                                            <SelectValue placeholder="Select Vendor" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {vendors.map(i => (
+                                                <SelectItem key={i.id} value={String(i.id)} className="flex items-center gap-2">
+                                                    {i.logo ? <img src={i.logo} alt={i.name} className="w-6 h-6 object-contain rounded" /> : null}
+                                                    <span>{i.name}</span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.fuel_id && (
+                                        <p className="mt-1 text-sm text-red-600">{errors.fuel_id}</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Registered Name on Card</label>
+                                    <Input
+                                        value={form.register_number}
+                                        onChange={e => setForm(f => ({ ...f, register_number: e.target.value }))}
+                                        placeholder="Name printed on card"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">PIN</label>
+                                    <Input value={form.pin} onChange={e => setForm(f => ({ ...f, pin: e.target.value }))} />
+                                </div>
+
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Assignee <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <p className="text-xs text-amber-700 mb-1">Will you assign this card to an existing vehicle or employee? Choose to link.</p>
+                                    <div className="relative">
+                                        <Input
+                                            readOnly
+                                            placeholder="No assignment selected"
+                                            className={`pr-10 cursor-pointer ${errors.asset_id ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                            onClick={() => setAssetPickerOpen(true)}
+                                            value={(() => {
+                                                if (selectedEmployeeName) return selectedEmployeeName;
+                                                const id = form.asset_id;
+                                                if (!id) return '';
+                                                const fromAssets = assets.find(a => String(a.id) === String(id));
+                                                if (fromAssets) {
+                                                    return fromAssets.assignee || `#${fromAssets.id}`;
+                                                }
+                                                const fromOptions = assetOptions.find(a => String(a.id) === String(id));
+                                                if (fromOptions) {
+                                                    return fromOptions.assignee || `#${fromOptions.id}`;
+                                                }
+                                                return `#${id}`;
+                                            })()}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-amber-500 hover:text-amber-600"
+                                            title="Choose from assets"
+                                            onClick={() => setAssetPickerOpen(true)}
+                                            aria-label="Open asset picker"
+                                        >
+                                            <ArrowBigRight />
+                                        </button>
+                                    </div>
+                                    {errors.asset_id && <p className="mt-1 text-sm text-red-600">{errors.asset_id}</p>}
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Application Category <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <p className="text-xs text-amber-700 mb-1">Define how this card will be used (project, staff cost, or poolcar).</p>
+                                    <RadioGroup
+                                        value={form.purpose}
+                                        onValueChange={v => { setForm(f => ({ ...f, purpose: v })); setErrors(prev => ({ ...prev, purpose: undefined })); }}
+                                        className={`flex flex-wrap gap-4 pt-1 ${errors.purpose ? 'ring-1 ring-red-500 rounded-md p-2' : ''}`}
+                                    >
+                                        {[
+                                            { label: 'Project', value: 'project' },
+                                            { label: 'Staff Cost', value: 'staff cost' },
+                                            { label: 'Poolcar', value: 'poolcar' },
+                                        ].map(opt => (
+                                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer select-none">
+                                                <RadioGroupItem value={opt.value} id={`purpose-${opt.value}`} />
+                                                <span className="text-sm">{opt.label}</span>
+                                            </label>
                                         ))}
-                                    </SelectContent>
-                                </Select>
-                                {errors.costcenter_id && <p className="mt-1 text-sm text-red-600">{errors.costcenter_id}</p>}
-                            </div>
-                            <div>
-                                <label className="flex items-center gap-1 text-sm font-medium mb-1">
-                                    Status <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
-                                </label>
-                                <Select value={form.status} onValueChange={v => { setForm(f => ({ ...f, status: v })); setErrors(prev => ({ ...prev, status: undefined })); }} required>
-                                    <SelectTrigger className={`w-full ${errors.status ? 'border-red-500 focus:ring-red-500' : ''}`}>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="inactive">Inactive</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.status && <p className="mt-1 text-sm text-red-600">{errors.status}</p>}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-1">Remarks</label>
-                                <textarea
-                                    className="w-full border rounded px-3 py-2 text-sm"
-                                    rows={2}
-                                    value={form.remarks}
-                                    onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
-                                    placeholder="Enter remarks (optional)"
-                                />
-                            </div>
+                                    </RadioGroup>
+                                    {errors.purpose && <p className="mt-1 text-sm text-red-600">{errors.purpose}</p>}
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Product Restriction <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <div className={`flex flex-wrap gap-4 pt-1 ${errors.fuel_type ? 'ring-1 ring-red-500 rounded-md p-2' : ''}`}>
+                                        {[
+                                            { label: 'RON95', value: 'ron95' },
+                                            { label: 'RON97', value: 'ron97' },
+                                            { label: 'DIESELB7', value: 'b7' },
+                                            { label: 'DIESELB10', value: 'b10' },
+                                        ].map(opt => (
+                                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer select-none">
+                                                <Checkbox
+                                                    checked={productRestrictions.includes(opt.value)}
+                                                    onCheckedChange={checked => {
+                                                        setProductRestrictions(prev =>
+                                                            checked
+                                                                ? [...prev, opt.value]
+                                                                : prev.filter(v => v !== opt.value)
+                                                        );
+                                                        setErrors(prev => ({ ...prev, fuel_type: undefined }));
+                                                    }}
+                                                />
+                                                <span className="text-sm">{opt.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                    {errors.fuel_type && <p className="mt-1 text-sm text-red-600">{errors.fuel_type}</p>}
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Cost Center <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <p className="text-xs text-amber-700 mb-1">Assign the cost center that will bear this card’s expenses.</p>
+                                    <Select
+                                        value={form.costcenter_id}
+                                        onValueChange={v => { setForm(f => ({ ...f, costcenter_id: v })); setErrors(prev => ({ ...prev, costcenter_id: undefined })); }}
+                                        required
+                                    >
+                                        <SelectTrigger className={`w-full ${errors.costcenter_id ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                                            <SelectValue placeholder="Select cost center" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Array.from(new Map([...assets, ...assetOptions].map(a => [a.costcenter?.id, a.costcenter?.name || '']))).filter(([id, name]) => id && name).map(([id, name]) => (
+                                                <SelectItem key={String(id)} value={String(id)}>{name as string}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.costcenter_id && <p className="mt-1 text-sm text-red-600">{errors.costcenter_id}</p>}
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-1 text-sm font-medium mb-1">
+                                        Status <AlertCircle className="h-4 w-4 text-amber-600" aria-hidden />
+                                    </label>
+                                    <Select value={form.status} onValueChange={v => { setForm(f => ({ ...f, status: v })); setErrors(prev => ({ ...prev, status: undefined })); }} required>
+                                        <SelectTrigger className={`w-full ${errors.status ? 'border-red-500 focus:ring-red-500' : ''}`}>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Active</SelectItem>
+                                            <SelectItem value="inactive">Inactive</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.status && <p className="mt-1 text-sm text-red-600">{errors.status}</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Remarks</label>
+                                    <textarea
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        rows={2}
+                                        value={form.remarks}
+                                        onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))}
+                                        placeholder="Enter remarks (optional)"
+                                    />
+                                </div>
                                 <div className="flex gap-2">
                                     <div className="flex-1">
                                         <label className="flex items-center gap-1 text-sm font-medium mb-1">
@@ -1077,88 +1155,132 @@ const FleetCardList: React.FC = () => {
                                         {errors.expiry_date && <p className="mt-1 text-sm text-red-600">{errors.expiry_date}</p>}
                                     </div>
                                 </div>
-                            <div className="pt-2 flex justify-start">
-                                <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-                                    <Button
-                                        type="submit"
-                                        disabled={formLoading || (!editingCard && !form.card_no)}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (validateForm()) setConfirmOpen(true);
-                                        }}
-                                    >
-                                        {formLoading ? <Loader2 className="animate-spin mr-2" /> : null}
-                                        {editingCard ? 'Update' : 'Save'}
-                                    </Button>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                Are you sure you want to submit this fleet card information?
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={handleSubmit}>Confirm</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                    {/* Asset replacement confirmation */}
-                                    <AlertDialog open={!!showAssetReplaceConfirm.assetId} onOpenChange={(open) => {
-                                        if (!open) {
-                                            setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
-                                            setPendingAssetSelection(null);
-                                        }
-                                    }}>
+                                <div className="pt-2 flex justify-start">
+                                    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                                        <Button
+                                            type="submit"
+                                            disabled={formLoading || (!editingCard && !form.card_no)}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                if (validateForm()) setConfirmOpen(true);
+                                            }}
+                                        >
+                                            {formLoading ? <Loader2 className="animate-spin mr-2" /> : null}
+                                            {editingCard ? 'Update' : 'Save'}
+                                        </Button>
                                         <AlertDialogContent>
                                             <AlertDialogHeader>
-                                                <AlertDialogTitle>Replace existing card?</AlertDialogTitle>
+                                                <AlertDialogTitle>Confirm Submission</AlertDialogTitle>
                                                 <AlertDialogDescription>
-                                                    This asset already has card {showAssetReplaceConfirm.cardNo || ''}. Do you want to set this form as a replacement?
+                                                    Are you sure you want to submit this fleet card information?
                                                 </AlertDialogDescription>
                                             </AlertDialogHeader>
                                             <AlertDialogFooter>
-                                                <AlertDialogCancel onClick={() => {
-                                                    setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
-                                                    setPendingAssetSelection(null);
-                                                }}>Cancel</AlertDialogCancel>
-                                                <AlertDialogAction onClick={() => {
-                                                    if (pendingAssetSelection) pendingAssetSelection();
-                                                }}>Yes, replace</AlertDialogAction>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction onClick={handleSubmit}>Confirm</AlertDialogAction>
                                             </AlertDialogFooter>
                                         </AlertDialogContent>
+                                        {/* Asset replacement confirmation */}
+                                        <AlertDialog open={!!showAssetReplaceConfirm.assetId} onOpenChange={(open) => {
+                                            if (!open) {
+                                                setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
+                                                setPendingAssetSelection(null);
+                                            }
+                                        }}>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Replace existing card?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This asset already has card {showAssetReplaceConfirm.cardNo || ''}. Do you want to set this form as a replacement?
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel onClick={() => {
+                                                        setShowAssetReplaceConfirm({ assetId: null, cardNo: null });
+                                                        setPendingAssetSelection(null);
+                                                    }}>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => {
+                                                        if (pendingAssetSelection) pendingAssetSelection();
+                                                    }}>Yes, replace</AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </AlertDialog>
-                                </AlertDialog>
-                            </div>
+                                </div>
                             </form>
                             {assetPickerOpen && (
                                 <div className="w-96 border-l pl-4">
                                     <div className="flex items-center justify-between mb-2">
-                                        <h3 className="font-semibold">Select Asset</h3>
+                                        <h3 className="font-semibold">Select Assignment</h3>
                                         <Button size="sm" variant="default" onClick={() => setAssetPickerOpen(false)}>Hide List</Button>
                                     </div>
-                                    <Input placeholder="Search..." value={assetSearch} onChange={e => setAssetSearch(e.target.value)} className="mb-3" />
-                                    <div className="max-h-150 overflow-y-auto space-y-2">
-                                        {assetOptions.filter(a => (a.register_number || '').toLowerCase().includes(assetSearch.toLowerCase())).map(a => {
-                                            const assigned = cards.find(c => c.asset && c.asset.id === a.id)?.card_no;
-                                            return (
-                                                <div key={a.id} className="p-2 border rounded hover:bg-accent/20 flex items-center justify-between">
-                                                    <div>
-                                                        <div className="font-medium">{a.register_number || `#${a.id}`}</div>
-                                                        <div className="text-xs text-muted-foreground">Cost Ctr: {a.costcenter?.name || '-'}</div>
-                                                        <div className="text-xs text-muted-foreground capitalize">Purpose: {a.purpose || '-'}</div>
-                                                        <div className="text-xs text-muted-foreground">Current Card: <span className="text-destructive font-bold">{assigned || '-'}</span></div>
+                                    <Tabs value={assignmentTab} onValueChange={v => setAssignmentTab(v as 'asset' | 'employee')} className="w-full">
+                                        <TabsList className="w-full mb-3">
+                                            <TabsTrigger value="asset" className="flex-1">Asset</TabsTrigger>
+                                            <TabsTrigger value="employee" className="flex-1">Employee</TabsTrigger>
+                                        </TabsList>
+                                        <TabsContent value="asset">
+                                            <Input placeholder="Search..." value={assetSearch} onChange={e => setAssetSearch(e.target.value)} className="mb-3" />
+                                            <div className="max-h-150 overflow-y-auto space-y-2">
+                                                {assetOptions.filter(a => (a.assignee || '').toLowerCase().includes(assetSearch.toLowerCase())).map(a => {
+                                                    const assigned = cards.find(c => c.asset && c.asset.id === a.id)?.card_no;
+                                                    return (
+                                                        <div key={a.id} className="p-2 border rounded hover:bg-accent/20 flex items-center justify-between">
+                                                            <div>
+                                                                <div className="font-medium">{a.assignee || `#${a.id}`}</div>
+                                                                <div className="text-xs text-muted-foreground">Cost Ctr: {a.costcenter?.name || '-'}</div>
+                                                                <div className="text-xs text-muted-foreground capitalize">Purpose: {a.purpose || '-'}</div>
+                                                                <div className="text-xs text-muted-foreground">Current Card: <span className="text-destructive font-bold">{assigned || '-'}</span></div>
+                                                            </div>
+                                                            <span
+                                                                className="text-green-600 dark:text-green-400 cursor-pointer"
+                                                                onClick={() => handleAssetSelect(a)}
+                                                                title="Select this asset"
+                                                            >
+                                                                <ArrowBigLeft />
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </TabsContent>
+                                        <TabsContent value="employee">
+                                            <Input placeholder="Search employee..." value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)} className="mb-3" />
+                                            <div className="max-h-150 overflow-y-auto space-y-2">
+                                                {employeeLoading ? (
+                                                    <div className="flex justify-center py-4"><Loader2 className="animate-spin" /></div>
+                                                ) : employeeOptions.filter(emp =>
+                                                    (emp.full_name || '').toLowerCase().includes(employeeSearch.toLowerCase()) ||
+                                                    (emp.ramco_id || '').toLowerCase().includes(employeeSearch.toLowerCase())
+                                                ).map(emp => (
+                                                    <div key={emp.id} className="p-2 border rounded hover:bg-accent/20 flex items-center justify-between">
+                                                        <div>
+                                                            <div className="font-medium">{emp.full_name || '-'}</div>
+                                                            <div className="text-xs text-muted-foreground">Ramco ID: {emp.ramco_id || '-'}</div>
+                                                            <div className="text-xs text-muted-foreground">Dept: {typeof emp.department === 'object' ? emp.department?.code || '-' : emp.department || '-'}</div>
+                                                            <div className="text-xs text-muted-foreground">Cost Ctr: {emp.costcenter?.name || '-'}</div>
+                                                        </div>
+                                                        <span
+                                                            className="text-green-600 dark:text-green-400 cursor-pointer"
+                                                            onClick={() => {
+                                                                setForm(f => ({
+                                                                    ...f,
+                                                                    asset_id: emp.ramco_id || '',
+                                                                    costcenter_id: emp.costcenter?.id ? String(emp.costcenter.id) : f.costcenter_id,
+                                                                }));
+                                                                setSelectedEmployeeName(emp.full_name || emp.ramco_id || null);
+                                                                setErrors(prev => ({ ...prev, asset_id: undefined }));
+                                                                setAssetPickerOpen(false);
+                                                            }}
+                                                            title="Select this employee"
+                                                        >
+                                                            <ArrowBigLeft />
+                                                        </span>
                                                     </div>
-                                                    <span
-                                                        className="text-green-600 dark:text-green-400 cursor-pointer"
-                                                        onClick={() => handleAssetSelect(a)}
-                                                        title="Select this asset"
-                                                    >
-                                                        <ArrowBigLeft />
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                                ))}
+                                            </div>
+                                        </TabsContent>
+                                    </Tabs>
                                 </div>
                             )}
                         </div>

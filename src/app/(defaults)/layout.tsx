@@ -79,7 +79,7 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
             handleLogout,
         });
         return cleanup;
-         
+
     }, [authContext?.authData?.token]);
 
     if (!authContext?.authData) {
@@ -88,13 +88,15 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
 
     return (
         <>
-            <DetectUserInactivity
-                idleTime={parseInt(process.env.NEXT_PUBLIC_MAX_IDLE_TIMEOUT || '120000', 10)}
-                countdownSeconds={parseInt(process.env.NEXT_PUBLIC_COUNTDOWN_TIMER || '60', 10)}
-                onLogout={handleLogout}
-            >
-                {() => null}
-            </DetectUserInactivity>
+            {timeoutEnabled && (
+                <DetectUserInactivity
+                    idleTime={parseInt(process.env.NEXT_PUBLIC_MAX_IDLE_TIMEOUT || '120000', 10)}
+                    countdownSeconds={parseInt(process.env.NEXT_PUBLIC_COUNTDOWN_TIMER || '60', 10)}
+                    onLogout={handleLogout}
+                >
+                    {() => null}
+                </DetectUserInactivity>
+            )}
             {/* Example AlertDialog usage (replace or remove as needed) */}
             {/*
             <AlertDialog>
@@ -126,16 +128,16 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
                     {/* BEGIN SIDEBAR */}
                     <Sidebar />
                     {/* <SidebarProvider> */}
-                        {/* <AppSidebar /> */}
-                        {/* <SidebarTrigger /> */}
+                    {/* <AppSidebar /> */}
+                    {/* <SidebarTrigger /> */}
                     {/* END SIDEBAR */}
                     <div className="main-content flex min-h-screen flex-col">
-                        
+
                         {/* BEGIN TOP NAVBAR */}
                         <Header />
                         {/* END TOP NAVBAR */}
                         {/* BEGIN CONTENT AREA */}
-                        
+
                         <ContentAnimation>{children}</ContentAnimation>
                         {/* END CONTENT AREA */}
                         {/* BEGIN FOOTER */}

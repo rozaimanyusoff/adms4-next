@@ -10,12 +10,13 @@ type FleetRow = {
   card_no?: string | null;
   vendor?: { name?: string | null } | null;
   asset?: {
-    register_number?: string | null;
+    assignee?: string | null;
     costcenter?: { name?: string | null } | null;
     fuel_type?: string | null;
     purpose?: string | null;
-    id?: number | null;
+    id?: string | null;
   } | null;
+  register_number?: string | null;
   pin_no?: string | null;
   status?: string | null;
   reg_date?: string | null;
@@ -95,7 +96,7 @@ const ExcelFleetRecord: React.FC<ExcelFleetRecordProps> = ({ rows, duplicateAsse
       sheet.addRow({
         card_no: r.card_no || "",
         vendor: r.vendor?.name || "",
-        register_number: r.asset?.register_number || "",
+        register_number: r.asset?.assignee || r.register_number || "",
         costcenter: r.asset?.costcenter?.name || "",
         fuel_type: r.asset?.fuel_type || "",
         purpose: r.asset?.purpose || "",
