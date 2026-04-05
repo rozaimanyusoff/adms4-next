@@ -67,6 +67,7 @@ const FleetCardList: React.FC = () => {
     const [cards, setCards] = useState<FleetCard[]>([]);
     const [vendors, setVendors] = useState<VendorOption[]>([]);
     const [assets, setAssets] = useState<AssetOption[]>([]);
+    const [assetMap, setAssetMap] = useState<Map<string, AssetOption>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -186,17 +187,23 @@ const FleetCardList: React.FC = () => {
         setError(null);
         Promise.all([
             authenticatedApi.get<{ data: FleetCard[] }>("/api/bills/fleet"),
-            authenticatedApi.get<{ data: VendorOption[] }>("/api/bills/fuel/vendor")
+            authenticatedApi.get<{ data: VendorOption[] }>("/api/bills/fuel/vendor"),
+            authenticatedApi.get<{ data: AssetOption[] }>("/api/assets", { params: { status: 'active' } }),
         ])
-            .then(([cardsRes, vendorsRes]) => {
+            .then(([cardsRes, vendorsRes, assetsRes]) => {
                 const fetched = cardsRes.data?.data || [];
                 setCards(fetched);
                 setVendors(vendorsRes.data?.data || []);
-                // derive unique assets from cards
-                const uniqueAssetsMap = new Map<string, AssetOption>();
+                // Build asset lookup map from the dedicated assets endpoint (has assignee)
+                const fetchedAssets = assetsRes.data?.data || [];
+                const map = new Map<string, AssetOption>();
+                fetchedAssets.forEach((a: AssetOption) => {
+                    if (a.id != null) map.set(String(a.id), a);
+                });
+                // Also include any assets from cards not in the assets list
                 fetched.forEach(c => {
-                    if (c.asset && c.asset.id != null && !uniqueAssetsMap.has(c.asset.id)) {
-                        uniqueAssetsMap.set(c.asset.id, {
+                    if (c.asset && c.asset.id != null && !map.has(String(c.asset.id))) {
+                        map.set(String(c.asset.id), {
                             id: c.asset.id,
                             assignee: c.asset.assignee,
                             costcenter: c.asset.costcenter,
@@ -205,7 +212,8 @@ const FleetCardList: React.FC = () => {
                         });
                     }
                 });
-                setAssets(Array.from(uniqueAssetsMap.values()));
+                setAssetMap(map);
+                setAssets(Array.from(map.values()));
                 setLoading(false);
             })
             .catch(() => {
@@ -338,7 +346,8 @@ const FleetCardList: React.FC = () => {
         const augmented = cards.map(c => ({
             ...c,
             // expose assignee at top-level so column input filter works
-            assignee: c.asset?.assignee || '',
+            // prefer data from the full assets endpoint (has assignee populated)
+            assignee: (c.asset?.id ? assetMap.get(String(c.asset.id))?.assignee : undefined) || c.asset?.assignee || '',
         }));
         return augmented.filter(c => {
             const status = (c.status || '').toLowerCase();
@@ -352,7 +361,7 @@ const FleetCardList: React.FC = () => {
             if (filterDuplicateAssets && !(c.asset && duplicatedAssetIds.has(c.asset.id))) return false;
             return true;
         });
-    }, [cards, statusFilter, filterActiveWithoutAsset, filterDuplicateAssets, duplicatedAssetIds]);
+    }, [cards, assetMap, statusFilter, filterActiveWithoutAsset, filterDuplicateAssets, duplicatedAssetIds]);
 
     // derive singleSelect options from data
     const costcenterOptions = React.useMemo(() => {
@@ -435,7 +444,7 @@ const FleetCardList: React.FC = () => {
         {
             key: 'assignee',
             header: 'Assignee',
-            render: (row: FleetCard) => row.asset?.assignee || '',
+            render: (row: FleetCard) => (row.asset?.id ? assetMap.get(String(row.asset.id))?.assignee : undefined) || row.asset?.assignee || '',
             sortable: true,
             filter: 'input',
         },
