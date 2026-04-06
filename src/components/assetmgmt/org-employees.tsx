@@ -260,7 +260,7 @@ const OrgEmp: React.FC = () => {
 
             const headers = [
                 'ID', 'RAMCO ID', 'Full Name', 'Email', 'Contact', 'Gender',
-                'DOB', 'Hire Date', 'Resignation Date',
+                'DOB', 'Hire Date', 'Service Length', 'Resignation Date',
                 'Employment Type', 'Employment Status', 'Grade',
                 'Department Code', 'Department Name',
                 'Position', 'Cost Center', 'Location Code', 'Location Name'
@@ -293,6 +293,7 @@ const OrgEmp: React.FC = () => {
                 emp.gender ?? '',
                 fmt(emp.dob),
                 fmt(emp.hire_date),
+                getServiceLength(emp.hire_date),
                 fmt(emp.resignation_date as any),
                 emp.employment_type ?? '',
                 emp.employment_status ?? '',
