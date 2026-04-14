@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { addDays, isValid as isDateValid, parseISO } from 'date-fns';
 import { Plus, PlusCircle } from 'lucide-react';
@@ -12,6 +12,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import type { DeliverableType, ProjectDeliverableAttachment } from './types';
 import { authenticatedApi } from '@/config/api';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 // Kept for downstream consumers; UI no longer uses task groups
 export const TASK_GROUP_OPTIONS: ComboboxOption[] = [];
@@ -91,6 +93,10 @@ const ModuleForm: React.FC<ModuleFormProps> = ({
     initialValues,
     shouldCloseOnSubmit = false,
 }) => {
+    const auth = useContext(AuthContext);
+    const authData = auth?.authData;
+    const canView = can('view', authData);
+    const canSubmit = editingModuleIndex !== null ? can('update', authData) : can('create', authData);
     const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
     const [checklistLoading, setChecklistLoading] = useState(false);
     const [checklistError, setChecklistError] = useState<string | null>(null);
@@ -229,6 +235,7 @@ const ModuleForm: React.FC<ModuleFormProps> = ({
     };
 
     const submitForm = handleSubmit(async values => {
+        if (!canSubmit) return;
         const checklistNames = selectedChecklistIds.map(id => checklistLookup[id]?.name || id);
         const autoName = values.name || checklistNames.join(', ');
         const payload = { ...values, name: autoName || values.name || 'Scope' };
@@ -245,6 +252,7 @@ const ModuleForm: React.FC<ModuleFormProps> = ({
     });
 
     if (!isOpen) return null;
+    if (!canView) return null;
 
     return (
         <div className='p-4'>
@@ -425,7 +433,13 @@ const ModuleForm: React.FC<ModuleFormProps> = ({
                                     Cancel
                                 </Button>
                             )}
-                            <Button type="button" variant="secondary" onClick={submitForm}>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={submitForm}
+                                disabled={!canSubmit}
+                                title={!canSubmit ? (editingModuleIndex !== null ? 'You do not have permission to update modules' : 'You do not have permission to create modules') : undefined}
+                            >
                                 <Plus className="mr-2 h-4 w-4" />
                                 {editingModuleIndex !== null ? 'Save module' : 'Add module'}
                             </Button>

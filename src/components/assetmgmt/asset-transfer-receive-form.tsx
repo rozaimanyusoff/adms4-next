@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -79,6 +80,9 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
   const [successDialogOpen, setSuccessDialogOpen] = React.useState(false);
 
   const auth = React.useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can('view', authData);
+  const canAcknowledge = can('update', authData);
 
   // Keep internal item state in sync with prop changes (e.g. parent refresh after API fetch)
   React.useEffect(() => {
@@ -186,6 +190,10 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
   };
 
   const handleAcknowledge = async () => {
+    if (!canAcknowledge) {
+      toast.error('You do not have permission to submit acceptance.');
+      return;
+    }
     // Validate required checklist items
     const missing = checklist.filter(c => c.is_required && !checkState[c.id]?.done);
     if (missing.length > 0) {
@@ -242,6 +250,13 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
   }, [onAccepted, onClose]);
 
   return (
+    !canView ? (
+      <Card className='shadow-sm border border-border/60 bg-white'>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          You do not have permission to view this form.
+        </CardContent>
+      </Card>
+    ) : (
     <Card className='shadow-sm border border-border/60 bg-white'>
       <CardHeader className="flex flex-row items-center gap-3 py-3">
         <div className="flex-1">
@@ -460,7 +475,14 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
         {/* Actions at bottom */}
         <div className="flex justify-end gap-2 pt-3">
           <Button size="sm" variant="outline" onClick={onClose}>Back</Button>
-          <Button size="sm" disabled={loading || !item || !allRequiredComplete || isReadOnly} onClick={handleAcknowledge}>Submit Acceptance</Button>
+          <Button
+            size="sm"
+            disabled={loading || !item || !allRequiredComplete || isReadOnly || !canAcknowledge}
+            title={!canAcknowledge ? 'You do not have permission to submit acceptance' : undefined}
+            onClick={handleAcknowledge}
+          >
+            Submit Acceptance
+          </Button>
         </div>
       </CardContent>
       <AlertDialog open={successDialogOpen} onOpenChange={(open) => {
@@ -483,6 +505,7 @@ const AssetTransferReceiveForm: React.FC<Props> = ({ item: itemProp, itemId, tra
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+    )
   );
 };
 

@@ -91,6 +91,8 @@ interface PurchaseRegisterFormProps {
   loadPurchases: () => void;
   setLoading: (val: boolean) => void;
   onSubmitSuccess?: () => void;
+  canCreate: boolean;
+  canUpdate: boolean;
 }
 
 const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
@@ -151,8 +153,11 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   closeSidebar,
   loadPurchases,
   setLoading,
-  onSubmitSuccess
+  onSubmitSuccess,
+  canCreate,
+  canUpdate
 }) => {
+  const canSave = sidebarMode === 'edit' ? canUpdate : canCreate;
   const isFormComplete = useMemo(() => {
     return !!(
       formData.request_type &&
@@ -399,6 +404,10 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   };
 
   const onCreateSupplierFromFallback = async () => {
+    if (!canSave) {
+      toast.error(sidebarMode === 'edit' ? 'You do not have permission to update purchase records.' : 'You do not have permission to create purchase records.');
+      return;
+    }
     const name = (supplierFallbackName || newSupplierName || '').trim();
     if (!name) {
       toast.error('Supplier name is empty');
@@ -447,6 +456,10 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
   };
 
   const handleSubmit = async () => {
+    if (!canSave) {
+      toast.error(sidebarMode === 'edit' ? 'You do not have permission to update purchase records.' : 'You do not have permission to create purchase records.');
+      return;
+    }
     if (!validateForm()) return;
 
     setLoading(true);
@@ -944,8 +957,8 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                         variant="default"
                         className="absolute right-1 top-1/2 -translate-y-1/2 h-7.5 w-7.5"
                         onClick={onCreateSupplierFromFallback}
-                        disabled={loading || creatingSupplier}
-                        title="Add supplier"
+                        disabled={loading || creatingSupplier || !canSave}
+                        title={!canSave ? 'You do not have permission to modify purchase records' : 'Add supplier'}
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
@@ -972,6 +985,8 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                     type="button"
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                     onClick={onCreateSupplier}
+                    disabled={!canSave}
+                    title={!canSave ? 'You do not have permission to modify purchase records' : 'Add supplier'}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -1007,8 +1022,9 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                     size="icon"
                     type="button"
                     onClick={onCreateBrand}
-                    disabled={!formData.type_id || creatingBrand}
+                    disabled={!canSave || !formData.type_id || creatingBrand}
                     className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    title={!canSave ? 'You do not have permission to modify purchase records' : 'Add brand'}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -1063,7 +1079,8 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
               variant="outline"
               onClick={onAddDelivery}
               className="gap-2"
-              disabled={(formData.deliveries?.length || 0) >= maxDeliveries || maxDeliveries === 0}
+              disabled={!canSave || (formData.deliveries?.length || 0) >= maxDeliveries || maxDeliveries === 0}
+              title={!canSave ? 'You do not have permission to modify purchase records' : undefined}
             >
               <Plus className="h-4 w-4" /> Add Delivery
             </Button>
@@ -1309,6 +1326,8 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
                         type="button"
                         variant="destructive"
                         size="sm"
+                        disabled={!canSave}
+                        title={!canSave ? 'You do not have permission to modify purchase records' : undefined}
                         onClick={() => onRemoveDelivery(idx)}
                       >
                         Remove Delivery
@@ -1341,7 +1360,11 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
           <Button variant="outline" onClick={closeSidebar}>
             Cancel
           </Button>
-          <Button onClick={() => setShowSubmitConfirm(true)} disabled={loading || !isFormComplete}>
+          <Button
+            onClick={() => { if (canSave) setShowSubmitConfirm(true); }}
+            disabled={loading || !isFormComplete || !canSave}
+            title={!canSave ? (sidebarMode === 'edit' ? 'You do not have permission to update purchase records' : 'You do not have permission to create purchase records') : undefined}
+          >
             {loading ? 'Saving...' : sidebarMode === 'edit' ? 'Update Purchase' : 'Create Purchase'}
           </Button>
         </div>
@@ -1365,7 +1388,15 @@ const PurchaseRegisterForm: React.FC<PurchaseRegisterFormProps> = ({
               <Button variant="secondary" size="sm">Cancel</Button>
             </AlertDialogCancel>
             <AlertDialogAction asChild>
-              <Button variant="default" size="sm" onClick={async () => { setShowSubmitConfirm(false); await handleSubmit(); }}>Confirm</Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={async () => { setShowSubmitConfirm(false); await handleSubmit(); }}
+                disabled={!canSave}
+                title={!canSave ? (sidebarMode === 'edit' ? 'You do not have permission to update purchase records' : 'You do not have permission to create purchase records') : undefined}
+              >
+                Confirm
+              </Button>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

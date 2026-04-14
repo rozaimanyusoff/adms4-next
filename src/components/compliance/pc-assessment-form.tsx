@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Camera, Image as ImageIcon } from "lucide-react";
+import { AuthContext } from "@/store/AuthContext";
+import { can } from "@/utils/permissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -472,6 +474,10 @@ const PcAssessmentForm: React.FC = () => {
   const currentYear = String(today.getFullYear());
   const searchParams = useSearchParams();
   const router = useRouter();
+  const auth = React.useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can("view", authData);
+  const canSubmit = can("create", authData) || can("update", authData);
   const draftKey = useMemo(
     () => `${DRAFT_STORAGE_PREFIX}-${searchParams.get("id") ?? "new"}`,
     [searchParams]
@@ -1488,6 +1494,10 @@ const PcAssessmentForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmit) {
+      toast.error("You do not have permission to submit this form.");
+      return;
+    }
     if (!form.osName || !form.technician) {
       toast.error("Please complete OS and technician fields.");
       return;
@@ -1624,6 +1634,10 @@ const PcAssessmentForm: React.FC = () => {
   };
 
   const handleReset = () => {
+    if (!canSubmit) {
+      toast.error("You do not have permission to reset this form.");
+      return;
+    }
     setForm((prev) => ({
       ...prev,
       deviceType: "1",
@@ -2449,6 +2463,16 @@ const PcAssessmentForm: React.FC = () => {
     ),
   };
 
+  if (!canView) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          You do not have permission to view this form.
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2848,10 +2872,19 @@ const PcAssessmentForm: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="submit" disabled={progressPercent < 100}>
+              <Button
+                type="submit"
+                disabled={progressPercent < 100 || !canSubmit}
+                title={!canSubmit ? "You do not have permission to submit this form" : undefined}
+              >
                 Save Assessment
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setResetConfirmOpen(true)}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setResetConfirmOpen(true)}
+                disabled={!canSubmit}
+              >
                 Reset Form
               </Button>
               <p className="text-sm text-muted-foreground">

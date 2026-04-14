@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useContext, useRef } from 'react';
 import { AuthContext } from "@/store/AuthContext";
+import { can } from '@/utils/permissions';
 import { Checkbox } from '../ui/checkbox';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -211,7 +212,10 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	const [managerAssetSearch, setManagerAssetSearch] = React.useState('');
 
 	const authContext = useContext(AuthContext);
+	const authData = authContext?.authData;
 	const user = authContext?.authData?.user;
+	const canView = can('view', authData);
+	const canSubmit = id ? can('update', authData) : can('create', authData);
 	const formRef = useRef<HTMLFormElement>(null);
 	// Cache keys to avoid re-fetching sidebars when data already present
 	const lastSupervisorFetchKeyRef = useRef<string | null>(null);
@@ -287,6 +291,13 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	async function handleSubmit(e: React.FormEvent<HTMLFormElement>, status?: 'draft' | 'submitted') {
 		e.preventDefault();
 		setSubmitError(null);
+		if (!canSubmit) {
+			const action = id ? 'update' : 'create';
+			const message = `You do not have permission to ${action} asset transfer requests.`;
+			setSubmitError(message);
+			toast.error(message);
+			return;
+		}
 		for (const item of selectedItems) {
 			const transfer = itemTransferDetails[item.id] || { current: {}, new: {}, effectiveDate: '' };
 			const reasons = itemReasons[item.id] || {};
@@ -412,6 +423,12 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	}
 
 	async function handleSaveDraft() {
+		if (!canSubmit) {
+			const message = `You do not have permission to ${id ? 'update' : 'create'} asset transfer requests.`;
+			setSubmitError(message);
+			toast.error(message);
+			return;
+		}
 		clearFormAndItems();
 		const formElement = document.createElement('form');
 		const syntheticEvent = { preventDefault: () => { }, target: formElement } as unknown as React.FormEvent<HTMLFormElement>;
@@ -1062,6 +1079,11 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 	}, [selectedItems, itemReasons]);
 
 	const handleSubmitConfirmed = () => {
+		if (!canSubmit) {
+			toast.error(`You do not have permission to ${id ? 'update' : 'create'} asset transfer requests.`);
+			setOpenSubmitDialog(false);
+			return;
+		}
 		setOpenSubmitDialog(false);
 		if (formRef.current) {
 			const event = { preventDefault: () => { }, target: formRef.current } as unknown as React.FormEvent<HTMLFormElement>;
@@ -1233,6 +1255,15 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 
 	if (loading) return <div className="p-8 text-center">Loading...</div>;
 	if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
+	if (!canView) {
+		return (
+			<Card>
+				<CardContent className="py-8 text-center text-sm text-muted-foreground">
+					You do not have permission to view this form.
+				</CardContent>
+			</Card>
+		);
+	}
 
 	// Read-only rules and watermark
 	const isApproved = String(form?.transfer_status || '').toLowerCase() === 'approved';
@@ -2437,7 +2468,8 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 							<Button
 								type="button"
 								onClick={() => setOpenSubmitDialog(true)}
-								disabled={isReadOnly || submitting || loading || selectedItems.length === 0 || !allItemsHaveReason}
+								disabled={isReadOnly || !canSubmit || submitting || loading || selectedItems.length === 0 || !allItemsHaveReason}
+								title={!canSubmit ? `You do not have permission to ${id ? 'update' : 'create'} transfer requests` : undefined}
 							>
 								{submitting ? (
 									<span className="inline-flex items-center">
@@ -2445,7 +2477,7 @@ const AssetTransferForm: React.FC<AssetTransferFormProps> = ({ id, onClose, onDi
 									</span>
 								) : 'Submit'}
 							</Button>
-							<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={isReadOnly || submitting}>Reset</Button>
+							<Button type="button" variant="outline" onClick={() => clearFormAndItems()} disabled={isReadOnly || !canSubmit || submitting}>Reset</Button>
 							<Button type="button" variant="destructive" onClick={() => setOpenCancelDialog(true)} disabled={submitting}>Cancel</Button>
 						</div>
 						{/* Workflow section removed as requested */}

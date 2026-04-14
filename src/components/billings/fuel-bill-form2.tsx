@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 interface Asset {
 	id: number;
@@ -531,8 +533,12 @@ ConsumerDetailsTable.displayName = 'ConsumerDetailsTable';
 
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, onLeaveHandlerReady }) => {
 	const router = useRouter();
+	const auth = React.useContext(AuthContext);
+	const authData = auth?.authData;
+	const canView = can('view', authData);
 	// Add state for current statement ID (can change after creation)
 	const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
+	const canSubmit = (currentStmtId && currentStmtId > 0) ? can('update', authData) : can('create', authData);
 
 	const [data, setData] = useState<FuelBillDetail | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -844,6 +850,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Save handler for form submission (invoked after confirmation)
 	const handleSave = async () => {
+		if (!canSubmit) {
+			toast.error(`You do not have permission to ${(currentStmtId && currentStmtId > 0) ? 'update' : 'create'} fuel bills.`);
+			setShowSubmitConfirm(false);
+			return;
+		}
 		if (!validateForm()) {
 			setShowSubmitConfirm(false);
 			return;
@@ -1556,6 +1567,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	if (loading) return <div className="p-4">Loading...</div>;
 	// Only show No data found if in edit mode, no data, and no draft was restored
 	if ((currentStmtId && currentStmtId > 0) && !data && !draftDetailsRestored) return <div className="p-4">No data found.</div>;
+	if (!canView) return <div className="p-4 text-center text-sm text-muted-foreground">You do not have permission to view this form.</div>;
 
 	return (
 		<div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
@@ -1581,7 +1593,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-						<AlertDialogAction onClick={handleSave} disabled={saving}>
+						<AlertDialogAction onClick={handleSave} disabled={saving || !canSubmit}>
 							{saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
 							Confirm
 						</AlertDialogAction>
@@ -1842,7 +1854,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								<Button
 									type="button"
 									onClick={() => setShowSubmitConfirm(true)}
-									disabled={saving}
+									disabled={saving || !canSubmit}
+									title={!canSubmit ? 'You do not have permission to create fuel bills' : undefined}
 									variant="default"
 								>
 									{saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
@@ -1852,7 +1865,13 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									}
 								</Button>
 							) : (
-								<Button type="button" variant="default" onClick={() => setShowSubmitConfirm(true)} disabled={saving}>
+								<Button
+									type="button"
+									variant="default"
+									onClick={() => setShowSubmitConfirm(true)}
+									disabled={saving || !canSubmit}
+									title={!canSubmit ? 'You do not have permission to update fuel bills' : undefined}
+								>
 									{saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
 									{saving ? "Saving..." : "Save Changes"}
 								</Button>

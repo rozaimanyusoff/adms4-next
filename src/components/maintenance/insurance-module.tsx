@@ -13,6 +13,8 @@ import { Plus, RefreshCcw, Search, Save, X, Pencil, Target, Loader2 } from 'luci
 import { CustomDataGrid } from '@/components/ui/DataGrid';
 import type { ColumnDef } from '@/components/ui/DataGrid';
 import { Separator } from '@/components/ui/separator';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 type Vehicle = {
   id: number | string;
@@ -79,6 +81,12 @@ type UpdateRow = {
 };
 
 const InsuranceModule: React.FC = () => {
+  const auth = React.useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can('view', authData);
+  const canCreate = can('create', authData);
+  const canUpdate = can('update', authData);
+  const canManage = canCreate || canUpdate;
   // Records
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<RoadtaxApiRow[]>([]);
@@ -119,6 +127,7 @@ const InsuranceModule: React.FC = () => {
   const [updateSearch, setUpdateSearch] = useState('');
 
   async function loadRecords() {
+    if (!canView) return;
     setLoading(true);
     try {
       // Roadtax listing replaced insurance listing
@@ -134,7 +143,7 @@ const InsuranceModule: React.FC = () => {
     }
   }
 
-  useEffect(() => { loadRecords(); }, []);
+  useEffect(() => { loadRecords(); }, [canView]);
 
   function fmtDate(value?: string | null) {
     if (!value) return '-';
@@ -452,6 +461,10 @@ const InsuranceModule: React.FC = () => {
 
   async function submitCreate(e?: React.FormEvent) {
     if (e) e.preventDefault();
+    if (editingInsId ? !canUpdate : !canCreate) {
+      toast.error(editingInsId ? 'You do not have permission to update insurance records.' : 'You do not have permission to create insurance records.');
+      return;
+    }
     const asset_ids = Object.keys(vehSelected)
       .filter(k => vehSelected[k])
       .map(k => (isNaN(Number(k)) ? String(k) : String(Number(k))));
@@ -537,6 +550,10 @@ const InsuranceModule: React.FC = () => {
   }
 
   async function submitUpdate() {
+    if (!canUpdate) {
+      toast.error('You do not have permission to update roadtax records.');
+      return;
+    }
     if (!updateInsuranceId) return;
     const items = updateRows.map(r => ({
       asset_id: r.id,
@@ -570,13 +587,31 @@ const InsuranceModule: React.FC = () => {
       (r.register_number || r.plate_no || '').toLowerCase().includes(q)
     );
   }, [updateRows, updateSearch]);
+  const gridRows = React.useMemo(() => records.map(r => ({
+    ...r,
+    register_no: r.asset?.register_number || '',
+    ins_exp: r.ins_exp ?? r.insurance?.expiry ?? undefined,
+  })), [records]);
+
+  if (!canView) {
+    return (
+      <div className="p-4 text-center text-sm text-muted-foreground">
+        You do not have permission to view this module.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Roadtax & Insurance</h3>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={openCreateAside}>
+          <Button
+            size="sm"
+            onClick={openCreateAside}
+            disabled={!canManage}
+            title={!canManage ? 'You do not have permission to manage insurance records' : undefined}
+          >
             <Pencil className="w-4 h-4 mr-1" /> Insurance & Roadtax Maintenance
           </Button>
         </div>
@@ -598,8 +633,13 @@ const InsuranceModule: React.FC = () => {
               />
               <Button
                 size="sm"
-                disabled={!rtDate || rtSubmitting}
+                disabled={!rtDate || rtSubmitting || !canUpdate}
+                title={!canUpdate ? 'You do not have permission to update roadtax records' : undefined}
                 onClick={async () => {
+                  if (!canUpdate) {
+                    toast.error('You do not have permission to update roadtax records.');
+                    return;
+                  }
                   if (!rtDate || rtSelectedAssets.length === 0) return;
                   setRtSubmitting(true);
                   try {
@@ -642,11 +682,7 @@ const InsuranceModule: React.FC = () => {
       <CustomDataGrid<RoadtaxApiRow>
         ref={gridRef as any}
         columns={columns}
-        data={useMemo(() => records.map(r => ({
-          ...r,
-          register_no: r.asset?.register_number || '',
-          ins_exp: r.ins_exp ?? r.insurance?.expiry ?? undefined,
-        })), [records])}
+        data={gridRows}
         inputFilter={false}
         pagination={false}
         rowSelection={{
@@ -689,7 +725,13 @@ const InsuranceModule: React.FC = () => {
                   <Button variant="outline" onClick={resetInsurerForm}>
                     <X className="w-4 h-4 mr-1" /> Reset
                   </Button>
-                  <Button onClick={submitCreate} disabled={!canSubmit || submitting}>
+                  <Button
+                    onClick={submitCreate}
+                    disabled={!canSubmit || submitting || (editingInsId ? !canUpdate : !canCreate)}
+                    title={editingInsId
+                      ? (!canUpdate ? 'You do not have permission to update insurance records' : undefined)
+                      : (!canCreate ? 'You do not have permission to create insurance records' : undefined)}
+                  >
                     {submitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
                     {submitting ? (editingInsId ? 'Updating...' : 'Submitting...') : (editingInsId ? 'Update' : 'Submit')}
                   </Button>
@@ -732,7 +774,13 @@ const InsuranceModule: React.FC = () => {
                               <div className="text-xs text-muted-foreground">Policy: {it.policy || '-'}</div>
                               <div className="text-xs text-muted-foreground">Expiry: {fmtDate(it.expiry ?? null)} • {remaining}</div>
                             </div>
-                            <Button size="icon" variant="ghost" onClick={() => startEditIns(it)} title="Edit">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => startEditIns(it)}
+                              disabled={!canUpdate}
+                              title={!canUpdate ? 'You do not have permission to update insurance records' : 'Edit'}
+                            >
                               <Pencil className="w-4 h-4" />
                             </Button>
                           </div>
@@ -872,7 +920,11 @@ const InsuranceModule: React.FC = () => {
                 <Button variant="outline" onClick={closeUpdateAside}>
                   <X className="w-4 h-4 mr-1" /> Close
                 </Button>
-                <Button onClick={submitUpdate} disabled={savingUpdate}>
+                <Button
+                  onClick={submitUpdate}
+                  disabled={savingUpdate || !canUpdate}
+                  title={!canUpdate ? 'You do not have permission to update roadtax records' : undefined}
+                >
                   <Save className="w-4 h-4 mr-1" /> {savingUpdate ? 'Saving...' : 'Save'}
                 </Button>
               </div>

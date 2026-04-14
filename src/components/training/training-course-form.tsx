@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { authenticatedApi } from '@/config/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import { Plus, Trash2, Loader2, CornerUpLeft } from 'lucide-react';
 import { SingleSelect, type ComboboxOption } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 type CourseFormValues = {
   course_title: string;
@@ -67,6 +69,10 @@ const TrainingCourseForm: React.FC<TrainingCourseFormProps> = ({ courseId, onSuc
   const { register, setValue, getValues, reset, watch } = useForm<CourseFormValues>({ defaultValues: DEFAULT_VALUES, mode: 'onChange' });
   const [successOpen, setSuccessOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState('Course saved successfully.');
+  const auth = useContext(AuthContext);
+  const authData = auth?.authData;
+  const canView = can('view', authData);
+  const canSubmit = courseId ? can('update', authData) : can('create', authData);
 
   const trainerIdValue = watch('trainer_id');
 
@@ -138,6 +144,10 @@ const TrainingCourseForm: React.FC<TrainingCourseFormProps> = ({ courseId, onSuc
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmit) {
+      toast.error(courseId ? 'You do not have permission to update training courses.' : 'You do not have permission to create training courses.');
+      return;
+    }
     const values = getValues();
     if (!values.course_title.trim()) { toast.error('Course title is required'); return; }
     if (!values.course_type) { toast.error('Course type is required'); return; }
@@ -187,6 +197,13 @@ const TrainingCourseForm: React.FC<TrainingCourseFormProps> = ({ courseId, onSuc
 
   return (
     <>
+    {!canView ? (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          You do not have permission to view training course form.
+        </CardContent>
+      </Card>
+    ) : (
     <Card>
       <CardHeader>
         <CardTitle>{courseId ? 'Edit Course' : 'Register New Course'}</CardTitle>
@@ -307,12 +324,19 @@ const TrainingCourseForm: React.FC<TrainingCourseFormProps> = ({ courseId, onSuc
               <Button type="button" variant="outline" onClick={() => onSuccess?.()}>
                 <CornerUpLeft className="mr-2 h-4 w-4" /> Back
               </Button>
-              <Button type="submit" disabled={!canSave || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Course</Button>
+              <Button
+                type="submit"
+                disabled={!canSave || saving || !canSubmit}
+                title={!canSubmit ? (courseId ? 'You do not have permission to update training courses' : 'You do not have permission to create training courses') : undefined}
+              >
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Course
+              </Button>
             </div>
           </form>
         )}
       </CardContent>
     </Card>
+    )}
 
     <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
       <DialogContent>

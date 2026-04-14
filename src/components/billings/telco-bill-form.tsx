@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useRouter } from 'next/navigation';
+import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 interface TelcoAccount {
     id: number;
@@ -62,6 +64,10 @@ interface TelcoBillFormProps {
 
 const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved, onLeaveHandlerReady }) => {
     const router = useRouter();
+    const auth = React.useContext(AuthContext);
+    const authData = auth?.authData;
+    const canView = can('view', authData);
+    const canSubmit = utilId && utilId > 0 ? can('update', authData) : can('create', authData);
     const normalizeBillDate = React.useCallback((value: string) => {
         const raw = (value || '').trim();
         if (!raw) return '';
@@ -179,6 +185,10 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
     // Save handler for form submission
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        if (!canSubmit) {
+            toast.error(`You do not have permission to ${utilId && utilId > 0 ? 'update' : 'create'} telco bills.`);
+            return;
+        }
         const normalizedBillDate = normalizeBillDate(billDate);
         // Basic client-side validations with toast feedback
         const errs: string[] = [];
@@ -475,6 +485,15 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
 
     if (loading) return <div className="p-4">Loading...</div>;
     if ((utilId && utilId > 0) && !data) return <div className="p-4">No data found.</div>;
+    if (!canView) {
+        return (
+            <Card className='bg-stone-50 dark:bg-stone-800 shadow-none'>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    You do not have permission to view this form.
+                </CardContent>
+            </Card>
+        );
+    }
 
     // Enable Save only when required fields are present and totals are positive
     const canSave = (
@@ -666,7 +685,13 @@ const TelcoBillForm: React.FC<TelcoBillFormProps> = ({ utilId, onClose, onSaved,
                                 </div>
                             </div>
                             <div className="flex gap-2 mt-6 justify-center">
-                                <Button type="submit" variant="default" disabled={!canSave || isSubmitting} aria-disabled={!canSave || isSubmitting}>
+                                <Button
+                                    type="submit"
+                                    variant="default"
+                                    disabled={!canSave || isSubmitting || !canSubmit}
+                                    aria-disabled={!canSave || isSubmitting || !canSubmit}
+                                    title={!canSubmit ? `You do not have permission to ${isEditMode ? 'update' : 'create'} telco bills` : undefined}
+                                >
                                     {isSubmitting ? (
                                         <span className="inline-flex items-center gap-2">
                                             <Loader2 className="h-4 w-4 animate-spin" />

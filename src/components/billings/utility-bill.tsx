@@ -108,6 +108,10 @@ interface BillingAccount {
   bill_desc?: string;
   bill_description?: string;
   status?: string;
+  bill_stat?: string;
+  bill_status?: string;
+  account_status?: string;
+  is_active?: boolean | number | string;
   contract_start?: string | null;
   contract_end?: string | null;
   deposit?: string;
@@ -148,6 +152,27 @@ interface UtilityBillForm {
   ubill_paystat: string;
   ubill_ref?: string; // File reference for uploaded payment document
 }
+
+const isActiveAccountStatus = (status?: unknown): boolean => {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  return normalized === 'active' || normalized === '1' || normalized === 'true';
+};
+
+const getBillingAccountStatus = (account: BillingAccount): unknown => {
+  if (account.status !== undefined && account.status !== null) return account.status;
+  if (account.bill_stat !== undefined && account.bill_stat !== null) return account.bill_stat;
+  if (account.bill_status !== undefined && account.bill_status !== null) return account.bill_status;
+  if (account.account_status !== undefined && account.account_status !== null) return account.account_status;
+  if (account.is_active !== undefined && account.is_active !== null) return account.is_active;
+  return undefined;
+};
+
+const getBillingAccountStatusLabel = (account: BillingAccount): string => {
+  const raw = getBillingAccountStatus(account);
+  if (raw === undefined || raw === null || String(raw).trim() === '') return 'Unknown';
+  if (isActiveAccountStatus(raw)) return 'Active';
+  return String(raw);
+};
 
 // Add global type for window.reloadUtilityBillGrid
 declare global {
@@ -470,12 +495,12 @@ const UtilityBill = () => {
     try {
       const response = await authenticatedApi.get('/api/bills/util/accounts');
       if ((response.data as any)?.data) {
-        setBillingAccounts((response.data as any).data);
-        setBillingAccounts((response.data as any).data);
+        const accounts = Array.isArray((response.data as any).data) ? (response.data as any).data : [];
+        const activeAccounts = accounts.filter((account: BillingAccount) => isActiveAccountStatus(getBillingAccountStatus(account)));
+        setBillingAccounts(activeAccounts);
       }
     } catch (error) {
       console.error('Error fetching billing accounts:', error);
-      setBillingAccounts([]);
       setBillingAccounts([]);
     }
   };
@@ -1224,6 +1249,7 @@ const UtilityBill = () => {
                   {filteredAccountsWithLogos.map((account) => {
                     const serviceLabel = account.category || 'Unknown Service';
                     const descriptionLabel = account.description || account.desc || account.bill_desc || account.bill_description || '-';
+                    const statusLabel = getBillingAccountStatusLabel(account);
                     return (
                       <div
                         key={account.bill_id}
@@ -1265,6 +1291,9 @@ const UtilityBill = () => {
                             </p>
                             <p className="text-xs truncate">
                               Description: <span className=' font-semibold text-blue-600 dark:text-blue-400'>{descriptionLabel}</span>
+                            </p>
+                            <p className="text-xs truncate">
+                              Status: <span className='font-semibold text-emerald-600 dark:text-emerald-400'>{statusLabel}</span>
                             </p>
                             <p className="text-xs truncate">
                               {account.costcenter?.name || 'N/A'}, {account.location?.name || 'N/A'}

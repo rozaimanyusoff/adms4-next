@@ -23,6 +23,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import type { Direction, Priority } from './correspondence-tracking-data';
 import { AuthContext } from '@/store/AuthContext';
+import { can } from '@/utils/permissions';
 
 export type CorrespondenceRegistryFormValues = {
     reference_no: string;
@@ -213,6 +214,13 @@ export const CorrespondenceForm = ({
     const draftHydratedRef = useRef(false);
     const auth = useContext(AuthContext);
     const currentUsername = auth?.authData?.user?.username || null;
+    const authData = auth?.authData;
+    const canView = can('view', authData);
+    const canCreate = can('create', authData);
+    const canUpdate = can('update', authData);
+    const canWrite = workflowAction === 'registry'
+        ? (mode === 'edit' ? canUpdate : canCreate)
+        : canUpdate;
     const [values, setValues] = useState<CorrespondenceFormValues>({
         ...emptyFormValues,
         ...(initialValues ?? {}),
@@ -311,7 +319,6 @@ export const CorrespondenceForm = ({
                 department_name: employeeOptionsRef.current.find((o) => o.value === String(r.ramco_id ?? ''))?.departmentName ?? '',
             }))
         );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialRecipients]);
 
     useEffect(() => {
@@ -498,6 +505,10 @@ export const CorrespondenceForm = ({
     };
 
     const submitRegistry = async () => {
+        if (!canWrite) {
+            toast.error(mode === 'edit' ? 'You do not have permission to update mail registry.' : 'You do not have permission to create mail registry.');
+            return;
+        }
         if (!isRegistrySectionComplete || isSubmitting) return;
         if (mode === 'edit' && !recordId) {
             toast.error('Unable to resolve correspondence ID for update');
@@ -545,6 +556,10 @@ export const CorrespondenceForm = ({
     );
 
     const submitQaReview = async () => {
+        if (!canWrite) {
+            toast.error('You do not have permission to update correspondence workflow.');
+            return;
+        }
         if (!isQaSectionComplete || isSubmitting) return;
         if (!recordId) {
             toast.error('Unable to resolve correspondence ID for QA update');
@@ -607,6 +622,16 @@ export const CorrespondenceForm = ({
         (!values.document_others || values.document_others_specify.trim()) &&
         hasRegistryAttachment,
     );
+    if (!canView) {
+        return (
+            <Card className="mx-auto w-full max-w-7xl">
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    You do not have permission to view correspondence form.
+                </CardContent>
+            </Card>
+        );
+    }
+
     return (
         <Card className="mx-auto w-full max-w-7xl">
             {showCardHeader ? (
@@ -1163,7 +1188,8 @@ export const CorrespondenceForm = ({
                                 type="button"
                                 className="bg-blue-600 hover:bg-blue-700"
                                 onClick={() => setConfirmDialogOpen(true)}
-                                disabled={!isRegistrySectionComplete || isSubmitting}
+                                disabled={!isRegistrySectionComplete || isSubmitting || !canWrite}
+                                title={!canWrite ? (mode === 'edit' ? 'You do not have permission to update mail registry' : 'You do not have permission to create mail registry') : undefined}
                             >
                                 {isSubmitting ? 'Saving...' : 'Submit & send to QA →'}
                             </Button>
@@ -1173,7 +1199,8 @@ export const CorrespondenceForm = ({
                                 type="button"
                                 className="bg-blue-600 hover:bg-blue-700"
                                 onClick={() => setConfirmDialogOpen(true)}
-                                disabled={!isQaSectionComplete || isSubmitting}
+                                disabled={!isQaSectionComplete || isSubmitting || !canWrite}
+                                title={!canWrite ? 'You do not have permission to update correspondence workflow' : undefined}
                             >
                                 {isSubmitting ? 'Saving...' : 'Submit to management →'}
                             </Button>
@@ -1183,7 +1210,8 @@ export const CorrespondenceForm = ({
                                 type="button"
                                 className="bg-blue-600 hover:bg-blue-700"
                                 onClick={() => setConfirmDialogOpen(true)}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || !canWrite}
+                                title={!canWrite ? 'You do not have permission to update correspondence workflow' : undefined}
                             >
                                 {isSubmitting ? 'Saving...' : 'Endorse & forward →'}
                             </Button>

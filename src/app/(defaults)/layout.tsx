@@ -12,11 +12,12 @@ import { AuthContext, AuthProvider } from '@/store/AuthContext';
 import { authenticatedApi } from '@/config/api';
 import { DetectUserInactivity } from '@/config/detectUserInactivity';
 import { toast } from "sonner";
-import { useContext, useEffect } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { scheduleTokenRefresh } from '@/config/scheduleTokenRefresh';
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layouts/app-sidebar"
+import { canAccessPath, getFirstAccessiblePath } from '@/utils/permissions';
 
 export default function DefaultLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -25,6 +26,15 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
 
     // Fallback: use NEXT_PUBLIC_IDLE_TIMEOUT if NEXT_PUBLIC_TIMEOUT_ENABLED is not set
     const timeoutEnabled = (process.env.NEXT_PUBLIC_TIMEOUT_ENABLED ?? process.env.NEXT_PUBLIC_IDLE_TIMEOUT) === 'true';
+    const navTree = authContext?.authData?.navTree;
+    const navReady = Array.isArray(navTree);
+    const defaultAllowList = useMemo(() => ['/users/dashboard', '/users/profile'], []);
+    const hasPageAccess = useMemo(() => {
+        if (!pathname) return false;
+        if (!navReady) return true; // wait until navTree is loaded before enforcing
+        return canAccessPath(pathname, navTree, defaultAllowList);
+    }, [pathname, navReady, navTree, defaultAllowList]);
+    const fallbackPath = useMemo(() => getFirstAccessiblePath(navTree, '/users/dashboard'), [navTree]);
 
     useEffect(() => {
         function handleShowToast(e: CustomEvent) {
@@ -52,11 +62,17 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
             router.push(`/auth/login?redirect=${redirectParam}`);
             return;
         }
+        if (navReady && !hasPageAccess) {
+            if (pathname !== fallbackPath) {
+                router.replace(fallbackPath);
+            }
+            return;
+        }
         authenticatedApi.put('/api/admin/nav/track-route', { path: pathname, userId })
             .catch((error) => {
                 console.error('Error tracking last route:', error);
             });
-    }, [router, pathname, authContext?.authData?.user?.id]);
+    }, [router, pathname, authContext?.authData?.user?.id, navReady, hasPageAccess, fallbackPath]);
 
     // Handler for logout
     const handleLogout = async () => {
@@ -84,6 +100,9 @@ export default function DefaultLayout({ children }: { children: React.ReactNode 
 
     if (!authContext?.authData) {
         return null; // Optionally, show a loading spinner here
+    }
+    if (!hasPageAccess) {
+        return null;
     }
 
     return (
