@@ -266,7 +266,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
 
   // Open terms dialog when form mounts
   React.useEffect(() => {
-    if ((isCreateMode && !canCreate) || (!isCreateMode && !canView && !canUpdate)) {
+    if (!isCreateMode && !canView && !canUpdate) {
       return;
     }
     setTermsOpen(true);
@@ -1438,14 +1438,6 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
     }
   }, [isServiceRequest]);
 
-  if (isCreateMode && !canCreate) {
-    return (
-      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
-        You do not have permission to create vehicle maintenance requests.
-      </div>
-    );
-  }
-
   if (!isCreateMode && !canView && !canUpdate) {
     return (
       <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
@@ -1911,6 +1903,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                   <Button
                     onClick={attemptSubmit}
                     disabled={
+                      !canCreate ||
                       !assetId ||
                       (!svcType && selectedServiceTypeIds.length === 0) ||
                       !agree ||
@@ -1919,6 +1912,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                       (hasActiveNcr && !isNcrLocked) ||
                       submitting
                     }
+                    title={!canCreate ? 'You do not have permission to submit maintenance requests' : undefined}
                   >
                     {submitting ? (
                       <>

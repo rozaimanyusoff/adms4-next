@@ -13,6 +13,12 @@ type NavTreeNode = {
 export function can(action: CrudAction, authData?: AuthData | null): boolean {
     const role = authData?.user?.role;
     if (!role) return false;
+    const roleName = String((role as any)?.name || "").trim().toLowerCase();
+    const groups = Array.isArray(authData?.usergroups) ? authData!.usergroups : [];
+    const hasGuestGroup = groups.some((group: any) => String(group?.name || "").trim().toLowerCase() === "guest");
+    const isGuest = roleName === "guest" || hasGuestGroup;
+    // Guest accounts are always read-only regardless of role CRUD flags.
+    if (isGuest && action !== "view") return false;
     return Boolean((role as any)?.[action]);
 }
 

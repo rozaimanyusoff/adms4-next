@@ -362,22 +362,6 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     if (id) setAgree(true);
   }, [id]);
 
-  if (isCreateMode && !canCreate) {
-    return (
-      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
-        You do not have permission to create poolcar applications.
-      </div>
-    );
-  }
-
-  if (!isCreateMode && !canView && !canUpdate) {
-    return (
-      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
-        You do not have permission to view this poolcar application.
-      </div>
-    );
-  }
-
   // Fetch requestor details (department, location, etc.)
   React.useEffect(() => {
     if (id) return; // do not override prefilled data in edit mode
@@ -619,6 +603,14 @@ const PoolcarApplicationForm: React.FC<PoolcarApplicationFormProps> = ({ id, onC
     clearDraft();
     navigateToRecords();
   }, [clearDraft, navigateToRecords]);
+
+  if (!isCreateMode && !canView && !canUpdate) {
+    return (
+      <div className="p-4 rounded-md border border-amber-200 bg-amber-50 text-amber-800">
+        You do not have permission to view this poolcar application.
+      </div>
+    );
+  }
 
   return (
     <>
