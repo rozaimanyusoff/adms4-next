@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import {
@@ -29,8 +29,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 
 type TrainingFormValues = {
 	trainingTitle: string;
@@ -140,8 +138,6 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	const [selectedSearch, setSelectedSearch] = useState('');
 	const [recentAdded, setRecentAdded] = useState<ParticipantRecord[]>([]);
 	const [recentRemoved, setRecentRemoved] = useState<ParticipantRecord[]>([]);
-	const auth = useContext(AuthContext);
-	const authData = auth?.authData;
 
 	const {
 		control,
@@ -199,9 +195,6 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	};
 
 	const isEditing = Boolean(trainingId);
-	const canView = can('view', authData);
-	const canSubmit = isEditing ? can('update', authData) : can('create', authData);
-	const canDelete = can('delete', authData);
 
 	const persistDraft = useCallback(
 		(values: TrainingFormValues, costSnapshot: CostItem[]) => {
@@ -637,10 +630,6 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	};
 	const handleDelete = async () => {
 		if (!trainingId) return;
-		if (!canDelete) {
-			toast.error('You do not have permission to delete training records.');
-			return;
-		}
 		try {
 			setDeleteSubmitting(true);
 			const res = await authenticatedApi.delete(`/api/training/${trainingId}`);
@@ -658,10 +647,6 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	};
 
 	const onSubmit = async (values: TrainingFormValues) => {
-		if (!canSubmit) {
-			toast.error(isEditing ? 'You do not have permission to update training records.' : 'You do not have permission to create training records.');
-			return;
-		}
 		// Resolve course_id if not already selected
 		let effectiveCourseId = courseId;
 		const titleTrim = (values.trainingTitle || '').trim();
@@ -736,16 +721,6 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 		}
 	};
 
-	if (!canView) {
-		return (
-			<Card>
-				<CardContent className="py-8 text-center text-sm text-muted-foreground">
-					You do not have permission to view training form.
-				</CardContent>
-			</Card>
-		);
-	}
-
 	return (
 		<>
 			<form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
@@ -768,11 +743,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 									Cancel
 								</Button>
 							)}
-							<Button
-								type="submit"
-								disabled={isSubmitting || !isValid || !canSubmit}
-								title={!canSubmit ? (isEditing ? 'You do not have permission to update training records' : 'You do not have permission to create training records') : undefined}
-							>
+							<Button type="submit" disabled={isSubmitting || !isValid}>
 								{isSubmitting ? 'Saving…' : isEditing ? 'Update' : 'Save'}
 							</Button>
 							{isEditing && (
@@ -780,8 +751,7 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 									type="button"
 									variant="destructive"
 									onClick={() => setDeleteDialogOpen(true)}
-									disabled={isSubmitting || deleteSubmitting || !canDelete}
-									title={!canDelete ? 'You do not have permission to delete training records' : undefined}
+									disabled={isSubmitting || deleteSubmitting}
 								>
 									{deleteSubmitting ? 'Deleting…' : 'Delete'}
 								</Button>

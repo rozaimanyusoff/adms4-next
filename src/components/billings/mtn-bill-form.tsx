@@ -11,8 +11,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Combobox } from '@/components/ui/combobox';
-import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 
 type PartCategory = { svcTypeId?: number; svcType: string };
 
@@ -101,10 +99,6 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
     canPrev,
     canNext,
   } = props;
-  const auth = React.useContext(AuthContext);
-  const authData = auth?.authData;
-  const canView = can('view', authData);
-  const canSubmit = selectedRow?.inv_id ? can('update', authData) : can('create', authData);
 
   // Local loading state for fetching invoice detail
   const [loadingDetail, setLoadingDetail] = React.useState(false);
@@ -435,19 +429,6 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
     loadCategories();
   }, []);
 
-  const onSubmitWithPermission = async (e: React.FormEvent) => {
-    if (!canSubmit) {
-      e.preventDefault();
-      toast.error(`You do not have permission to ${selectedRow?.inv_id ? 'update' : 'create'} maintenance bills.`);
-      return;
-    }
-    await handleFormSubmit(e);
-  };
-
-  if (!canView) {
-    return <div className="p-4 text-center text-sm text-muted-foreground">You do not have permission to view this form.</div>;
-  }
-
   return (
     <div className="border rounded-lg bg-white dark:bg-gray-900">
       <div className="flex items-center justify-between px-4 py-3 border-b dark:border-gray-700">
@@ -528,7 +509,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
         <div className="grid grid-cols-12 gap-4">
           {/* Left column: form */}
           <div className="col-span-12 lg:col-span-8">
-            <form className="space-y-4" onSubmit={onSubmitWithPermission}>
+            <form className="space-y-4" onSubmit={handleFormSubmit}>
 
               {/* Row 1: Invoice No & Invoice Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -698,13 +679,7 @@ const MtnBillForm: React.FC<MtnBillFormProps> = (props) => {
 
               <div className="pt-2 flex gap-2">
                 <Button type="button" variant="outline" onClick={onClose}>Back</Button>
-                <Button
-                  type="submit"
-                  disabled={!canSubmit}
-                  title={!canSubmit ? `You do not have permission to ${selectedRow?.inv_id ? 'update' : 'create'} maintenance bills` : undefined}
-                >
-                  Save Changes
-                </Button>
+                <Button type="submit">Save Changes</Button>
               </div>
             </form>
           </div>

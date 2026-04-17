@@ -39,7 +39,7 @@ export async function exportUtilityBillSummary(
         }
         // Diagnostic: log and show brief toast so runtime shape can be confirmed
         try {
-
+             
             console.log('exportUtilityBillSummary: responseBeneficiary ->', responseBeneficiary);
             if (!responseBeneficiary) {
                 toast.error('Export: beneficiary missing in API response (check console)');
@@ -109,17 +109,16 @@ export async function exportUtilityBillSummary(
             doc.text(`Kindly please make a payment to the following beneficiaries as follows:`, 15, 70);
         }
         let y = 75;
-        const tableHead = [['No', 'Account No', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Rental (RM)', 'Tax (RM)', 'Grand Total (RM)']];
+        const tableHead = [['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)']];
         let rowNum = 1;
         const tableBody = bills.map((bill: any) => {
             return [
                 String(rowNum++),
-                bill.account?.account_no || bill.account?.account || '',
+                bill.account?.account_no || '',
+                bill.ubill_date ? formatDate(bill.ubill_date) : '',
                 bill.ubill_no || '',
                 bill.account?.beneficiary?.name || responseBeneficiary?.name || '',
                 bill.account?.costcenter?.name || '-',
-                Number(bill.ubill_rent || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                Number(bill.ubill_tax || bill.tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
                 Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 }),
             ];
         });
@@ -129,14 +128,13 @@ export async function exportUtilityBillSummary(
             body: tableBody,
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
             columnStyles: {
-                0: { cellWidth: 8, halign: 'center' },
-                1: { cellWidth: 24, halign: 'center' },
-                2: { cellWidth: 24, halign: 'center' },
-                3: { cellWidth: 38, halign: 'left' },
-                4: { cellWidth: 24, halign: 'left' },
-                5: { cellWidth: 18, halign: 'right' },
-                6: { cellWidth: 18, halign: 'right' },
-                7: { cellWidth: 22, halign: 'right' },
+                0: { cellWidth: 10, halign: 'center' },
+                1: { cellWidth: 35, halign: 'center' },
+                2: { cellWidth: 23, halign: 'center' },
+                3: { cellWidth: 35, halign: 'center' },
+                4: { cellWidth: 27, halign: 'center' },
+                5: { cellWidth: 26, halign: 'center' },
+                6: { cellWidth: 25, halign: 'right' },
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
@@ -172,7 +170,7 @@ export async function exportUtilityBillSummary(
         const roundValue = totalRounding.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const grandTotalLabel = 'Grand Total:';
         const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const colWidths = [8, 24, 24, 38, 24, 18, 18, 22];
+        const colWidths = [10, 35, 23, 35, 27, 26, 25];
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
         const xStart = 14;
         const rowHeight = 6;
@@ -213,8 +211,8 @@ export async function exportUtilityBillSummary(
         doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
         y += 10;
 
-        // Ensure we have enough space for signatures; add page if needed
-        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 }); //adjust content poition for the 2nd page
+    // Ensure we have enough space for signatures; add page if needed
+    y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 }); //adjust content poition for the 2nd page
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
@@ -364,16 +362,16 @@ export async function exportUtilityBillSummary(
         } catch (e) {
             // no-op if structure not present
         }
-        // Footer and page note will be added by shared helper for each page below
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const tsNow = new Date();
-        const timestamp = `${tsNow.getFullYear()}${pad(tsNow.getMonth() + 1)}${pad(tsNow.getDate())}${pad(tsNow.getHours())}${pad(tsNow.getMinutes())}${pad(tsNow.getSeconds())}`;
+    // Footer and page note will be added by shared helper for each page below
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const tsNow = new Date();
+    const timestamp = `${tsNow.getFullYear()}${pad(tsNow.getMonth() + 1)}${pad(tsNow.getDate())}${pad(tsNow.getHours())}${pad(tsNow.getMinutes())}${pad(tsNow.getSeconds())}`;
 
         // Add header/footer to all pages with correct page numbers
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
-
+             
             await addHeaderFooter(doc, i, totalPages, pageWidth);
         }
 

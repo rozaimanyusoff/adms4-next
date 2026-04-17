@@ -11,8 +11,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Loader2, Plus, Edit2, Trash2, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 
 export interface ServiceType {
   svcTypeId: number;
@@ -66,12 +64,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   className = '',
   showGroupLabels = false
 }) => {
-  const auth = React.useContext(AuthContext);
-  const authData = auth?.authData;
-  const canView = can('view', authData);
-  const canCreate = can('create', authData);
-  const canUpdate = can('update', authData);
-  const canDelete = can('delete', authData);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -85,7 +77,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   const [deleting, setDeleting] = useState<number | null>(null);
 
   const fetchServiceTypes = async () => {
-    if (!canView) return;
     try {
       setLoading(true);
       const response = await authenticatedApi.get('/api/mtn/types');
@@ -102,10 +93,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   };
 
   const handleSave = async () => {
-    if (editingService ? !canUpdate : !canCreate) {
-      toast.error(editingService ? 'You do not have permission to update service types.' : 'You do not have permission to create service types.');
-      return;
-    }
     try {
       setSaving(true);
 
@@ -133,10 +120,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
   };
 
   const handleDelete = async (serviceTypeId: number) => {
-    if (!canDelete) {
-      toast.error('You do not have permission to delete service types.');
-      return;
-    }
     if (!confirm('Are you sure you want to delete this service type?')) return;
 
     try {
@@ -171,7 +154,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
 
   useEffect(() => {
     fetchServiceTypes();
-  }, [canView]);
+  }, []);
 
   // Filter service types by group if specified
   const filteredServiceTypes = filterByGroup
@@ -202,25 +185,13 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
 
   // Management mode UI
   if (displayMode === 'management') {
-    if (!canView) {
-      return (
-        <div className={`text-sm text-gray-500 ${className}`}>
-          You do not have permission to view this module.
-        </div>
-      );
-    }
     return (
       <div className={className}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">Service Types Management</h3>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button
-                onClick={handleAdd}
-                className="flex items-center gap-2"
-                disabled={!canCreate}
-                title={!canCreate ? 'You do not have permission to create service types' : undefined}
-              >
+              <Button onClick={handleAdd} className="flex items-center gap-2">
                 <Plus className="w-4 h-4" />
               </Button>
             </DialogTrigger>
@@ -279,13 +250,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={saving || !formData.svcType || !formData.group_desc || (editingService ? !canUpdate : !canCreate)}
-                  title={editingService
-                    ? (!canUpdate ? 'You do not have permission to update service types' : undefined)
-                    : (!canCreate ? 'You do not have permission to create service types' : undefined)}
-                >
+                <Button onClick={handleSave} disabled={saving || !formData.svcType || !formData.group_desc}>
                   {saving ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -335,8 +300,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                             variant="outline"
                             size="sm"
                             onClick={() => handleEdit(serviceType)}
-                            disabled={!canUpdate}
-                            title={!canUpdate ? 'You do not have permission to update service types' : undefined}
                             className="h-8 w-8 p-0"
                           >
                             <Edit2 className="w-4 h-4" />
@@ -345,8 +308,7 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
                             variant="outline"
                             size="sm"
                             onClick={() => handleDelete(serviceType.svcTypeId)}
-                            disabled={deleting === serviceType.svcTypeId || !canDelete}
-                            title={!canDelete ? 'You do not have permission to delete service types' : undefined}
+                            disabled={deleting === serviceType.svcTypeId}
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             {deleting === serviceType.svcTypeId ? (
@@ -373,14 +335,6 @@ const ServiceTypes: React.FC<ServiceTypesProps> = ({
       <div className={`flex items-center gap-2 ${className}`}>
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-sm">Loading service types...</span>
-      </div>
-    );
-  }
-
-  if (!canView) {
-    return (
-      <div className={`text-sm text-gray-500 ${className}`}>
-        You do not have permission to view this module.
       </div>
     );
   }

@@ -16,7 +16,6 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { AuthContext } from '@/store/AuthContext';
 import { Plus, X } from 'lucide-react';
-import { can } from '@/utils/permissions';
 
 type Option = { id: number | string; name: string };
 
@@ -78,11 +77,6 @@ const PurchaseRequestForm: React.FC = () => {
 
   // Current user
   const auth = useContext(AuthContext);
-  const authData = auth?.authData;
-  const canView = can('view', authData);
-  const canCreate = can('create', authData);
-  const canUpdate = can('update', authData);
-  const canSubmit = existingRequestId ? canUpdate : canCreate;
   const [employeeName, setEmployeeName] = useState<string>('');
   const requesterNameFallback = auth?.authData?.user?.name || auth?.authData?.user?.username || '';
   const requesterRamcoId = auth?.authData?.user?.username || '';
@@ -186,6 +180,7 @@ const PurchaseRequestForm: React.FC = () => {
         setLoadingExisting(false);
       }
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingRequestId]);
 
   // Basic validation for user request
@@ -215,10 +210,6 @@ const PurchaseRequestForm: React.FC = () => {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) {
-      toast.error(existingRequestId ? 'You do not have permission to update purchase requests.' : 'You do not have permission to create purchase requests.');
-      return;
-    }
     if (!validate()) return;
     setSubmitting(true);
     try {
@@ -258,14 +249,6 @@ const PurchaseRequestForm: React.FC = () => {
 
   return (
     <div className="p-4">
-      {!canView ? (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            You do not have permission to view purchase request form.
-          </CardContent>
-        </Card>
-      ) : (
-      <>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Purchase Request</h1>
@@ -360,10 +343,7 @@ const PurchaseRequestForm: React.FC = () => {
               <Button
                 type="button"
                 variant="default"
-                disabled={!canSubmit}
-                title={!canSubmit ? (existingRequestId ? 'You do not have permission to update this request' : 'You do not have permission to create a request') : undefined}
                 onClick={() => {
-                  if (!canSubmit) return;
                   const newId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : String(Date.now() + Math.random());
                   setItems((prev) => [...prev, { id: newId, type_id: '', category_id: '', description: '', qty: 1, purpose: '' }]);
                   setItemErrors((prev) => [...prev, {}]);
@@ -394,10 +374,8 @@ const PurchaseRequestForm: React.FC = () => {
                           <button
                             type="button"
                             className={"text-xs px-2 py-1 rounded text-white " + (itemValid ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed opacity-60")}
-                            disabled={!itemValid || !canSubmit}
-                            title={!canSubmit ? 'You do not have permission to modify this request' : undefined}
+                            disabled={!itemValid}
                             onClick={(e) => {
-                              if (!canSubmit) return;
                               e.preventDefault();
                               e.stopPropagation();
                               const r: Record<string, string> = {};
@@ -416,10 +394,7 @@ const PurchaseRequestForm: React.FC = () => {
                           <button
                             type="button"
                             className="text-red-600 hover:text-red-700"
-                            disabled={!canSubmit}
-                            title={!canSubmit ? 'You do not have permission to modify this request' : undefined}
                             onClick={(e) => {
-                              if (!canSubmit) return;
                               e.preventDefault();
                               e.stopPropagation();
                               setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -427,6 +402,7 @@ const PurchaseRequestForm: React.FC = () => {
                               setOpenItems((prev) => prev.filter((id) => id !== it.id));
                             }}
                             aria-label="Remove item"
+                            title="Remove item"
                           >
                             <X className="h-4 w-4" />
                           </button>
@@ -537,22 +513,19 @@ const PurchaseRequestForm: React.FC = () => {
 
             <div className="flex gap-3 justify-end">
               <Button type="button" variant="ghost" onClick={() => {
-                if (!canSubmit) return;
                 setFormData({ request_type: '', pr_date: new Date().toISOString().slice(0,10), costcenter: '', department_id: '', position_id: '' });
                 setItems([]);
                 setItemErrors([]);
                 setOpenItems([]);
                 setErrors({});
-              }} disabled={!canSubmit} title={!canSubmit ? 'You do not have permission to modify this request' : undefined}>Reset</Button>
-              <Button type="submit" disabled={submitting || !canSubmit} title={!canSubmit ? (existingRequestId ? 'You do not have permission to update this request' : 'You do not have permission to create a request') : undefined}>
+              }}>Reset</Button>
+              <Button type="submit" disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Request'}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
-      </>
-      )}
     </div>
   );
 };

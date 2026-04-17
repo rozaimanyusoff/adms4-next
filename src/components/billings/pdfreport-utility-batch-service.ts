@@ -99,7 +99,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
         reader.readAsDataURL(blob);
         const base64 = await base64Promise;
         doc.addImage(base64, 'PNG', pageWidth - 32, 14, 18, 28);
-      } catch (_) { }
+      } catch (_) {}
     }
 
     doc.setFont('helvetica', 'bold');
@@ -146,16 +146,15 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
       //doc.text(String(service).toUpperCase(), 15, y);
       //y += 4;
 
-      const tableHead = [['No', 'Account No', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Rental (RM)', 'Tax (RM)', 'Grand Total (RM)']];
+      const tableHead = [['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)']];
       let rowNum = 1;
       const tableBody = bills.map((bill: AnyRow) => [
         String(rowNum++),
-        bill.account?.account_no || bill.account?.account || '',
+        bill.account?.account || '',
+        bill.ubill_date ? formatDate(bill.ubill_date) : '',
         bill.ubill_no || '',
         bill.account?.beneficiary?.name || '',
         bill.account?.costcenter?.name || '-',
-        Number(bill.ubill_rent || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-        Number(bill.ubill_tax || bill.tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
         Number(bill.ubill_gtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })
       ]);
 
@@ -165,14 +164,13 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
         body: tableBody,
         styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
         columnStyles: {
-          0: { cellWidth: 8, halign: 'center' },
-          1: { cellWidth: 24, halign: 'center' },
-          2: { cellWidth: 24, halign: 'center' },
-          3: { cellWidth: 38, halign: 'left' },
-          4: { cellWidth: 24, halign: 'left' },
-          5: { cellWidth: 18, halign: 'right' },
-          6: { cellWidth: 18, halign: 'right' },
-          7: { cellWidth: 22, halign: 'right' },
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 35, halign: 'center' },
+          2: { cellWidth: 23, halign: 'center' },
+          3: { cellWidth: 35, halign: 'center' },
+          4: { cellWidth: 27, halign: 'center' },
+          5: { cellWidth: 26, halign: 'center' },
+          6: { cellWidth: 25, halign: 'right' },
         },
         margin: { left: 14, right: 14 },
         tableWidth: 'auto',
@@ -200,7 +198,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
       overallGrandTotal += serviceSubtotal;
 
       // Subtotal row for this service
-      const colWidths = [8, 24, 24, 38, 24, 18, 18, 22];
+      const colWidths = [10, 35, 23, 35, 27, 26, 25];
       const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
       const xStart = 14;
       const rowHeight = 6;
@@ -272,7 +270,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
-
+       
       await addHeaderFooter(doc, i, totalPages, pageWidth);
     }
 

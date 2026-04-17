@@ -1563,12 +1563,7 @@ const PoolcarMgmt: React.FC = () => {
                           >
                             Cancel
                           </Button>
-                          <Button
-                            size="sm"
-                            onClick={handleSaveForm}
-                            disabled={saving || isFormLocked || isApprovedLockedView || !canUpdate}
-                            title={!canUpdate ? 'You do not have permission to update poolcar assignments' : undefined}
-                          >
+                          <Button size="sm" onClick={handleSaveForm} disabled={saving || isFormLocked || isApprovedLockedView}>
                             {saving ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

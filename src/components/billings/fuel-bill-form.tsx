@@ -9,8 +9,6 @@ import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ActionSidebar from '@/components/ui/action-aside';
-import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 
 interface Asset {
 	asset_id: number;
@@ -427,12 +425,8 @@ ConsumerDetailsTable.displayName = 'ConsumerDetailsTable';
 
 const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, onLeaveHandlerReady }) => {
 	const router = useRouter();
-	const auth = React.useContext(AuthContext);
-	const authData = auth?.authData;
-	const canView = can('view', authData);
 	// Add state for current statement ID (can change after creation)
 	const [currentStmtId, setCurrentStmtId] = useState(initialStmtId);
-	const canSubmit = (currentStmtId && currentStmtId > 0) ? can('update', authData) : can('create', authData);
 
 	const [data, setData] = useState<FuelBillDetail | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -632,10 +626,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Save handler for form submission
 	const handleSave = async () => {
-		if (!canSubmit) {
-			toast.error(`You do not have permission to ${(currentStmtId && currentStmtId > 0) ? 'update' : 'create'} fuel bills.`);
-			return;
-		}
 		if (!validateForm()) {
 			return;
 		}
@@ -1409,7 +1399,6 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 	if (loading) return <div className="p-4">Loading...</div>;
 	// Only show No data found if in edit mode and no data
 	if ((currentStmtId && currentStmtId > 0) && !data) return <div className="p-4">No data found.</div>;
-	if (!canView) return <div className="p-4 text-center text-sm text-muted-foreground">You do not have permission to view this form.</div>;
 
 	return (
 		<div className="w-full min-h-screen bg-gray-50 dark:bg-gray-800">
@@ -1633,8 +1622,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 								<Button
 									type="button"
 									onClick={handleSave}
-									disabled={saving || !canSubmit}
-									title={!canSubmit ? 'You do not have permission to create fuel bills' : undefined}
+									disabled={saving}
 									variant="default"
 								>
 									{saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
@@ -1644,13 +1632,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 									}
 								</Button>
 							) : (
-								<Button
-									type="button"
-									variant="default"
-									onClick={handleSave}
-									disabled={saving || !canSubmit}
-									title={!canSubmit ? 'You do not have permission to update fuel bills' : undefined}
-								>
+								<Button type="button" variant="default" onClick={handleSave} disabled={saving}>
 									{saving && <Loader2 className="animate-spin w-4 h-4 mr-2" />}
 									{saving ? "Saving..." : "Save Changes"}
 								</Button>

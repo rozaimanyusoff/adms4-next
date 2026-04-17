@@ -18,7 +18,6 @@ import { AuthContext } from '@/store/AuthContext';
 import { ApiPurchase, FlatPurchase, PurchaseFormData } from './types';
 import ExcelPurchaseItems from './excel-purchase-items';
 import { deriveAssetStatus, flattenPurchase } from './purchase-normalizer';
-import { can } from '@/utils/permissions';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -301,9 +300,6 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
   };
   const canDelete = useMemo(() => deletePermissionAdmin.includes(getUsername()), [auth?.authData?.user?.username]);
   const canImport = useMemo(() => importPermissionAdmin.includes(getUsername()), [auth?.authData?.user?.username]);
-  const canView = useMemo(() => can('view', auth?.authData), [auth?.authData]);
-  const canCreate = useMemo(() => can('create', auth?.authData), [auth?.authData]);
-  const canUpdate = useMemo(() => can('update', auth?.authData), [auth?.authData]);
 
   // Load purchases whenever username becomes available/changes
   useEffect(() => {
@@ -1225,18 +1221,8 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
       loadPurchases={loadPurchases}
       setLoading={setLoading}
       onSubmitSuccess={clearDraft}
-      canCreate={canCreate}
-      canUpdate={canUpdate}
     />
   );
-
-  if (!canView) {
-    return (
-      <div className="rounded-md border p-6 text-sm text-muted-foreground">
-        You do not have permission to view purchase records.
-      </div>
-    );
-  }
 
   if (showInlineForm || inlineFormOnly) {
     return (
@@ -1365,12 +1351,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
           )}
 
           {/* Add Purchase */}
-          <Button
-            variant={'default'}
-            onClick={() => { if (canCreate) router.push('/purchase/register/new'); }}
-            disabled={!canCreate}
-            title={!canCreate ? 'You do not have permission to create purchase records' : undefined}
-          >
+          <Button variant={'default'} onClick={() => router.push('/purchase/register/new')}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -1423,11 +1404,7 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
                 </p>
                 {purchases.length === 0 && (
                   <div className="flex justify-center space-x-4">
-                    <Button
-                      onClick={() => { if (canCreate) router.push('/purchase/register/new'); }}
-                      disabled={!canCreate}
-                      title={!canCreate ? 'You do not have permission to create purchase records' : undefined}
-                    >
+                    <Button onClick={() => router.push('/purchase/register/new')}>
                       <ShoppingCart className="mr-2 h-4 w-4" />
                       Create First Record
                     </Button>

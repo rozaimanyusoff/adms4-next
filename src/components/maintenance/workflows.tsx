@@ -13,7 +13,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Loader2, Plus, Edit2, Trash2, Save, X, Settings, Check, User, ChevronUp, ChevronDown, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 
 export interface Workflows {
   id?: number;
@@ -63,11 +62,6 @@ interface WorkflowsProps {
 
 const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   const auth = useContext(AuthContext);
-  const authData = auth?.authData;
-  const canView = can('view', authData);
-  const canCreate = can('create', authData);
-  const canUpdate = can('update', authData);
-  const canDelete = can('delete', authData);
   const [workflows, setWorkflows] = useState<Workflows[]>([]);
   const [loading, setLoading] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -100,7 +94,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
     : editingModuleName
       ? `Edit ${editingModuleName.replace('_', ' ').toUpperCase()} workflow`
       : 'Add New Workflow';
-  const canAddWorkflow = canCreate && auth?.authData?.user?.role?.id === 1 && auth?.authData?.user?.username === '000277';
+  const canAddWorkflow = auth?.authData?.user?.role?.id === 1 && auth?.authData?.user?.username === '000277';
 
   // Alert dialog state
   const [alertDialog, setAlertDialog] = useState<{
@@ -183,7 +177,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   }, []);
 
   const fetchApprovalLevels = async () => {
-    if (!canView) return;
     try {
       setLoading(true);
       const response = await authenticatedApi.get('/api/users/workflows');
@@ -200,15 +193,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleSave = async () => {
-    if (editingLevel || editingModuleName) {
-      if (!canUpdate) {
-        toast.error('You do not have permission to update workflows.');
-        return;
-      }
-    } else if (!canCreate) {
-      toast.error('You do not have permission to create workflows.');
-      return;
-    }
     try {
       setSaving(true);
 
@@ -357,10 +341,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleDelete = async (levelId: number) => {
-    if (!canDelete) {
-      toast.error('You do not have permission to delete workflows.');
-      return;
-    }
     const performDelete = async () => {
       try {
         setDeleting(levelId);
@@ -385,10 +365,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleEdit = (level: Workflows) => {
-    if (!canUpdate) {
-      toast.error('You do not have permission to update workflows.');
-      return;
-    }
     setEditingLevel(level);
     setEditingModuleName(null);
     setFormData({
@@ -446,10 +422,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleToggleActive = async (level: Workflows) => {
-    if (!canUpdate) {
-      toast.error('You do not have permission to update workflows.');
-      return;
-    }
     const action = level.is_active ? 'deactivate' : 'activate';
 
     const performToggle = async () => {
@@ -486,10 +458,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   // Chevron up/down reorder within a module via reorder endpoint
   const handleChevronMove = async (module: string, index: number, direction: 'up' | 'down') => {
-    if (!canUpdate) {
-      toast.error('You do not have permission to update workflows.');
-      return;
-    }
     const levels = groupedLevels[module];
     if (!levels) return;
     const ids = levels.map((l) => l.id!);
@@ -513,10 +481,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   // Edit/Delete at module (workflow) level
   const handleEditModule = (moduleName: string) => {
-    if (!canUpdate) {
-      toast.error('You do not have permission to update workflows.');
-      return;
-    }
     const levels = groupedLevels[moduleName] || [];
     setEditingLevel(null);
     setEditingModuleName(moduleName);
@@ -538,10 +502,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   };
 
   const handleDeleteModule = (moduleName: string) => {
-    if (!canDelete) {
-      toast.error('You do not have permission to delete workflows.');
-      return;
-    }
     const performDelete = async () => {
       try {
         await authenticatedApi.delete(`/api/users/workflows/${moduleName}`);
@@ -564,7 +524,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
 
   useEffect(() => {
     fetchApprovalLevels();
-  }, [canView]);
+  }, []);
 
   // Group approval levels by module
   const groupedLevels = workflows.reduce((acc, level) => {
@@ -579,14 +539,6 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
   Object.keys(groupedLevels).forEach(module => {
     groupedLevels[module].sort((a, b) => a.level_order - b.level_order);
   });
-
-  if (!canView) {
-    return (
-      <div className={className}>
-        <div className="text-sm text-gray-500">You do not have permission to view this module.</div>
-      </div>
-    );
-  }
 
   return (
     <div className={className}>
@@ -802,10 +754,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={saving || !formData.module_name || formData.employees.length === 0 || ((editingLevel || editingModuleName) ? !canUpdate : !canCreate)}
-                title={(editingLevel || editingModuleName)
-                  ? (!canUpdate ? 'You do not have permission to update workflows' : undefined)
-                  : (!canCreate ? 'You do not have permission to create workflows' : undefined)}
+                disabled={saving || !formData.module_name || formData.employees.length === 0}
               >
                 {saving ? (
                   <>
@@ -854,8 +803,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                         e.stopPropagation();
                         handleEditModule(moduleName);
                       }}
-                      title={!canUpdate ? 'You do not have permission to update workflows' : 'Edit Workflow'}
-                      disabled={!canUpdate}
+                      title="Edit Workflow"
                     >
                       <Edit2 className="w-4 h-4 text-amber-700" />
                     </Button>
@@ -868,8 +816,7 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                         e.stopPropagation();
                         handleDeleteModule(moduleName);
                       }}
-                      title={!canDelete ? 'You do not have permission to delete workflows' : 'Delete Workflow'}
-                      disabled={!canDelete}
+                      title="Delete Workflow"
                     >
                       <Trash2 className="w-4 h-4 text-red-700" />
                     </Button>
@@ -904,9 +851,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleChevronMove(moduleName, index, 'up')}
-                            disabled={index === 0 || !canUpdate}
+                            disabled={index === 0}
                             className="h-8 w-8 p-0"
-                            title={!canUpdate ? 'You do not have permission to update workflows' : 'Move up'}
+                            title="Move up"
                           >
                             <ChevronUp className="w-4 h-4" />
                           </Button>
@@ -914,9 +861,9 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleChevronMove(moduleName, index, 'down')}
-                            disabled={index === levels.length - 1 || !canUpdate}
+                            disabled={index === levels.length - 1}
                             className="h-8 w-8 p-0"
-                            title={!canUpdate ? 'You do not have permission to update workflows' : 'Move down'}
+                            title="Move down"
                           >
                             <ChevronDown className="w-4 h-4" />
                           </Button>
@@ -924,9 +871,8 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleToggleActive(level)}
-                            disabled={!canUpdate}
                             className="h-8 w-10 px-2"
-                            title={!canUpdate ? 'You do not have permission to update workflows' : (level.is_active ? 'Deactivate' : 'Activate')}
+                            title={level.is_active ? 'Deactivate' : 'Activate'}
                           >
                             <Switch checked={level.is_active} className="pointer-events-none scale-75" />
                           </Button>
@@ -934,9 +880,8 @@ const Workflows: React.FC<WorkflowsProps> = ({ className = '' }) => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(level)}
-                            disabled={!canUpdate}
                             className="h-8 w-8 p-0"
-                            title={!canUpdate ? 'You do not have permission to update workflows' : 'Edit level'}
+                            title="Edit level"
                           >
                             <Edit2 className="w-4 h-4 text-amber-700" />
                           </Button>

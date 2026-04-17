@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useContext } from "react";
 import { AuthContext } from '@/store/AuthContext';
-import { can } from '@/utils/permissions';
 import { authenticatedApi } from "@/config/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -311,9 +310,6 @@ const AssessmentForm: React.FC = () => {
     const searchParams = useSearchParams();
     const router = useRouter();
     const assessmentId = searchParams?.get('id') || null;
-    const authData = auth?.authData;
-    const canView = can('view', authData);
-    const canSubmit = isEditing ? can('update', authData) : can('create', authData);
 
     useEffect(() => {
         const bootstrap = async () => {
@@ -793,10 +789,6 @@ const AssessmentForm: React.FC = () => {
     const handlePrev = () => { if (page > 0) setPage(p => p - 1); };
 
     const handleSubmit = async () => {
-        if (!canSubmit) {
-            toast.error(isEditing ? 'You do not have permission to update assessments.' : 'You do not have permission to create assessments.');
-            return;
-        }
         // Final validation check
         if (!isAssessmentComplete()) {
             toast.error('Please complete all criteria before submitting.');
@@ -1006,16 +998,6 @@ const AssessmentForm: React.FC = () => {
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
                     <p>Loading assessment data...</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (!canView) {
-        return (
-            <div className="max-w-4xl mx-auto space-y-6">
-                <div className="rounded-md border p-6 text-sm text-muted-foreground">
-                    You do not have permission to view assessment form.
                 </div>
             </div>
         );
@@ -1288,9 +1270,8 @@ const AssessmentForm: React.FC = () => {
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        disabled={!isAssessmentComplete() || isSubmitting || !canSubmit}
+                        disabled={!isAssessmentComplete() || isSubmitting}
                         aria-busy={isSubmitting}
-                        title={!canSubmit ? (isEditing ? 'You do not have permission to update assessments' : 'You do not have permission to create assessments') : undefined}
                         className={`px-6 ${isAssessmentComplete() && !isSubmitting ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 cursor-not-allowed'}`}
                     >
                         {isSubmitting ? (
