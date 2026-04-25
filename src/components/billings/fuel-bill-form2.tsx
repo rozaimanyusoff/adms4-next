@@ -624,6 +624,41 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		}
 	}, [draftKey]);
 
+	const clearDetailLookupFields = React.useCallback((detail: FuelDetail): FuelDetail => ({
+		...detail,
+		fleetcard: { id: 0, card_no: '' },
+		asset: {
+			...detail.asset,
+			id: 0,
+			asset_id: 0,
+			register_number: '',
+			fuel_type: '',
+			costcenter: null,
+			locations: undefined,
+			location_id: undefined,
+			vehicle_id: undefined,
+			entry_code: '',
+			purpose: '',
+		},
+	}), []);
+
+	const isPersistedDetailRow = React.useCallback((detail: FuelDetail): boolean => {
+		const hasValidAmount = detail.amount && parseFloat(String(detail.amount)) > 0;
+		return Boolean(hasValidAmount);
+	}, []);
+
+	const getDraftDetails = React.useCallback((details: FuelDetail[]) => {
+		let lastIndex = details.length - 1;
+		while (lastIndex >= 0 && !isPersistedDetailRow(details[lastIndex])) {
+			lastIndex -= 1;
+		}
+		return details.slice(0, lastIndex + 1);
+	}, [isPersistedDetailRow]);
+
+	const getRegisterLookupUrl = React.useCallback((registerNo: string) => {
+		return `/api/bills/fleet/register/${encodeURIComponent(selectedVendor)}/${encodeURIComponent(registerNo)}`;
+	}, [selectedVendor]);
+
 	// Validation state
 	const [errors, setErrors] = useState({
 		vendor: false,
@@ -673,7 +708,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 			header,
 			summary,
 			selectedVendor,
-			editableDetails,
+			editableDetails: getDraftDetails(editableDetails),
 			draftDetailsRestored,
 		};
 		const serialized = JSON.stringify(payload);
@@ -724,7 +759,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				window.removeEventListener('beforeunload', handleBeforeUnload);
 			}
 		};
-	}, [draftKey, draftLoaded, draftDetailsRestored, editableDetails, header, selectedVendor, summary, currentStmtId]);
+	}, [draftKey, draftLoaded, draftDetailsRestored, editableDetails, getDraftDetails, header, selectedVendor, summary, currentStmtId]);
 
 	const [importing, setImporting] = useState(false);
 	const importFileRef = React.useRef<HTMLInputElement | null>(null);
@@ -780,7 +815,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				const registerNo = row.register_number || row.vehicle_no || '';
 				if (registerNo) {
 					try {
-						const regRes = await authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet/register/${encodeURIComponent(registerNo)}`);
+						const regRes = await authenticatedApi.get<{ data: any[] }>(getRegisterLookupUrl(registerNo));
 						const record = Array.isArray(regRes.data?.data) ? regRes.data.data[0] : null;
 						if (record) {
 							const asset = record.asset || {};
@@ -822,7 +857,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		} finally {
 			setImporting(false);
 		}
-	}, [currentStmtId, header.stmt_date, setEditableDetails]);
+	}, [currentStmtId, getRegisterLookupUrl, header.stmt_date, setEditableDetails]);
 
 	const handleCloseSuccessDialog = React.useCallback(() => {
 		setShowSubmitSuccess(false);
@@ -886,9 +921,8 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 	// Helper function to check if a detail row is considered "filled"
 	const isRowFilled = React.useCallback((detail: FuelDetail): boolean => {
-		const hasValidAmount = detail.amount && parseFloat(String(detail.amount)) > 0;
-		return Boolean(hasValidAmount);
-	}, []);
+		return isPersistedDetailRow(detail);
+	}, [isPersistedDetailRow]);
 
 	// Keep one blank row available for quick data entry
 	const createEmptyDetail = React.useCallback((): FuelDetail => ({
@@ -1256,9 +1290,9 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		setEditableDetails(prev => prev.map((detail, i) => {
 			if (i !== idx) return detail;
 			return {
-				...detail,
+				...clearDetailLookupFields(detail),
 				fleetcard: {
-					id: detail.fleetcard?.id ?? 0,
+					id: 0,
 					card_no: cardNo,
 				},
 			};
@@ -1276,6 +1310,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 
 				setEditableDetails(prev => prev.map((detail, i) => {
 					if (i !== idx) return detail;
+					if ((detail.fleetcard?.card_no || '').trim() !== trimmed) return detail;
 					return {
 						...detail,
 						fleetcard: {
@@ -1298,7 +1333,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				toast.error('Failed to fetch fleet card info.');
 			})
 			.then(() => setLoadingDetails(false));
-	}, [cardFieldsReady, setLoadingDetails]);
+	}, [cardFieldsReady, clearDetailLookupFields, setLoadingDetails]);
 
 	const handleRegisterNumberChange = React.useCallback((idx: number, registerNo: string) => {
 		if (!cardFieldsReady) return;
@@ -1306,10 +1341,11 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		// Update typed value immediately so users see what they pasted
 		setEditableDetails(prev => prev.map((detail, i) => {
 			if (i !== idx) return detail;
+			const clearedDetail = clearDetailLookupFields(detail);
 			return {
-				...detail,
+				...clearedDetail,
 				asset: {
-					...detail.asset,
+					...clearedDetail.asset,
 					register_number: registerNo,
 				},
 			};
@@ -1319,13 +1355,14 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 		if (!trimmed) return;
 
 		setLoadingDetails(true);
-		authenticatedApi.get<{ data: any[] }>(`/api/bills/fleet/register/${encodeURIComponent(trimmed)}`)
+		authenticatedApi.get<{ data: any[] }>(getRegisterLookupUrl(trimmed))
 			.then(res => {
 				const record = Array.isArray(res.data?.data) ? res.data.data[0] : null;
 				if (!record) return;
 				const asset = record.asset || {};
 				setEditableDetails(prev => prev.map((detail, i) => {
 					if (i !== idx) return detail;
+					if ((detail.asset?.register_number || '').trim() !== trimmed) return detail;
 					const assetId = asset.id ?? asset.asset_id ?? record.asset_id ?? detail.asset?.id ?? 0;
 					const locId = asset.location_id ?? asset.locations?.id ?? record.location_id ?? record.loc_id ?? detail.asset?.location_id;
 					return {
@@ -1354,7 +1391,7 @@ const FuelMtnDetail: React.FC<FuelMtnDetailProps> = ({ stmtId: initialStmtId, on
 				toast.error('Failed to fetch register info.');
 			})
 			.then(() => setLoadingDetails(false));
-	}, [cardFieldsReady]);
+	}, [cardFieldsReady, clearDetailLookupFields, getRegisterLookupUrl]);
 
 	const handleFuelTypeChange = React.useCallback((idx: number, fuelType: string) => {
 		setEditableDetails(prev => prev.map((detail, i) => {
