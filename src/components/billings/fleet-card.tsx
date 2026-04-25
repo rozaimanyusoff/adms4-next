@@ -432,7 +432,7 @@ const FleetCardList: React.FC = () => {
                     </div>
                 );
             },
-            filter: 'input',
+            filter: 'singleSelect',
         },
         {
             key: 'register_number',
