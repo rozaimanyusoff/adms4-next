@@ -99,7 +99,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
         reader.readAsDataURL(blob);
         const base64 = await base64Promise;
         doc.addImage(base64, 'PNG', pageWidth - 32, 14, 18, 28);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     doc.setFont('helvetica', 'bold');
@@ -270,14 +270,14 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
-       
+
       await addHeaderFooter(doc, i, totalPages, pageWidth);
     }
 
     const pad = (n: number) => String(n).padStart(2, '0');
     const tsNow = new Date();
     const timestamp = `${tsNow.getFullYear()}${pad(tsNow.getMonth() + 1)}${pad(tsNow.getDate())}${pad(tsNow.getHours())}${pad(tsNow.getMinutes())}${pad(tsNow.getSeconds())}`;
-    doc.save(`utility-bills-service-batch-${timestamp}.pdf`);
+    doc.save(`utility-bill-batch-multi-beneficiary${timestamp}.pdf`);
     toast.success('Service batch PDF downloaded!');
   } catch (err) {
     console.error('exportUtilityBillBatchByService error', err);

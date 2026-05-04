@@ -39,7 +39,7 @@ export async function exportUtilityBillSummary(
         }
         // Diagnostic: log and show brief toast so runtime shape can be confirmed
         try {
-             
+
             console.log('exportUtilityBillSummary: responseBeneficiary ->', responseBeneficiary);
             if (!responseBeneficiary) {
                 toast.error('Export: beneficiary missing in API response (check console)');
@@ -213,8 +213,8 @@ export async function exportUtilityBillSummary(
         doc.text(grandTotalValue, xStart + totalTableWidth - 1, y, { align: 'right' });
         y += 10;
 
-    // Ensure we have enough space for signatures; add page if needed
-    y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 }); //adjust content poition for the 2nd page
+        // Ensure we have enough space for signatures; add page if needed
+        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: 50 }); //adjust content poition for the 2nd page
 
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
@@ -364,20 +364,20 @@ export async function exportUtilityBillSummary(
         } catch (e) {
             // no-op if structure not present
         }
-    // Footer and page note will be added by shared helper for each page below
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const tsNow = new Date();
-    const timestamp = `${tsNow.getFullYear()}${pad(tsNow.getMonth() + 1)}${pad(tsNow.getDate())}${pad(tsNow.getHours())}${pad(tsNow.getMinutes())}${pad(tsNow.getSeconds())}`;
+        // Footer and page note will be added by shared helper for each page below
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const tsNow = new Date();
+        const timestamp = `${tsNow.getFullYear()}${pad(tsNow.getMonth() + 1)}${pad(tsNow.getDate())}${pad(tsNow.getHours())}${pad(tsNow.getMinutes())}${pad(tsNow.getSeconds())}`;
 
         // Add header/footer to all pages with correct page numbers
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
-             
+
             await addHeaderFooter(doc, i, totalPages, pageWidth);
         }
 
-        doc.save(`telco-bill-summary-batch-${timestamp}.pdf`);
+        doc.save(`utility-bill-batch-single-beneficiary${timestamp}.pdf`);
         toast.success('Batch PDF downloaded!');
     } catch (err) {
         toast.error('Failed to export batch PDF.');
