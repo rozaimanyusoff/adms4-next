@@ -109,16 +109,17 @@ export async function exportUtilityBillSummary(
             doc.text(`Kindly please make a payment to the following beneficiaries as follows:`, 15, 70);
         }
         let y = 75;
-        const tableHead = [['No', 'Account No', 'Date', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Total (RM)']];
+        const tableHead = [['No', 'Account No', 'Bill/Inv No', 'Beneficiary', 'Cost Center', 'Rental (RM)', 'Tax (RM)', 'Total (RM)']];
         let rowNum = 1;
         const tableBody = bills.map((bill: any) => {
             return [
                 String(rowNum++),
                 bill.account?.account_no || '',
-                bill.ubill_date ? formatDate(bill.ubill_date) : '',
                 bill.ubill_no || '',
                 bill.account?.beneficiary?.name || responseBeneficiary?.name || '',
                 bill.account?.costcenter?.name || '-',
+                Number(bill.ubill_rent || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                Number(bill.ubill_tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }),
                 Number(bill.ubill_gtotal).toLocaleString(undefined, { minimumFractionDigits: 2 }),
             ];
         });
@@ -129,12 +130,13 @@ export async function exportUtilityBillSummary(
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
             columnStyles: {
                 0: { cellWidth: 10, halign: 'center' },
-                1: { cellWidth: 35, halign: 'center' },
-                2: { cellWidth: 23, halign: 'center' },
-                3: { cellWidth: 35, halign: 'center' },
-                4: { cellWidth: 27, halign: 'center' },
-                5: { cellWidth: 26, halign: 'center' },
-                6: { cellWidth: 25, halign: 'right' },
+                1: { cellWidth: 30, halign: 'left' },
+                2: { cellWidth: 30, halign: 'center' },
+                3: { cellWidth: 30, halign: 'center' },
+                4: { cellWidth: 24, halign: 'center' },
+                5: { cellWidth: 22, halign: 'right' },
+                6: { cellWidth: 18, halign: 'right' },
+                7: { cellWidth: 18, halign: 'right' },
             },
             margin: { left: 14, right: 14 },
             tableWidth: 'auto',
@@ -158,9 +160,9 @@ export async function exportUtilityBillSummary(
         });
         y = (doc as any).lastAutoTable.finalY + 4;
         // Calculate totals for all selected bills
-        const subtotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.subtotal || 0), 0);
-        const totalTax = bills.reduce((sum: number, bill: any) => sum + Number(bill.tax || 0), 0);
-        const totalRounding = bills.reduce((sum: number, bill: any) => sum + Number(bill.rounding || 0), 0);
+        const subtotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.ubill_rent || 0), 0);
+        const totalTax = bills.reduce((sum: number, bill: any) => sum + Number(bill.ubill_tax || 0), 0);
+        const totalRounding = bills.reduce((sum: number, bill: any) => sum + Number(bill.ubill_round || 0), 0);
         const grandTotal = bills.reduce((sum: number, bill: any) => sum + Number(bill.ubill_gtotal || 0), 0);
         const subtotalLabel = 'Subtotal (RM):';
         const subtotalValue = subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
@@ -170,7 +172,7 @@ export async function exportUtilityBillSummary(
         const roundValue = totalRounding.toLocaleString(undefined, { minimumFractionDigits: 2 });
         const grandTotalLabel = 'Grand Total:';
         const grandTotalValue = grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 });
-        const colWidths = [10, 35, 23, 35, 27, 26, 25];
+        const colWidths = [10, 30, 30, 30, 24, 22, 18, 18];
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
         const xStart = 14;
         const rowHeight = 6;

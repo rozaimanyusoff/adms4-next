@@ -956,7 +956,7 @@ const UtilityBill = () => {
 
         <div className="flex items-start space-x-4">
           {/* Beneficiary filter combobox and printer export */}
-          <div className='flex flex-col'>
+          <div className='flex flex-col rounded-md border border-dark px-2 py-2'>
             <div className='flex items-center gap-2'>
               <div className="w-60">
                 <SingleSelect
@@ -1070,7 +1070,7 @@ const UtilityBill = () => {
               onClick={openBatchServiceDialog}
               disabled={!canExport}
             >
-              <Printer size={16} className="mr-1" /> Batch Beneficiary Print
+              <Printer size={16} className="mr-1" /> Multi-Beneficiary Print
             </Button>
             <p className="mt-1 text-xs text-red-500 dark:text-gray-400 w-70">
               **Used for print bills from multiple beneficiaries like services (cleaner) & rentals

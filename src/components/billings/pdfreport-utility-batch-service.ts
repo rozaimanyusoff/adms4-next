@@ -165,7 +165,7 @@ export async function exportUtilityBillBatchByService(selectedRows: AnyRow[], op
         styles: { font: 'helvetica', fontSize: 9, cellPadding: 1 },
         columnStyles: {
           0: { cellWidth: 10, halign: 'center' },
-          1: { cellWidth: 35, halign: 'center' },
+          1: { cellWidth: 35, halign: 'left' },
           2: { cellWidth: 23, halign: 'center' },
           3: { cellWidth: 35, halign: 'center' },
           4: { cellWidth: 27, halign: 'center' },
