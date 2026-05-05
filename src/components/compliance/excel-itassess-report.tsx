@@ -81,6 +81,16 @@ type ItAssessmentRecord = {
   location?: { id?: number; name?: string } | string | null;
 };
 
+type ApiListResponse<T> = {
+  data?: T[];
+} | T[];
+
+const extractList = <T,>(payload: ApiListResponse<T> | undefined): T[] => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object' && Array.isArray(payload.data)) return payload.data;
+  return [];
+};
+
 const resolveAssetLabel = (
   rawValue: any,
   ...nameCandidates: Array<any>
@@ -150,21 +160,12 @@ const styleHeaderRow = (row: ExcelJS.Row) => {
 
 async function fetchItAssessmentRecords(): Promise<ItAssessmentRecord[]> {
   const [assessmentRes, assetsStatusRes] = await Promise.all([
-    authenticatedApi.get('/api/compliance/it-assess'),
-    authenticatedApi.get('/api/compliance/it-assets-status'),
+    authenticatedApi.get<ApiListResponse<ItAssessmentRecord>>('/api/compliance/it-assess'),
+    authenticatedApi.get<ApiListResponse<any>>('/api/compliance/it-assets-status'),
   ]);
 
-  const list = Array.isArray(assessmentRes?.data?.data)
-    ? assessmentRes.data.data
-    : Array.isArray(assessmentRes?.data)
-      ? assessmentRes.data
-      : [];
-
-  const assetsStatusList = Array.isArray(assetsStatusRes?.data?.data)
-    ? assetsStatusRes.data.data
-    : Array.isArray(assetsStatusRes?.data)
-      ? assetsStatusRes.data
-      : [];
+  const list = extractList(assessmentRes?.data);
+  const assetsStatusList = extractList(assetsStatusRes?.data);
 
   const assetLookup = new Map<number, { category?: any; brand?: any; model?: any }>();
   assetsStatusList.forEach((item: any) => {
