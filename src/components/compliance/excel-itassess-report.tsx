@@ -20,6 +20,12 @@ type ItAssessmentRecord = {
   category?: string | null;
   brand?: string | null;
   model?: string | null;
+  category_name?: string | null;
+  brand_name?: string | null;
+  model_name?: string | null;
+  categories?: { id?: number; name?: string } | null;
+  brands?: { id?: number; name?: string } | null;
+  models?: { id?: number; name?: string } | null;
   purchase_date?: string | null;
   os_name?: string | null;
   os_version?: string | null;
@@ -73,6 +79,17 @@ type ItAssessmentRecord = {
   department?: { id?: number; name?: string } | string | null;
   employee?: { full_name?: string; ramco_id?: string } | string | null;
   location?: { id?: number; name?: string } | string | null;
+};
+
+const resolveAssetLabel = (
+  rawValue: any,
+  ...nameCandidates: Array<any>
+) => {
+  for (const candidate of nameCandidates) {
+    const label = displayName(candidate);
+    if (label !== '-') return label;
+  }
+  return displayName(rawValue);
 };
 
 const displayName = (value: any) => {
@@ -132,13 +149,48 @@ const styleHeaderRow = (row: ExcelJS.Row) => {
 };
 
 async function fetchItAssessmentRecords(): Promise<ItAssessmentRecord[]> {
-  const res: any = await authenticatedApi.get('/api/compliance/it-assess');
-  const list = Array.isArray(res?.data?.data)
-    ? res.data.data
-    : Array.isArray(res?.data)
-      ? res.data
+  const [assessmentRes, assetsStatusRes] = await Promise.all([
+    authenticatedApi.get('/api/compliance/it-assess'),
+    authenticatedApi.get('/api/compliance/it-assets-status'),
+  ]);
+
+  const list = Array.isArray(assessmentRes?.data?.data)
+    ? assessmentRes.data.data
+    : Array.isArray(assessmentRes?.data)
+      ? assessmentRes.data
       : [];
-  return list as ItAssessmentRecord[];
+
+  const assetsStatusList = Array.isArray(assetsStatusRes?.data?.data)
+    ? assetsStatusRes.data.data
+    : Array.isArray(assetsStatusRes?.data)
+      ? assetsStatusRes.data
+      : [];
+
+  const assetLookup = new Map<number, { category?: any; brand?: any; model?: any }>();
+  assetsStatusList.forEach((item: any) => {
+    const assetId = Number(item?.asset?.id);
+    if (!Number.isFinite(assetId)) return;
+    assetLookup.set(assetId, {
+      category: item?.asset?.category ?? item?.asset?.categories,
+      brand: item?.asset?.brand ?? item?.asset?.brands,
+      model: item?.asset?.model ?? item?.asset?.models,
+    });
+  });
+
+  const enriched = list.map((row: any) => {
+    const lookup = assetLookup.get(Number(row?.asset_id));
+    return {
+      ...row,
+      category_name: row?.category_name ?? lookup?.category?.name ?? row?.category?.name ?? row?.categories?.name ?? null,
+      brand_name: row?.brand_name ?? lookup?.brand?.name ?? row?.brand?.name ?? row?.brands?.name ?? null,
+      model_name: row?.model_name ?? lookup?.model?.name ?? row?.model?.name ?? row?.models?.name ?? null,
+      categories: row?.categories ?? lookup?.category ?? null,
+      brands: row?.brands ?? lookup?.brand ?? null,
+      models: row?.models ?? lookup?.model ?? null,
+    };
+  });
+
+  return enriched as ItAssessmentRecord[];
 }
 
 export async function downloadItAssessmentReport() {
@@ -227,7 +279,12 @@ export async function downloadItAssessmentReport() {
 
   const categoryMap = new Map<string, { assessed: number; total: number }>();
   records.forEach(row => {
-    const label = displayName(row.category);
+    const label = resolveAssetLabel(
+      row.category,
+      row.category_name,
+      row.categories,
+      (row as any)?.category?.name,
+    );
     const entry = categoryMap.get(label) ?? { assessed: 0, total: 0 };
     entry.total += 1;
     if (row.assessment_date) entry.assessed += 1;
@@ -348,9 +405,9 @@ export async function downloadItAssessmentReport() {
         row.remarks || '',
         row.asset_id ?? '',
         row.register_number || '',
-        displayName(row.category),
-        displayName(row.brand),
-        displayName(row.model),
+        resolveAssetLabel(row.category, row.category_name, row.categories, (row as any)?.category?.name),
+        resolveAssetLabel(row.brand, row.brand_name, row.brands, (row as any)?.brand?.name),
+        resolveAssetLabel(row.model, row.model_name, row.models, (row as any)?.model?.name),
         formatDate(row.purchase_date),
         row.os_name || '',
         row.os_version || '',
