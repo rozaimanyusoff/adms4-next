@@ -222,19 +222,24 @@ const TrainingRecordList = () => {
         {
             key: 'attendance_upload',
             header: 'Attendance',
-            render: (row) =>
-                row.attendance_upload ? (
+            render: (row) => {
+                if (!row.attendance_upload) {
+                    return <span className="text-muted-foreground">Not uploaded</span>;
+                }
+                const fileUrl = row.attendance_upload.startsWith('http')
+                    ? row.attendance_upload
+                    : `${process.env.NEXT_PUBLIC_API_URL}${row.attendance_upload}`;
+                return (
                     <a
-                        href={row.attendance_upload}
+                        href={fileUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
                         <FileDown className="size-4" /> Download
                     </a>
-                ) : (
-                    <span className="text-muted-foreground">Not uploaded</span>
-                ),
+                );
+            },
         },
     ], []);
 
