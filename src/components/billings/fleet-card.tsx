@@ -32,6 +32,7 @@ interface FleetCard {
     };
     asset?: {
         id: string;
+        register_number?: string;
         assignee?: string;
         costcenter?: { id: number; name: string };
         locations?: { id: number; code: string };
@@ -49,6 +50,7 @@ interface FleetCard {
 
 interface AssetOption {
     id: string;
+    register_number?: string;
     assignee?: string;
     costcenter?: { id: number; name: string };
     purpose?: string;
@@ -125,7 +127,7 @@ const FleetCardList: React.FC = () => {
                 purpose: (a.purpose || f.purpose || '').toLowerCase(),
                 costcenter_id: a.costcenter?.id ? String(a.costcenter.id) : f.costcenter_id,
                 fuel_type: (a.fuel_type || f.fuel_type || '').toLowerCase(),
-                register_number: a.assignee || f.register_number,
+                register_number: a.register_number || a.assignee || f.register_number,
                 assignment: existingCard ? 'replacement' : f.assignment,
                 replacement_card_id: existingCard ? existingCard.id : f.replacement_card_id,
             }));
@@ -205,6 +207,7 @@ const FleetCardList: React.FC = () => {
                     if (c.asset && c.asset.id != null && !map.has(String(c.asset.id))) {
                         map.set(String(c.asset.id), {
                             id: c.asset.id,
+                            register_number: c.asset.register_number,
                             assignee: c.asset.assignee,
                             costcenter: c.asset.costcenter,
                             purpose: c.asset.purpose,
@@ -308,7 +311,7 @@ const FleetCardList: React.FC = () => {
             const assetId = card.asset?.id;
             if (assetId && duplicatedAssetIds.has(assetId) && !seen.has(assetId)) {
                 seen.add(assetId);
-                list.push(card.asset?.assignee || `#${assetId}`);
+                list.push(card.asset?.register_number || card.asset?.assignee || `#${assetId}`);
             }
         });
         return list;
@@ -1017,11 +1020,11 @@ const FleetCardList: React.FC = () => {
                                                 if (!id) return '';
                                                 const fromAssets = assets.find(a => String(a.id) === String(id));
                                                 if (fromAssets) {
-                                                    return fromAssets.assignee || `#${fromAssets.id}`;
+                                                    return fromAssets.register_number || fromAssets.assignee || `#${fromAssets.id}`;
                                                 }
                                                 const fromOptions = assetOptions.find(a => String(a.id) === String(id));
                                                 if (fromOptions) {
-                                                    return fromOptions.assignee || `#${fromOptions.id}`;
+                                                    return fromOptions.register_number || fromOptions.assignee || `#${fromOptions.id}`;
                                                 }
                                                 return `#${id}`;
                                             })()}
@@ -1231,12 +1234,21 @@ const FleetCardList: React.FC = () => {
                                         <TabsContent value="asset">
                                             <Input placeholder="Search..." value={assetSearch} onChange={e => setAssetSearch(e.target.value)} className="mb-3" />
                                             <div className="max-h-150 overflow-y-auto space-y-2">
-                                                {assetOptions.filter(a => (a.assignee || '').toLowerCase().includes(assetSearch.toLowerCase())).map(a => {
-                                                    const assigned = cards.find(c => c.asset && c.asset.id === a.id)?.card_no;
+                                                {assetOptions.filter(a => {
+                                                    const q = assetSearch.toLowerCase();
+                                                    const label = (a.register_number || a.assignee || '').toLowerCase();
+                                                    return label.includes(q);
+                                                }).map(a => {
+                                                    const assignedCards = cards
+                                                        .filter(c => String(c.asset?.id || '') === String(a.id))
+                                                        .sort((x, y) => (x.vendor?.fuel_id || 0) - (y.vendor?.fuel_id || 0))
+                                                        .map(c => c.card_no)
+                                                        .filter(Boolean);
+                                                    const assigned = Array.from(new Set(assignedCards)).join(' / ');
                                                     return (
                                                         <div key={a.id} className="p-2 border rounded hover:bg-accent/20 flex items-center justify-between">
                                                             <div>
-                                                                <div className="font-medium">{a.assignee || `#${a.id}`}</div>
+                                                                <div className="font-medium">{a.register_number || a.assignee || `#${a.id}`}</div>
                                                                 <div className="text-xs text-muted-foreground">Cost Ctr: {a.costcenter?.name || '-'}</div>
                                                                 <div className="text-xs text-muted-foreground capitalize">Purpose: {a.purpose || '-'}</div>
                                                                 <div className="text-xs text-muted-foreground">Current Card: <span className="text-destructive font-bold">{assigned || '-'}</span></div>
