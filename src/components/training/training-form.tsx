@@ -299,8 +299,13 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 			try {
 				const response = await authenticatedApi.get(existingAttendanceUpload, { responseType: 'blob' });
 				if (cancelled) return;
-				objectUrl = URL.createObjectURL(response.data);
-				setExistingAttendancePreviewUrl(objectUrl);
+				const blobData = response.data;
+				if (blobData instanceof Blob) {
+					objectUrl = URL.createObjectURL(blobData);
+					setExistingAttendancePreviewUrl(objectUrl);
+					return;
+				}
+				setExistingAttendancePreviewUrl(existingAttendanceUpload);
 			} catch {
 				if (!cancelled) {
 					setExistingAttendancePreviewUrl(existingAttendanceUpload);
