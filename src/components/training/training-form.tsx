@@ -118,6 +118,7 @@ type TrainingFormProps = {
 export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormProps) {
 	const [supportingDocument, setSupportingDocument] = useState<File | null>(null);
 	const [existingAttendanceUpload, setExistingAttendanceUpload] = useState<string | null>(null);
+	const [existingAttendancePreviewUrl, setExistingAttendancePreviewUrl] = useState<string | null>(null);
 	const [supportingDocumentPreviewUrl, setSupportingDocumentPreviewUrl] = useState<string | null>(null);
 	const fileInputRef = useRef<HTMLInputElement | null>(null);
 	const [participantDirectory, setParticipantDirectory] = useState<ParticipantRecord[]>([]);
@@ -195,6 +196,8 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 	};
 
 	const isEditing = Boolean(trainingId);
+	const resolvedAttendancePreviewUrl =
+		supportingDocumentPreviewUrl || existingAttendancePreviewUrl || existingAttendanceUpload || null;
 
 	const persistDraft = useCallback(
 		(values: TrainingFormValues, costSnapshot: CostItem[]) => {
@@ -282,6 +285,37 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 			URL.revokeObjectURL(objectUrl);
 		};
 	}, [supportingDocument]);
+
+	useEffect(() => {
+		if (!existingAttendanceUpload || supportingDocument) {
+			setExistingAttendancePreviewUrl(null);
+			return;
+		}
+
+		let cancelled = false;
+		let objectUrl: string | null = null;
+
+		const loadPreview = async () => {
+			try {
+				const response = await authenticatedApi.get(existingAttendanceUpload, { responseType: 'blob' });
+				if (cancelled) return;
+				objectUrl = URL.createObjectURL(response.data);
+				setExistingAttendancePreviewUrl(objectUrl);
+			} catch {
+				if (!cancelled) {
+					setExistingAttendancePreviewUrl(existingAttendanceUpload);
+				}
+			}
+		};
+
+		loadPreview();
+		return () => {
+			cancelled = true;
+			if (objectUrl?.startsWith('blob:')) {
+				URL.revokeObjectURL(objectUrl);
+			}
+		};
+	}, [existingAttendanceUpload, supportingDocument]);
 
 	useEffect(() => {
 		persistDraft(getValues(), costItems);
@@ -925,24 +959,22 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 													</Button>
 												</div>
 											</div>
-											{(supportingDocumentPreviewUrl || existingAttendanceUpload) && (
+											{resolvedAttendancePreviewUrl && (
 												<div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-start">
 													<div className="h-36 w-28 overflow-hidden rounded border bg-white">
-														<object
-															data={supportingDocumentPreviewUrl || existingAttendanceUpload || undefined}
-															type="application/pdf"
+														<iframe
+															src={`${resolvedAttendancePreviewUrl}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH`}
 															className="h-full w-full"
 															aria-label="Attendance PDF preview"
-														>
-															<div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">PDF</div>
-														</object>
+															title="Attendance PDF preview"
+														/>
 													</div>
 													<div className="min-w-0 flex-1">
 														<p className="truncate text-sm font-medium">
 															{supportingDocument ? supportingDocument.name : 'Current attendance PDF'}
 														</p>
 														<a
-															href={supportingDocumentPreviewUrl || existingAttendanceUpload || '#'}
+															href={resolvedAttendancePreviewUrl}
 															target="_blank"
 															rel="noreferrer"
 															className="text-xs text-primary hover:underline"
