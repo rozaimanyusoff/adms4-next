@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { authenticatedApi } from '@/config/api';
 import { toast } from 'sonner';
 import { AuthContext } from '@/store/AuthContext';
-import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Info, Search, RefreshCcw, Link2 } from 'lucide-react';
+import { Package, ArrowLeft, Save, FileText, Home, ChevronRight, Copy, Trash2, CheckCircle, Check, Info, Search, RefreshCcw, Link2 } from 'lucide-react';
 import ActionSidebar from '@/components/ui/action-aside';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -73,6 +73,7 @@ interface AssetFormData {
 interface AssetItem extends AssetFormData {
   id: string;
   registered?: boolean;
+  customCategory?: boolean;
   customBrand?: boolean;
   customModel?: boolean;
   registry_id?: number | string;
@@ -149,8 +150,10 @@ const PurchaseAssetRegistration: React.FC = () => {
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [creatingBrand, setCreatingBrand] = useState(false);
   const [creatingModel, setCreatingModel] = useState(false);
+  const [bulkCategoryCustom, setBulkCategoryCustom] = useState(false);
   const [bulkBrandCustom, setBulkBrandCustom] = useState(false);
   const [bulkModelCustom, setBulkModelCustom] = useState(false);
   const [loadingCostCenters, setLoadingCostCenters] = useState(false);
@@ -249,16 +252,38 @@ const PurchaseAssetRegistration: React.FC = () => {
   }, [brandOptions, bulkFormData.brand]);
 
   useEffect(() => {
+    if (!categoryOptions.length) return;
+    if (bulkFormData.category && !categoryOptions.some(c => c.name === bulkFormData.category)) {
+      setBulkCategoryCustom(true);
+    }
+    setAssetItems(prev => prev.map(item => {
+      const categoryMissing = !!(item.category && !categoryOptions.some(c => c.name === item.category));
+      if (!categoryMissing || item.customCategory) return item;
+      return { ...item, customCategory: true };
+    }));
+  }, [categoryOptions, bulkFormData.category]);
+
+  useEffect(() => {
     const bulkModels = modelOptionsCache[bulkFormData.brand] || [];
-    if (bulkModels.length && bulkFormData.model && !bulkModels.some(m => m.name === bulkFormData.model)) {
-      setBulkModelCustom(true);
+    const bulkModelName = (bulkFormData.model || '').trim().toLowerCase();
+    const bulkMatchedModel = bulkModels.find(m => (m.name || '').trim().toLowerCase() === bulkModelName);
+    if (bulkModels.length && bulkFormData.model) {
+      setBulkModelCustom(!bulkMatchedModel);
     }
     setAssetItems(prev => prev.map(item => {
       const options = modelOptionsCache[item.brand] || [];
-      if (!options.length || item.customModel) return item;
-      if (item.model && !options.some(o => o.name === item.model)) {
-        return { ...item, customModel: true };
+      if (!options.length || !item.model) return item;
+      const modelName = (item.model || '').trim().toLowerCase();
+      const matched = options.find(o => (o.name || '').trim().toLowerCase() === modelName);
+      if (matched) {
+        return {
+          ...item,
+          model: matched.name,
+          model_id: matched.id,
+          customModel: false
+        };
       }
+      if (!matched && !item.customModel) return { ...item, customModel: true };
       return item;
     }));
   }, [modelOptionsCache, bulkFormData.brand, bulkFormData.model]);
@@ -329,6 +354,7 @@ const PurchaseAssetRegistration: React.FC = () => {
       registered: !editMode,
       registry_id: a.id,
       model_id: (a as any)?.model_id ?? (typeof (a as any).model === 'object' ? (a as any).model?.id : undefined),
+      customCategory: false,
       customBrand: false,
       customModel: false
     }));
@@ -367,6 +393,7 @@ const PurchaseAssetRegistration: React.FC = () => {
           warranty_period: '',
           notes: '',
           registered: false,
+          customCategory: false,
           customBrand: false,
           customModel: false
         });
@@ -834,6 +861,7 @@ const PurchaseAssetRegistration: React.FC = () => {
         warranty_period: '',
         notes: '',
         registered: false,
+        customCategory: false,
         customBrand: false,
         customModel: false
       });
@@ -911,6 +939,40 @@ const PurchaseAssetRegistration: React.FC = () => {
 
     if (sameModel) {
       setAssetItems(prev => prev.map(item => ({ ...item, [field]: value })));
+    }
+  };
+
+  const handleBulkCategorySelect = (value: string) => {
+    if (!value) {
+      setBulkCategoryCustom(false);
+      setBulkFormData(prev => ({ ...prev, category: '' }));
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, category: '', customCategory: false })));
+      }
+      return;
+    }
+    if (value === '__add_new_category') {
+      setBulkCategoryCustom(true);
+      setBulkFormData(prev => ({ ...prev, category: '' }));
+      if (sameModel) {
+        setAssetItems(prev => prev.map(item => ({ ...item, category: '', customCategory: true })));
+      }
+      return;
+    }
+    setBulkCategoryCustom(false);
+    setBulkFormData(prev => ({ ...prev, category: value }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({ ...item, category: value, customCategory: false })));
+    }
+  };
+
+  const handleBulkCategoryInput = (value: string) => {
+    const val = value;
+    const isEmpty = val.trim() === '';
+    setBulkCategoryCustom(!isEmpty);
+    setBulkFormData(prev => ({ ...prev, category: val }));
+    if (sameModel) {
+      setAssetItems(prev => prev.map(item => ({ ...item, category: val, customCategory: !isEmpty })));
     }
   };
 
@@ -1018,6 +1080,24 @@ const PurchaseAssetRegistration: React.FC = () => {
     setAssetItems(prev => prev.map(item => item.id === id ? { ...item, brand: value, customBrand: !isEmpty, model: '', model_id: undefined, customModel: !isEmpty } : item));
   };
 
+  const handleAssetCategorySelect = (id: string, value: string) => {
+    if (!value) {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, category: '', customCategory: false } : item));
+      return;
+    }
+    if (value === '__add_new_category') {
+      setAssetItems(prev => prev.map(item => item.id === id ? { ...item, category: '', customCategory: true } : item));
+      setActiveAssetId(id);
+      return;
+    }
+    setAssetItems(prev => prev.map(item => item.id === id ? { ...item, category: value, customCategory: false } : item));
+  };
+
+  const handleAssetCategoryInput = (id: string, value: string) => {
+    const isEmpty = value.trim() === '';
+    setAssetItems(prev => prev.map(item => item.id === id ? { ...item, category: value, customCategory: !isEmpty } : item));
+  };
+
   const handleAssetModelSelect = (id: string, value: string) => {
     if (!value) {
       setAssetItems(prev => prev.map(item => item.id === id ? { ...item, model: '', model_id: undefined, customModel: false } : item));
@@ -1073,6 +1153,38 @@ const PurchaseAssetRegistration: React.FC = () => {
     }
   };
 
+  const createCategory = async (name: string, scope: 'bulk' | 'asset', assetId?: string) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      toast.error('Enter category name');
+      return;
+    }
+    if (!typeId) {
+      toast.error('Type is required before adding a category');
+      return;
+    }
+    setCreatingCategory(true);
+    try {
+      await authenticatedApi.post('/api/assets/categories', { name: trimmed, type_id: Number(typeId) });
+      await fetchCategoryOptions();
+      toast.success('Category added');
+      if (scope === 'bulk') {
+        setBulkCategoryCustom(false);
+        setBulkFormData(prev => ({ ...prev, category: trimmed }));
+        if (sameModel) {
+          setAssetItems(prev => prev.map(item => ({ ...item, category: trimmed, customCategory: false })));
+        }
+      } else if (scope === 'asset' && assetId) {
+        setAssetItems(prev => prev.map(item => item.id === assetId ? { ...item, category: trimmed, customCategory: false } : item));
+      }
+    } catch (e) {
+      toast.error('Failed to add category');
+      console.error('Create category error', e);
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
   const createModel = async (modelName: string, brandName: string, categoryName: string, scope: 'bulk' | 'asset', assetId?: string) => {
     const trimmed = (modelName || '').trim();
     if (!trimmed) {
@@ -1091,19 +1203,37 @@ const PurchaseAssetRegistration: React.FC = () => {
 
     setCreatingModel(true);
     try {
-      await authenticatedApi.post('/api/assets/models', payload);
+      const createRes = await authenticatedApi.post('/api/assets/models', payload);
+      const createdModelIdRaw =
+        (createRes as any)?.data?.data?.id
+        ?? (createRes as any)?.data?.id
+        ?? null;
+      const createdModelId = createdModelIdRaw !== null && typeof createdModelIdRaw !== 'undefined'
+        ? Number(createdModelIdRaw)
+        : null;
       toast.success('Model added');
       // refresh models for this brand
       setModelOptionsCache(prev => { const next = { ...prev }; delete next[brandName]; return next; });
       await loadModelsForBrand(brandName, true);
+      const resolvedModelId = getModelIdByName(brandName, trimmed) ?? createdModelId;
       if (scope === 'bulk') {
         setBulkModelCustom(false);
         setBulkFormData(prev => ({ ...prev, model: trimmed }));
         if (sameModel) {
-          setAssetItems(prev => prev.map(item => ({ ...item, model: trimmed, customModel: false })));
+          setAssetItems(prev => prev.map(item => ({
+            ...item,
+            model: trimmed,
+            model_id: resolvedModelId ?? item.model_id,
+            customModel: false
+          })));
         }
       } else if (scope === 'asset' && assetId) {
-        setAssetItems(prev => prev.map(item => item.id === assetId ? { ...item, model: trimmed, customModel: false } : item));
+        setAssetItems(prev => prev.map(item => item.id === assetId ? {
+          ...item,
+          model: trimmed,
+          model_id: resolvedModelId ?? item.model_id,
+          customModel: false
+        } : item));
       }
     } catch (e) {
       toast.error('Failed to add model');
@@ -1441,13 +1571,17 @@ const PurchaseAssetRegistration: React.FC = () => {
     );
   }
 
+  const hasSubmittableItems = assetItems.some(
+    (a) => !a.registered && !!a.register_number?.trim()
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header Navbar */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-40">
         <div className=" mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
+            <div className="flex flex-1 items-center">
               <Package className="h-8 w-8 text-blue-600 mr-3" />
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">Asset Registration</h1>
@@ -1461,15 +1595,14 @@ const PurchaseAssetRegistration: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-1 items-center justify-center">
               {purchase.type && (
-                <Badge variant="outline" className="flex items-center space-x-1">
-                  {typeof purchase.type === 'object' && purchase.type.icon && (
-                    <span className="w-4 h-4">{purchase.type.icon}</span>
-                  )}
-                  <span>Type: {typeof purchase.type === 'string' ? purchase.type : purchase.type.name}</span>
-                </Badge>
+                <div className="text-lg font-extrabold text-gray-800">
+                  {typeof purchase.type === 'string' ? purchase.type : purchase.type.name}
+                </div>
               )}
+            </div>
+            <div className="flex flex-1 items-center justify-end space-x-4">
               <Button variant="outline" className='bg-red-600 text-white border-0' onClick={() => window.close()} disabled={saving}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Close
@@ -1478,6 +1611,18 @@ const PurchaseAssetRegistration: React.FC = () => {
           </div>
         </div>
       </header>
+      <div className="sticky top-16 z-30 border-b bg-amber-50/95 backdrop-blur-sm overflow-hidden">
+        <div className="marquee-viewport py-1.5 text-sm font-medium text-amber-900">
+          <div className="marquee-track">
+            <span className="marquee-item">
+              This section is under the Asset Manager's action after Procurement records the purchase. Assessment of purchased items and their actual usage context is not under Procurement's scope, therefore the Asset Manager needs to review and finalize the purchase details here ----- Ruangan ini adalah di bawah tindakan Asset Manager setelah Procurement merekodkan pembelian. Penilaian tentang item yang dibeli dan konteks penggunaan sebenar bukan di bawah bidang kuasa Procurement, oleh itu, Asset Manager perlu menyemak serta memuktamadkan butiran pembelian di sini.
+            </span>
+            <span className="marquee-item" aria-hidden="true">
+              This section is under the Asset Manager's action after Procurement records the purchase. Assessment of purchased items and their actual usage context is not under Procurement's scope, therefore the Asset Manager needs to review and finalize the purchase details here ----- Ruangan ini adalah di bawah tindakan Asset Manager setelah Procurement merekodkan pembelian. Penilaian tentang item yang dibeli dan konteks penggunaan sebenar bukan di bawah bidang kuasa Procurement, oleh itu, Asset Manager perlu menyemak serta memuktamadkan butiran pembelian di sini.
+            </span>
+          </div>
+        </div>
+      </div>
 
       <div className="min-w-7xl mx-auto p-6 space-y-6">
         {/* Main Content Grid */}
@@ -1666,7 +1811,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                 <div className="text-lg flex items-center justify-between">
                   <div className="flex items-center">
                     <Package className="mr-2 h-5 w-5" />
-                    Bulk Configuration
+                    Bulk Item Settings
                   </div>
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
@@ -1686,6 +1831,14 @@ const PurchaseAssetRegistration: React.FC = () => {
                       Generate Register Numbers
                     </Button>
                   </div>
+                </div>
+                <div className="rounded-md border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900 space-y-1">
+                  <p>
+                    Use this panel to set shared values for multiple items at once before final review.
+                  </p>
+                  <p>
+                    How to use: fill/select values here, then use copy actions to apply to all item forms. This panel appears only when item quantity is more than 1.
+                  </p>
                 </div>
                 {purchase.qty > 1 && (<>
                   {/* Row 1: Condition (justify-end) */}
@@ -1716,10 +1869,43 @@ const PurchaseAssetRegistration: React.FC = () => {
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
-                      {categoryOptions.length > 0 ? (
-                        <SingleSelect options={categoryOptions.map(option => ({ value: option.name, label: option.name }))} value={bulkFormData.category} onValueChange={(value) => handleBulkChange('category', value)} placeholder={loadingCategories ? 'Loading categories...' : 'Select category'} searchPlaceholder="Search categories..." disabled={loadingCategories} clearable className="h-10" />
+                      {categoryOptions.length > 0 && !bulkCategoryCustom ? (
+                        <SingleSelect
+                          options={[
+                            ...categoryOptions.map(option => ({ value: option.name, label: option.name })),
+                            { value: '__add_new_category', label: 'Add new category...' }
+                          ]}
+                          value={bulkFormData.category}
+                          onValueChange={handleBulkCategorySelect}
+                          placeholder={loadingCategories ? 'Loading categories...' : 'Select category'}
+                          searchPlaceholder="Search categories..."
+                          disabled={loadingCategories}
+                          clearable
+                          className="h-10"
+                        />
                       ) : (
-                        <Input id="bulk-category" value={bulkFormData.category} onChange={(e) => handleBulkChange('category', e.target.value)} placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'} disabled={loadingCategories} className="h-10" />
+                        <div className="relative">
+                          <Input
+                            id="bulk-category"
+                            value={bulkFormData.category}
+                            onChange={(e) => handleBulkCategoryInput(e.target.value)}
+                            placeholder={loadingCategories ? 'Loading categories...' : 'Enter category'}
+                            disabled={loadingCategories}
+                            className="h-10 pr-10"
+                          />
+                          <span className="absolute inset-y-0 right-1 flex items-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={creatingCategory || !bulkFormData.category.trim()}
+                              onClick={() => createCategory(bulkFormData.category, 'bulk')}
+                              className="h-7 w-7 p-0 border-amber-500 text-amber-700 hover:bg-amber-50"
+                              title="Save new category"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          </span>
+                        </div>
                       )}
                     </div>
                     <div>
@@ -1744,14 +1930,28 @@ const PurchaseAssetRegistration: React.FC = () => {
                           className="h-10"
                         />
                       ) : (
-                        <Input
-                          id="bulk-brand"
-                          value={bulkFormData.brand}
-                          onChange={(e) => handleBulkBrandInput(e.target.value)}
-                          placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'}
-                          disabled={loadingBrands}
-                          className="h-10"
-                        />
+                        <div className="relative">
+                          <Input
+                            id="bulk-brand"
+                            value={bulkFormData.brand}
+                            onChange={(e) => handleBulkBrandInput(e.target.value)}
+                            placeholder={loadingBrands ? 'Loading brands...' : 'Enter brand'}
+                            disabled={loadingBrands}
+                            className="h-10 pr-10"
+                          />
+                          <span className="absolute inset-y-0 right-1 flex items-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={creatingBrand || !bulkFormData.brand.trim()}
+                              onClick={() => createBrand(bulkFormData.brand, 'bulk')}
+                              className="h-7 w-7 p-0 border-amber-500 text-amber-700 hover:bg-amber-50"
+                              title="Save new brand"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          </span>
+                        </div>
                       )}
                       {bulkBrandCustom && bulkFormData.brand.trim() && (() => {
                         const matches = findBrandMatches(bulkFormData.brand);
@@ -1772,15 +1972,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 </TooltipContent>
                               </Tooltip>
                             )}
-                            <Button
-                              size="sm"
-                              variant="link"
-                              disabled={creatingBrand}
-                              onClick={() => createBrand(bulkFormData.brand, 'bulk')}
-                              className="h-auto p-0 text-xs text-amber-600"
-                            >
-                              {creatingBrand ? 'Saving...' : 'or Save current brand'}
-                            </Button>
                           </div>
                         );
                       })()}
@@ -1806,13 +1997,27 @@ const PurchaseAssetRegistration: React.FC = () => {
                           className="h-10"
                         />
                       ) : (
-                        <Input
-                          id="bulk-model"
-                          value={bulkFormData.model}
-                          onChange={(e) => handleBulkModelInput(e.target.value)}
-                          placeholder="Enter model"
-                          className="h-10"
-                        />
+                        <div className="relative">
+                          <Input
+                            id="bulk-model"
+                            value={bulkFormData.model}
+                            onChange={(e) => handleBulkModelInput(e.target.value)}
+                            placeholder="Enter model"
+                            className="h-10 pr-10"
+                          />
+                          <span className="absolute inset-y-0 right-1 flex items-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={creatingModel || !bulkFormData.model.trim() || !bulkFormData.brand.trim()}
+                              onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}
+                              className="h-7 w-7 p-0 border-amber-500 text-amber-700 hover:bg-amber-50"
+                              title="Save new model"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          </span>
+                        </div>
                       )}
                       {bulkModelCustom && bulkFormData.model.trim() && bulkFormData.brand && (
                         <div className="mt-1">
@@ -1847,22 +2052,13 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 </div>
                               </TooltipContent>
                             </Tooltip>
-                            <Button
-                              size="sm"
-                              variant="link"
-                              disabled={creatingModel}
-                              onClick={() => createModel(bulkFormData.model, bulkFormData.brand, bulkFormData.category, 'bulk')}
-                              className="h-auto p-0 text-xs text-amber-600"
-                            >
-                              {creatingModel ? 'Saving...' : 'or Save current model'}
-                            </Button>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Row 3: Classification, Cost Center, Location, Purpose */}
+                  {/* Row 3: Classification, Cost Center, Location, Usage type */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                       <div className="flex items-center space-x-1">
@@ -1912,19 +2108,22 @@ const PurchaseAssetRegistration: React.FC = () => {
                     </div>
                     <div>
                       <div className="flex items-center space-x-1">
-                        <Label htmlFor="bulk-purpose">Purpose</Label>
+                        <Label htmlFor="bulk-purpose">Usage type</Label>
                         <Button variant="ghost" size="sm" onClick={() => copyToAll('purpose')} className="h-5 w-5 p-0">
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
                       <SingleSelect
                         options={[
-                          { value: 'project', label: 'Project' },
+                          { value: 'project', label: 'Project use' },
+                          { value: 'stock', label: 'Stock items' },
+                          { value: 'resale', label: 'Resale' },
+                          { value: 'parts', label: 'Maintenance parts' },
                           { value: 'pool', label: 'Pool' },
                         ]}
                         value={bulkFormData.purpose}
                         onValueChange={(value) => handleBulkChange('purpose', value)}
-                        placeholder="Select purpose"
+                        placeholder="Select usage type"
                         clearable
                         className="h-10"
                       />
@@ -1981,6 +2180,12 @@ const PurchaseAssetRegistration: React.FC = () => {
                 {assetItems.map((asset, index) => {
                   const isComplete = isAssetFormComplete(asset);
                   const modelOptionsForAsset = modelOptionsCache[asset.brand] || [];
+                  const assetModelName = (asset.model || '').trim();
+                  const exactModelExists = !!assetModelName && modelOptionsForAsset.some(
+                    (option) => (option.name || '').trim().toLowerCase() === assetModelName.toLowerCase()
+                  );
+                  const canCreateNewModel = !!asset.brand && !!assetModelName && !exactModelExists;
+                  const showNewModelAction = !!asset.brand && (asset.customModel || canCreateNewModel);
                   const brandSimilarityIssue = showInlineValidation && hasSimilarityIssueForField(asset, index, 'brand');
                   const modelSimilarityIssue = showInlineValidation && hasSimilarityIssueForField(asset, index, 'model');
                   return (
@@ -2005,6 +2210,17 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                            <p>
+                              <span className="font-medium text-red-600">Click here to use existing assets:</span> Asset Manager can search existing assets that were previously registered and map them to this purchase info.
+                            </p>
+                            <p>
+                              <span className="font-medium text-blue-600">View similar models:</span> Validate model data against existing model options. If no similar option is available, Asset Manager can proceed with the <Button size="sm" variant="outline" disabled className="text-amber-700 border-amber-500 align-middle"> <Check className="h-3 w-3" /></Button> shown in the field.
+                            </p>
+                            <p>
+                              <span className="font-medium">Classification is required:</span> This determines whether the item is treated as an Asset or Consumable.
+                            </p>
                           </div>
                         </CardHeader>
 
@@ -2038,14 +2254,14 @@ const PurchaseAssetRegistration: React.FC = () => {
                               />
                               <button
                                 type="button"
-                                className="mt-1 text-xs text-amber-600 hover:underline inline-flex items-center whitespace-nowrap animate-amberRedBlink"
+                                className="mt-1.5 text-sm text-red-600 hover:underline inline-flex items-center whitespace-nowrap animate-amberRedBlink"
                                 onClick={() => {
                                   setActiveAssetId(asset.id);
                                   setShowSidebar(true);
                                   fetchExistingAssets();
                                 }}
                               >
-                                or Use existing assets
+                                Click here to use existing assets <ChevronRight className="h-4 w-4 ml-1" />
                               </button>
                               {((asset.category || '').toLowerCase() === 'software') && (
                                 <p className="mt-1 text-xs text-amber-600">Not required for Software category</p>
@@ -2085,11 +2301,14 @@ const PurchaseAssetRegistration: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
                               <Label htmlFor={`category_${asset.id}`}>Category</Label>
-                              {categoryOptions.length > 0 ? (
+                              {categoryOptions.length > 0 && !asset.customCategory ? (
                                 <SingleSelect
-                                  options={categoryOptions.map(option => ({ value: option.name, label: option.name }))}
+                                  options={[
+                                    ...categoryOptions.map(option => ({ value: option.name, label: option.name })),
+                                    { value: '__add_new_category', label: 'Add new category...' }
+                                  ]}
                                   value={asset.category}
-                                  onValueChange={(value) => handleAssetChange(asset.id, 'category', value)}
+                                  onValueChange={(value) => handleAssetCategorySelect(asset.id, value)}
                                   placeholder="Select category"
                                   searchPlaceholder="Search categories..."
                                   disabled={loadingCategories}
@@ -2097,14 +2316,28 @@ const PurchaseAssetRegistration: React.FC = () => {
                                   className={`h-10 ${getFieldRingClass(asset.category)}`}
                                 />
                               ) : (
-                                <Input
-                                  id={`category_${asset.id}`}
-                                  value={asset.category}
-                                  onChange={(e) => handleAssetChange(asset.id, 'category', e.target.value)}
-                                  placeholder="Enter category"
-                                  disabled={loadingCategories}
-                                  className={`h-10 ${getFieldRingClass(asset.category)}`}
-                                />
+                                <div className="relative">
+                                  <Input
+                                    id={`category_${asset.id}`}
+                                    value={asset.category}
+                                    onChange={(e) => handleAssetCategoryInput(asset.id, e.target.value)}
+                                    placeholder="Enter category"
+                                    disabled={loadingCategories}
+                                    className={`h-10 pr-10 ${getFieldRingClass(asset.category)}`}
+                                  />
+                                  <span className="absolute inset-y-0 right-1 flex items-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={creatingCategory || !asset.category.trim()}
+                                      onClick={() => createCategory(asset.category, 'asset', asset.id)}
+                                      className="h-7 w-7 p-0 border-amber-500 text-amber-700 hover:bg-amber-50"
+                                      title="Save new category"
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                  </span>
+                                </div>
                               )}
                             </div>
                             <div>
@@ -2127,14 +2360,28 @@ const PurchaseAssetRegistration: React.FC = () => {
                                   className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
                                 />
                               ) : (
-                                <Input
-                                  id={`brand_${asset.id}`}
-                                  value={asset.brand}
-                                  onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
-                                  placeholder="Enter brand"
-                                  disabled={loadingBrands}
-                                  className={`h-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
-                                />
+                                <div className="relative">
+                                  <Input
+                                    id={`brand_${asset.id}`}
+                                    value={asset.brand}
+                                    onChange={(e) => handleAssetBrandInput(asset.id, e.target.value)}
+                                    placeholder="Enter brand"
+                                    disabled={loadingBrands}
+                                    className={`h-10 pr-10 ${getFieldRingClass(asset.brand)} ${brandSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
+                                  />
+                                  <span className="absolute inset-y-0 right-1 flex items-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={creatingBrand || !asset.brand.trim()}
+                                      onClick={() => createBrand(asset.brand, 'asset', asset.id)}
+                                      className="h-7 w-7 p-0 border-amber-500 text-amber-700 hover:bg-amber-50"
+                                      title="Save new brand"
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                  </span>
+                                </div>
                               )}
                               {asset.customBrand && asset.brand.trim() && (() => {
                                 const matches = findBrandMatches(asset.brand);
@@ -2155,15 +2402,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                                         </TooltipContent>
                                       </Tooltip>
                                     )}
-                                    <Button
-                                      size="sm"
-                                      variant="link"
-                                      disabled={creatingBrand}
-                                      onClick={() => createBrand(asset.brand, 'asset', asset.id)}
-                                      className="h-auto p-0 text-xs text-amber-600"
-                                    >
-                                      {creatingBrand ? 'Saving...' : 'or Save current brand'}
-                                    </Button>
                                   </div>
                                 );
                               })()}
@@ -2173,6 +2411,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                             </div>
                             <div>
                               <Label htmlFor={`model_${asset.id}`} className={modelSimilarityIssue ? 'text-red-600' : ''}>Model</Label>
+                              <div className="relative">
                               {(!asset.customBrand && !asset.customModel && modelOptionsForAsset.length > 0) ? (
                                 <SingleSelect
                                   options={[
@@ -2184,7 +2423,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                                   placeholder="Select model"
                                   searchPlaceholder="Search models..."
                                   clearable
-                                  className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
+                                  className={`h-10 ${showNewModelAction ? 'pr-28' : ''} ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600' : ''}`}
                                 />
                               ) : (
                                 <Input
@@ -2192,10 +2431,24 @@ const PurchaseAssetRegistration: React.FC = () => {
                                   value={asset.model}
                                   onChange={(e) => handleAssetModelInput(asset.id, e.target.value)}
                                   placeholder="Enter model"
-                                  className={`h-10 ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
+                                  className={`h-10 ${showNewModelAction ? 'pr-28' : ''} ${getFieldRingClass(asset.model)} ${modelSimilarityIssue ? 'border-red-500 text-red-600 focus-visible:ring-red-500' : ''}`}
                                 />
                               )}
-                              {asset.model.trim() && asset.brand && (
+                                {showNewModelAction && (
+                                  <span className="absolute inset-y-0 right-2 z-20 flex items-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={creatingModel || !asset.model.trim()}
+                                      onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}
+                                      className="h-7 w-7 p-0 text-amber-700 border-amber-500 bg-white hover:bg-amber-50"
+                                    >
+                                      {creatingModel ? <span className="text-[10px]">...</span> : <Check className="h-4 w-4" />}
+                                    </Button>
+                                  </span>
+                                )}
+                              </div>
+                              {canCreateNewModel && (
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
                                   <Tooltip
                                     open={modelTooltipOpenKey === `asset-${asset.id}`}
@@ -2227,17 +2480,6 @@ const PurchaseAssetRegistration: React.FC = () => {
                                       </div>
                                     </TooltipContent>
                                   </Tooltip>
-                                  {asset.customModel && (
-                                    <Button
-                                      size="sm"
-                                      variant="link"
-                                      disabled={creatingModel}
-                                      onClick={() => createModel(asset.model, asset.brand, asset.category, 'asset', asset.id)}
-                                      className="h-auto p-0 text-xs text-amber-600"
-                                    >
-                                      {creatingModel ? 'Saving...' : 'or Save current model'}
-                                    </Button>
-                                  )}
                                 </div>
                               )}
                               {modelSimilarityIssue && (
@@ -2328,10 +2570,10 @@ const PurchaseAssetRegistration: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Row 4: Classification, Purpose */}
+                          {/* Row 4: Classification, Usage type */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <Label htmlFor={`classification_${asset.id}`}>Classification</Label>
+                              <Label htmlFor={`classification_${asset.id}`}>Classification *</Label>
                               <SingleSelect
                                 options={[
                                   { value: 'asset', label: 'Asset' },
@@ -2344,9 +2586,10 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 placeholder="Select classification"
                                 className={`h-10 ${getFieldRingClass(asset.classification)}`}
                               />
+                              <p className="mt-1 text-xs text-muted-foreground">Required to determine whether this item is an Asset or Consumable.</p>
                             </div>
                             <div>
-                              <Label htmlFor={`purpose_${asset.id}`}>Purpose</Label>
+                              <Label htmlFor={`purpose_${asset.id}`}>Usage type</Label>
                               <SingleSelect
                                 options={[
                                   { value: 'project', label: 'Project' },
@@ -2354,7 +2597,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                                 ]}
                                 value={asset.purpose}
                                 onValueChange={(value) => handleAssetChange(asset.id, 'purpose', value)}
-                                placeholder="Select purpose"
+                                placeholder="Select usage type"
                                 clearable
                                 className={`h-10 ${getFieldRingClass(asset.purpose)}`}
                               />
@@ -2411,21 +2654,37 @@ const PurchaseAssetRegistration: React.FC = () => {
                     </div>
                     <div className="text-xs text-green-700">Completed</div>
                   </div>
-                  <div className="bg-orange-50 p-2 rounded text-center">
-                    <div className="text-lg font-semibold text-orange-600">
+                  <div className="bg-red-50 p-2 rounded text-center animate-pulse">
+                    <div className="text-lg font-semibold text-red-600">
                       {assetItems.filter(asset => !isAssetOverviewComplete(asset)).length}
                     </div>
-                    <div className="text-xs text-orange-700">Pending</div>
+                    <div className="text-xs text-red-700">Pending</div>
                   </div>
                 </div>
 
 
-                {/* Register Number List (simplified) */}
+                {/* Added Items List (simplified) */}
                 <div className="space-y-2 max-h-100 auto-hide-scroll">
-                  <Label className="text-sm font-medium text-gray-600">Register Numbers</Label>
+                  <Label className="text-sm font-medium text-gray-600">Added Items</Label>
                   <ul className="space-y-1">
                     {assetItems.map((asset, index) => {
                       const isComplete = isAssetOverviewComplete(asset);
+                      const hasRegisterNumber = !!asset.register_number?.trim();
+                      const hasAnyAddedItemDetail = !!(
+                        asset.classification?.trim()
+                        || asset.category?.trim()
+                        || asset.brand?.trim()
+                        || asset.model?.trim()
+                        || asset.costcenter?.trim()
+                        || asset.location?.trim()
+                      );
+                      const shouldBlinkPending = !asset.register_number?.trim()
+                        || !asset.classification?.trim()
+                        || !asset.category?.trim()
+                        || !asset.brand?.trim()
+                        || !asset.model?.trim()
+                        || !asset.costcenter?.trim()
+                        || !asset.location?.trim();
                       return (
                         <li
                           key={asset.id}
@@ -2433,13 +2692,34 @@ const PurchaseAssetRegistration: React.FC = () => {
                           onClick={() => scrollToAsset(asset.id)}
                           title={isComplete ? 'Complete' : 'Pending'}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs text-gray-500 shrink-0">#{index + 1}</span>
-                            <span className={`text-sm font-medium truncate ${asset.register_number ? '' : 'text-gray-400 italic font-normal'}`}>
-                              {asset.register_number || 'Not entered'}
-                            </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs text-gray-500 shrink-0">#{index + 1}</span>
+                              <span className={`text-sm font-medium truncate ${asset.register_number ? '' : 'text-gray-400 italic font-normal'}`}>
+                                {asset.register_number || `Added item #${index + 1}`}
+                              </span>
+                            </div>
+                            {hasRegisterNumber && hasAnyAddedItemDetail && (
+                              <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
+                                <span>Classification: <span className={asset.classification?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.classification || '-'}</span></span>
+                                <span>Category: <span className={asset.category?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.category || '-'}</span></span>
+                                <span>Brand: <span className={asset.brand?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.brand || '-'}</span></span>
+                                <span>Model: <span className={asset.model?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.model || '-'}</span></span>
+                                <span>Cost Center: <span className={asset.costcenter?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.costcenter || '-'}</span></span>
+                                <span>Location: <span className={asset.location?.trim() ? 'text-gray-800' : 'text-gray-400 italic'}>{asset.location || '-'}</span></span>
+                              </div>
+                            )}
                           </div>
-                          <Badge variant={isComplete ? 'default' : 'secondary'} className={isComplete ? 'bg-green-600 hover:bg-green-600' : ''}>
+                          <Badge
+                            variant={isComplete ? 'default' : 'secondary'}
+                            className={
+                              isComplete
+                                ? 'bg-green-600 hover:bg-green-600'
+                                : shouldBlinkPending
+                                  ? 'bg-red-600 text-white hover:bg-red-600 animate-pulse'
+                                  : ''
+                            }
+                          >
                             {isComplete ? 'Complete' : 'Pending'}
                           </Badge>
                         </li>
@@ -2453,7 +2733,7 @@ const PurchaseAssetRegistration: React.FC = () => {
                 <div>
                   <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
                     <Button
-                      disabled={saving || assetItems.filter(a => !a.registered).length === 0}
+                      disabled={saving || !hasSubmittableItems}
                       onClick={handleSubmitClick}
                       className={`w-full text-white ${editMode ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'}`}
                     >
@@ -2504,20 +2784,24 @@ const PurchaseAssetRegistration: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Guidance */}
-            <div className="p-2 rounded-md bg-amber-50 border border-amber-200 space-y-1 text-xs text-amber-800">
-              <div className="font-semibold text-amber-900">Quick guide</div>
-              <div>1) Select <span className="font-semibold">Brand</span> first.</div>
-              <div>2) Choose an existing Model from the list, or pick <span className="font-semibold">Add new model…</span> to create one.</div>
-              <div>3) If adding new, use <span className="font-semibold">View similar models</span> or <span className="font-semibold">Save current model</span>.</div>
-            </div>
           </div>
         </div>
       </div>
       {/* Action Sidebar for mapping existing assets */}
+      {!showSidebar && (
+        <button
+          type="button"
+          onClick={() => setShowSidebar(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-40 bg-sidebar border border-amber-500 text-amber-600 hover:text-amber-700 hover:border-amber-600 px-2 py-2 rounded-l-md shadow-lg text-xs font-semibold tracking-wide animate-amberRedBlink"
+          style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
+          title="Open Existing Asset Records"
+        >
+          Existing asset
+        </button>
+      )}
       <ActionSidebar
         size="sm"
-        title="Map Existing Asset"
+        title="Existing Asset Records"
         isOpen={showSidebar}
         onClose={() => setShowSidebar(false)}
         content={(
@@ -2579,22 +2863,41 @@ const PurchaseAssetRegistration: React.FC = () => {
                       const brand = a.brands?.name || a.brand?.name || a.brand || '-';
                       const model = a.models?.name || a.model?.name || a.model || '-';
                       const pdate = a.purchase_date ? new Date(a.purchase_date).toLocaleDateString() : '-';
+                      const pyear = a.purchase_year ? String(a.purchase_year) : '-';
+                      const hasPurchaseMeta = Boolean(a.purchase_date || a.purchase_year);
+                      const hasBothPurchaseMeta = Boolean(a.purchase_date && a.purchase_year);
                       const btnDisabled = loadingRegistryAll || !a.register_number;
                       return (
-                        <li key={a.id} className="flex items-center justify-between rounded-md border p-2 bg-white">
+                        <li
+                          key={a.id}
+                          className={`flex items-center justify-between rounded-md border p-2 ${
+                            hasPurchaseMeta ? 'bg-emerald-50 border-emerald-200' : 'bg-sky-50 border-sky-200'
+                          }`}
+                        >
                           <div className="min-w-0">
                             <div className="text-sm font-medium truncate">{a.register_number || '—'}</div>
-                            <div className="text-xs text-gray-500 truncate">{brand} • {model} • {pdate}</div>
+                            <div className="text-xs text-gray-500 truncate">{brand} • {model}</div>
+                            {(a.purchase_date || a.purchase_year) && (
+                              <div className="text-[11px] text-blue-600 truncate">
+                                {a.purchase_date ? `Purchase Date: ${pdate}` : ''}
+                                {a.purchase_date && a.purchase_year ? ' • ' : ''}
+                                {a.purchase_year ? `Purchase Year: ${pyear}` : ''}
+                              </div>
+                            )}
                           </div>
                           <div className="shrink-0">
                             <Button
-                              variant="outline"
+                              variant="default"
                               size="sm"
                               onClick={() => mapRegisterNumberToActive(a.register_number)}
                               disabled={btnDisabled}
-                              title={loadingRegistryAll ? 'Checking registry…' : 'Map register number to selected form'}
+                              className={hasBothPurchaseMeta
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white border-0'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white border-0'
+                              }
+                              title={loadingRegistryAll ? 'Checking registry…' : 'Use this record for selected form'}
                             >
-                              <Link2 className="h-4 w-4 mr-1" /> Map
+                              <Link2 className="h-4 w-4 mr-1" /> Use this record
                             </Button>
                           </div>
                         </li>
@@ -2735,6 +3038,26 @@ const PurchaseAssetRegistration: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <style jsx global>{`
+        @keyframes marqueeLoop {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .marquee-viewport {
+          overflow: hidden;
+          white-space: nowrap;
+        }
+        .marquee-track {
+          display: inline-flex;
+          width: max-content;
+          animation: marqueeLoop 80s linear infinite;
+          will-change: transform;
+        }
+        .marquee-item {
+          display: inline-block;
+          padding-right: 3rem;
+        }
+      `}</style>
     </div>
   );
 };

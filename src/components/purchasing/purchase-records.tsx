@@ -1249,7 +1249,6 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
 
   return (
     <div className="space-y-6">
-
       {/* Status summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card
@@ -1357,7 +1356,6 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         </div>
       </div>
 
-
       {/* Content Area */}
       <div className="space-y-4">
         {loading && (
@@ -1369,15 +1367,51 @@ const PurchaseRecords: React.FC<PurchaseRecordsProps> = ({ filters, initialFormM
         {!loading && (
           <>
             {viewMode === 'grid' ? (
-              <CustomDataGrid
-                data={gridData}
-                columns={columns}
-                pagination={false}
-                inputFilter={false}
-                columnsVisibleOption={false}
-                dataExport={false}
-                onRowDoubleClick={(row: any) => router.push(`/purchase/register/${row.id}`)}
-              />
+              <>
+                <CustomDataGrid
+                  data={gridData}
+                  columns={columns}
+                  pagination={false}
+                  inputFilter={false}
+                  columnsVisibleOption={false}
+                  dataExport={false}
+                  onRowDoubleClick={(row: any) => router.push(`/purchase/register/${row.id}`)}
+                />
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Legend (For Purchaser & Asset Manager)
+                  </p>
+                  <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-md bg-green-600 px-2 py-1 text-white">
+                        <Pencil className="mr-1 h-3 w-3" />
+                        Handed Over
+                      </span>
+                      <span>
+                        The Asset Manager has completed registration of the purchased asset. Asset Manager can click this button to modify the registered asset data.
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-md border border-red-500 bg-white px-2 py-1 text-red-600">
+                        <Plus className="mr-1 h-3 w-3" />
+                        Unregistered
+                      </span>
+                      <span>
+                        The purchased asset has not been fully registered yet. Asset Manager can click this button to proceed with the next action.
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center text-red-600">
+                        <Mail className="mr-1 h-3 w-3" />
+                        Resend
+                      </span>
+                      <span>
+                        Used by Purchaser/Procurement to resend the notification to the Asset Manager.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredPurchases.map((purchase) => (

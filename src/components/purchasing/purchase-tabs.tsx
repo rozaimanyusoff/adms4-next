@@ -46,8 +46,19 @@ const PurchaseTabs: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className="mb-2 overflow-hidden rounded-md border border-amber-200 bg-amber-50/80">
+          <div className="purchase-marquee-track whitespace-nowrap py-1.5 text-sm font-medium text-amber-900">
+            <span className="purchase-marquee-item">
+              This section is under Procurement action for recording purchased items.
+            </span>
+            <span className="purchase-marquee-item" aria-hidden="true">
+              This section is under Procurement action for recording purchased items.
+            </span>
+          </div>
+        </div>
       <div>
+    <div className="space-y-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Purchasing</h1>
         <p className="text-sm text-muted-foreground">Asset Management Module</p>
       </div>
@@ -58,6 +69,8 @@ const PurchaseTabs: React.FC = () => {
           <TabsTrigger value="records">Purchase Records</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
         </TabsList>
+
+        
 
         <TabsContent value="dashboard" className="mt-6">
           <PurchaseDashboard
@@ -74,7 +87,25 @@ const PurchaseTabs: React.FC = () => {
           <PurchaseSuppliers />
         </TabsContent>
       </Tabs>
+      <style jsx global>{`
+        @keyframes purchaseMarqueeRtl {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .purchase-marquee-track {
+          display: inline-flex;
+          width: max-content;
+          animation: purchaseMarqueeRtl 45s linear infinite;
+          will-change: transform;
+        }
+        .purchase-marquee-item {
+          display: inline-block;
+          padding-right: 3rem;
+        }
+      `}</style>
     </div>
+    </>
+    
   );
 };
 
