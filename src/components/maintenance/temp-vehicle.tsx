@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CustomDataGrid, ColumnDef } from '@/components/ui/DataGrid';
 import ActionSidebar from '@/components/ui/action-aside';
-import { Plus, Replace, ArrowBigLeft, ArrowBigRight, Loader2 } from "lucide-react";
+import { Plus, Replace, ArrowBigLeft, ArrowBigRight, Loader2, FileSpreadsheet } from "lucide-react";
 import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { authenticatedApi } from "@/config/api";
+import ExcelJS from 'exceljs';
 
 interface Model {
   id: number;
@@ -81,6 +82,7 @@ const TempVehicle: React.FC = () => {
   const [ownerSearchResults, setOwnerSearchResults] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
   const [classificationFilter, setClassificationFilter] = useState<string | null>('rental');
+  const [exporting, setExporting] = useState(false);
 
   // Helper to map backend asset object to UI Vehicle shape (keeps entry_code)
   const mapAssetToVehicle = (item: any): Vehicle => {
@@ -131,16 +133,17 @@ const TempVehicle: React.FC = () => {
     return `${yyyy}-${mm}-${dd}`;
   }
 
+  const reloadVehicles = async () => {
+    const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
+    setVehicles((res?.data?.data || []).map(mapAssetToVehicle));
+  };
+
   useEffect(() => {
     setLoading(true);
 
     // Fetch vehicles (map backend asset shape to local Vehicle shape)
-    authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2') // Assuming type 2,10 for vehicles
-      .then(res => {
-        const data = res?.data?.data || [];
-        const mapped: Vehicle[] = data.map(mapAssetToVehicle);
-        setVehicles(mapped);
-      });
+    reloadVehicles()
+      .catch(() => setVehicles([]));
 
     // Fetch other dropdown data
     authenticatedApi.get<{ data: { id: number; code: string }[] }>('/api/assets/departments')
@@ -235,7 +238,7 @@ const TempVehicle: React.FC = () => {
   }, [selectedVehicle?.brands, availableBrands]);
 
   const columns: ColumnDef<Vehicle>[] = ([
-    { key: 'id', header: 'ID' },
+    { key: 'id', header: 'ID', sortable: true },
     { key: 'register_number', header: 'Reg No', filter: 'input' },
     { key: 'categories', header: 'Category', render: (row: Vehicle) => row.categories?.name || '', filter: 'singleSelect' },
     { key: 'brands', header: 'Brand', render: (row: Vehicle) => row.brands?.name || '', filter: 'singleSelect' },
@@ -406,6 +409,10 @@ const TempVehicle: React.FC = () => {
         payload.type_id = String(payload.types.id);
         delete payload.types;
       }
+      if (!payload.type_id) {
+        payload.type_id = '2';
+      }
+      payload.manager_id = 2;
       if (payload.location) {
         payload.location_id = String(payload.location.id);
         delete payload.location;
@@ -429,19 +436,38 @@ const TempVehicle: React.FC = () => {
 
       if (payload.id && payload.id !== 0) {
         // Update existing vehicle
-        await authenticatedApi.put(`/api/assets/${payload.id}`, payload);
+        const endpoint = `/api/assets/${payload.id}`;
+        console.log('[TempVehicle][PUT] Request', { endpoint, payload });
+        const putRes = await authenticatedApi.put(endpoint, payload);
+        console.log('[TempVehicle][PUT] Response', {
+          endpoint,
+          status: putRes?.status,
+          data: putRes?.data,
+        });
         toast.success('Vehicle updated successfully');
       } else {
         // Create new vehicle
-        await authenticatedApi.post('/api/assets', payload);
+        delete payload.id;
+        const endpoint = '/api/assets';
+        console.log('[TempVehicle][POST] Request', { endpoint, payload });
+        const postRes = await authenticatedApi.post(endpoint, payload);
+        console.log('[TempVehicle][POST] Response', {
+          endpoint,
+          status: postRes?.status,
+          data: postRes?.data,
+        });
         toast.success('Vehicle created successfully');
       }
 
       setSidebarOpen(false);
-      // Refresh vehicle list
-      const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
-      setVehicles((res?.data?.data || []).map(mapAssetToVehicle));
-    } catch (error) {
+      // Refresh table data after successful save
+      await reloadVehicles();
+    } catch (error: any) {
+      console.error('[TempVehicle][SAVE] Error', {
+        message: error?.message,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      });
       toast.error('Failed to save vehicle');
     }
   };
@@ -460,11 +486,195 @@ const TempVehicle: React.FC = () => {
     }
   };
 
+  const autoFitColumns = (worksheet: ExcelJS.Worksheet, minWidth = 12, maxWidth = 38) => {
+    worksheet.columns?.forEach(column => {
+      let maxLength = minWidth;
+      column.eachCell?.({ includeEmpty: true }, cell => {
+        const val = cell.value;
+        const text = val === null || val === undefined
+          ? ''
+          : typeof val === 'object'
+            ? JSON.stringify(val)
+            : String(val);
+        maxLength = Math.max(maxLength, text.length + 2);
+      });
+      column.width = Math.min(maxLength, maxWidth);
+    });
+  };
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return '';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB');
+  };
+
+  const handleExportXlsx = async () => {
+    try {
+      setExporting(true);
+
+      // Fetch fresh data for summary confirmation from API response
+      const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
+      const freshVehicles = (res?.data?.data || []).map(mapAssetToVehicle);
+
+      const workbook = new ExcelJS.Workbook();
+
+      // Sheet 1: Summary
+      const summarySheet = workbook.addWorksheet('Summary');
+      summarySheet.mergeCells(1, 1, 1, 4);
+      const summaryTitle = summarySheet.getCell(1, 1);
+      summaryTitle.value = 'Rental Transport Summary';
+      summaryTitle.font = { bold: true, size: 18 };
+      summaryTitle.alignment = { horizontal: 'center' };
+
+      const headerStyle = {
+        bold: true,
+        fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'D9EAF7' } },
+      };
+
+      // Summary by Department
+      summarySheet.addRow([]);
+      summarySheet.addRow(['Summary by Department']);
+      const deptHeader = summarySheet.addRow(['Department', 'Count']);
+      deptHeader.eachCell(c => {
+        c.font = { bold: headerStyle.bold };
+        c.fill = headerStyle.fill;
+      });
+      const deptCounts = freshVehicles.reduce<Record<string, number>>((acc, v) => {
+        const key = v.department?.name || 'N/A';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      Object.entries(deptCounts)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .forEach(([name, count]) => summarySheet.addRow([name, count]));
+
+      // Summary by Brand
+      summarySheet.addRow([]);
+      summarySheet.addRow(['Summary by Brand']);
+      const brandHeader = summarySheet.addRow(['Brand', 'Count']);
+      brandHeader.eachCell(c => {
+        c.font = { bold: headerStyle.bold };
+        c.fill = headerStyle.fill;
+      });
+      const brandCounts = freshVehicles.reduce<Record<string, number>>((acc, v) => {
+        const key = v.brands?.name || 'N/A';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      Object.entries(brandCounts)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .forEach(([name, count]) => summarySheet.addRow([name, count]));
+
+      // Summary by Status
+      summarySheet.addRow([]);
+      summarySheet.addRow(['Summary by Status']);
+      const statusHeader = summarySheet.addRow(['Status', 'Count']);
+      statusHeader.eachCell(c => {
+        c.font = { bold: headerStyle.bold };
+        c.fill = headerStyle.fill;
+      });
+      const statusCounts = freshVehicles.reduce<Record<string, number>>((acc, v) => {
+        const key = v.record_status || 'N/A';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+      Object.entries(statusCounts)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .forEach(([name, count]) => summarySheet.addRow([name, count]));
+
+      autoFitColumns(summarySheet);
+
+      // Sheet 2: Records Entry
+      const recordsSheet = workbook.addWorksheet('Records Entry');
+      const headers = [
+        'No',
+        'ID',
+        'Entry Code',
+        'Register Number',
+        'Category',
+        'Brand',
+        'Model',
+        'Department',
+        'Cost Center',
+        'Location',
+        'Owner',
+        'Classification',
+        'Record Status',
+        'Condition Status',
+        'Purpose',
+        'Transmission',
+        'Fuel Type',
+        'Purchase Date',
+        'Effective Date',
+      ];
+
+      recordsSheet.mergeCells(1, 1, 1, headers.length);
+      const recordsTitle = recordsSheet.getCell(1, 1);
+      recordsTitle.value = 'Rental Transport Records Entry';
+      recordsTitle.font = { bold: true, size: 18 };
+      recordsTitle.alignment = { horizontal: 'center' };
+
+      recordsSheet.addRow([]);
+      const recordsHeader = recordsSheet.addRow(headers);
+      recordsHeader.eachCell(c => {
+        c.font = { bold: true };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D9EAF7' } };
+      });
+
+      freshVehicles.forEach((v, idx) => {
+        recordsSheet.addRow([
+          idx + 1,
+          v.id || '',
+          v.entry_code || '',
+          v.register_number || '',
+          v.categories?.name || '',
+          v.brands?.name || '',
+          v.models?.name || '',
+          v.department?.name || '',
+          v.costcenter?.name || '',
+          v.location?.name || '',
+          v.owner?.full_name || '',
+          v.classification || '',
+          v.record_status || '',
+          v.condition_status || '',
+          v.purpose || '',
+          v.transmission || '',
+          v.fuel_type || '',
+          formatDate(v.purchase_date),
+          formatDate(v.effective_date),
+        ]);
+      });
+
+      autoFitColumns(recordsSheet);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const filename = `rental-transport-records-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Rental transport report exported');
+    } catch (error) {
+      console.error('Failed to export rental transport report', error);
+      toast.error('Failed to export rental transport report');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="mt-4">
       {/* Classification Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {(['asset', 'consumable', 'personal', 'rental'] as const).map((classification, index) => {
+        {(['rental'] as const).map((classification, index) => {
           const stats = summaryStats[classification];
           const isActive = showAllClass
             ? classificationFilter === classification
@@ -588,7 +798,17 @@ const TempVehicle: React.FC = () => {
             }}
           >
             <Plus className="w-4 h-4" />
-            Add rental transport
+            Register Rental
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            title="Export XLSX"
+            onClick={handleExportXlsx}
+            disabled={exporting}
+            className='bg-emerald-600'
+          >
+            {exporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileSpreadsheet className="w-6 h-6 text-white" />}
           </Button>
         </div>
       </div>
