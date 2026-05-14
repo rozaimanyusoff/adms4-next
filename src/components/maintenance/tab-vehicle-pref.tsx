@@ -38,11 +38,11 @@ const VehiclePref: React.FC = () => {
                 </li>
             </ul>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList>
+                {/* <TabsList>
                     {tabTitles.map(tab => (
                         <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
                     ))}
-                </TabsList>
+                </TabsList> */}
                 {tabTitles.map(tab => (
                     <TabsContent key={tab.value} value={tab.value}>
                         {tabComponents[tab.value]}

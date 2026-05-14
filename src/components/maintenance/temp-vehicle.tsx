@@ -66,7 +66,7 @@ interface Vehicle {
 
 const TempVehicle: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [hideDisposed, setHideDisposed] = useState(true);
+  const [showAllClass, setShowAllClass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -80,7 +80,7 @@ const TempVehicle: React.FC = () => {
   const [owners, setOwners] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchResults, setOwnerSearchResults] = useState<{ ramco_id: string; full_name: string }[]>([]);
   const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
-  const [classificationFilter, setClassificationFilter] = useState<string | null>(null);
+  const [classificationFilter, setClassificationFilter] = useState<string | null>('rental');
 
   // Helper to map backend asset object to UI Vehicle shape (keeps entry_code)
   const mapAssetToVehicle = (item: any): Vehicle => {
@@ -216,7 +216,7 @@ const TempVehicle: React.FC = () => {
   // Update available models when brand changes - fetch from API
   useEffect(() => {
     if (selectedVehicle?.brands) {
-  const selectedBrand = availableBrands.find(b => String(b.id) === String(selectedVehicle.brands?.id));
+      const selectedBrand = availableBrands.find(b => String(b.id) === String(selectedVehicle.brands?.id));
       if (selectedBrand) {
         // Fetch models for the selected brand
         authenticatedApi.get<{ data: Model[] }>(`/api/assets/models?brand=${selectedBrand.id}`)
@@ -285,18 +285,18 @@ const TempVehicle: React.FC = () => {
     { key: 'purpose', header: 'Purpose', filter: 'singleSelect', colClass: 'capitalize' },
   ]);
 
-  // Filtered vehicles based on switch and classification filter
+  // Filtered vehicles based on class switch and optional card filter
   const filteredVehicles = useMemo(() => {
-    let result = hideDisposed
-      ? vehicles.filter(v => v.record_status !== 'disposed' && v.record_status !== 'archived')
-      : vehicles;
+    let result = vehicles;
 
-    if (classificationFilter) {
+    if (!showAllClass) {
+      result = result.filter(v => v.classification === 'rental');
+    } else if (classificationFilter) {
       result = result.filter(v => v.classification === classificationFilter);
     }
 
     return result;
-  }, [vehicles, hideDisposed, classificationFilter]);
+  }, [vehicles, showAllClass, classificationFilter]);
 
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
@@ -390,13 +390,13 @@ const TempVehicle: React.FC = () => {
     }
 
     try {
-  const payload = { ...selectedVehicle } as any;
-  // Ensure entry_code is included in payload (may not be present in UI)
-  payload.entry_code = payload.entry_code ?? '';
-    // Ensure effective_date is formatted to yyyy-mm-dd (or null)
-    payload.effective_date = formatToYMD(payload.effective_date) ?? null;
-    // Ensure purchase_date is formatted to yyyy-mm-dd (or null) to satisfy backend
-    payload.purchase_date = formatToYMD(payload.purchase_date) ?? null;
+      const payload = { ...selectedVehicle } as any;
+      // Ensure entry_code is included in payload (may not be present in UI)
+      payload.entry_code = payload.entry_code ?? '';
+      // Ensure effective_date is formatted to yyyy-mm-dd (or null)
+      payload.effective_date = formatToYMD(payload.effective_date) ?? null;
+      // Ensure purchase_date is formatted to yyyy-mm-dd (or null) to satisfy backend
+      payload.purchase_date = formatToYMD(payload.purchase_date) ?? null;
       // Map nested objects to their IDs for API (create & update payload)
       if (payload.costcenter) {
         payload.costcenter_id = String(payload.costcenter.id);
@@ -439,8 +439,8 @@ const TempVehicle: React.FC = () => {
 
       setSidebarOpen(false);
       // Refresh vehicle list
-  const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
-  setVehicles((res?.data?.data || []).map(mapAssetToVehicle));
+      const res = await authenticatedApi.get<{ data: any[] }>('/api/assets?manager=2');
+      setVehicles((res?.data?.data || []).map(mapAssetToVehicle));
     } catch (error) {
       toast.error('Failed to save vehicle');
     }
@@ -466,7 +466,9 @@ const TempVehicle: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {(['asset', 'consumable', 'personal', 'rental'] as const).map((classification, index) => {
           const stats = summaryStats[classification];
-          const isActive = classificationFilter === classification;
+          const isActive = showAllClass
+            ? classificationFilter === classification
+            : classification === 'rental';
 
           // Modern gradient backgrounds for each card
           const cardBackgrounds = [
@@ -507,7 +509,9 @@ const TempVehicle: React.FC = () => {
           return (
             <div
               key={classification}
-              onClick={() => handleClassificationFilter(classification)}
+              onClick={() => {
+                if (showAllClass) handleClassificationFilter(classification);
+              }}
               className={`
                 p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-105
                 ${isActive
@@ -542,7 +546,7 @@ const TempVehicle: React.FC = () => {
                   <span className="text-gray-500 dark:text-gray-500 font-medium">{stats.archived}</span>
                 </div>
               </div>
-              {isActive && (
+              {isActive && showAllClass && (
                 <div className={`mt-2 pt-2 border-t ${activeBorders[index]}`}>
                   <span className={`text-xs font-medium ${titleColors[index]}`}>Click to reset filter</span>
                 </div>
@@ -553,20 +557,27 @@ const TempVehicle: React.FC = () => {
       </div>
 
       <div className="flex justify-between items-center gap-4 mb-4">
-        <h2 className="text-lg font-bold">Vehicle Record Maintenance</h2>
+        <h2 className="text-lg font-bold">Rental Transport Maintenance</h2>
         <div className="flex items-center gap-2">
-          <Switch checked={hideDisposed} onCheckedChange={setHideDisposed} id="hide-disposed-switch" />
-          <Label htmlFor="hide-disposed-switch" className="text-xs">Hide Disposed/Archived</Label>
-          {/* <Button size="icon" variant="default"
-            title="Register New Vehicle"
+          <Switch
+            checked={showAllClass}
+            onCheckedChange={(checked) => {
+              setShowAllClass(checked);
+              setClassificationFilter(checked ? null : 'rental');
+            }}
+            id="show-all-class-switch"
+          />
+          <Label htmlFor="show-all-class-switch" className="text-xs">Show all class</Label>
+          <Button size="sm" variant="default"
+            title="Add rental transport"
             onClick={() => {
               setSelectedVehicle({
                 id: 0,
                 register_number: '',
                 transmission: '',
                 fuel_type: '',
-                classification: '',
-                record_status: '',
+                classification: 'rental',
+                record_status: 'active',
                 purpose: '',
                 condition_status: '',
                 categories: undefined,
@@ -577,7 +588,8 @@ const TempVehicle: React.FC = () => {
             }}
           >
             <Plus className="w-4 h-4" />
-          </Button> */}
+            Add rental transport
+          </Button>
         </div>
       </div>
       <CustomDataGrid
@@ -595,7 +607,7 @@ const TempVehicle: React.FC = () => {
           setSelectedVehicle(sel);
           setSidebarOpen(true);
         }}
-        dataExport={true}
+        dataExport={false}
       />
       {sidebarOpen && (
         <ActionSidebar
@@ -692,7 +704,7 @@ const TempVehicle: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div>
                   <Label>Transmission {validationErrors.transmission && <span className="text-red-500">{validationErrors.transmission}</span>}</Label>
                   <Select value={selectedVehicle.transmission || ''} onValueChange={val => {
@@ -752,7 +764,7 @@ const TempVehicle: React.FC = () => {
                     clearable
                   />
                 </div>
-                {/* classifocation: [asset, consumable, personal, rental] */}
+                {/* classification: rental only */}
                 <div>
                   <Label>Classification {validationErrors.classification && <span className="text-red-500">{validationErrors.classification}</span>}</Label>
                   <Select value={selectedVehicle.classification || ''} onValueChange={val => {
@@ -765,9 +777,7 @@ const TempVehicle: React.FC = () => {
                       <SelectValue placeholder="Select Classification" />
                     </SelectTrigger>
                     <SelectContent>
-                      {['asset', 'consumable', 'personal', 'rental'].map(type => (
-                        <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
-                      ))}
+                      <SelectItem value="rental">Rental</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
