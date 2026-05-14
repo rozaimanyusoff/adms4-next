@@ -7,7 +7,6 @@ import Link from "next/link";
 
 const VehiclePref: React.FC = () => {
     const tabTitles = [
-        { value: "svcopt", label: "Service Option" },
         { value: "tempvehicle", label: "Vehicle Records" },
     ];
 
@@ -16,13 +15,13 @@ const VehiclePref: React.FC = () => {
     };
 
     const [activeTab, setActiveTab] = useState<string>(() => {
-        // Retrieve the last active tab from localStorage or default to "assets"
-        return localStorage.getItem("billingTab") || "vendor";
+        // Retrieve the last active tab from localStorage or default to "tempvehicle"
+        return localStorage.getItem("vehicleTab") || "tempvehicle";
     });
 
     useEffect(() => {
         // Save the active tab to localStorage whenever it changes
-        localStorage.setItem("billingTab", activeTab);
+        localStorage.setItem("vehicleTab", activeTab);
     }, [activeTab]);
 
     return (
@@ -38,11 +37,11 @@ const VehiclePref: React.FC = () => {
                 </li>
             </ul>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                {/* <TabsList>
+                <TabsList>
                     {tabTitles.map(tab => (
                         <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
                     ))}
-                </TabsList> */}
+                </TabsList>
                 {tabTitles.map(tab => (
                     <TabsContent key={tab.value} value={tab.value}>
                         {tabComponents[tab.value]}
