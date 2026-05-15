@@ -5,6 +5,7 @@ import ExcelJS, { type Borders, type BorderStyle, type FillPattern, type Workshe
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { authenticatedApi } from "@/config/api";
 import { FlatPurchase } from "./types";
 
 interface ExcelPurchaseItemsProps {
@@ -36,6 +37,38 @@ interface ExportRow {
   grnDate: string;
   grnNo: string;
   status: string;
+}
+
+interface AssetRegistryExportRow {
+  id: number;
+  register_number: string;
+  classification: string;
+  model: string;
+  warranty_period: string | null;
+  item_condition: string;
+  description: string;
+  purchase_id: number | null;
+  request_id: number | null;
+  registered_at: string;
+  type: string;
+  category: string;
+  brand: string;
+  costcenter: string;
+  location: string;
+  created_by_ramco_id: string;
+  created_by: string;
+  delivery_id: number | null;
+  do_date: string;
+  do_no: string;
+  inv_date: string;
+  inv_no: string;
+  grn_date: string;
+  grn_no: string;
+  upload_path: string;
+  handover_to: string | null;
+  handover_at: string | null;
+  procurement_created_at: string;
+  procurement_updated_at: string;
 }
 
 const formatDate = (val?: string | null) => {
@@ -173,16 +206,24 @@ const ExcelPurchaseItems: React.FC<ExcelPurchaseItemsProps> = ({ purchases }) =>
 
   const buildYearSummary = (sheet: Worksheet) => {
     const yearTotals: Record<string, { count: number; total: number }> = {};
+    const yearTypeCounts: Record<string, Record<string, number>> = {};
+    const types = new Set<string>();
+
     rows.forEach(row => {
       const key = row.purchaseYear ? String(row.purchaseYear) : "Unknown";
+      const type = row.type || "Unspecified";
+      types.add(type);
       if (!yearTotals[key]) yearTotals[key] = { count: 0, total: 0 };
+      if (!yearTypeCounts[key]) yearTypeCounts[key] = {};
       yearTotals[key].count += 1;
       yearTotals[key].total += row.total || 0;
+      yearTypeCounts[key][type] = (yearTypeCounts[key][type] || 0) + 1;
     });
+    const sortedTypes = Array.from(types).sort((a, b) => a.localeCompare(b));
 
     sheet.addRow([]);
     sheet.addRow(["Purchases by Year"]).font = { bold: true, size: 12 };
-    const header = sheet.addRow(["Year", "Count", "Total (RM)"]);
+    const header = sheet.addRow(["Year", "Count", "Total (RM)", ...sortedTypes]);
     header.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = thinBorder; });
 
     Object.entries(yearTotals)
@@ -194,11 +235,17 @@ const ExcelPurchaseItems: React.FC<ExcelPurchaseItemsProps> = ({ purchases }) =>
         return by - ay;
       })
       .forEach(([year, data]) => {
-        const row = sheet.addRow([year, data.count, fmtNumber(data.total, 2)]);
+        const row = sheet.addRow([
+          year,
+          data.count,
+          fmtNumber(data.total, 2),
+          ...sortedTypes.map(type => yearTypeCounts[year]?.[type] || 0)
+        ]);
         row.eachCell((cell, colNumber) => {
           cell.border = thinBorder;
           if (colNumber === 2) cell.numFmt = "#,##0";
           if (colNumber === 3) cell.numFmt = "#,##0.00";
+          if (colNumber >= 4) cell.numFmt = "#,##0";
         });
       });
   };
@@ -263,7 +310,7 @@ const buildRecordsSheet = (sheet: Worksheet) => {
       "GRN Number",
       "Status"
     ];
-    const titleRow = sheet.addRow(["Purchase Records"]);
+    const titleRow = sheet.addRow([`Purchase Records (${rows.length} entries)`]);
     titleRow.font = { bold: true, size: 14 };
     sheet.mergeCells(`A${titleRow.number}:${colLetter(headers.length)}${titleRow.number}`);
 
@@ -317,6 +364,103 @@ const buildRecordsSheet = (sheet: Worksheet) => {
     });
   };
 
+  const buildAssetRegistrySheet = (sheet: Worksheet, registryRows: AssetRegistryExportRow[]) => {
+    const headers = [
+      "ID",
+      "Register Number",
+      "Classification",
+      "Model",
+      "Warranty Period",
+      "Item Condition",
+      "Description",
+      "Purchase ID",
+      "Request ID",
+      "Registered At",
+      "Type",
+      "Category",
+      "Brand",
+      "Cost Center",
+      "Location",
+      "Created By Ramco ID",
+      "Created By",
+      "Delivery ID",
+      "DO Date",
+      "DO Number",
+      "Invoice Date",
+      "Invoice Number",
+      "GRN Date",
+      "GRN Number",
+      "Upload Path",
+      "Handover To",
+      "Handover At",
+      "Procurement Created At",
+      "Procurement Updated At"
+    ];
+
+    const titleRow = sheet.addRow([`Asset Registry Records (${registryRows.length} entries)`]);
+    titleRow.font = { bold: true, size: 14 };
+    sheet.mergeCells(`A${titleRow.number}:${colLetter(headers.length)}${titleRow.number}`);
+
+    const headerRow = sheet.addRow(headers);
+    headerRow.eachCell(cell => { cell.font = headerFont; cell.fill = headerFill; cell.border = thinBorder; });
+
+    registryRows.forEach(r => {
+      const row = sheet.addRow([
+        r.id,
+        r.register_number,
+        r.classification,
+        r.model,
+        r.warranty_period || "",
+        r.item_condition,
+        r.description,
+        r.purchase_id,
+        r.request_id,
+        formatDate(r.registered_at),
+        r.type,
+        r.category,
+        r.brand,
+        r.costcenter,
+        r.location,
+        r.created_by_ramco_id,
+        r.created_by,
+        r.delivery_id,
+        formatDate(r.do_date),
+        r.do_no,
+        formatDate(r.inv_date),
+        r.inv_no,
+        formatDate(r.grn_date),
+        r.grn_no,
+        r.upload_path,
+        r.handover_to || "",
+        formatDate(r.handover_at),
+        formatDate(r.procurement_created_at),
+        formatDate(r.procurement_updated_at)
+      ]);
+      row.eachCell(cell => {
+        cell.border = thinBorder;
+      });
+    });
+
+    sheet.columns.forEach(col => {
+      if (!col) return;
+      let max = 10;
+      if (col.eachCell) {
+        col.eachCell({ includeEmpty: true }, cell => {
+          const val = cell.value ? cell.value.toString() : "";
+          max = Math.max(max, val.length + 2);
+        });
+      }
+      col.width = Math.min(max, 45);
+    });
+  };
+
+  const fetchAssetRegistryRows = async (): Promise<AssetRegistryExportRow[]> => {
+    const res = await authenticatedApi.get("/api/purchases/registry/all");
+    const payload = (res as any)?.data;
+    const data = Array.isArray(payload?.data) ? payload.data : [];
+    return data as AssetRegistryExportRow[];
+  };
+
   const handleExport = async () => {
     if (!rows.length) {
       toast.error("No purchase records to export");
@@ -332,6 +476,10 @@ const buildRecordsSheet = (sheet: Worksheet) => {
 
       const recordsSheet = workbook.addWorksheet("Purchase Records");
       buildRecordsSheet(recordsSheet);
+
+      const registryRows = await fetchAssetRegistryRows();
+      const registrySheet = workbook.addWorksheet("Asset Registry Records");
+      buildAssetRegistrySheet(registrySheet, registryRows);
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
