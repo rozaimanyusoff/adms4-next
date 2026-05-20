@@ -218,12 +218,12 @@ const TelcoSims: React.FC = () => {
     const validateForm = () => {
         const errors: Record<string, string> = {};
         if (!form.sim_sn.trim()) errors.sim_sn = "SIM serial number is required";
-        if (form.replacement === null || form.replacement === undefined) {
-            errors.replacement = "Type is required";
-        }
         if (!form.effective_date) errors.effective_date = "Effective date is required";
 
         if (!editSim) {
+            if (form.replacement === null || form.replacement === undefined) {
+                errors.replacement = "Type is required";
+            }
             const isReplacement = !!form.replacement;
             if (isReplacement) {
                 if (!form.replace_sim_id) errors.replace_sim_id = "Select a SIM to replace";
@@ -511,7 +511,7 @@ const TelcoSims: React.FC = () => {
                 title={editSim ? 'Update SIM Card' : 'Create SIM Card'}
                 content={
                     <div className="flex flex-col gap-4">
-                        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                        <form noValidate onSubmit={handleSubmit} className="flex flex-col gap-3">
                             <div>
                                 <div className="mb-1 flex items-center justify-between">
                                     <label htmlFor="sim_sn" className="block text-sm font-medium">SIM Serial Number</label>
@@ -571,6 +571,9 @@ const TelcoSims: React.FC = () => {
                                                 <span>Replacement</span>
                                             </label>
                                         </RadioGroup>
+                                        {formErrors.replacement && (
+                                            <p className="text-xs text-red-600">{formErrors.replacement}</p>
+                                        )}
                                     </div>
                                     <Select
                                         value={form.replace_sim_id ? String(form.replace_sim_id) : ''}
@@ -680,7 +683,6 @@ const TelcoSims: React.FC = () => {
                                             value={form.sub_no}
                                             placeholder="Click change to update data"
                                             readOnly
-                                            required
                                             aria-invalid={!!formErrors.sub_no_id}
                                             className={`pr-10 ${formErrors.sub_no_id ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                         />
@@ -732,7 +734,6 @@ const TelcoSims: React.FC = () => {
                                             }
                                             placeholder="Click change to update data"
                                             readOnly
-                                            required
                                             aria-invalid={!!formErrors.user}
                                             className={`pr-10 ${formErrors.user ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                                         />
