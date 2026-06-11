@@ -115,8 +115,13 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [months, setMonths] = useState<string[]>([]);
-  const [selectedRows, setSelectedRows] = useState<Row[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set());
   const [exporting, setExporting] = useState(false);
+
+  const selectedRows = useMemo(
+    () => rows.filter((row) => selectedKeys.has(row.ramco_id)),
+    [rows, selectedKeys],
+  );
 
   const YEAR_OPTIONS = useMemo(() => Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)), []);
   const monthLabel = useMemo(() => {
@@ -354,20 +359,6 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
     load();
   }, [year, months]);
 
-  useEffect(() => {
-    if (!selectedRows.length) return;
-    const latestMap = new Map(rows.map((row) => [row.participant_id, row]));
-    const nextSelected = selectedRows
-      .map((row) => latestMap.get(row.participant_id))
-      .filter((row): row is Row => !!row);
-    const shouldSync =
-      nextSelected.length !== selectedRows.length ||
-      nextSelected.some((row, index) => row !== selectedRows[index]);
-    if (shouldSync) {
-      setSelectedRows(nextSelected);
-    }
-  }, [rows, selectedRows]);
-
   const columns = useMemo<ColumnDef<Row>[]>(() => [
     { key: 'no', header: 'No', render: (_row, index) => <span>{index}</span> },
     { key: 'ramco_id', header: 'Ramco ID', filterable: true, filter: 'input' },
@@ -532,11 +523,9 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
         columnsVisibleOption={false}
         rowColHighlight={false}
         gridSettings={false}
-        rowSelection={{
-          enabled: true,
-          getRowId: (row) => row.ramco_id,
-          onSelect: (_keys, selectedData) => setSelectedRows(selectedData),
-        }}
+        rowSelection={{ enabled: true, getRowId: (row) => row.ramco_id }}
+        selectedRowKeys={selectedKeys}
+        setSelectedRowKeys={setSelectedKeys}
         rowExpandable={{ enabled: true, render: (row: Row) => <ExpandContent ramcoId={row.ramco_id} /> }}
       />
 
@@ -560,7 +549,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
               </thead>
               <tbody>
                 {selectedRows.map((row) => (
-                  <tr key={row.participant_id} className="border-t">
+                  <tr key={row.ramco_id} className="border-t">
                     <td className="py-1 pr-2">{row.ramco_id}</td>
                     <td className="py-1 pr-2">{row.full_name}</td>
                     <td className="py-1 pr-2">{row.department}</td>
