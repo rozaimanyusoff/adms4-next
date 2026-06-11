@@ -309,15 +309,16 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
               ? data
               : [];
 
-        // Deduplicate by participant_id — API may return one entry per training event
-        const participantMap = new Map<number, { item: ApiParticipantItem; allDetails: TrainingDetail[] }>();
+        // Deduplicate by ramco_id — API returns one row per training event per employee;
+        // ramco_id is the stable employee identifier, participant_id is the join-table row ID.
+        const participantMap = new Map<string, { item: ApiParticipantItem; allDetails: TrainingDetail[] }>();
         list.forEach((it) => {
-          const pid = Number(it.participant_id);
+          const key = it.participant?.ramco_id || String(it.participant_id);
           const details = toTrainingDetails(it.training_details);
-          if (participantMap.has(pid)) {
-            participantMap.get(pid)!.allDetails.push(...details);
+          if (participantMap.has(key)) {
+            participantMap.get(key)!.allDetails.push(...details);
           } else {
-            participantMap.set(pid, { item: it, allDetails: [...details] });
+            participantMap.set(key, { item: it, allDetails: [...details] });
           }
         });
 
@@ -533,7 +534,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
         gridSettings={false}
         rowSelection={{
           enabled: true,
-          getRowId: (row) => row.participant_id,
+          getRowId: (row) => row.ramco_id,
           onSelect: (_keys, selectedData) => setSelectedRows(selectedData),
         }}
         rowExpandable={{ enabled: true, render: (row: Row) => <ExpandContent ramcoId={row.ramco_id} /> }}
