@@ -308,8 +308,21 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
             : Array.isArray(data)
               ? data
               : [];
-        const normalized: Row[] = list.map((it) => {
-          const details = toTrainingDetails(it.training_details).filter((detail) => isDetailMatchedByFilter(detail, year, months));
+
+        // Deduplicate by participant_id — API may return one entry per training event
+        const participantMap = new Map<number, { item: ApiParticipantItem; allDetails: TrainingDetail[] }>();
+        list.forEach((it) => {
+          const pid = Number(it.participant_id);
+          const details = toTrainingDetails(it.training_details);
+          if (participantMap.has(pid)) {
+            participantMap.get(pid)!.allDetails.push(...details);
+          } else {
+            participantMap.set(pid, { item: it, allDetails: [...details] });
+          }
+        });
+
+        const normalized: Row[] = Array.from(participantMap.values()).map(({ item: it, allDetails }) => {
+          const details = allDetails.filter((detail) => isDetailMatchedByFilter(detail, year, months));
           const calculatedTotalHours = details.reduce((sum, detail) => sum + toNumber(detail.hrs), 0);
           const hasActiveTimeFilter = year !== 'all' || months.length > 0;
           const fallbackTotal = toNumber(it.total_training_hours);
@@ -465,6 +478,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
             <DropdownMenuLabel>Month Filter</DropdownMenuLabel>
             <DropdownMenuCheckboxItem
               checked={months.length === 0}
+              onSelect={(e) => e.preventDefault()}
               onCheckedChange={(checked) => {
                 if (checked) setMonths([]);
               }}
@@ -476,6 +490,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
               <DropdownMenuCheckboxItem
                 key={month.value}
                 checked={months.includes(month.value)}
+                onSelect={(e) => e.preventDefault()}
                 onCheckedChange={(checked) => {
                   setMonths((prev) => {
                     if (checked) {
