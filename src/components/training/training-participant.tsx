@@ -29,16 +29,7 @@ type ApiParticipantItem = {
     location?: { id: number; name: string } | null;
   };
   total_training_hours?: string | null;
-  training_details: {
-    training_id: number;
-    start_date?: string | null;
-    end_date?: string | null;
-    course_title?: string | null;
-    hrs?: string | number | null;
-    days?: string | number | null;
-    venue?: string | null;
-    attendance_upload?: string | null;
-  };
+  training_details?: TrainingDetail[] | TrainingDetail | null;
 };
 
 type TrainingDetail = {
@@ -72,6 +63,32 @@ const toNumber = (value: string | number | null | undefined) => {
   if (value == null) return 0;
   const normalized = typeof value === 'number' ? value : Number(String(value).replace(/[^\d.-]/g, ''));
   return Number.isFinite(normalized) ? normalized : 0;
+};
+
+const toTrainingDetails = (details?: TrainingDetail[] | TrainingDetail | null) => {
+  if (Array.isArray(details)) return details;
+  if (details) return [details];
+  return [];
+};
+
+const isDetailMatchedByFilter = (detail: TrainingDetail, selectedYear: string, selectedMonths: string[]) => {
+  const hasMonthFilter = selectedMonths.length > 0;
+  const date = parseDateTime(detail.start_date ?? null) ?? (detail.start_date ? new Date(detail.start_date) : null);
+
+  // Exclude unknown dates when any time filter is active.
+  if (!date || Number.isNaN(date.getTime())) {
+    return selectedYear === 'all' && !hasMonthFilter;
+  }
+
+  if (selectedYear !== 'all' && date.getFullYear() !== Number(selectedYear)) {
+    return false;
+  }
+
+  if (hasMonthFilter && !selectedMonths.includes(String(date.getMonth() + 1))) {
+    return false;
+  }
+
+  return true;
 };
 
 const MONTH_OPTIONS = [
@@ -133,13 +150,8 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
     else if (payload?.data && !Array.isArray(payload?.data)) obj = payload.data;
     else if (Array.isArray(payload)) obj = payload[0];
 
-    const list: TrainingDetail[] = Array.isArray(obj?.training_details)
-      ? obj.training_details
-      : obj?.training_details
-        ? [obj.training_details]
-        : [];
-
-    return list;
+    const list: TrainingDetail[] = toTrainingDetails(obj?.training_details);
+    return list.filter((detail) => isDetailMatchedByFilter(detail, year, months));
   };
 
   const exportRecords = async () => {
@@ -296,15 +308,27 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
             : Array.isArray(data)
               ? data
               : [];
-        const normalized: Row[] = list.map((it) => ({
-          participant_id: Number(it.participant_id),
-          ramco_id: it.participant?.ramco_id || '',
-          full_name: it.participant?.full_name || '',
-          position: it.participant?.position?.name || '-',
-          department: it.participant?.department?.name || '-',
-          location: it.participant?.location?.name || '-',
-          total_training_hours: String(it.total_training_hours ?? it.training_details?.hrs ?? ''),
-        }));
+        const normalized: Row[] = list.map((it) => {
+          const details = toTrainingDetails(it.training_details).filter((detail) => isDetailMatchedByFilter(detail, year, months));
+          const calculatedTotalHours = details.reduce((sum, detail) => sum + toNumber(detail.hrs), 0);
+          const hasActiveTimeFilter = year !== 'all' || months.length > 0;
+          const fallbackTotal = toNumber(it.total_training_hours);
+          const totalHours = details.length > 0
+            ? calculatedTotalHours
+            : hasActiveTimeFilter
+              ? 0
+              : fallbackTotal;
+
+          return {
+            participant_id: Number(it.participant_id),
+            ramco_id: it.participant?.ramco_id || '',
+            full_name: it.participant?.full_name || '',
+            position: it.participant?.position?.name || '-',
+            department: it.participant?.department?.name || '-',
+            location: it.participant?.location?.name || '-',
+            total_training_hours: totalHours.toFixed(2),
+          };
+        });
         setRows(normalized);
       } catch (e: any) {
         setError(e?.response?.data?.message || 'Unable to load training participants');
@@ -322,7 +346,10 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
     const nextSelected = selectedRows
       .map((row) => latestMap.get(row.participant_id))
       .filter((row): row is Row => !!row);
-    if (nextSelected.length !== selectedRows.length) {
+    const shouldSync =
+      nextSelected.length !== selectedRows.length ||
+      nextSelected.some((row, index) => row !== selectedRows[index]);
+    if (shouldSync) {
       setSelectedRows(nextSelected);
     }
   }, [rows, selectedRows]);
@@ -359,8 +386,8 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
           if (Array.isArray(payload?.data)) obj = payload.data[0];
           else if (payload?.data && !Array.isArray(payload?.data)) obj = payload.data;
           else if (Array.isArray(payload)) obj = payload[0];
-          const list: any[] = Array.isArray(obj?.training_details) ? obj.training_details : [];
-          const count = Number(obj?.trainings_count ?? list.length);
+          const list: any[] = toTrainingDetails(obj?.training_details).filter((detail) => isDetailMatchedByFilter(detail, year, months));
+          const count = list.length;
           setDetails({ trainings_count: count, training_details: list });
         } catch (e: any) {
           if (!cancelled) setErrorDetails(e?.response?.data?.message || 'Failed to load details');
