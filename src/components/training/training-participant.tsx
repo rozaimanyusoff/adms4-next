@@ -115,7 +115,7 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [months, setMonths] = useState<string[]>([]);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
 
   const selectedRows = useMemo(
@@ -523,9 +523,11 @@ const TrainingParticipant: React.FC<{ username?: string; className?: string }> =
         columnsVisibleOption={false}
         rowColHighlight={false}
         gridSettings={false}
-        rowSelection={{ enabled: true, getRowId: (row) => row.ramco_id }}
-        selectedRowKeys={selectedKeys}
-        setSelectedRowKeys={setSelectedKeys}
+        rowSelection={{
+          enabled: true,
+          getRowId: (row) => row.ramco_id,
+          onSelect: (keys) => setSelectedKeys(new Set(keys.map(String))),
+        }}
         rowExpandable={{ enabled: true, render: (row: Row) => <ExpandContent ramcoId={row.ramco_id} /> }}
       />
 
