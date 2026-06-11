@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Users, AlertTriangle, FileText, Search, Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Upload, Users, AlertTriangle, FileText, Search, Loader2, Plus, Trash2, X, Download } from 'lucide-react';
 import { authenticatedApi } from '@/config/api';
 import { normalizeTrainingRecord, parseDateTime } from '@/components/training/utils';
 import { Textarea } from '@/components/ui/textarea';
@@ -578,6 +578,26 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 		setValue('selectedParticipants', nextState, { shouldDirty: true, shouldTouch: true });
 	};
 
+	const handleDownloadExistingAttachment = async () => {
+		if (!existingAttendanceUpload) return;
+		try {
+			const response = await authenticatedApi.get(existingAttendanceUpload, { responseType: 'blob' });
+			const rawData = response.data as unknown;
+			const blob = rawData instanceof Blob ? rawData : new Blob([rawData as BlobPart], { type: 'application/pdf' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			const filename = existingAttendanceUpload.split('/').pop() || 'attendance.pdf';
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		} catch {
+			toast.error('Failed to download attachment.');
+		}
+	};
+
 	const handleDocumentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const file = event.target.files?.[0];
 		if (!file) {
@@ -978,14 +998,26 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 														<p className="truncate text-sm font-medium">
 															{supportingDocument ? supportingDocument.name : 'Current attendance PDF'}
 														</p>
-														<a
-															href={resolvedAttendancePreviewUrl}
-															target="_blank"
-															rel="noreferrer"
-															className="text-xs text-primary hover:underline"
-														>
-															Open full PDF
-														</a>
+														<div className="mt-1 flex items-center gap-3">
+															<a
+																href={resolvedAttendancePreviewUrl}
+																target="_blank"
+																rel="noreferrer"
+																className="text-xs text-primary hover:underline"
+															>
+																Open full PDF
+															</a>
+															{isEditing && existingAttendanceUpload && !supportingDocument && (
+																<button
+																	type="button"
+																	onClick={handleDownloadExistingAttachment}
+																	className="flex items-center gap-1 text-xs text-primary hover:underline"
+																>
+																	<Download className="size-3" />
+																	Download
+																</button>
+															)}
+														</div>
 													</div>
 												</div>
 											)}
@@ -1101,79 +1133,79 @@ export function TrainingForm({ trainingId, onSuccess, onCancel }: TrainingFormPr
 												)}
 											</div>
 										)}
-											<div className="space-y-3">
-												<div className="flex items-center justify-between">
-													<div className="flex items-center gap-2">
-														<Label>Selected Participants</Label>
-														<Popover>
-															<PopoverTrigger asChild>
-																<Badge
-																	variant="outline"
-																	className="cursor-pointer select-none text-xs border-blue-500 text-blue-600"
-																	title="Recently added"
-																>
-																	+ {recentAdded.length}
-																</Badge>
-															</PopoverTrigger>
-															<PopoverContent className="w-72 bg-blue-50" align="start">
-																<p className="mb-2 text-sm font-semibold">Recently added</p>
-																<div className="space-y-2 max-h-64 overflow-y-auto">
-																	{recentAdded.length === 0 ? (
-																		<p className="text-xs text-muted-foreground">No recent additions.</p>
-																	) : (
-																		recentAdded
-																			.slice()
-																			.reverse()
-																			.map((p) => (
-																				<div key={p.id} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
-																					<p className="font-semibold">{p.name}{p.ramco_id ? ` (${p.ramco_id})` : ''}</p>
-																					<p className="text-muted-foreground">{p.role}</p>
-																				</div>
-																			))
-																	)}
-																</div>
-															</PopoverContent>
-														</Popover>
-														<Popover>
-															<PopoverTrigger asChild>
-																<Badge
-																	variant="outline"
-																	className="cursor-pointer select-none text-xs border-red-500 text-red-600"
-																	title="Recently removed"
-																>
-																	- {recentRemoved.length}
-																</Badge>
-															</PopoverTrigger>
-															<PopoverContent className="w-72 bg-red-50" align="start">
-																<p className="mb-2 text-sm font-semibold">Recently removed</p>
-																<div className="space-y-2 max-h-64 overflow-y-auto">
-																	{recentRemoved.length === 0 ? (
-																		<p className="text-xs text-muted-foreground">No recent removals.</p>
-																	) : (
-																		recentRemoved
-																			.slice()
-																			.reverse()
-																			.map((p) => (
-																				<div key={p.id} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
-																					<p className="font-semibold">{p.name}{p.ramco_id ? ` (${p.ramco_id})` : ''}</p>
-																					<p className="text-muted-foreground">{p.role}</p>
-																				</div>
-																			))
-																	)}
-																</div>
-															</PopoverContent>
-														</Popover>
-													</div>
-													<Button
-														variant="default"
-														size="sm"
-														onClick={() => setParticipantSidebarOpen(true)}
-														disabled={participantLoading || !canAddMoreParticipants}
-														type="button"
-													>
-														<Plus className="size-4" />
-													</Button>
+										<div className="space-y-3">
+											<div className="flex items-center justify-between">
+												<div className="flex items-center gap-2">
+													<Label>Selected Participants</Label>
+													<Popover>
+														<PopoverTrigger asChild>
+															<Badge
+																variant="outline"
+																className="cursor-pointer select-none text-xs border-blue-500 text-blue-600"
+																title="Recently added"
+															>
+																+ {recentAdded.length}
+															</Badge>
+														</PopoverTrigger>
+														<PopoverContent className="w-72 bg-blue-50" align="start">
+															<p className="mb-2 text-sm font-semibold">Recently added</p>
+															<div className="space-y-2 max-h-64 overflow-y-auto">
+																{recentAdded.length === 0 ? (
+																	<p className="text-xs text-muted-foreground">No recent additions.</p>
+																) : (
+																	recentAdded
+																		.slice()
+																		.reverse()
+																		.map((p) => (
+																			<div key={p.id} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
+																				<p className="font-semibold">{p.name}{p.ramco_id ? ` (${p.ramco_id})` : ''}</p>
+																				<p className="text-muted-foreground">{p.role}</p>
+																			</div>
+																		))
+																)}
+															</div>
+														</PopoverContent>
+													</Popover>
+													<Popover>
+														<PopoverTrigger asChild>
+															<Badge
+																variant="outline"
+																className="cursor-pointer select-none text-xs border-red-500 text-red-600"
+																title="Recently removed"
+															>
+																- {recentRemoved.length}
+															</Badge>
+														</PopoverTrigger>
+														<PopoverContent className="w-72 bg-red-50" align="start">
+															<p className="mb-2 text-sm font-semibold">Recently removed</p>
+															<div className="space-y-2 max-h-64 overflow-y-auto">
+																{recentRemoved.length === 0 ? (
+																	<p className="text-xs text-muted-foreground">No recent removals.</p>
+																) : (
+																	recentRemoved
+																		.slice()
+																		.reverse()
+																		.map((p) => (
+																			<div key={p.id} className="rounded-md border bg-muted/30 px-2 py-1 text-xs">
+																				<p className="font-semibold">{p.name}{p.ramco_id ? ` (${p.ramco_id})` : ''}</p>
+																				<p className="text-muted-foreground">{p.role}</p>
+																			</div>
+																		))
+																)}
+															</div>
+														</PopoverContent>
+													</Popover>
 												</div>
+												<Button
+													variant="default"
+													size="sm"
+													onClick={() => setParticipantSidebarOpen(true)}
+													disabled={participantLoading || !canAddMoreParticipants}
+													type="button"
+												>
+													<Plus className="size-4" />
+												</Button>
+											</div>
 											<div className="relative">
 												<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 												<Input
