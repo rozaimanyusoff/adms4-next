@@ -12,8 +12,21 @@ import useMaintenanceMode from "@/hooks/useMaintenanceMode";
 import { AuthContext } from "@/store/AuthContext";
 import { toast } from "sonner";
 import { authenticatedApi } from "@/config/api";
-import { Loader2, WifiOff } from "lucide-react";
+import { Loader2, WifiOff, Mail, CheckCircle2, XCircle } from "lucide-react";
 import { io, Socket } from "socket.io-client";
+
+type EmailConfig = {
+    host: string;
+    port: number;
+    user: string;
+    from: string;
+    password: string;
+};
+
+type EmailTestResult = {
+    success: boolean;
+    message: string;
+};
 
 type HealthStatus = {
     status?: "healthy" | "degraded" | "unhealthy" | string;
@@ -33,6 +46,11 @@ const MaintenanceControl = () => {
     const [healthLoading, setHealthLoading] = useState(false);
     const [healthError, setHealthError] = useState<string | null>(null);
     const [lastSocketTs, setLastSocketTs] = useState<string | null>(null);
+    const [emailConfig, setEmailConfig] = useState<EmailConfig | null>(null);
+    const [emailConfigLoading, setEmailConfigLoading] = useState(false);
+    const [testTo, setTestTo] = useState("");
+    const [testSending, setTestSending] = useState(false);
+    const [testResult, setTestResult] = useState<EmailTestResult | null>(null);
     const authContext = useContext(AuthContext);
     const token = authContext?.authData?.token;
 
@@ -77,6 +95,35 @@ const MaintenanceControl = () => {
         const interval = setInterval(fetchHealth, 30000);
         return () => clearInterval(interval);
     }, [fetchHealth]);
+
+    const fetchEmailConfig = useCallback(async () => {
+        setEmailConfigLoading(true);
+        try {
+            const res = await authenticatedApi.get("/api/email/config");
+            setEmailConfig(res.data as EmailConfig);
+        } catch {
+            setEmailConfig(null);
+        } finally {
+            setEmailConfigLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { fetchEmailConfig(); }, [fetchEmailConfig]);
+
+    const handleSendTestEmail = async () => {
+        if (!testTo) return;
+        setTestSending(true);
+        setTestResult(null);
+        try {
+            const res = await authenticatedApi.post("/api/email/test", { to: testTo });
+            setTestResult({ success: true, message: (res.data as any)?.message ?? "Test email sent." });
+        } catch (error: any) {
+            const msg = error?.response?.data?.message ?? "Failed to send test email.";
+            setTestResult({ success: false, message: msg });
+        } finally {
+            setTestSending(false);
+        }
+    };
 
     useEffect(() => {
         if (!token) return;
@@ -238,6 +285,61 @@ const MaintenanceControl = () => {
                         onChange={(e) => setUpdatedBy(e.target.value)}
                     />
                     <p className="text-xs text-slate-500">Displayed on the maintenance overlay for accountability.</p>
+                </div>
+
+                <Separator />
+
+                <div className="flex flex-col gap-3 rounded-lg border border-slate-200/60 bg-slate-50/60 p-4 text-slate-800 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                        <div>
+                            <p className="text-sm font-semibold text-slate-900">Email testing</p>
+                            <p className="text-xs text-slate-600">Verify SMTP configuration by sending a test email.</p>
+                        </div>
+                        <Mail className="h-4 w-4 text-slate-400" />
+                    </div>
+
+                    {emailConfigLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Loading email config...
+                        </div>
+                    ) : emailConfig ? (
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 sm:grid-cols-3">
+                            <span><span className="font-medium text-slate-500">Host</span><br />{emailConfig.host}</span>
+                            <span><span className="font-medium text-slate-500">Port</span><br />{emailConfig.port}</span>
+                            <span><span className="font-medium text-slate-500">User</span><br />{emailConfig.user}</span>
+                            <span><span className="font-medium text-slate-500">From</span><br />{emailConfig.from}</span>
+                            <span><span className="font-medium text-slate-500">Password</span><br />{emailConfig.password}</span>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-rose-600">Unable to load email configuration.</p>
+                    )}
+
+                    <div className="flex gap-2">
+                        <Input
+                            type="email"
+                            placeholder="recipient@example.com"
+                            value={testTo}
+                            onChange={(e) => { setTestTo(e.target.value); setTestResult(null); }}
+                            className="flex-1"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleSendTestEmail}
+                            disabled={testSending || !testTo}
+                        >
+                            {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send test"}
+                        </Button>
+                    </div>
+
+                    {testResult && (
+                        <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${testResult.success ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"}`}>
+                            {testResult.success
+                                ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+                            {testResult.message}
+                        </div>
+                    )}
                 </div>
 
                 <Separator />
