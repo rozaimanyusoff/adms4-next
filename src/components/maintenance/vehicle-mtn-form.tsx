@@ -29,7 +29,7 @@ import { Camera, Download, Loader2, X } from 'lucide-react';
 import { can } from '@/utils/permissions';
 
 // Users in this list will not be filtered by ?ramco
-const exclusionUser: string[] = ['000277', 'username2'];
+const exclusionUser: string[] = ['000277', '000396'];
 
 interface VehicleMtnFormProps {
   id?: number | string | null;
@@ -1764,93 +1764,93 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     )}
                   </div>
                 ) : (
-                <div
-                  onDrop={onDropFiles}
-                  onDragOver={onDragOver}
-                  className={`${attachments.length > 0 ? 'relative h-72 rounded-md border border-muted-foreground/40 bg-muted/20 overflow-hidden' : 'h-40 rounded-md border border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground p-3 bg-muted/20'}`}
-                >
-                  {attachments.length === 0 ? (
-                    <>
-                      <div className="text-sm">Drag & drop images or PDF here</div>
-                      <div className="text-sm">or</div>
-                      <div className="flex gap-2">
-                        <Input
-                          id="vehicle-mtn-attachments"
-                          type="file"
-                          multiple
-                          accept="image/*,application/pdf"
-                          onChange={handleAttachmentChange}
-                        />
-                        <Input
-                          ref={cameraUploadInputRef}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={handleAttachmentChange}
-                        />
+                  <div
+                    onDrop={onDropFiles}
+                    onDragOver={onDragOver}
+                    className={`${attachments.length > 0 ? 'relative h-72 rounded-md border border-muted-foreground/40 bg-muted/20 overflow-hidden' : 'h-40 rounded-md border border-dashed border-muted-foreground/40 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground p-3 bg-muted/20'}`}
+                  >
+                    {attachments.length === 0 ? (
+                      <>
+                        <div className="text-sm">Drag & drop images or PDF here</div>
+                        <div className="text-sm">or</div>
                         <div className="flex gap-2">
-                          <Button onClick={openCameraPicker} className="w-full flex items-center justify-center gap-2">
-                            <Camera className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        type="button"
-                        onClick={clearAttachments}
-                        className="absolute right-1.5 top-1.5 z-10 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
-                        aria-label="Remove selected attachments"
-                        size="icon"
-                      >
-                    <X className="h-5 w-5" />
-                  </Button>
-                      {primaryAttachmentIsPdf && primaryAttachmentPreview ? (
-                        <>
-                          <object
-                            data={primaryAttachmentPreview}
-                            type="application/pdf"
-                            className="absolute inset-0 h-full w-full rounded-md bg-background"
-                          >
-                            <p className="p-4 text-sm text-muted-foreground">
-                              Unable to preview PDF.
-                              {' '}
-                              <button type="button" className="underline" onClick={() => openAttachmentPreview()}>
-                                Open PDF
-                              </button>
-                              .
-                            </p>
-                          </object>
-                          <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
-                            {attachments.length} file{attachments.length === 1 ? '' : 's'} selected
-                          </div>
-                        </>
-                      ) : previews.length > 0 ? (
-                        <>
-                          <img
-                            src={previews[0]}
-                            alt="attachment-preview"
-                            className="absolute inset-0 w-full h-full object-contain cursor-zoom-in"
-                            onClick={() => openAttachmentPreview(0)}
+                          <Input
+                            id="vehicle-mtn-attachments"
+                            type="file"
+                            multiple
+                            accept="image/*,application/pdf"
+                            onChange={handleAttachmentChange}
                           />
-                          {attachments.length > 1 && (
+                          <Input
+                            ref={cameraUploadInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={handleAttachmentChange}
+                          />
+                          <div className="flex gap-2">
+                            <Button onClick={openCameraPicker} className="w-full flex items-center justify-center gap-2">
+                              <Camera className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          type="button"
+                          onClick={clearAttachments}
+                          className="absolute right-1.5 top-1.5 z-10 rounded-full bg-red-500 p-1 text-white transition hover:bg-red-500"
+                          aria-label="Remove selected attachments"
+                          size="icon"
+                        >
+                          <X className="h-5 w-5" />
+                        </Button>
+                        {primaryAttachmentIsPdf && primaryAttachmentPreview ? (
+                          <>
+                            <object
+                              data={primaryAttachmentPreview}
+                              type="application/pdf"
+                              className="absolute inset-0 h-full w-full rounded-md bg-background"
+                            >
+                              <p className="p-4 text-sm text-muted-foreground">
+                                Unable to preview PDF.
+                                {' '}
+                                <button type="button" className="underline" onClick={() => openAttachmentPreview()}>
+                                  Open PDF
+                                </button>
+                                .
+                              </p>
+                            </object>
                             <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
-                              {attachments.length} images selected
+                              {attachments.length} file{attachments.length === 1 ? '' : 's'} selected
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">No preview available</div>
-                      )}
-                    </>
-                  )}
-                </div>)}
+                          </>
+                        ) : previews.length > 0 ? (
+                          <>
+                            <img
+                              src={previews[0]}
+                              alt="attachment-preview"
+                              className="absolute inset-0 w-full h-full object-contain cursor-zoom-in"
+                              onClick={() => openAttachmentPreview(0)}
+                            />
+                            {attachments.length > 1 && (
+                              <div className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+                                {attachments.length} images selected
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">No preview available</div>
+                        )}
+                      </>
+                    )}
+                  </div>)}
               </div>
             </div>
 
-            
+
 
             {/* Create vs Readonly Actions */}
             {isReadOnly ? (
@@ -1859,7 +1859,7 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                 <div className="space-y-2">
                   <div className="font-semibold text-red-500">Cancel Application</div>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Checkbox id="vehicle-mtn-cancel" checked={cancelChecked} onCheckedChange={(v)=>setCancelChecked(Boolean(v))} />
+                    <Checkbox id="vehicle-mtn-cancel" checked={cancelChecked} onCheckedChange={(v) => setCancelChecked(Boolean(v))} />
                     <span className='text-red-500'>Request cancellation (driver)</span>
                   </label>
                   <Textarea
@@ -2060,13 +2060,12 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
                     {serviceHistory.map((record) => (
                       <div
                         key={record.req_id}
-                        className={`rounded-md border border-border p-3 ${
-                          (() => {
+                        className={`rounded-md border border-border p-3 ${(() => {
                             const status = String(record.application_status || record.status || '').toLowerCase();
                             const rejected = new Set(['verification_rejected', 'recommendation_rejected', 'approval_rejected', 'cancelled']);
                             return rejected.has(status) ? 'bg-red-100 border-red-300' : 'bg-sky-100 dark:bg-gray-800';
                           })()
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between text-sm font-semibold">
                           <span className="flex items-center gap-2">
@@ -2261,8 +2260,8 @@ const VehicleMtnForm: React.FC<VehicleMtnFormProps> = ({ id, onClose, onSubmitte
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleTermsDecline}>Tidak Setuju</AlertDialogCancel>
             <AlertDialogAction onClick={handleTermsAgree}>Setuju</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
 
       <Dialog open={ncrDialogOpen} onOpenChange={(open) => setNcrDialogOpen(open)}>
