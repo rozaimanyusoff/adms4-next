@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
-import { addHeaderFooter, ensurePageBreakForSignatures } from './pdf-helpers';
+import { addHeaderFooter, ensurePageBreakForSignatures, startYAfterNewPage } from './pdf-helpers';
 
 
 // Shared small helpers
@@ -138,7 +138,7 @@ export async function exportUtilityBillSummary(
                 6: { cellWidth: 18, halign: 'right' },
                 7: { cellWidth: 18, halign: 'right' },
             },
-            margin: { left: 14, right: 14 },
+            margin: { left: 14, right: 14, bottom: 45 },
             tableWidth: 'auto',
             theme: 'grid',
             headStyles: {
@@ -176,6 +176,9 @@ export async function exportUtilityBillSummary(
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
         const xStart = 14;
         const rowHeight = 6;
+        // Guard against the grand-total row overlapping the footer text/logo when the
+        // bills table ends near the bottom of a page
+        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: rowHeight, bottomMargin: 45, newPageTopMargin: startYAfterNewPage(doc) });
         /* doc.setFillColor(255,255,255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
@@ -356,7 +359,7 @@ export async function exportUtilityBillSummary(
                         0: { halign: 'center', cellWidth: 10 },
                         1: { halign: 'left', cellWidth: 65 },
                     },
-                    margin: { left: 14, right: 14 },
+                    margin: { left: 14, right: 14, bottom: 45 },
                     theme: 'grid',
                 });
                 y = (doc as any).lastAutoTable.finalY + 4;
