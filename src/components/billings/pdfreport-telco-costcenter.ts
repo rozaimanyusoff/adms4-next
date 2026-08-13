@@ -7,34 +7,34 @@ import { addHeaderFooter } from './pdf-helpers';
 
 
 export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
-        if (!utilIds || utilIds.length === 0) return;
-        function formatDate(dateInput: string | Date | undefined): string {
-            if (!dateInput) return '';
-            const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1);
-            const year = d.getFullYear();
-            return `${day}/${month}/${year}`;
-        }
-        const fetchBase64 = async (url?: string) => {
-            if (!url) return undefined;
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            const base64Promise = new Promise<string>((resolve, reject) => {
-                reader.onloadend = () => resolve(reader.result as string);
-                reader.onerror = reject;
-            });
-            reader.readAsDataURL(blob);
-            return await base64Promise;
-        };
-        let headerLogoBase64: string | undefined;
-        let footerLogoBase64: string | undefined;
-        try {
-            // Fetch all bills in one request
-            const res = await authenticatedApi.post('/api/telco/bills/by-ids',
-                JSON.stringify({ ids: utilIds }),
-                { headers: { 'Content-Type': 'application/json' } }
+    if (!utilIds || utilIds.length === 0) return;
+    function formatDate(dateInput: string | Date | undefined): string {
+        if (!dateInput) return '';
+        const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1);
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
+    const fetchBase64 = async (url?: string) => {
+        if (!url) return undefined;
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+        });
+        reader.readAsDataURL(blob);
+        return await base64Promise;
+    };
+    let headerLogoBase64: string | undefined;
+    let footerLogoBase64: string | undefined;
+    try {
+        // Fetch all bills in one request
+        const res = await authenticatedApi.post('/api/telco/bills/by-ids',
+            JSON.stringify({ ids: utilIds }),
+            { headers: { 'Content-Type': 'application/json' } }
         ) as { data: { data: any[]; bill_summary?: any } };
         const bills = (res as any)?.data?.data || [];
         const billSummary = (res as any)?.data?.bill_summary;
@@ -303,7 +303,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         const year = d.getFullYear();
         return `${day}/${month}/${year}`;
     }
-        // ...existing code...
+    // ...existing code...
     try {
         const res = await authenticatedApi.get(`/api/telco/bills/${utilId}`) as { data: { data: any } };
         const bill = (res as any)?.data?.data;
@@ -332,7 +332,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
             },
             {
                 name: 'NOR SUHADA BINTI HASAN',
-                title: 'Head of Technology',
+                title: 'Div Head of Technology & Compliance',
                 x: pageWidth - 73
             }
         ];
@@ -414,8 +414,8 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 // Make the first row (header) bold and styled
                 if (data.row.index === 0) {
                     data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [255,255,255];
-                    data.cell.styles.textColor = [0,0,0];
+                    data.cell.styles.fillColor = [255, 255, 255];
+                    data.cell.styles.textColor = [0, 0, 0];
                 }
             },
             didDrawCell: function (data: any) {
@@ -446,7 +446,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         // Subtotal row
         const subtotalLabel = 'Subtotal (RM):';
         const subtotalValue = Number(bill.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        
+
         // Calculate total tax
         const taxLabel = 'Tax (RM):';
         const totalTaxValue = Number(bill.tax).toLocaleString(undefined, { minimumFractionDigits: 2 });
@@ -454,18 +454,18 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         // Rounding
         const roundLabel = 'Rounding (RM):';
         const roundValue = Number(bill.rounding).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        
+
         // Grand total
         const grandTotalLabel = 'Grand Total:';
         const grandTotalValue = Number(bill.grand_total).toLocaleString(undefined, { minimumFractionDigits: 2 });
-        
+
         const colWidths = [12, 36, 28, 38, 36, 28]; // Column widths for the summary table
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0); // Total width of the summary table
         const xStart = 14; //start from left margin
         const rowHeight = 6; // Row height for summary rows
 
         // Draw subtotal row
-        doc.setFillColor(255,255,255);
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD'); // Fill and draw rectangle
@@ -476,7 +476,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
 
         // Draw total tax row
         y += rowHeight;
-        doc.setFillColor(255,255,255);
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -487,7 +487,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
 
         // Draw rounding row
         y += rowHeight;
-        doc.setFillColor(255,255,255);
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -498,7 +498,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
 
         // Draw grand total row
         y += rowHeight;
-        doc.setFillColor(255,255,255);
+        doc.setFillColor(255, 255, 255);
         doc.setDrawColor(200);
         doc.setLineWidth(0.1);
         doc.rect(xStart, y - 4, totalTableWidth, rowHeight, 'FD');
@@ -548,7 +548,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
-             
+
             await addHeaderFooter(doc, i, totalPages, pageWidth);
         }
 
