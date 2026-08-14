@@ -172,7 +172,7 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
         const signatures = [
             { name: 'NORHAMIZAH BINTI ABU', title: 'Executive', x: 15 },
             { name: 'ROZAIMAN BIN YUSOFF', title: 'Head of IT Section', x: pageWidth / 2 - 28 },
-            { name: 'NOR SUHADA BINTI HASAN', title: 'Head of Technology', x: pageWidth - 73 }
+            { name: 'NOR SUHADA BINTI HASAN', title: 'Head of Division Technology & Compliance', x: pageWidth - 73 }
         ];
         signatures.forEach(sig => {
             doc.text(sig.name, sig.x, y);
@@ -313,7 +313,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         }
 
         // Editable variable for department/sender
-        const senderDepartment = 'Head of Technology';
+        const senderDepartment = 'Head of Division Technology & Compliance';
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -332,7 +332,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
             },
             {
                 name: 'NOR SUHADA BINTI HASAN',
-                title: 'Div Head of Technology & Compliance',
+                title: 'Head of Division Technology & Compliance',
                 x: pageWidth - 73
             }
         ];
