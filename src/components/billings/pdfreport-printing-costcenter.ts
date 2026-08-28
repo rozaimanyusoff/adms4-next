@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
-import { addHeaderFooter, ensurePageBreakForSignatures } from './pdf-helpers';
+import { addHeaderFooter, ensurePageBreakForSignatures, startYAfterNewPage } from './pdf-helpers';
 
 // Shared small helper (formatDate kept local to file to avoid circular edits)
 function formatDate(dateInput: string | Date | undefined): string {
@@ -240,7 +240,7 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
             if (accountPrevMap.size) {
                 // Start the previous bills table on a fresh page (after header/logo space)
                 doc.addPage();
-                y = 50;
+                y = startYAfterNewPage(doc);
 
                 // Header label
                 doc.setFont('helvetica', 'bold');
@@ -321,7 +321,9 @@ export async function exportPrintingBillSummary(beneficiaryId: string | number |
                         0: { halign: 'center', cellWidth: 10 },
                         1: { halign: 'left', cellWidth: 65 },
                     },
-                    margin: { left: 14, right: 14 },
+                    margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
+                    pageBreak: 'avoid',
+                    rowPageBreak: 'avoid',
                     theme: 'grid',
                 });
                 y = (doc as any).lastAutoTable.finalY + 4;

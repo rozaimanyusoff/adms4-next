@@ -280,6 +280,10 @@ export async function exportUtilityBillSummary(
             });
 
             if (accountPrevMap.size) {
+                // Keep the previous 5-month summary together and clear of the page header/logo.
+                doc.addPage();
+                y = startYAfterNewPage(doc);
+
                 // Header label
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(9);
@@ -359,7 +363,9 @@ export async function exportUtilityBillSummary(
                         0: { halign: 'center', cellWidth: 10 },
                         1: { halign: 'left', cellWidth: 65 },
                     },
-                    margin: { left: 14, right: 14, bottom: 45 },
+                    margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
+                    pageBreak: 'avoid',
+                    rowPageBreak: 'avoid',
                     theme: 'grid',
                 });
                 y = (doc as any).lastAutoTable.finalY + 4;

@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { authenticatedApi } from '@/config/api';
-import { addHeaderFooter } from './pdf-helpers';
+import { addHeaderFooter, ensurePageBreakForSignatures, startYAfterNewPage } from './pdf-helpers';
 
 
 export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
@@ -149,11 +149,12 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
                 lineWidth: 0.1,
                 lineColor: [200, 200, 200],
             },
-            margin: { left: 14, right: 14 },
+            margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
             tableWidth: 'auto',
             theme: 'grid',
         });
         y = (doc as any).lastAutoTable.finalY + 10;
+        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: startYAfterNewPage(doc) });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         doc.text('Your cooperation on the above is highly appreciated.', 15, y);
@@ -230,7 +231,7 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
             let summaryY = y + 12;
             if (summaryY + estimatedHeight > pageHeight - footerReserve) {
                 doc.addPage();
-                summaryY = 60; // keep content below header logo on new page
+                summaryY = startYAfterNewPage(doc);
             }
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(11);
@@ -264,7 +265,9 @@ export async function exportTelcoBillSummaryPDFs(utilIds: number[]) {
                     2: { cellWidth: 35, halign: 'right' },
                     3: { cellWidth: 40, halign: 'right' },
                 },
-                margin: { left: 14, right: 14 },
+                margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
+                pageBreak: 'avoid',
+                rowPageBreak: 'avoid',
                 tableWidth: 'auto',
             });
 
@@ -436,7 +439,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
                 4: { cellWidth: 36, halign: 'center' },
                 5: { cellWidth: 28, halign: 'right' },
             },
-            margin: { left: 14, right: 14 },
+            margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
             tableWidth: 'auto',
             theme: 'grid',
         });
@@ -463,6 +466,8 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
         const totalTableWidth = colWidths.reduce((a, b) => a + b, 0); // Total width of the summary table
         const xStart = 14; //start from left margin
         const rowHeight = 6; // Row height for summary rows
+
+        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: rowHeight * 4, bottomMargin: 45, newPageTopMargin: startYAfterNewPage(doc) });
 
         // Draw subtotal row
         doc.setFillColor(255, 255, 255);
@@ -509,6 +514,7 @@ export async function exportTelcoBillSummaryPDF(utilId: number) {
 
         // Footer section (signatures, etc.)
         y += 10;
+        y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 60, bottomMargin: 40, newPageTopMargin: startYAfterNewPage(doc) });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         //doc.text('The payment shall be made before 10th.', 15, y);

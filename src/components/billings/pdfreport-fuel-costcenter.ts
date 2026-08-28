@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { authenticatedApi } from '@/config/api';
-import { addHeaderFooter, determineStatementLabel } from './pdf-helpers';
+import { addHeaderFooter, determineStatementLabel, ensurePageBreakForSignatures, startYAfterNewPage } from './pdf-helpers';
 
 // Register the plugin
 (jsPDF as any).autoTable = autoTable;
@@ -131,7 +131,7 @@ export async function generateFuelCostCenterReport({ stmt_id }: { stmt_id: numbe
             1: { cellWidth: 120, halign: 'left' },
             2: { cellWidth: 45, halign: 'right' },
         },
-        margin: { left: 14, right: 14 },
+        margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
         tableWidth: 'auto',
         theme: 'grid',
         didDrawPage: (data) => {
@@ -157,6 +157,8 @@ export async function generateFuelCostCenterReport({ stmt_id }: { stmt_id: numbe
         ['', 'Grand Total (RM):', grandTotalValue]
     ];
 
+    y = ensurePageBreakForSignatures(doc, y, { signaturesHeight: 24, bottomMargin: 45, newPageTopMargin: startYAfterNewPage(doc) });
+
     autoTable(doc, {
         startY: y,
         body: totalsData,
@@ -175,7 +177,9 @@ export async function generateFuelCostCenterReport({ stmt_id }: { stmt_id: numbe
             1: { cellWidth: 120, halign: 'right' },
             2: { cellWidth: 45, halign: 'right' },
         },
-        margin: { left: 14, right: 14 },
+        margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
+        pageBreak: 'avoid',
+        rowPageBreak: 'avoid',
         tableWidth: 'auto',
         theme: 'grid',
         didDrawPage: (data) => {
@@ -197,8 +201,6 @@ export async function generateFuelCostCenterReport({ stmt_id }: { stmt_id: numbe
         doc.addPage();
         await addHeaderFooter(doc, 2, 2, pageWidth); // Will be updated later with correct total
         // Start new page content below the header/logo area
-        // use shared helper to get consistent starting Y
-        const { startYAfterNewPage } = await import('./pdf-helpers');
         y = startYAfterNewPage(doc);
     }
     doc.setFont('helvetica', 'normal');
