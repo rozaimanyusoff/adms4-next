@@ -138,7 +138,7 @@ export async function exportUtilityBillSummary(
                 6: { cellWidth: 18, halign: 'right' },
                 7: { cellWidth: 18, halign: 'right' },
             },
-            margin: { left: 14, right: 14, bottom: 45 },
+            margin: { left: 14, right: 14, top: startYAfterNewPage(doc), bottom: 45 },
             tableWidth: 'auto',
             theme: 'grid',
             headStyles: {
